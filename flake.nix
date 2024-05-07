@@ -8,10 +8,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+
+    leo = {
+      url = "github:AleoHQ/leo";
+      flake = false;
+    };
   };
 
   outputs =
-    {
+    inputs@{
       nixpkgs,
       flake-utils,
       rust-dev-tools,
@@ -22,7 +27,16 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ rust-dev-tools.overlays.default ];
+          overlays = [
+            rust-dev-tools.overlays.default
+            (
+              self: super:
+              import ./dependencies {
+                inherit pkgs;
+                inherit inputs;
+              }
+            )
+          ];
         };
 
         rdt = rust-dev-tools.setup pkgs {
@@ -32,7 +46,10 @@
         };
       in
       {
-        devShells.default = pkgs.mkShell { inputsFrom = [ rdt.devShell ]; };
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [ rdt.devShell ];
+          packages = with pkgs; [ leo ];
+        };
       }
     );
 }

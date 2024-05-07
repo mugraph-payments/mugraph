@@ -18,6 +18,22 @@
         "type": "github"
       }
     },
+    "leo": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1715094701,
+        "narHash": "sha256-VQghLkLMLPfr5oMiGb0rwPWe8gBd7OIOCKOsbT2423k=",
+        "owner": "AleoHQ",
+        "repo": "leo",
+        "rev": "a691b91e4d08d74f0a892eb3876516a02c94dbc4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "AleoHQ",
+        "repo": "leo",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1715032982,
@@ -36,6 +52,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "leo": "leo",
         "nixpkgs": "nixpkgs",
         "rust-dev-tools": "rust-dev-tools"
       }

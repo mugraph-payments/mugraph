@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "mugraph"
+name = "mu"
 version = "0.0.1"
