@@ -54,7 +54,8 @@
         "flake-utils": "flake-utils",
         "leo": "leo",
         "nixpkgs": "nixpkgs",
-        "rust-dev-tools": "rust-dev-tools"
+        "rust-dev-tools": "rust-dev-tools",
+        "snarkvm": "snarkvm"
       }
     },
     "rust-dev-tools": {
@@ -103,6 +104,22 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "snarkvm": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1715019209,
+        "narHash": "sha256-ObvVADmZwV9JzKikFX/Hms+INVE17wJnTJQ5ieMnOrQ=",
+        "owner": "AleoHQ",
+        "repo": "snarkvm",
+        "rev": "84211466740d1c9b2f3c9803993e1b1b6819ad90",
+        "type": "github"
+      },
+      "original": {
+        "owner": "AleoHQ",
+        "repo": "snarkvm",
         "type": "github"
       }
     },

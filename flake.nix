@@ -13,6 +13,11 @@
       url = "github:AleoHQ/leo";
       flake = false;
     };
+
+    snarkvm = {
+      url = "github:AleoHQ/snarkvm";
+      flake = false;
+    };
   };
 
   outputs =
@@ -30,8 +35,8 @@
           overlays = [
             rust-dev-tools.overlays.default
             (
-              self: super:
-              import ./dependencies {
+              _: _:
+              import ./overlay.nix {
                 inherit pkgs;
                 inherit inputs;
               }
@@ -48,7 +53,10 @@
       {
         devShells.default = pkgs.mkShell {
           inputsFrom = [ rdt.devShell ];
-          packages = with pkgs; [ leo ];
+          packages = with pkgs; [
+            leo
+            snarkvm
+          ];
         };
       }
     );
