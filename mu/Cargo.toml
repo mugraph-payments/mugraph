@@ -4,3 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+proptest = "1.4.0"
+test-strategy = "0.3.1"
+thiserror = "1.0.60"
+tokio = { version = "1.37.0", features = ["full"] }

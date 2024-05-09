@@ -1,6 +1,3 @@
-// withdrawal.leo
-// Refined Leo program for withdrawal verification using zk-SNARKs and Ed25519 signatures
-
 import std::console;
 import std::assert;
 import std::array;
