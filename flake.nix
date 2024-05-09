@@ -56,6 +56,7 @@
           packages = with pkgs; [
             leo
             snarkvm
+            b3sum
           ];
         };
       }
