@@ -1,18 +1,23 @@
 # µgraph: Fast, Untraceable Synthetic Payments in Cardano
 
-µgraph is a network where you can deposit ADA into a vault owned by a µ (Mu), a node in the network, working similarly to a bank, minting **Synthetic Assets**, a kind of token with a special property: they mimic the price actions of other assets, by working on top of Collateralized Debt Positions (CDP), or Auctions/Stop-Losses.
+µgraph is a payment network, very similar in spirit to [Hydra](https://hydra.family) and [The Lightning Network](https://lightning.network/).
 
-In this network:
+It is not meant to be an extension to a blockchain, or to be isomorphic to their internals. Instead, it is a fast, secure and anonymous payment platform for **synthetic assets**, a kind of blockchain Token that mirrors the price action of real-world assets and financial instruments (like currencies, stocks, ETFs, CDPs).
 
-- You can send and receive money by just sending a text message
-- You can transfer money from a cellphone to another, via NFC (Like Google Pay/Apple Pay)
-- You can receive payments with any Point-of-Sale (POS) Terminal, as long as it runs Android
-- You can have ANY asset, including currencies, stocks, and many other assets and financial instruments
-- You still keep custody of your money, always
+To deposit funds into the network, users send ADA into a vault, co-owned between the protocol itself and a µ (Mu), a [Chaumian Mint](https://fedimint.org/docs/FAQs/WhatIsChaumianMint) that validates and signs transactions, without knowing anything about them.
 
-Our goal is to create a platform where non-technical users can use for real-world payments in a very similar way as current legacy payment systems. We believe, generally, that improving the user experience and a general market for synthetic assets are the next steps into the evolution of self-sovereign money.
+In exchange, they control the staking rights for all the ADA in their vault, encouraging competition between them.
 
-And, we want to do it in a way that safeguards the basic human of rights: the right for financial privacy and self-sovereignty.
+After joining the network, you can:
+
+- send and receive money completely peer-to-peer
+- send and receive payments via NFC (same workflow as Google Pay and Apple Pay)
+- send and receive payments with 50$ POS Terminals
+- hold value with ANY asset
+- keep the custody of your funds
+- safeguard your financial privacy
+
+Our goal is to create a platform where non-technical users can use for real-world payments in a very similar way as current legacy payment systems. We believe, generally, that improving the user experience and a general market for synthetic assets are the next steps into the evolution of self-sovereign money. And, we want to do it in a way that safeguards the basic human of rights: the right for financial privacy and self-sovereignty. Most people should not even know what holds their value, as long as it verifiably does.
 
 ## Introduction
 
