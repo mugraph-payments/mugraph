@@ -12,13 +12,46 @@ In this network:
 
 Our goal is to create a platform where non-technical users can use for real-world payments in a very similar way as current legacy payment systems. We believe, generally, that improving the user experience and a general market for synthetic assets are the next steps into the evolution of self-sovereign money.
 
-And, we want to do it in a way that safeguards the basic human of rights: the right for financial privacy and self-determination.
+And, we want to do it in a way that safeguards the basic human of rights: the right for financial privacy and self-sovereignty.
 
 ## Introduction
 
-In a nutshell, µgraph is a network where users leave ADA into a Vault, a Smart Contract inside the Cardano blockchain, together with a **∆ (Delta)**, a collection of **θ (Thetas)**.
+In a nutshell, µgraph is a network where users deposit ADA into a Vault (a Smart Contract, inside the Cardano blockchain), "controlled" by a Mu. This deposit can be redeemed at a Mu, as a collection of **θ (Thetas)**, direct equivalents to eUTXOS.
 
-Deltas and thetas are direct equivalents to transactions and UTXOs in the Cardano Blockchain, meaning:
+Thetas look like this, when unencrypted:
+
+```json
+{
+    "asset_id": "a blake3 hash",
+    "amount": 10,
+    "spend_key": "ed25519 private key",
+    "mint": "zk snark proof for the provenance of this theta"
+}
+```
+
+Users can transfer assets between themselves by creating **∆ (Deltas)**, "bundles" of Thetas with the following schema:
+
+```json
+{
+    "inputs": [
+        "88c9b31ba03f23e10b93d0085a3b17d3bda9e34f880f1c27ad4b8c5bf3b0a62d",
+        "4f82c135b2d607df560d8f19a76b0d038d02cf76d163d89328316c7e93a1c1e9"
+    ],
+    "outputs": [
+        "5a2c9d8c3ff5ecb2d5cb9ff6c55963c0c4b286b2c7bbae2c64b68a2d244c2f99",
+        "a2f8c2845c4b3f4d9e76b89c2f8d5ba3cbcc7cf0e391cc764a9dc29b76fb6ed7",
+        "9cbbf103a4adcc9c0bb81231035b3b45a8cd9f02e60cfe2e8f9b699c718f0601",
+        "a663f5ad34f1f8b078c39e915b5438e428997dcc7e2c15297c3e3ef34f1ec9de",
+        "391c4fd415eb8f96b2b6fe5700db2aa60ef08b398c2f9b3d62f1cef4d73d216e"
+    ],
+    "proofs": {
+        "cf6eb735cd9bc4c2291cddc7d3a6f5a8352d8d41f3d648979d98e7a0fc3ec99a": "Zk-snark proof for program 1 generated from function1.aleo",
+        "e91827e9dc204f44a4782b9aa59e737f0a76f7b9ed406f256995c8a70376b589": "Zk-snark proof for program 2 generated from function2.aleo"
+    }
+}
+```
+
+Each of those Thetas has a different `spend key`, which can be used to redeem an asset on-chain.
 
 - A **Theta** is a piece of data, containing a amount $N$ of a single asset, very much like UTXOs.
 - A **Delta** is a transaction, or "bundle" of thetas, which can be either `Spent` or `Returned`.
