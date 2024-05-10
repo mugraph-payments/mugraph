@@ -1,6 +1,3 @@
-pub mod event;
-pub mod proof;
-
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
     #[error("Failed producing proof: {0}")]
