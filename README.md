@@ -4,9 +4,9 @@
 
 It is not meant to be an extension to a blockchain, or to be isomorphic to their internals. Instead, it is a fast, secure and anonymous payment platform for **synthetic assets**, a kind of blockchain Token that mirrors the price action of real-world assets and financial instruments (like currencies, stocks, ETFs, CDPs).
 
-To deposit funds into the network, users send ADA into a vault, co-owned between the protocol itself and a µ (Mu), a [Chaumian Mint](https://fedimint.org/docs/FAQs/WhatIsChaumianMint) that validates and signs transactions, without knowing anything about them.
+Users join the network by sending ADA to a Vault, co-owned between the protocol itself and a µ (Mu), a [Chaumian Mint](https://fedimint.org/docs/FAQs/WhatIsChaumianMint) that validates and signs transactions. A Mu knows nothing about what's being transacted, the amounts, the senders or the receivers.
 
-In exchange, they control the staking rights for all the ADA in their vault, encouraging competition between them.
+In exchange for safeguarding funds and signing transactions, they control the staking rights for the ADA in their vault, funding their operations.
 
 After joining the network, you can:
 
