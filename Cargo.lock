@@ -382,20 +382,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "mu"
+name = "mugraph-mu"
 version = "0.0.1"
 dependencies = [
  "blake3",
  "ed25519-dalek",
  "indexmap",
  "itertools",
- "paste",
  "proptest",
  "serde",
  "test-strategy",
  "thiserror",
  "tokio",
 ]
+
+[[package]]
+name = "mugraph-protocol"
+version = "0.0.1"
 
 [[package]]
 name = "num-traits"
@@ -448,12 +451,6 @@ dependencies = [
  "smallvec",
  "windows-targets 0.52.5",
 ]
-
-[[package]]
-name = "paste"
-version = "1.0.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pin-project-lite"
