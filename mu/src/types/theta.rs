@@ -14,3 +14,22 @@ pub struct Theta {
     /// The signing key used to spend this Theta
     pub spend_key: SigningKey,
 }
+
+impl Theta {
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.asset_id
+            .as_bytes()
+            .to_vec()
+            .iter()
+            .chain(&self.amount.to_be_bytes())
+            .chain(self.public_spend_key.as_bytes())
+            .copied()
+            .collect()
+    }
+}
+
+impl std::hash::Hash for Theta {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
+    }
+}

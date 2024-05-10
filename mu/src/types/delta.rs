@@ -1,7 +1,7 @@
 use std::hash::Hash as StdHash;
 
 use blake3::Hash;
-use ed25519_dalek::{Signature, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, VerifyingKey};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -22,55 +22,64 @@ pub struct Delta {
     pub signatures: Vec<Signature>,
 }
 
+fn sign(theta: &Theta) -> Signature {
+    theta
+        .spend_key
+        .sign(blake3::hash(&theta.as_bytes()).as_bytes())
+}
+
 impl Delta {
     pub fn new(
         inputs: Vec<Theta>,
         outputs: Vec<VerifyingKey>,
         proofs: IndexMap<Hash, ZKProof>,
     ) -> Self {
-        let inputs = inputs.into_iter().map(|x| x.public_spend_key).collect();
-        let signatures = inputs.iter();
+        let signatures = inputs.iter().map(sign).collect_vec();
 
         Delta {
-            inputs,
+            inputs: inputs.iter().map(|x| x.public_spend_key).collect_vec(),
             outputs,
             proofs,
-            signatures: vec![],
+            signatures,
         }
     }
-}
 
-impl StdHash for Delta {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let inputs = self
             .inputs
             .iter()
-            .cloned()
-            .sorted_by(|a, b| a.as_bytes().cmp(b.as_bytes()))
+            .map(|x| x.to_bytes().to_vec())
+            .sorted_by(|a, b| a.to_vec().cmp(&b.to_vec()))
             .collect_vec();
         let outputs = self
             .outputs
             .iter()
-            .cloned()
-            .sorted_by(|a, b| a.as_bytes().cmp(b.as_bytes()))
+            .map(|x| x.to_bytes().to_vec())
+            .sorted_by(|a, b| a.to_vec().cmp(&b.to_vec()))
             .collect_vec();
         let signatures = self
             .signatures
             .iter()
-            .cloned()
-            .map(|x| x.to_bytes())
+            .map(|x| x.to_bytes().to_vec())
             .sorted_by(|a, b| a.to_vec().cmp(&b.to_vec()))
             .collect_vec();
         let proofs = self
             .proofs
             .iter()
-            .map(|(k, v)| (k, v.clone()))
-            .sorted_by(|(&ka, _), (kb, _)| ka.as_bytes().cmp(kb.as_bytes()))
+            .map(|(k, v)| [k.as_bytes().to_vec(), v.as_bytes().to_vec()].concat())
+            .sorted_by(|a, b| a.to_vec().cmp(&b.to_vec()))
             .collect_vec();
 
-        inputs.hash(state);
-        outputs.hash(state);
-        proofs.hash(state);
-        signatures.hash(state);
+        [inputs, outputs, signatures, proofs]
+            .concat()
+            .into_iter()
+            .flatten()
+            .collect_vec()
+    }
+}
+
+impl StdHash for Delta {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_bytes().hash(state);
     }
 }
