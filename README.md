@@ -63,6 +63,10 @@ Each of those Thetas has a different `spend key`, which can be used to redeem an
 
 Unlike a normal UTXO blockchain, however, those assets are not actually what gets transferred. Instead, it behaves much more like "claims" to the equivalent amount of collateral, that can be shared and transacted, as long as value is conserved.
 
+______________________________________________________________________
+
+TODO:
+
 ### Conservation of Value on Deltas
 
 Deltas are defined as a mapping between $inputs$ and $outputs$, meaning it is a state transition between the two fields. A given Delta (or blockchain transaction, for that matter) is always valid, as long their inputs are not spent.
