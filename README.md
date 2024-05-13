@@ -27,10 +27,8 @@ In our point of view, there are five main problems we need to tackle if we want 
 1. **Privacy:** Having to make your own financial identity public just to send a payment is a price that many won't pay.
 1. **Ease of Use:** You shouldn't need to read the Bitcoin Paper and watch all of Charles Hoskinson videos just to send and receive payments.
 
-We think that 1 is very well served on the Cardano ecosystem, with Stablecoins like [USDM](https://mehen.io/) or [XSY](https://xsy.fi/), and synthetic assets in platforms like [Butane](https://butane.dev), so µgraph aims to fix the other ones, in a way that guarantees human rights like the right to self-custody of their own wealth, and financial privacy on all layers.
+We think that 1 is very well served on the Cardano ecosystem, with Stablecoins like [USDM](https://mehen.io/) or [XSY](https://xsy.fi/), and synthetic assets in platforms like [Butane](https://butane.dev). µgraph then aims to fix the other ones, in a way that guarantees human rights like the right to self-custody of their own wealth, and financial privacy on all layers.
 
 ## µ and Guardians
 
-The point of contact for a normal user with the network is by using **µ (Mu)**, a normal application for both iOS and Android. Once they do, and open it once, they will see a screen like this (without any balances, of course):
-
-![Home Screen](./assets/home.png)
+The point of contact for a normal user with the network is by using **µ (Mu)**, a normal application for both iOS and Android. Once the user installs it, they are already inside the network. There is no need to create a wallet, as the device itself is the wallet.
