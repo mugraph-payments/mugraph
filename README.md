@@ -32,3 +32,43 @@ We think that 1 is very well served on the Cardano ecosystem, with Stablecoins l
 ## µ and Guardians
 
 The point of contact for a normal user with the network is by using **µ (Mu)**, a normal application for both iOS and Android. Once the user installs it, they are already inside the network. There is no need to create a wallet, as the device itself is the wallet.
+
+This is a very simple overview of the workflow for a transaction, in which **Alice** deposits money into the system, and sends money to Bob later:
+
+```mermaid
+sequenceDiagram
+    participant Alice
+    participant Website
+    participant Carlos
+    participant Cardano
+    participant Bob
+
+    Note over Alice, Website: Step 1: Alice Deposits Funds into a Cardano Vault
+
+    Alice->>Website: Initiate deposit (specify amount and assets)
+    Website->>Alice: Generate Cardano transaction and ZK proof
+    Alice->>Carlos: Send deposit message (transaction + ZK proof)
+    Carlos->>Carlos: Verify ZK proof
+    Carlos-->>Alice: Proof valid, sign transaction
+    Carlos->>Cardano: Broadcast signed transaction
+    Cardano-->>Carlos: Confirm transaction
+    Carlos->>Cardano: Publish last state (sparse Merkle root)
+    Note over Cardano: Funds packed inside a single UTXO
+
+    Note over Alice, Bob: Step 2: Alice Initiates a Transfer to Bob
+
+    Bob->>Bob: Generate QR code (request for payment + public key for new theta)
+    Bob->>Alice: Show QR code
+    Alice->>Alice: Scan QR code
+    Alice->>Alice: Approve transaction
+    Alice->>Alice: Generate ZK proof and transfer message
+    Alice->>Carlos: Send transfer message (ZK proof + transaction details)
+    Carlos->>Carlos: Verify ZK proof
+    Carlos-->>Alice: Proof valid, sign transfer transaction
+    Alice->>Bob: Show QR code (signed transfer transaction)
+    Bob->>Bob: Scan QR code
+    Bob->>Bob: Verify signed transaction
+    Bob->>Bob: Update wallet with new funds
+
+    Note over Bob, Cardano: If necessary, Bob can broadcast the signed transaction to unlock funds on-chain
+```
