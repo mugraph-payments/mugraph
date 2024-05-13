@@ -72,3 +72,7 @@ sequenceDiagram
 
     Note over Bob, Cardano: If necessary, Bob can broadcast the signed transaction to unlock funds on-chain
 ```
+
+## LICENSE
+
+µgraph (and all related projects inside the organization) is dual licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE.apache2) licenses. You are free to choose which one of the two choose your use-case the best, or please contact me if you need any form of expecial exceptions.
