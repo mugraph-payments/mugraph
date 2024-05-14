@@ -5,10 +5,11 @@
 1. Abstract
 1. Introduction
 1. µ and Guardians
+1. License
 
 ## Abstract
 
-In this document, we describe **µgraph (Mugraph)**, a novel open-source protocol for instant, private payments in the Cardano Blockchain. It is similar in spirit to what [Cashu](https://cashu.space/) and [Fedimint](https://fedimint.org) are doing in the Bitcoin World, but leveraging zero-knowledge proofs and the Cardano Blockchain to reduce their reliance on trusted parties. Our goal is to create a platform where non-technical users can reliably use for real-world payments, very similarly to what they can do on current legacy systems, and to have this platform be extremely fast and anonymous by default.
+In this document, we describe **µgraph (mugraph)**, a novel open-source protocol for instant, private payments in the cardano blockchain. it is similar in spirit to what [cashu](https://cashu.space/) and [fedimint](https://fedimint.org) are doing in the bitcoin world, but leveraging zero-knowledge proofs and the cardano blockchain to reduce their reliance on trusted parties. our goal is to create a platform where non-technical users can reliably use for real-world payments, very similarly to what they can do on current legacy systems, and to have this platform be extremely fast and anonymous by default.
 
 ## Introduction
 
@@ -73,6 +74,12 @@ sequenceDiagram
     Note over Bob, Cardano: If necessary, Bob can broadcast the signed transaction to unlock funds on-chain
 ```
 
-## LICENSE
+## License
 
 µgraph (and all related projects inside the organization) is dual licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE.apache2) licenses. You are free to choose which one of the two choose your use-case the best, or please contact me if you need any form of expecial exceptions.
+
+## Contributing Guidelines
+
+All contributions are welcome, as long as they align with the goal of the project. If you are not sure whether or not what you want to implement is aligned with the goals of the project, just ask!
+
+Don't be an asshole to anyone inside and out of the project and you'll be fine.
