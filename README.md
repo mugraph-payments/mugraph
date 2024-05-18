@@ -9,7 +9,7 @@
 
 ## Abstract
 
-In this document, we describe **µgraph (mugraph)**, a novel open-source protocol for instant, private payments in the cardano blockchain. it is similar in spirit to what [cashu](https://cashu.space/) and [fedimint](https://fedimint.org) are doing in the bitcoin world, but leveraging zero-knowledge proofs and the cardano blockchain to reduce their reliance on trusted parties. our goal is to create a platform where non-technical users can reliably use for real-world payments, very similarly to what they can do on current legacy systems, and to have this platform be extremely fast and anonymous by default.
+In this document, we describe **µgraph (mugraph)**, a novel open-source protocol for instant, private payments, built on top of the Cardano Blockchain. It massively increases transaction speed and throughput, with a focus of making real-world payments fast, reliable and accessible, instead of 
 
 ## Introduction
 
@@ -28,77 +28,99 @@ In our point of view, there are five main problems we need to tackle if we want 
 1. **Privacy:** Having to make your own financial identity public just to send a payment is a price that many won't pay.
 1. **Ease of Use:** You shouldn't need to read the Bitcoin Paper and watch all of Charles Hoskinson videos just to send and receive payments.
 
-We think that, while there has been at least some very solid attempts at covering volatility and scalability, there are still lots of work to be done to make it a proper global payment network. This is our attempt to tackle them, in a way that guarantees human rights like the right to self-custody of their own wealth, and financial privacy on all layers.
+We think that, while there has been at least some very solid attempts at covering volatility, like Stablecoins or Synthetic Assets, the other ones are still ripe for the taking, and we think we can tackle them all by going simpler instead of more complicated, and by making sacrifices only where it makes sense.
 
 ## Technical Overview
 
-So those are the goals for µgraph:
+Distributed systems have for a long time used something called the [CAP Theorem](https://en.wikipedia.org/wiki/CAP_theorem) to describe the guarantees associated with the system. The concept has since received it fair share of expansions and critiques, in special, from very respected authors like Martin Kleppman, in his paper [A critique of the CAP Theorem](https://www.cl.cam.ac.uk/research/dtg/archived/files/publications/public/mk428/cap-critique.pdf).
 
-- **It must be anonymous**, because it is paramount to us to safeguard users' financial privacy.
-- **It must be fully custodial**, meaning that users should never lose control of their funds.
-- **It must be easy to use**, else it won't be good enough to embrace the globe.
+In it, Kleppman talks a lot about the [Consistency Models](https://en.wikipedia.org/wiki/Consistency_model), which can be thought of a "contract" between the user/developer and a system, stating the certainty of predictability of the [consistency](https://en.wikipedia.org/wiki/Data_consistency) of reads, writes and updates.
 
-In a way, it works in a similar way to the [Lightning Network](https://lightning.network) (on Bitcoin) and [Hydra](https://hydra.family) (on Cardano). Both are solutions allowing for instant settlement of transactions, by locking funds inside a off-chain structure (a "Channel"), in which these funds can be transacted directly, off-chain.
+> [!IMPORTANT]
+> We are going to talk about Byzantine Fault Tolerance (BFT) later in the document.
 
-Transacting those funds is a very complicated process, and so is opening, closing, and maintaining those channels. Most people decide to instead use a custodial solution, like [Wallet of Satoshi](https://www.walletofsatoshi.com/) or [Alby](https://getalby.com), trading their self-custody to get an usable experience in the network.
+Those models have been first described on the ["Session Guarantees for Weakly Consistent Replicated Data"](https://www.cs.cornell.edu/courses/cs734/2000FA/cached%20papers/SessionGuaranteesPDIS_1.html) Paper. We are not talking about all of them, but these are some we are interested in:
 
-Given our stated goals, there are some concepts that are important to us:
+1. **Monotonic Read Consistency:**
 
-### Chaumian eCash
+   - User $A$ sends update $\Delta_0$ to node $\alpha$.
+   - Then, $A$ reads from node $\beta$ and reads $\Delta_1$.
+   - A system has this property if $\Delta_0 \leq \Delta_1$.
 
-In 1982, David Chaum created **ECash**, which introduced the concept of a **Blind Signer**. A Blind Signer, as the name might suggest, is an entity that signs messages without knowing either the author, nor the contents of the message.
+1. **Monotonic Write Consistency:**
 
-In ECash, those blind signers are called **Chaumian Mints**, and they create IOUs ("I-owe-you"), a kind of contract that states *"I owe X to a person with the possession of this message"*. Because these contracts are created by the Mint itself, it can verify their authenticity, only honoring real contracts. And because it is a blind signer, it can not connect the depositor to the redeemer in any way, as those contracts are indistinguishable from each other.
+   - User $B$ writes $\Delta_0$ to node $\gamma$.
+   - Then, $B$ writes $\Delta_1$ to node $\delta$.
+   - A system has this property if the writes are observed in the order $\Delta_0 \rightarrow \Delta_1$.
 
-ECash gives us the framework to guarantee anonimity, but requires centralized Mints, solely responsible for holding the user funds.
+1. **Read-Your-Writes Consistency:**
 
-### Cardano Smart Contracts
+   - User $C$ writes $\Delta_0$ to node $\epsilon$.
+   - Then, $C$ reads from node $\zeta$ and should see $\Delta_0$ or a more recent value.
 
-In the Lightning Network, channels are implemented using **Hash Time Locked Contracts**, which are "contracts" that require some conditions to be upheld before allowing a transaction to be considered value, namely the knowledge of a secret value, and at least a certain amount of time has passed, in blocks.
+1. **Write-Follows-Reads Consistency:**
 
-Because we are building µgraph in Cardano, we have access to two kinds of "smart contracts" that we can use, [Cardano Native Scripts](<>) and Plutus Scripts
+   - User $D$ reads $\Delta_0$ from node $\eta$.
+   - Then, $D$ writes $\Delta_1$ to node $\theta$.
+   - A system has this property if $\Delta_1$ is based on $\Delta_0$ and respects the order of the reads and writes.
 
-### Zero-Knowledge Proofs
+1. **Strong Consistency:**
 
-Without going too technical for now, Zero-Knowledge Proofs, or ZK-Proofs, are a cryptographic mechanism in which one party (the prover) can prove to another party (the verifier) that a statement is true, without revealing any more information than this.
+   - User $E$ writes $\Delta_0$ to node $\iota$.
+   - User $F$ reads from node $\kappa$ immediately after.
+   - In a strongly consistent system, $F$ will see $\Delta_0$ without any delay.
 
-```mermaid
-sequenceDiagram
-    participant Alice
-    participant Website
-    participant Carlos
-    participant Cardano
-    participant Bob
+1. **Sequential Consistency:**
 
-    Note over Alice, Website: Step 1: Alice Deposits Funds into a Cardano Vault
+   - User $G$ writes $\Delta_0$ to node $\lambda$.
+   - User $H$ writes $\Delta_1$ to node $\mu$.
+   - Users reading from any node will see the writes in the same order, but not necessarily in the real-time order.
 
-    Alice->>Website: Initiate deposit (specify amount and assets)
-    Website->>Alice: Generate Cardano transaction and ZK proof
-    Alice->>Carlos: Send deposit message (transaction + ZK proof)
-    Carlos->>Carlos: Verify ZK proof
-    Carlos-->>Alice: Proof valid, sign transaction
-    Carlos->>Cardano: Broadcast signed transaction
-    Cardano-->>Carlos: Confirm transaction
-    Carlos->>Cardano: Publish last state (sparse Merkle root)
-    Note over Cardano: Funds packed inside a single UTXO
+1. **Causal Consistency:**
 
-    Note over Alice, Bob: Step 2: Alice Initiates a Transfer to Bob
+   - User $I$ writes $\Delta_0$ to node $\nu$.
+   - User $J$ reads $\Delta_0$ from node $\xi$ and writes $\Delta_1$ to node $\pi$.
+   - All users must see $\Delta_0$ before $\Delta_1$, but concurrent writes (e.g., by User $K$) can be seen in any order.
 
-    Bob->>Bob: Generate QR code (request for payment + public key for new theta)
-    Bob->>Alice: Show QR code
-    Alice->>Alice: Scan QR code
-    Alice->>Alice: Approve transaction
-    Alice->>Alice: Generate ZK proof and transfer message
-    Alice->>Carlos: Send transfer message (ZK proof + transaction details)
-    Carlos->>Carlos: Verify ZK proof
-    Carlos-->>Alice: Proof valid, sign transfer transaction
-    Alice->>Bob: Show QR code (signed transfer transaction)
-    Bob->>Bob: Scan QR code
-    Bob->>Bob: Verify signed transaction
-    Bob->>Bob: Update wallet with new funds
+1. **Causal+ Consistency:**
 
-    Note over Bob, Cardano: If necessary, Bob can broadcast the signed transaction to unlock funds on-chain
-```
+   - User $L$ writes $\Delta_0$ to node $\rho$.
+   - User $M$ writes $\Delta_1$ to node $\sigma$ concurrently.
+   - The system ensures that all nodes eventually agree on the order of updates, resolving any conflicts.
+
+This list is in an specific order, such that an earlier item implies a strong consistency level. Using this definition, we could surely put blockchains like Bitcoin and Cardano into the range from 1 to 6.
+
+Along with higher consistency guarantees, comes separate costs and trade-offs. Latency, single points of failure, loss of resilience against network partitions, or simply throughput, are problems any distributed system will have to handle, but the stronger the consistency guarantee, the more those trade-offs become apparent.
+
+But, and this is the question we asked ourselves, what if we could relax the requirements a bit, and maintain the guarantees as much as we could? Would that be enough?
+
+### CALM: Consistency as Logical Monotonicity
+
+The CALM Theorem was first described on the paper ["Consistency Analysis in Bloom: a CALM and Collected Approach"](https://dsf.berkeley.edu/papers/cidr11-bloom.pdf), and it connects the idea of distributed consistency to logical monoticity, that is, a consistent partial (or total) ordering of all the inputs that build a system.
+
+This definition from the [Bloom Language website](http://bloom-lang.net/calm/) is very informative:
+
+> Informally, a block of code is logically monotonic if it satisfies a simple property: adding things to the input can only increase the output.  By contrast, non-monotonic code may need to “retract” a previous output if more is added to its input.
+>
+> In general terms, the CALM principle says that:
+>
+> - Logically monotonic distributed code is eventually consistent without any need for coordination protocols (distributed locks, two-phase commit, paxos, etc.)
+> - Eventual consistency can be guaranteed in any program by protecting non-monotonic statements (“points of order”) with coordination protocols.
+
+### Being CALM Around Blockchains
+
+How can we apply this to blockchains, where we need the strongest consistency levels? We can't have users messing with the state of other users on the chain, nor we want to rely on it for everything (which would make us not much better in regards to scaling).
+
+We can think about this in another way, though. Assuming we are on top of a UTXO blockchain, a block (in a simplified way) contains only transactions, which we call $\Delta$ (Delta).
+
+A $\Delta$ is just a mapping between inputs and outputs. $N$ inputs create $M$ outputs, as long as they follow a rule: the amounts in the inputs and the amounts on the outputs must be equal, no value can be created or destroyed.
+
+## Bibliography
+
+- ["Session Guarantees for Weakly Consistent Replicated Data"](https://www.cs.cornell.edu/courses/cs734/2000FA/cached%20papers/SessionGuaranteesPDIS_1.html)
+- ["A Critique of the CAP Theorem"](https://arxiv.org/abs/1509.05393)
+- ["CAP Twelve Years Later: How the 'Rules' Have Changed"](https://www.infoq.com/articles/cap-twelve-years-later-how-the-rules-have-changed/) by Eric Brewer
+- [Consistency Analysis in Bloom: a CALM and Collected Approach](https://dsf.berkeley.edu/papers/cidr11-bloom.pdf)
 
 ## License
 
