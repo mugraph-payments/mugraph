@@ -115,6 +115,22 @@ We can think about this in another way, though. Assuming we are on top of a UTXO
 
 A $\Delta$ is just a mapping between inputs and outputs. $N$ inputs create $M$ outputs, as long as they follow a rule: the amounts in the inputs and the amounts on the outputs must be equal, no value can be created or destroyed.
 
+If an input appears in a $\Delta$, it can not be consumed again. Doing so is called a "Double Spend". We can assume that, barring user or node misbehavings, avoiding double spend is the only thing that we need to do.
+
+We can also assume that, as long as the inputs are different from two transactions, they are completely independent! They can be processed in parallel, or even out of order, it doesn't matter.
+
+Let's then summarize our thesis:
+
+> On a UTXO blockchain and in the absence of Double Spend, the system can be considered **Strongly Eventually Consistent**, meaning that all nodes will reach the same output, given the same inputs.
+
+It becomes clear that if our goal is to have a high throughput, we need to embrace this characteristic, do more in parallel, and only pay the price of strong consistency when we actually need to.
+
+More specifically, our goal is to go "as fast as gossip can go".
+
+### Looking Around for Double Spending
+
+TODO.
+
 ## Bibliography
 
 - ["Session Guarantees for Weakly Consistent Replicated Data"](https://www.cs.cornell.edu/courses/cs734/2000FA/cached%20papers/SessionGuaranteesPDIS_1.html)
