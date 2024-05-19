@@ -219,8 +219,6 @@ This means that in a set of transactions $X = \{a, b, c , \ldots, z\}$, each of 
 
 Given the inputs and outputs are part of each transaction, we can use it to track the causality in our semilattice.
 
-However, once we propagate those transactions on the gossip network, we can track two more sources of causality, tracking two "parents" for each message: one from the node that originated the transaction, and another one from another node.
-
 ## Wall-Clock Ordering and Hybrid Logical Clocks
 
 This is still not good enough for us, though, because it is not total: if they don't have the same inputs, there is no ordering connection between any of them.
@@ -340,7 +338,9 @@ We can assume that a message is **famous** once a supermajority of the nodes has
 
 And unlike a block in a blockchain, those messages are propagated at the **speed of gossip**. There is no artificial restriction on throughput, it will be as fast as the slowest component, be it network, processing or latency between nodes.
 
-The most astute of you might have realized that there's one thing that our Gossip protocol does not guarantee at all: **ordering**.
+The most astute of you might have realized that there's one thing that our Gossip protocol does not guarantee any form of ordering at all, but we can fix that.
+
+Beyond the HLC, we track two more sources of causality: two "parents" for each message, one from the node that originated the transaction, and another one from another node.
 
 ### Hashgraphs: Gossip About Gossip
 
