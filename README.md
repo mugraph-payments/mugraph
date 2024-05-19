@@ -129,7 +129,41 @@ More specifically, our goal is to go "as fast as gossip can go".
 
 ### Looking Around for Double Spending
 
-TODO.
+Following our consistent model defined previously, our goal then is to make our consistency model go to at most Causal+ for most of the operation, and only degrade to a stricter consistency model when necessary.
+
+#### Gossip Protocols
+
+When a transaction first hits the blockchain, it is propagated to the biggest number of nodes as possible, using what is called a **Gossip Protocol**.
+
+µgraph does not use any special kind of Gossip protocol for this. Actually, it's the opposite! We use a very simple gossip protocol, with a single workflow:
+
+1. When a node receives a message from an user, it signs it, and propagates the message to a random node.
+2. When the second node receives a message from another node, it chooses another random node and propagates it to that node.
+3. If the a node receives the same message twice, it does not propagate it further.
+
+So, assuming we have two nodes, called here `main` and `other`, where each of those dots is a message that was published:
+
+```mermaid
+gitGraph
+   commit
+   branch other
+   commit
+   checkout main
+   commit
+   checkout other
+   commit
+   checkout main
+   commit
+   commit
+   checkout other
+   commit
+   checkout main
+   checkout other
+   commit
+   checkout main
+```
+
+
 
 ## Bibliography
 
