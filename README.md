@@ -9,7 +9,7 @@
 
 ## Abstract
 
-In this document, we describe **µgraph (mugraph)**, a novel open-source protocol for instant, private payments, built on top of the Cardano Blockchain. It massively increases transaction speed and throughput, with a focus of making real-world payments fast, reliable and accessible, instead of 
+In this document, we describe **µgraph (mugraph)**, a novel open-source protocol for instant, private payments, built on top of the Cardano Blockchain. It massively increases transaction speed and throughput, with a focus of making real-world payments fast, reliable and accessible, while being private-by-default.
 
 ## Introduction
 
@@ -125,9 +125,120 @@ Let's then summarize our thesis:
 
 It becomes clear that if our goal is to have a high throughput, we need to embrace this characteristic, do more in parallel, and only pay the price of strong consistency when we actually need to.
 
-More specifically, our goal is to go "as fast as gossip can go". To us, this means to make our consistency model go hover at "Causal+" for most of the operation, and only degrade to a stricter consistency model if necessary.
+More specifically, our goal is to go "as fast as gossip can go". To us, this means to make our consistency model go hover at "Causal+" for most of the operation, and only degrade to a stricter consistency model if necessary. To guarantee monotonicity, though, we need to guarantee **Ordering**.
 
-## Gossip Protocols
+How do we know which events happened before the other? This is the domain of **Order Theory**, so let's take a quick look at how it works.
+
+## Order Theory
+
+[Order Theory](https://en.wikipedia.org/wiki/Order_theory), is the branch of mathematics that investigates the notion of **Order** using **binary relations**, providing a formal framework to describe statements such as *“this is less than that”* or *“this precedes that”*.
+
+The notion of “order” is very intuitive, so are the explanations. We are not going to go too deep on this topic, only enough to understand what comes next, but Order Theory is a fascinating area and well-worthy the study. Let's talk about the two concepts we mentioned:
+
+#### Binary Relations
+
+A [Binary Relation](https://en.wikipedia.org/wiki/Binary_relation), in mathematics, is an association between the elements of two sets, $X$ and $Y$, also called the **domain** and the **codomain.** A Binary Relation is then a new set of ordered pairs $(x, y)$, where $x$ is an element of $X$ and $y$ is an element of $Y$.
+
+This represents mathematically the intuitive concept of *“relation”*: an element $x$ is **related** to an element $y$ if, and only if, the pair $(x, y)$ is included in the pairs that make the binary relation.
+
+These relations are used in many areas of mathematics, with some examples:
+
+- The “is greater than”, “is equal to” relations in Aritmethic,
+- The “is adjacent to” relation in Graph Theory.
+
+Let’s translate that to programming terms, and simplify more as we do it:
+
+> [!TIP]
+>A **binary relation**, in programming, can be represented by a **comparator function**, taking two arguments in the form `f(a, b)`, and returning a boolean that asserts whether or not the relation is valid.
+>
+>Examples of those relations that we use often: `==`, `!=`,`<`,`>`.
+
+### Ordering
+
+This is our definition: an **Ordering** is a way of sequencing the elements of a set in a sequential or hierarchical manner, with the binary relation being the **heuristic** from which the sequence is derived. There are two types of ordering (that we care about right now):
+
+### Partial Ordering
+
+**Partial ordering** is, very concisely, a way to arrange elements on a set such that, for certain pairs of elements, one **precedes** the other.
+
+In mathematical terms, it means the following: a **partial order** is **homogenous** relation ≤ on a set $P$ that has the properties of Reflexitivity, Antisymmetry and Transitivity, meaning that, for all $a,b,c \in P$:
+
+- Reflexitivity: $a \leq a$
+- Antisymmetry: If $a \leq b$ and $b \leq a$, then $a = b$.
+- Transitivity: If $a \leq b$ and $b \leq c$, then $a \leq c$.
+
+We can see it clearly in this  [Hasse diagram](https://en.wikipedia.org/wiki/Hasse_diagram) of the [set of all subsets](https://en.wikipedia.org/wiki/Power_set) of a three-element set $\{x,y,z\}$, ordered by [inclusion](https://en.wikipedia.org/wiki/Set_inclusion).
+
+The set is connected by an upward path, so that $\emptyset$ and $\{x,y\}$, are comparable, while e.g. $\{x\}$ and $\{y\}$ are not.
+
+![](./assets/hesse-diagram.png)
+
+Homogeneity in this definition of means that the all the elements which the relation apply must be of the same type.
+
+Let’s go over an example of a set like this: imagine we have a set $\{e,u,f,p,t\}$, for **Earth**, **Europe**, **France**, **Paris**, **Eiffel Tower**, in this order. This set is ordered over the partial order relation **”contains”**, so that Earth **contains** Europe, Europe **contains** France, France **contains** Paris, and Paris **contains** the Eiffel Tower.
+
+```mermaid
+graph LR
+    Earth --> Europe
+    Europe --> France
+    France --> Paris
+    Paris --> Eiffel["Eiffel Tower"]
+```
+
+The opposite, on the other hand, does not make sense. The question “where in Paris is Earth?” is one that we aren’t able to answer.
+
+### Total Ordering
+
+**Total ordering** is a partial order with an extra constraint, a **total relation connection.**
+
+This means that, given a set $\{a,b\}$, either $a \leq b$ or $b \leq a$ must be satisfied. Or, in other words, $a \leq b = b \geq a$, with $\geq$ being the inverse of the order relation $\leq$.
+
+This means that, unlike a partial order, all elements in a **totally ordered set** must be comparable with each other, matching the common sense usage of the term “ordering”.
+
+Some examples of total ordering: an empty set $\emptyset$, the set of natural numbers $N$.
+
+### Lattices, Semilattices
+
+A [Lattice](https://en.wikipedia.org/wiki/Lattice_(order)), in Order Theory, is a partially ordered set in which every pair of elements has a unique supremum (also called a **join**) and a unique infimum, also called a **meet**.
+
+If a lattice has only a meets or joins, but not both, they are called **Semilattices**, either a **join-semilattice** or a **meet-semilattice**, depending on which of the two they have.
+
+#### Join Semilattice
+
+In the small subset of Order Theory that we covered here, the semilattice we are the most interested on is the Join Semilattice, a partially ordered set in which all two elements subset have a **join**, or upper least bound.
+
+The Locations set example we gave before is a Join Semilattice, as we have an upper bound *“Earth”*.
+
+## Causal Ordering
+
+We can look back at what we said about UTXOS, and apply to what we learned about Order Theory:
+
+The set of all the transactions is a **join semilattice**, where the first transaction that has ever happened is our Join, and those same transactions are **partially ordered** in regards to their causality.
+
+This means that in a set of transactions $X = \{a, b, c , \ldots, z\}$, each of those transactions is causally related to any that created the inputs that it uses.
+
+Given the inputs and outputs are part of each transaction, we can use it to track the causality in our semilattice.
+
+However, once we propagate those transactions on the gossip network, we can track two more sources of causality, tracking two "parents" for each message: one from the node that originated the transaction, and another one from another node.
+
+## Wall-Clock Ordering and Hybrid Logical Clocks
+
+This is still not good enough for us, though, because it is not total: if they don't have the same inputs, there is no ordering connection between any of them.
+
+The solution we found to this problem is to use an adapted version of a  **Hybrid Logical Clock**, described on the paper ["Logical Physical Clocks
+and Consistent Snapshots in Globally Distributed Databases"](https://cse.buffalo.edu/tech-reports/2014-04.pdf).
+
+A HLC is an unique identifier containing:
+
+1. A "Term ID" (we will talk about this soon, once we talk about Consensus)
+1. The node public key
+1. A Local UTC timestamp from the node that sent the message
+
+The most importants characteristics of this clock is that it **is totally ordered**, and, what is most important, it is completely immune to clock drift, both natural or byzantine.
+
+## Consensus
+
+### Gossip Protocols
 
 When a transaction first hits the blockchain, it is propagated to the biggest number of nodes as possible, using what is called a **Gossip Protocol**.
 
@@ -229,126 +340,21 @@ We can assume that a message is **famous** once a supermajority of the nodes has
 
 And unlike a block in a blockchain, those messages are propagated at the **speed of gossip**. There is no artificial restriction on throughput, it will be as fast as the slowest component, be it network, processing or latency between nodes.
 
-## Order Theory
-
 The most astute of you might have realized that there's one thing that our Gossip protocol does not guarantee at all: **ordering**.
 
-How do we know which events happened before the other? This is the domain of **Order Theory**, so let's take a quick look at how it works.
+### Hashgraphs: Gossip About Gossip
 
-[Order Theory](https://en.wikipedia.org/wiki/Order_theory), as Wikipedia tells us, is the branch of mathematics that investigates the notion of **Order** using **binary relations**, providing a formal framework to describe statements such as *“this is less than that”* or *“this precedes that”***.**
+µgraph implements a variant of the [Hashgraph Algorithm](https://hedera.com/hh-ieee_coins_paper-200516.pdf), which, more than a Data Structure, is a consensus algorithm implemented on top of a Gossip Protocol, meaning that it helps us to define "consensus" on top of something that does not any of the qualities we would otherwise need.
 
-The notion of “order” is very intuitive, so order theory in general can be explained in a very intuitive way. We are not going to go too deep on this topic, only enough to understand what comes next, but Order Theory is a fascinating area and well-worthy the study.
+In a nutshell, the Hashgraph algorithm gives us a deterministic set of rules to determine whether or not an update is "famous", following the rule we defined earlier.
 
-### What is ordering?
+TODO: Explain how hashgraph works
 
-From the previous description, we have two terms that are very interesting to us: *“order”* and *“binary relations”*.
-
-#### Binary Relations
-
-A [Binary Relation](https://en.wikipedia.org/wiki/Binary_relation), in mathematics, is an association between the elements of two sets, $X$ and $Y$, also called the **domain** and the **codomain.** A Binary Relation is then a new set of ordered pairs $(x, y)$, where $x$ is an element of $X$ and $y$ is an element of $Y$.
-
-This represents mathematically the intuitive concept of *“relation”*: an element $x$ is **related** to an element $y$ if, and only if, the pair $(x, y)$ is included in the pairs that make the binary relation.
-
-These relations are used in many areas of mathematics, with some examples:
-
-- The “is greater than”, “is equal to” relations in Aritmethic,
-- The “is adjacent to” relation in Graph Theory.
-
-Let’s translate that to programming terms, and simplify more as we do it:
-
-> [!TIP]
->A **binary relation**, in programming, can be represented by a **comparator function**, taking two arguments in the form `f(a, b)`, and returning a boolean that asserts whether or not the relation is valid.
->
->Examples of those relations that we use often: `==`, `!=`,`<`,`>`.
-
-### Ordering
-
-This is our definition: an **Ordering** is a way of sequencing the elements of a set in a sequential or hierarchical manner, with the binary relations being the **heuristic** from which the sequence is derived.
-
-Simple enough, right? If it didn’t click yet, let’s try understand some **types of ordering:**
-
-### Partial Ordering
-
-**Partial ordering** is, very concisely, a way to arrange elements on a set such that, for certain pairs of elements, one **precedes** the other.
-
-In mathematical terms, it means the following: a **partial order** is **homogenous** relation ≤ on a set $P$ that has the properties of Reflexitivity, Antisymmetry and Transitivity, meaning that, for all $a,b,c \in P$:
-
-- Reflexitivity: $a \leq a$
-- Antisymmetry: If $a \leq b$ and $b \leq a$, then $a = b$.
-- Transitivity: If $a \leq b$ and $b \leq c$, then $a \leq c$.
-
-We can see it clearly in this  [Hasse diagram](https://en.wikipedia.org/wiki/Hasse_diagram) of the [set of all subsets](https://en.wikipedia.org/wiki/Power_set) of a three-element set $\{x,y,z\}$, ordered by [inclusion](https://en.wikipedia.org/wiki/Set_inclusion).
-
-The set is connected by an upward path, so that $\emptyset$ and $\{x,y\}$, are comparable, while e.g. $\{x\}$ and $\{y\}$ are not.
-
-![](./assets/hesse-diagram.png)
-
-Homogeneity in this definition of means that the all the elements which the relation apply must be of the same type.
-
-Let’s go over an example of a set like this: imagine we have a set $\{e,u,f,p,t\}$, for **Earth**, **Europe**, **France**, **Paris**, **Eiffel Tower**, in this order. This set is ordered over the partial order relation **”contains”**, so that Earth **contains** Europe, Europe **contains** France, France **contains** Paris, and Paris **contains** the Eiffel Tower.
-
-```mermaid
-graph TD
-    Earth --> Europe
-    Europe --> France
-    France --> Paris
-    Paris --> Eiffel_Tower["Eiffel Tower"]
-```
-
-The opposite, on the other hand, does not make sense. The question “where in Paris is Earth?” is one that we aren’t able to answer.
-
-### Total Ordering
-
-**Total ordering** is a partial order with an extra constraint, a **total relation connection.**
-
-This means that, given a set $\{a,b\}$, either $a \leq b$ or $b \leq a$ must be satisfied. Or, in other words, $a \leq b = b \geq a$, with $\geq$ being the inverse of the order relation $\leq$.
-
-This means that, unlike a partial order, all elements in a **totally ordered set** must be comparable with each other, matching the common sense usage of the term “ordering”.
-
-Some examples of total ordering: an empty set $\emptyset$, the set of natural numbers $N$.
-
-### Lattices, Semilattices
+### Virtual Voting
 
 TODO.
 
-A [Lattice](https://en.wikipedia.org/wiki/Lattice_(order)), in Order Theory, is a partially ordered set in which every pair of elements has a unique supremum (also called a **join**) and a unique infimum, also called a **meet**.
-
-If a lattice has only a meets or joins, but not both, they are called **Semilattices**, either a **join-semilattice** or a **meet-semilattice**, depending on which of the two they have.
-
-#### Join Semilattice
-
-In the small subset of Order Theory that we covered here, the semilattice we are the most interested on is the Join Semilattice, a partially ordered set in which all two elements subset have a **join**, or upper least bound.
-
-The Locations set example we gave before is a Join Semilattice, as we have an upper bound *“Earth”*.
-
-## Causal Ordering
-
-We can look back at what we said about UTXOS, and apply to what we learned about Order Theory:
-
-The set of all the transactions is a **join semilattice**, where the first transaction that has ever happened is our Join, and those same transactions are **partially ordered** in regards to their causality.
-
-This means that in a set of transactions $X = \{a, b, c , \ldots, z\}$, each of those transactions is causally related to any that created the inputs that it uses.
-
-Given the inputs and outputs are part of each transaction, we can use it to track the causality in our semilattice.
-
-However, once we propagate those transactions on the gossip network, we can track two more sources of causality, tracking two "parents" for each message: one from the node that originated the transaction, and another one from another node.
-
-## Wall-Clock Ordering and Hybrid Logical Clocks
-
-This is still not good enough for us, though, because it is not total: if they don't have the same inputs, there is no ordering connection between any of them.
-
-The solution we found to this problem is to use an adapted version of a  **Hybrid Logical Clock**, described on the paper ["Logical Physical Clocks
-and Consistent Snapshots in Globally Distributed Databases"](https://cse.buffalo.edu/tech-reports/2014-04.pdf).
-
-A HLC is an unique identifier containing:
-
-1. A "Term ID" (we will talk about this soon, once we talk about Consensus)
-1. The node public key
-1. A Local UTC timestamp from the node that sent the message
-
-The most importants characteristics of this clock is that it **is totally ordered**, and, what is most important, it is completely immune to clock drift, both natural or byzantine.
-
-## Gossip About Gossip (Consensus)
+## Privacy
 
 TODO.
 
