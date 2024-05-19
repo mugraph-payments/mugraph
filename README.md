@@ -287,7 +287,15 @@ Homogeneity in this definition of means that the all the elements which the rela
 
 Let’s go over an example of a set like this: imagine we have a set $\{e,u,f,p,t\}$, for **Earth**, **Europe**, **France**, **Paris**, **Eiffel Tower**, in this order. This set is ordered over the partial order relation **”contains”**, so that Earth **contains** Europe, Europe **contains** France, France **contains** Paris, and Paris **contains** the Eiffel Tower.
 
-The opposite, on the other hand, does not make sense! The question “where in Paris is Earth?” is one that we aren’t able to answer.
+```mermaid
+graph TD
+    Earth --> Europe
+    Europe --> France
+    France --> Paris
+    Paris --> Eiffel_Tower["Eiffel Tower"]
+```
+
+The opposite, on the other hand, does not make sense. The question “where in Paris is Earth?” is one that we aren’t able to answer.
 
 ### Total Ordering
 
@@ -305,38 +313,44 @@ TODO.
 
 A [Lattice](https://en.wikipedia.org/wiki/Lattice_(order)), in Order Theory, is a partially ordered set in which every pair of elements has a unique supremum (also called a **join**) and a unique infimum, also called a **meet**.
 
-[Lattice (order)](https://en.wikipedia.org/wiki/Lattice_(order))
-
 If a lattice has only a meets or joins, but not both, they are called **Semilattices**, either a **join-semilattice** or a **meet-semilattice**, depending on which of the two they have.
 
 #### Join Semilattice
 
+In the small subset of Order Theory that we covered here, the semilattice we are the most interested on is the Join Semilattice, a partially ordered set in which all two elements subset have a **join**, or upper least bound.
+
+The Locations set example we gave before is a Join Semilattice, as we have an upper bound *“Earth”*.
+
+## Causal Ordering
+
+We can look back at what we said about UTXOS, and apply to what we learned about Order Theory:
+
+The set of all the transactions is a **join semilattice**, where the first transaction that has ever happened is our Join, and those same transactions are **partially ordered** in regards to their causality.
+
+This means that in a set of transactions $X = \{a, b, c , \ldots, z\}$, each of those transactions is causally related to any that created the inputs that it uses.
+
+Given the inputs and outputs are part of each transaction, we can use it to track the causality in our semilattice.
+
+However, once we propagate those transactions on the gossip network, we can track two more sources of causality, tracking two "parents" for each message: one from the node that originated the transaction, and another one from another node.
+
+## Wall-Clock Ordering and Hybrid Logical Clocks
+
+This is still not good enough for us, though, because it is not total: if they don't have the same inputs, there is no ordering connection between any of them.
+
+The solution we found to this problem is to use an adapted version of a  **Hybrid Logical Clock**, described on the paper ["Logical Physical Clocks
+and Consistent Snapshots in Globally Distributed Databases"](https://cse.buffalo.edu/tech-reports/2014-04.pdf).
+
+A HLC is an unique identifier containing:
+
+1. A "Term ID" (we will talk about this soon, once we talk about Consensus)
+1. The node public key
+1. A Local UTC timestamp from the node that sent the message
+
+The most importants characteristics of this clock is that it **is totally ordered**, and, what is most important, it is completely immune to clock drift, both natural or byzantine.
+
+## Gossip About Gossip (Consensus)
+
 TODO.
-
-In the small subset of Order Theory that we covered here, the semilattice we are the most interested on is the Join Semilattice, a partially ordered set in which all two elements subset have a join, or upper least bound.
-
-The Locations Set examples we gave before is a Join Semilattice, as we have an upper bound *“Earth”.*
-
-## Causal Ordering and Hybrid Logical Clocks
-
-TODO.
-
-```mermaid
-sequenceDiagram
-    participant A as Node A
-    participant B as Node B
-    participant C as Node C
-
-    A->>B: Event 1 (E1)
-    Note over A,B: E1 causally before E2
-    B->>C: Event 2 (E2)
-    Note over B,C: E2 causally before E3
-    C->>A: Event 3 (E3)
-    Note over C,A: E3 causally before E4
-
-    A->>B: Event 4 (E4)
-    Note over A,B: E4 causally after E1, E2, and E3
-```
 
 ## Bibliography
 
