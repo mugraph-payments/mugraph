@@ -125,13 +125,9 @@ Let's then summarize our thesis:
 
 It becomes clear that if our goal is to have a high throughput, we need to embrace this characteristic, do more in parallel, and only pay the price of strong consistency when we actually need to.
 
-More specifically, our goal is to go "as fast as gossip can go".
+More specifically, our goal is to go "as fast as gossip can go". To us, this means to make our consistency model go hover at "Causal+" for most of the operation, and only degrade to a stricter consistency model if necessary.
 
-### Looking Around for Double Spending
-
-Following our consistent model defined previously, our goal then is to make our consistency model go to at most Causal+ for most of the operation, and only degrade to a stricter consistency model when necessary.
-
-#### Gossip Protocols
+### Gossip Protocols
 
 When a transaction first hits the blockchain, it is propagated to the biggest number of nodes as possible, using what is called a **Gossip Protocol**.
 
@@ -141,7 +137,7 @@ When a transaction first hits the blockchain, it is propagated to the biggest nu
 2. When the second node receives a message from another node, it chooses another random node and propagates it to that node.
 3. If the a node receives the same message twice, it does not propagate it further.
 
-So, assuming we have two nodes, called here `main` and `other`, where each of those dots is a message that was published:
+So, assuming we have two nodes, called here `main` and `other`, where each of those dots is a message that was published from am user:
 
 ```mermaid
 gitGraph
@@ -161,6 +157,92 @@ gitGraph
    checkout other
    commit
    checkout main
+```
+
+If we have two nodes, and following the rules we have defined, we will have something like this:
+
+```mermaid
+gitGraph
+   commit
+   branch other
+   commit
+   checkout main
+   merge other
+   commit
+   checkout other
+   merge main
+   commit
+   checkout main
+   merge other
+   commit
+   checkout other
+   merge main
+   checkout main
+   commit
+   checkout other
+   merge main
+   commit
+   checkout main
+   merge other
+   checkout other
+   commit
+   checkout main
+   merge other
+```
+
+With more nodes, it becomes even more clear what is happening:
+
+```mermaid
+gitGraph
+   commit
+   branch other
+   branch another
+   branch extra
+   checkout main
+   commit
+   checkout other
+   merge main
+   checkout main
+   merge other
+   checkout another
+   commit
+   merge main
+   commit
+   checkout main
+   merge another
+   checkout extra
+   merge main
+   commit
+   checkout main
+   merge extra
+   checkout other
+   commit
+   checkout main
+   merge other
+   checkout another
+   merge main
+   commit
+   checkout main
+   merge another
+   checkout extra
+   merge main
+   commit
+   checkout main
+   merge extra
+   checkout other
+   commit
+   checkout main
+   merge other
+   checkout another
+   merge main
+   commit
+   checkout main
+   merge another
+   checkout extra
+   merge main
+   commit
+   checkout main
+   merge extra
 ```
 
 
