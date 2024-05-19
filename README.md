@@ -127,7 +127,7 @@ It becomes clear that if our goal is to have a high throughput, we need to embra
 
 More specifically, our goal is to go "as fast as gossip can go". To us, this means to make our consistency model go hover at "Causal+" for most of the operation, and only degrade to a stricter consistency model if necessary.
 
-### Gossip Protocols
+## Gossip Protocols
 
 When a transaction first hits the blockchain, it is propagated to the biggest number of nodes as possible, using what is called a **Gossip Protocol**.
 
@@ -137,29 +137,7 @@ When a transaction first hits the blockchain, it is propagated to the biggest nu
 2. When the second node receives a message from another node, it chooses another random node and propagates it to that node.
 3. If the a node receives the same message twice, it does not propagate it further.
 
-So, assuming we have two nodes, called here `main` and `other`, where each of those dots is a message that was published from am user:
-
-```mermaid
-gitGraph
-   commit
-   branch other
-   commit
-   checkout main
-   commit
-   checkout other
-   commit
-   checkout main
-   commit
-   commit
-   checkout other
-   commit
-   checkout main
-   checkout other
-   commit
-   checkout main
-```
-
-If we have two nodes, and following the rules we have defined, we will have something like this:
+So, assuming we have two nodes, called here `main` and `other`, where each of those dots is a message that was published from am user, where the dark dots are the messages that have been propagated:
 
 ```mermaid
 gitGraph
@@ -245,7 +223,11 @@ gitGraph
    merge extra
 ```
 
+Messages go randomly through the nodes, such that a transaction reaches a supermajority of the nodes in a time $H$, such that The number of hops required for a gossip protocol to reach a supermajority of nodes can be defined as $H \approx \log_2(N)$, as the number of nodes aware of each message roughly doubles after a single "step".
 
+We can assume that a message is **famous** once a supermajority of the nodes has heard about it. A famous message is probabilistically guaranteed to be commited, meaning that it doesn't happen often for such a message to not be propagated to the whole network, and can be reasonably assumed to be finished.
+
+And unlike a block in a blockchain, those messages are propagated at the **speed of gossip**. There is no artificial restriction on throughput on gossip, it will be as fast as the slowest component, be it network, processing or latency between nodes.
 
 ## Bibliography
 
