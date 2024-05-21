@@ -8,18 +8,18 @@ It is an intentionally simplified both in operation and capabilities, to fulfill
 
 Those are the goals, in order:
 
-* Ease of Use
-* Privacy by default
-* Instant finality
-* Programmability
+- Ease of Use
+- Privacy by default
+- Instant finality
+- Programmability
 
 ## Definitions
 
-* µtail: a node that holds a Sparkle Sum Merkle Tree for the user balances in the vault
-* Galaxy: N µtails, 1 Asset Vault
-* Account: A bucket of assets with a spend key, can be burned to redeem assets in the vault
-* Asset: triplet (`policy_id`, `asset_id`, `amount`), representing the equivalent asset in the vault
-* Delta: A mapping from N Accounts to M accounts, together with block hash (from the chain) and hash of node tree
+- µtail: a node that holds a Sparkle Sum Merkle Tree for the user balances in the vault
+- Galaxy: N µtails, 1 Asset Vault
+- Account: A bucket of assets with a spend key, can be burned to redeem assets in the vault
+- Asset: triplet (`policy_id`, `asset_id`, `amount`), representing the equivalent asset in the vault
+- Delta: A mapping from N Accounts to M accounts, together with block hash (from the chain) and hash of node tree
 
 ## Workflow
 
@@ -39,29 +39,29 @@ Their responsibility, instead, is to track the causality between events, propaga
 
 Those are the messages that can be sent by users:
 
-#### Deposits
+### Deposits
 
 Deposits to the vault are permissionless, and can be done by anyone, and works in a "Two-Phase Commit", that works like this:
 
 1. The user deposits the funds to the vault, and wait for the transaction to be confirmed.
-2. The user generates a proof based on **Mithril Certified Transactions**, proving the transaction has been commited on chain and that the user owns the funds that have been deposited.
-3. The user "mints" an Account on-chain with the funds they deposited.
+1. The user generates a proof based on **Mithril Certified Transactions**, proving the transaction has been commited on chain and that the user owns the funds that have been deposited.
+1. The user "mints" an Account on-chain with the funds they deposited.
 
-#### Withdrawals
+### Withdrawals
 
 Withdrawals follows a very similar process:
 
 1. The user sends a "burn" message to the galaxy, together with a Cardano transaction and a list of accounts.
-2. Nodes sign the transaction as they propagate the event.
-3. User submits transaction to the blockchain.
+1. Nodes sign the transaction as they propagate the event.
+1. User submits transaction to the blockchain.
 
-#### Transactions
+### Transactions
 
 And for transactions:
 
-1. The user sends a proof of the transaction, that proving that no value has been created or destroyed ($tx_\text{in} - tx_\text{out}$ must equal $0$).
-2. Nodes sign the proof as they propagate the event.
-3. Once the aggregated signature has reached the threshold, the transaction is commited.
+1. The user sends a proof of the transaction, that proving that no value has been created or destroyed ($tx\_\text{in} - tx\_\text{out}$ must equal $0$).
+1. Nodes sign the proof as they propagate the event.
+1. Once the aggregated signature has reached the threshold, the transaction is commited.
 
 ### Gossip
 
@@ -70,21 +70,25 @@ And for transactions:
 First, here's how we track membership:
 
 1. Nodes register to the galaxy by interacting with a smart contract.
-2. They receive a NFT, which contains their IP in the metadata.
-3. Nodes query the chain every few blocks to find new nodes.
+1. They receive a NFT, which contains their IP in the metadata.
+1. Nodes query the chain every few blocks to find new nodes.
 
 And here's what happens when we receive a new message:
 
 1. Have we seen the message before?
-  - If yes, respond with all signatures collected for this message.
-  - If not, sign message, then propagate.
+
+- If yes, respond with all signatures collected for this message.
+- If not, sign message, then propagate.
+
 2. To propagate the message:
-  - Choose random Node in Galaxy
-  - Merge the node Merkle Tree with the other node Merkle Tree
-  - Accumulate unseen signatures
-  - Propagate again if to another random node if any new message is seen.
+
+- Choose random Node in Galaxy
+- Merge the node Merkle Tree with the other node Merkle Tree
+- Accumulate unseen signatures
+- Propagate again if to another random node if any new message is seen.
+
 3. Start at the latest round when node joined the network
-4. Increase round number when new Mithril (deposit/withdrawal) proof is seen
+1. Increase round number when new Mithril (deposit/withdrawal) proof is seen
 
 This graph shows in a very simplified way how the messages are propagated in the system. The yellow line represents the chain itself, and merges in and out of the yellow lines are withdrawals and deposits, respectively.
 
@@ -176,13 +180,7 @@ erDiagram
   }
 ```
 
-## µtails
-
-µtails, or the nodes inside a galaxy, receive transactions, deposits and withdraw from users, propagate those to other nodes inside the same galaxy, and maintain a **Causality Graph** of all the events in the system.
-
-This causality graph encodes the binary relationship $\leq$ between each event in the system, or in other words, what event happened before the other.
-
-The causality graph is built of two structures, a **Merkle Search Tree** of **Zero Trees**, and a **Hash Graph**.
+## Data Structures
 
 ### Zero Tree
 
@@ -247,33 +245,30 @@ graph TB
     L1((L1)) --> R2((R2))
     
     R1((R1)) --> L3((L3))
-    R1((R1)) --> R3((R3))
+    R1((R1)) --> R3((∅))
     
     L2((L2)) --> L4((L4))
-    L2((L2)) --> R4((null))
+    L2((L2)) --> R4((∅))
     
     R2((R2)) --> R5((R5))
-    R2((R2)) --> L5((null))
+    R2((R2)) --> L5((∅))
     
     L3((L3)) --> L6((L6))
-    L3((L3)) --> R6((null))
-    
-    R3((R3)) --> L7((null))
-    R3((R3)) --> R7((null))
+    L3((L3)) --> R6((∅))
     
     L4((L4)) --> D2((D1))
-    L4((L4)) --> D1((null))
+    L4((L4)) --> D1((∅))
     
     R5((R5)) --> D3((D2))
-    R5((R5)) --> D4((null))
+    R5((R5)) --> D4((∅))
     
     L6((L6)) --> D6((D3))
-    L6((L6)) --> D5((null))
+    L6((L6)) --> D5((∅))
 ```
 
 What this means for us is that we can keep "partial snapshots" of the tree, and only needing to share the first level of the tree publically, massively reducing the size of what is shared between users.
 
-#### Merkle Sum Trees
+### Merkle Sum Trees
 
 A **Merkle Sum Tree** is a variant of a Merkle tree in which each node contains a value, and this value needs to be taken into consideration when generating the hash.
 
@@ -303,7 +298,7 @@ graph TB
     R3((14)) --> D8((8))
 ```
 
-#### Zero Sum Trees, Finally
+### Zero Sum Trees, Finally
 
 A **Zero Sum Tree**, then, is a Sparse Merkle Sum Tree that, when complete, has a total sum of 0.
 
@@ -347,6 +342,12 @@ graph TB
     R2(("3")) --> D3(("3"))
     R2(("3")) --> D4((∅))
 ```
+
+## µtails
+
+µtails, or the nodes inside a galaxy, receive transactions, deposits and withdraw from users, propagate those to other nodes inside the same galaxy, and maintain a **Causality Graph** of all the events in the system.
+
+This causality graph encodes the binary relationship $\leq$ between each event in the system, or in other words, what event happened before the other.
 
 ## License
 
