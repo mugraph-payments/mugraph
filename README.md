@@ -1,27 +1,69 @@
 # µgraph
 
-µgraph is a protocol for a Layer 2 for Cardano. It aims to massively scale asset transfers, allowing instant, private payments between users.
+µgraph is an extremely fast payment network for UTXOs, implemented as a Layer 2 Network on top of Cardano. It is an intentionally simplified both in operation and capabilities, to fulfill a single use-case: payments. Unlike normal Layer 2s, no assets can be minted inside the network.
 
-It is an intentionally simplified both in operation and capabilities, to fulfill a single use-case: payments. Unlike normal Layer 2s, no assets can be minted inside the network, only Cardano Native Assets can be transacted.
+Instead, it allows users to hold "vouchers", redeemable for funds inside Vaults in their origin Blockchain. Those vouchers are just files, transferrable between users completely off-band via NFCs, QR codes, or even text messages.
 
-## Goals
+There are no wallets, no 24-word mnemonics, no private keys to protect. Just some strings inside a mobile application, encrypted by the operating system, and secured by the user's credential of choice (Pin, FaceID, TouchID).
 
-Those are the goals, in order:
+When you spend cash, you don't announce it to the world, and you don't notify the Central Bank. µgraph is cash, but online.
 
-- Ease of Use
-- Privacy by default
-- Instant finality
-- Programmability
+## Motivation
 
-## Definitions
+We started with a simple question: **why aren't people using crypto currencies for payments?** Wasn't Bitcoin created to fix specifically this problem? Why is it so hard to buy Groceries using my [USDM](https://mehen.io)? ZeroHedge explains this phenomena perfectly, in their article ["What Happened to Bitcoin?"](https://www.zerohedge.com/crypto/what-happened-bitcoin):
 
-- µtail: a node that holds a Sparkle Sum Merkle Tree for the user balances in the vault
-- Galaxy: N µtails, 1 Asset Vault
-- Account: A bucket of assets with a spend key, can be burned to redeem assets in the vault
-- Asset: triplet (`policy_id`, `asset_id`, `amount`), representing the equivalent asset in the vault
-- Delta: A mapping from N Accounts to M accounts, together with block hash (from the chain) and hash of node tree
+> At the same time, new technologies were becoming available that vastly improved the efficiency and availability of exchange in fiat dollars. They included Venmo, Zelle, CashApp, FB payments, and many others besides, in addition to smartphone attachments and iPads that enabled any merchant of any size to process credit cards. These technologies were completely different from Bitcoin because they were permission-based and mediated by financial companies. But to users, they seemed great and their presence in the marketplace crowded out the use case of Bitcoin at the very time that my beloved technology had become an unrecognizable version of itself.
 
-## Workflow
+We reached the conclusions that there are five problems that makes the average person not even consider us as an option:
+
+1. **Volatility**: Users want a stable notion of "value", that is easy to reason about, and stable enough for them to plan their immediate future. They also don't want to spend something they believe will be more valuable in the future.
+1. **Scalability**: Transactions are slow, too slow compared to centralized solutions (Credit Cards, for example, have a 2 second practical limit for confirmations).
+1. **Privacy**: Users do not want to have to doxx themselves just to buy something. Financial privacy is a human right, and in the age of big data analysis and AI, pseudonymity is not enough privacy.
+1. **Segmentation**: Users have funds in multiple blockchains at once, and spending those funds across blockchains is a very hard problem.
+1. **Ease of Use**: Users don't want to deal with complex protocols, and they don't want to deal with different wallets, and they don't want to have to think just to be safe "enough".
+
+We think that, from those problems, volatility is the only one that has been taken seriously, with Synthetic Assets and Stablecoins. µgraph fixes the other ones.
+
+## Introduction
+
+µgraph is a network of nodes, called µtails, that form small groups, called Galaxies, to collectively control access to a Vault of user funds. They work similarly to Hydra Heads, but with a very simplified architecture, and a relaxed requirement on node availability (nodes can be offline for a long time).
+
+Nodes are registered directly on-chain, by interacting with a smart contract, and their membership is semi-dynamic, so nodes can take a while to join the network.
+
+Those nodes do three things:
+
+1. They receive messages from the users, and propagate them to the other nodes.
+2. They sign messages they haven't seen before.
+3. They keep a "log" of everything they have seen before, and in what order.
+
+They don't know at all what those messages contain, and who is sending them, and they don't need to. They are **Blind Signers**, and they only sign messages that are known to be valid.
+
+Once a meaningful threshold of nodes have signed a message, it is commited. There's nothing else that needs to be done.
+
+## Accounts and Deltas
+
+Anyone can deposit funds into these vaults, and `mint` those assets inside the network. When minted, those assets are wrapped in an **Account**, a simple file that contains the assets, and a `spend_key`, which when revealed "burns" the account so it can not be used again.
+
+Accounts can be `minted`, `burned`, and `spent`, meaning:
+
+- `mint`: when a user deposits funds into a Vault, those funds are wrapped into one Account.
+- `burn`: an account can be `burned` to get the nodes to sign a transaction to withdraw those funds on the blockchain.
+- `spent`: an account can be `spent` to generate new accounts. The account is `closed`, can not be used again, so only their children are now unspent.
+
+Each of those operations can be sent to tails inside the galaxy as a zero-knowledge proof, which guarantees both the "provenance" of the operation, and the authenticity of the operation (no value has been created or destroyed, only maintained).
+
+## Specification
+
+### Terminology
+
+* **µtail:** a node inside the network, signs messages from the users.
+* **Galaxy:** made of µtails, collectively controls access to the assets in a Vault.
+* **Vault:** a smart contract that holds the funds of a Galaxy.
+* **Account:** A "redeemable voucher" for a bundle of assets in a Vault.
+* **Asset:** a triplet (`policy_id`, `asset_id`, `amount`), representing the equivalent asset in the vault.
+* **Delta:** a "function" that maps a set of accounts into another set of accounts.
+
+### Workflow
 
 The µgraph network is made of Galaxies, "consensus groups" that transact the funds in behalf of the users. They are very small, so transactions inside those galaxies are completely instant and free. They are also **blind**, so they don't know who's transacting what with whom.
 
@@ -35,11 +77,11 @@ Unlike Hydra Heads, Galaxies never publish their checkpoints on-chain, only inte
 
 Their responsibility, instead, is to track the causality between events, propagate those messages between the other µtails in the galaxy, and verify zero-knowledge proofs.
 
-### System Messages
+#### System Messages
 
 Those are the messages that can be sent by users:
 
-### Deposits
+#### Deposits
 
 Deposits to the vault are permissionless, and can be done by anyone, and works in a "Two-Phase Commit", that works like this:
 
@@ -47,7 +89,7 @@ Deposits to the vault are permissionless, and can be done by anyone, and works i
 1. The user generates a proof based on **Mithril Certified Transactions**, proving the transaction has been commited on chain and that the user owns the funds that have been deposited.
 1. The user "mints" an Account on-chain with the funds they deposited.
 
-### Withdrawals
+#### Withdrawals
 
 Withdrawals follows a very similar process:
 
@@ -55,7 +97,7 @@ Withdrawals follows a very similar process:
 1. Nodes sign the transaction as they propagate the event.
 1. User submits transaction to the blockchain.
 
-### Transactions
+#### Transactions
 
 And for transactions:
 
@@ -63,7 +105,7 @@ And for transactions:
 1. Nodes sign the proof as they propagate the event.
 1. Once the aggregated signature has reached the threshold, the transaction is commited.
 
-### Gossip
+#### Gossip
 
 µgraph uses a very, very simple gossip model:
 
@@ -80,14 +122,14 @@ And here's what happens when we receive a new message:
 - If yes, respond with all signatures collected for this message.
 - If not, sign message, then propagate.
 
-2. To propagate the message:
+1. To propagate the message:
 
 - Choose random Node in Galaxy
 - Merge the node Merkle Tree with the other node Merkle Tree
 - Accumulate unseen signatures
 - Propagate again if to another random node if any new message is seen.
 
-3. Start at the latest round when node joined the network
+1. Start at the latest round when node joined the network
 1. Increase round number when new Mithril (deposit/withdrawal) proof is seen
 
 This graph shows in a very simplified way how the messages are propagated in the system. The yellow line represents the chain itself, and merges in and out of the yellow lines are withdrawals and deposits, respectively.
@@ -134,33 +176,9 @@ gitGraph TB:
     merge NodeA id: "Submit to chain"
 ```
 
-## Account
+### Data Structures
 
-An **Account** is a file, or a document that stays at the user device. It is, conceptually, a mixture between a UTXO and a normal Wallet.
-
-Accounts contain multiple assets, which represent Cardano Native Assets in the blockchain, together with a `spendkey`, which when revealed "burns" the account so it can not be used again.
-
-```mermaid
-erDiagram
-  Account ||--|{ Asset : "contains many"
-
-  Account {
-    list[Asset] assets
-    bytes spendkey
-  }
-
-  Asset {
-    bytes deposit_root
-    bytes mint_root
-    bytes policy_id
-    bytes asset_id
-    u128 amount
-  }
-```
-
-## Data Structures
-
-### Zero Tree
+#### Zero Tree
 
 This is what a Merkle Tree usually looks like:
 
@@ -246,7 +264,7 @@ graph TB
 
 What this means for us is that we can keep "partial snapshots" of the tree, and only needing to share the first level of the tree publically, massively reducing the size of what is shared between users.
 
-### Merkle Sum Trees
+#### Merkle Sum Trees
 
 A **Merkle Sum Tree** is a variant of a Merkle tree in which each node contains a value, and this value needs to be taken into consideration when generating the hash.
 
@@ -276,7 +294,7 @@ graph TB
     R3((14)) --> D8((8))
 ```
 
-### Zero Sum Trees, Finally
+#### Zero Sum Trees, Finally
 
 A **Zero Sum Tree**, then, is a Sparse Merkle Sum Tree that, when complete, has a total sum of 0.
 
@@ -304,78 +322,17 @@ graph TB
     R3(("-2")) --> D8(("-1"))
 ```
 
-When incomplete, however, the root of the tree indicates the total amount that has not been **spent**:
-
-```mermaid
-graph TB
-    Root(("3")) --> L1(("3"))
-    Root(("3")) --> R1((∅))
-    
-    L1(("3")) --> L2(("4"))
-    L1(("3")) --> R2(("3"))
-    
-    L2(("0")) --> D1(("4"))
-    L2(("0")) --> D2(("-4"))
-    
-    R2(("3")) --> D3(("3"))
-    R2(("3")) --> D4((∅))
-```
-
-## ωtree
-
-The Omegatree is not a data structure per se, more of a combination of the data structures we talked about before into something the nodes in the system can use.
-
-It is composed of two pieces: a "Data Layer" which tracks node communication, while the "Hidden Layer" tracks what actually happens to the assets in the tree.
-
-```mermaid
-graph TB
-    subgraph Data Layer
-        Root((Root))
-        L1((L1; AssetA))
-        R1((R1; AssetB))
-    end
-    Root --> L1
-    Root --> R1
-    
-    subgraph Hidden Layer
-        L2((L2; 3))
-        R2((R2; 12))
-        L3((L3; 2))
-        R3((R3; 2))
-        L4((L4; 10))
-        R4((R4; -7))
-        L5((L5; 30))
-        R5((R5; -18))
-        L6((L6; 5))
-        R6((R6; -3))
-        L7((L7; 8))
-        R7((R7; -6))
-    end
-    L1 --> L2
-    L1 --> R2
-    R1 --> L3
-    R1 --> R3
-    L2 --> L4
-    L2 --> R4
-    R2 --> L5
-    R2 --> R5
-    L3 --> L6
-    L3 --> R6
-    R3 --> L7
-    R3 --> R7
-```
-
 What is important here is that the Hidden Layer is not seen by the nodes themselves, because what is published to them are **Delta Proofs**.
 
 Those proofs are generated by the users, and verified by the nodes before propagation.
 
-### Delta Proofs
+#### Delta Proofs
 
 In a nutshell, Delta Proofs are a form of "$\delta$-mutators" (from the $\delta$-state CRDT family), that is, a "delta" between the previous state and the current state.
 
 But instead of publishing all the state changes, users in the Constellation instead provide a new root for the Zero Sum Tree, together with a zero-knowledge proof that this root is the result of the previous root and the delta.
 
-## µtails
+### µtails
 
 µtails, or the nodes inside a galaxy, receive transactions, deposits and withdraw from users, propagate those to other nodes inside the same galaxy, and maintain a **Causality Graph** of all the events in the system.
 
