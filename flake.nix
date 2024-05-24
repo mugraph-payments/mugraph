@@ -45,7 +45,7 @@
         };
 
         rdt = rust-dev-tools.setup pkgs {
-          name = "mugraph";
+          name = "µ";
           rust = rust-dev-tools.version.fromToolchainFile ./rust-toolchain.toml;
           dependencies = with pkgs; [ ];
         };
