@@ -4,4 +4,14 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+blake3 = { version = "1.5.1", features = ["serde"] }
+chrono = { version = "0.4.38", features = ["serde"] }
+criterion = "0.5.1"
+ed25519-dalek = { version = "2.1.1", features = ["signature", "serde", "rand_core"] }
+hex = { version = "0.4.3", features = ["serde"] }
+itertools = "0.13.0"
+paste = "1.0.15"
+proptest = "1.4.0"
+rand = { version = "0.8.5", features = ["serde"] }
+test-strategy = "0.3.1"
 thiserror = "1.0.60"
