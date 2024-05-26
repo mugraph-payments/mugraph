@@ -14,24 +14,24 @@ use crate::prelude::*;
 pub struct HLC {
     pub timestamp: Timestamp,
     pub pubkey: Pubkey,
-    pub counter: u64,
+    pub counter: u32,
 }
 
 impl_associate_bytes_types!(HLC);
 
 impl ToBytes for HLC {
-    type Output = [u8; 46];
+    type Output = [u8; 42];
 
     fn to_bytes(&self) -> Self::Output {
         if *self == HLC::default() {
-            return [0u8; 46];
+            return [0u8; 42];
         }
 
-        let mut bytes = [0u8; 46];
+        let mut bytes = [0u8; 42];
 
         bytes[..6].copy_from_slice(&self.timestamp.to_bytes());
-        bytes[6..(6 + size_of::<u64>())].copy_from_slice(&self.counter.to_be_bytes());
-        bytes[(6 + size_of::<u64>())..].copy_from_slice(&self.pubkey.to_bytes());
+        bytes[6..(6 + size_of::<u32>())].copy_from_slice(&self.counter.to_be_bytes());
+        bytes[(6 + size_of::<u32>())..].copy_from_slice(&self.pubkey.to_bytes());
 
         bytes
     }
@@ -42,16 +42,16 @@ impl FromBytes for HLC {
         let timestamp = Timestamp::from_bytes(bytes[..6].try_into().unwrap())?;
 
         let counter =
-            u64::from_be_bytes(bytes[6..(6 + size_of::<u64>())].try_into().map_err(|e| {
+            u32::from_be_bytes(bytes[6..(6 + size_of::<u32>())].try_into().map_err(|e| {
                 Error::FailedDeserialization(format!(
                     "failed to get counter for `{}`, expected {} bytes but got {}",
                     hex::encode(bytes),
-                    size_of::<u64>(),
+                    size_of::<u32>(),
                     e
                 ))
             })?);
 
-        let pubkey = Pubkey::from_bytes(&bytes[(6 + size_of::<u64>())..])?;
+        let pubkey = Pubkey::from_bytes(&bytes[(6 + size_of::<u32>())..])?;
 
         Ok(Self {
             timestamp,
@@ -190,7 +190,7 @@ impl Arbitrary for HLC {
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         (
             any::<Timestamp>(),
-            (1..u16::MAX).prop_map(u64::from),
+            (1..u16::MAX).prop_map(u32::from),
             any::<Pubkey>(),
         )
             .prop_map(|(timestamp, count, pubkey)| Self {
