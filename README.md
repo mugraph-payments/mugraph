@@ -42,3 +42,17 @@ Transactions between users within the same mu are free, instant, and anonymous. 
 For transactions between different mu, the mu itself (not the user) sends the transaction. This approach protects all users within the same mu under a shared identity. These transactions incur a fee beyond the cost of the Cardano network itself.
 
 Mu connect to each other through Hydra channels, forming a Constellation. While the scope of Constellations is not covered in this document, they route transactions between sets of mu.
+
+## License
+
+µgraph (and all related projects within the organization) is dual-licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE-APACHE) licenses.
+
+You are free to choose the license that best suits your use case. If neither license meets your needs, please contact us to discuss alternative arrangements.
+
+## Contributing Guidelines
+
+We welcome all contributions that align with the project's goals.
+
+There's only one rule: **do not be an asshole**.
+
+If you are unsure, just talk to us.
