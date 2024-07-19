@@ -1,0 +1,42 @@
+[package]
+name = "mugraph-node"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+mugraph-circuits = { path = "../circuits" }
+minicbor = { version = "0.24.2", features = ["derive"] }
+risc0-zkvm = "=0.21.0"
+serde = { version = "1.0.204", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+
+[dev-dependencies]
+# These crates are needed for the build-std feature, that is due to the Nix
+# sandbox and because cargo dependencies need to be vendored before the build
+# starts. Cargo fetches these dependencies impurely.
+allocator-api2 = "=0.2.16"
+compiler_builtins = "*"
+dlmalloc = "=0.2.6"
+fortanix-sgx-abi = "0.5.0"
+getopts = "=0.2.21"
+hermit-abi = "0.3.9"
+r-efi = "4.3.0"
+r-efi-alloc = "1.0.0"
+rustc-demangle = "0.1.23"
+unwinding = "0.2.1"
+wasi = "=0.11.0"
+
+[target.'cfg(windows)'.dev-dependencies]
+# dlmalloc wants windows-sys 0.52.0
+# which in turn wants windows-targets 0.52.4
+# which in turn for whatever reason locks some
+# of the following targets to 0.52.5
+# and that causes the build to fail
+windows_aarch64_gnullvm = "=0.52.4"
+windows_aarch64_msvc = "=0.52.4"
+windows_i686_gnu = "=0.52.4"
+windows_i686_msvc = "=0.52.4"
+windows_x86_64_gnu = "=0.52.4"
+windows_x86_64_gnullvm = "=0.52.4"
+windows_x86_64_msvc = "=0.52.4"

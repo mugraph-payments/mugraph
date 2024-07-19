@@ -40,18 +40,39 @@
             (import ./nix inputs)
           ];
         };
+
+        inherit (pkgs) mkShell mugraph makeWrapper;
+        inherit (pkgs.lib) makeBinPath;
+
+        package = mugraph.buildRisc0Package {
+          pname = "risc0package";
+          version = "0.0.1";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          nativeBuildInputs = [ makeWrapper ];
+          postInstall = ''
+            wrapProgram $out/bin/host \
+              --set PATH ${makeBinPath [ mugraph.r0vm ]}
+          '';
+        };
       in
       {
-        devShells.default =
-          with pkgs;
-          mkShell {
-            inputsFrom = [ mugraph.rdt.devShell ];
-            packages = [
-              iconv
-              mugraph.r0vm
-              cargo-risczero
-            ];
-          };
+        packages.default = package;
+
+        devShells.default = mkShell {
+          RISC0_RUST_SRC = "${package.toolchain}/lib/rustlib/src/rust";
+          RISC0_DEV_MODE = 1;
+
+          inputsFrom = [
+            mugraph.rdt.devShell
+            package
+          ];
+
+          packages = [
+            mugraph.r0vm
+            pkgs.iconv
+          ];
+        };
       }
     );
 }

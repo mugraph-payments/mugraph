@@ -1,12 +1,13 @@
 {
-  pkg-config,
   cargo-risczero,
-  writeShellApplication,
-  openssl,
-  lib,
-  stdenv,
   darwin,
+  lib,
   mugraph,
+  openssl,
+  pkg-config,
+  stdenv,
+  writeShellApplication,
+  toolchain,
 }:
 extraBuildRustPackageAttrs@{
   nativeBuildInputs ? [ ],
@@ -29,7 +30,7 @@ let
         printf "risc0\n"
       elif [[ "$1" = "+risc0" ]]
       then
-        printf "${rdt.rust}/bin/rustc"
+        printf "${toolchain}/bin/rustc"
       fi
     '';
   };
@@ -53,7 +54,7 @@ rdt.buildRustPackage (
     );
 
     preBuild = ''
-      export RISC0_RUST_SRC=${rdt.rust}/lib/rustlib/src/rust;
+      export RISC0_RUST_SRC=${toolchain}/lib/rustlib/src/rust;
       ${preBuild}
     '';
 
@@ -67,7 +68,7 @@ rdt.buildRustPackage (
     auditable = false;
 
     passthru = {
-      toolchain = rdt.rust;
+      toolchain = toolchain;
     };
   }
 )
