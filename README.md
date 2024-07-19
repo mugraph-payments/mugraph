@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source srcset="assets/logo-white.svg" media="(prefers-color-scheme: dark)">
-    <img src="assets/logo-dark.svg" alt="µgraph Logo" width="300">
+    <source srcset="docs/assets/logo-white.svg" media="(prefers-color-scheme: dark)">
+    <img src="docs/assets/logo-dark.svg" alt="µgraph Logo" width="300">
   </picture>
 </p>
 
@@ -23,11 +23,11 @@ We identified four main problems that prevent the average person from considerin
 
 1. **Volatility**: Users desire a stable notion of "value" that is easy to understand and stable enough for short-term planning. They also avoid spending assets they believe will appreciate in value.
 
-2. **Scalability**: Cryptocurrency transactions are slow compared to centralized solutions. For example, credit cards have a practical confirmation limit of 2 seconds.
+1. **Scalability**: Cryptocurrency transactions are slow compared to centralized solutions. For example, credit cards have a practical confirmation limit of 2 seconds.
 
-3. **Privacy**: Users do not want to reveal their identity for every purchase. Financial privacy is a human right, and in the age of big data analysis and AI, pseudonymity does not provide sufficient privacy.
+1. **Privacy**: Users do not want to reveal their identity for every purchase. Financial privacy is a human right, and in the age of big data analysis and AI, pseudonymity does not provide sufficient privacy.
 
-4. **Ease of Use**: Users prefer not to deal with complex protocols, multiple wallets, or extensive security considerations.
+1. **Ease of Use**: Users prefer not to deal with complex protocols, multiple wallets, or extensive security considerations.
 
 Of these problems, only volatility has been seriously addressed through Synthetic Assets and Stablecoins. µgraph aims to solve the remaining issues.
 
