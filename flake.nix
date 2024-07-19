@@ -37,7 +37,7 @@
           inherit system;
           overlays = [
             rust-dev-tools.overlays.default
-            (import ./nix/overlay.nix inputs)
+            (import ./nix inputs)
           ];
         };
       in
@@ -49,6 +49,7 @@
             packages = [
               iconv
               mugraph.r0vm
+              cargo-risczero
             ];
           };
       }

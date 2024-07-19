@@ -14,7 +14,7 @@ in
 
     r0vm = final.callPackage ./r0vm.nix {
       inherit rdt;
-      risc0Source = inputs.risc0;
+      risc0-source = inputs.risc0;
     };
     buildRisc0Package = final.callPackage ./lib/buildRisc0Package.nix { };
   };
