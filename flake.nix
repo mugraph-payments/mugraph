@@ -48,8 +48,8 @@
           pname = "mugraph-node";
           version = "0.0.1";
           src = ./.;
-          # cargoLock.lockFile = ./Cargo.lock;
-          cargoHash = "sha256-jtBw4ahSl88L0iuCXxQgZVm1EcboWRJMNtjxLVTtzts=";
+          env.RISC0_RUST_SRC = "${mugraph.risc0-rust}/lib/rustlib/src/rust";
+          cargoLock.lockFile = ./Cargo.lock;
           nativeBuildInputs = [ makeWrapper ];
           postInstall = ''
             wrapProgram $out/bin/host \

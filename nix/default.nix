@@ -56,15 +56,7 @@ let
 
   rdt = rust-dev-tools.setup prev {
     name = "mu";
-
-    rust = symlinkJoin {
-      name = "rdt-rustc";
-      paths = [
-        (rust-dev-tools.version.fromToolchainFile ../rust-toolchain.toml)
-        risc0-rust
-        rustup-mock
-      ];
-    };
+    rust = rust-dev-tools.version.fromToolchainFile ../rust-toolchain.toml;
   };
 
   r0vm = final.callPackage ./r0vm.nix {

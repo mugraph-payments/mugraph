@@ -1,5 +1,4 @@
 {
-  cargo-risczero,
   darwin,
   lib,
   mugraph,
@@ -30,8 +29,8 @@ rdt.buildRustPackage (
   recursiveUpdate extraBuildRustPackageAttrsNoArgs {
     nativeBuildInputs = unique (
       [
+        risc0-rust
         rustup-mock
-        cargo-risczero
         pkg-config
       ]
       ++ nativeBuildInputs
