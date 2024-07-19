@@ -41,14 +41,15 @@
           ];
         };
 
-        inherit (pkgs) mkShell mugraph makeWrapper;
+        inherit (pkgs) mugraph makeWrapper;
         inherit (pkgs.lib) makeBinPath;
 
         package = mugraph.buildRisc0Package {
-          pname = "risc0package";
+          pname = "mugraph-node";
           version = "0.0.1";
           src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
+          # cargoLock.lockFile = ./Cargo.lock;
+          cargoHash = "sha256-jtBw4ahSl88L0iuCXxQgZVm1EcboWRJMNtjxLVTtzts=";
           nativeBuildInputs = [ makeWrapper ];
           postInstall = ''
             wrapProgram $out/bin/host \
@@ -57,22 +58,12 @@
         };
       in
       {
-        packages.default = package;
-
-        devShells.default = mkShell {
-          RISC0_RUST_SRC = "${package.toolchain}/lib/rustlib/src/rust";
-          RISC0_DEV_MODE = 1;
-
-          inputsFrom = [
-            mugraph.rdt.devShell
-            package
-          ];
-
-          packages = [
-            mugraph.r0vm
-            pkgs.iconv
-          ];
+        packages = {
+          default = package;
+          r0vm = pkgs.mugraph.r0vm;
         };
+
+        devShells.default = mugraph.devShell;
       }
     );
 }

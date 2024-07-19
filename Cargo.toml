@@ -1,10 +1,8 @@
 [workspace]
 resolver = "2"
-members = [
-    "node",
-    "circuits",
-]
+members = ["node", "circuits"]
 
+# Always optimize; building and running the guest takes much longer without optimization.
 [profile.dev]
 opt-level = 3
 

@@ -1,6 +1,7 @@
 {
   rdt,
   risc0-source,
+  risc0-rust,
   stdenv,
   pkg-config,
   perl,
@@ -25,6 +26,8 @@ rdt.buildRustPackage {
     perl
   ];
 
+  env.RISC0_RUST_SRC = "${risc0-rust}/lib/rustlib/src/rust";
+
   buildInputs = [
     openssl.dev
   ] ++ optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
@@ -40,7 +43,7 @@ rdt.buildRustPackage {
       recursionZkr = fetchurl {
         name = "recursion_zkr.zip";
         url = "https://risc0-artifacts.s3.us-west-2.amazonaws.com/zkr/${sha256Hash}.zip";
-        sha256 = "sha256:08zcl515890gyivhj8rgyi72q0qcr515bbm1vrsbkb164raa411m";
+        sha256 = "sha256:1ll3vzmqiglplbrv8r7v0llnnpilpwd2c3b3ngph1yhykr39d12f";
       };
     in
     "cp ${recursionZkr} ./risc0/circuit/recursion/src/recursion_zkr.zip";
