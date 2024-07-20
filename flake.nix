@@ -8,15 +8,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    rust-dev-tools = {
-      url = "github:cfcosta/rust-dev-tools.nix";
-      inputs = {
-        flake-utils.follows = "flake-utils";
-        nixpkgs.follows = "nixpkgs";
-        rust-overlay.follows = "rust-overlay";
-      };
-    };
-
     risc0 = {
       url = "github:risc0/risc0/v1.0.3";
       flake = false;
@@ -27,7 +18,7 @@
     inputs@{
       nixpkgs,
       flake-utils,
-      rust-dev-tools,
+      rust-overlay,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -36,34 +27,13 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [
-            rust-dev-tools.overlays.default
+            rust-overlay.overlays.default
             (import ./nix inputs)
           ];
         };
-
-        inherit (pkgs) mugraph makeWrapper;
-        inherit (pkgs.lib) makeBinPath;
-
-        package = mugraph.buildRisc0Package {
-          pname = "mugraph-node";
-          version = "0.0.1";
-          src = ./.;
-          env.RISC0_RUST_SRC = "${mugraph.risc0-rust}/lib/rustlib/src/rust";
-          cargoLock.lockFile = ./Cargo.lock;
-          nativeBuildInputs = [ makeWrapper ];
-          postInstall = ''
-            wrapProgram $out/bin/host \
-              --set PATH ${makeBinPath [ mugraph.r0vm ]}
-          '';
-        };
       in
       {
-        packages = {
-          default = package;
-          r0vm = pkgs.mugraph.r0vm;
-        };
-
-        devShells.default = mugraph.devShell;
+        inherit (pkgs.mugraph) packages devShells;
       }
     );
 }

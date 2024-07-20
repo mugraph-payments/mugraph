@@ -1,23 +1,21 @@
 {
-  rdt,
-  risc0-source,
-  risc0-rust,
   stdenv,
   pkg-config,
   perl,
   openssl,
   lib,
   darwin,
+  mugraph,
 }:
 let
   inherit (builtins) fetchurl;
   inherit (lib) optionals;
   inherit (stdenv) isDarwin;
 in
-rdt.buildRustPackage {
+mugraph.rustPlatform.buildRustPackage {
   pname = "r0vm";
   version = "1.0.3";
-  src = risc0-source;
+  src = mugraph.inputs.risc0;
 
   buildAndTestSubdir = "risc0/r0vm";
 
@@ -26,14 +24,12 @@ rdt.buildRustPackage {
     perl
   ];
 
-  env.RISC0_RUST_SRC = "${risc0-rust}/lib/rustlib/src/rust";
-
   buildInputs = [
     openssl.dev
   ] ++ optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
 
   doCheck = false;
-  cargoLock.lockFile = "${risc0-source}/Cargo.lock";
+  cargoLock.lockFile = "${mugraph.inputs.risc0}/Cargo.lock";
 
   postPatch =
     let
