@@ -9,7 +9,7 @@ in
 mugraph.risc0Platform.buildRustPackage {
   pname = "mugraph-node";
   version = "0.0.1";
-  src = ./.;
+  src = ../..;
 
   cargoLock.lockFile = ../../Cargo.lock;
   nativeBuildInputs = [ makeWrapper ];
