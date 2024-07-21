@@ -40,7 +40,12 @@ let
   devShells.default = mkShell {
     name = "mu-shell";
 
-    packages = (attrValues packages) ++ [
+    packages = [
+      packages.cargo-risczero
+      packages.r0vm
+      packages.risc0-rust
+      packages.rustup-mock
+
       final.cargo-nextest
       final.cargo-watch
     ];
