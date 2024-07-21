@@ -5,11 +5,9 @@
   </picture>
 </p>
 
-Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blochchain, with anonymous payments and instant finality.
+Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blochchain for anonymous payments with instant finality.
 
 It is not a blockchain but a payment network, where **Delegators** hold and transact funds (inside a smart contract vault) on behalf of users. Delegators can connect between each other as **Galaxies** and route payments directly between them, akin to the [Lightning Network](https://lightning.network).
-
-It is intentionally simplified in design and operation to fix only one problem: payments.
 
 ## Documentation
 
@@ -22,11 +20,3 @@ It is intentionally simplified in design and operation to fix only one problem: 
 Mugraph (and all related projects within the organization) is dual-licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE-APACHE) licenses.
 
 You are free to choose the license that best suits your use case. If neither license meets your needs, please contact us to discuss alternative arrangements.
-
-## Contributing Guidelines
-
-We welcome all contributions that align with the project's goals.
-
-There's only one rule: **do not be an asshole**.
-
-If you are unsure, just talk to us.
