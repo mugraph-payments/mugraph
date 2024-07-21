@@ -23,7 +23,7 @@ let
     cargo = packages.risc0-rust;
   };
 
-  rust = final.rust-bin.nightly.latest.minimal.override {
+  rust = final.rust-bin.nightly.latest.complete.override {
     extensions = [
       "rust-src"
       "clippy"
@@ -51,9 +51,13 @@ in
 {
   mugraph = {
     inherit
-devShells inputs packages risc0Platform rust
+      devShells
+      inputs
+      packages
+      risc0Platform
+      rust
 
-rustPlatform
+      rustPlatform
 
       ;
   };

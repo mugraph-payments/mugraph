@@ -11,6 +11,8 @@ mugraph.risc0Platform.buildRustPackage {
   version = "0.0.1";
   src = ../..;
 
+  env.RISC0_RUST_SRC = "${mugraph.rust}/lib/rustlib/src/rust";
+
   cargoLock.lockFile = ../../Cargo.lock;
   nativeBuildInputs = [ makeWrapper ];
 
