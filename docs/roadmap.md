@@ -1,28 +1,27 @@
 # Project Milestones
 
+> [!WARNING]  
+> This is a just a draft roadmap, and it is not final. It is subject to change, either because requirements change or because we learn something new.
+
 ```mermaid
 gantt
     title Project Milestones
     dateFormat YYYY-MM-DD
-    excludes weekends
 
     section Infrastructure
-    Milestone 1: Infrastructure Development :active, m1, 2024-08-01, 54d
+    Infrastructure Development :active, m1, 2024-08-01, 2024-10-31
 
     section Asset Management
-    Milestone 2: Asset Bridging             :m2, after m1, 54d
+    Asset Bridging             :m2, 2024-11-01, 2024-12-31
 
     section Payments
-    Milestone 3: Cross-node Payments        :m3, after m2, 54d
+    Cross-node Payments        :m3, 2025-01-01, 2025-03-31
 
     section User Interface
-    Milestone 4: Mobile Wallet Development  :m4, after m3, 54d
+    Mobile Wallet Development  :m4, 2025-04-01, 2025-04-30
 
-    section Documentation
-    Milestone 5: Protocol and Wallet Preparation :m5, after m4, 54d
-
-    section Release
-    Final Milestone: Version 1.0 Release    :milestone, m6, after m5, 0d
+    section Documentation & Release
+    Protocol and Wallet Preparation, Version 1.0 Release :m5, 2025-05-01, 2025-05-31
 ```
 
 This document outlines the key milestones necessary to complete the project successfully.
