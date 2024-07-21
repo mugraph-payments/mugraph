@@ -61,10 +61,30 @@ let
     "aarch64-linux" = systemDeps."x86_64-linux";
   };
 
+  checks.pre-commit = inputs.pre-commit-hooks.lib.${final.system}.run {
+    src = ../.;
+    hooks = {
+      nixfmt = {
+        enable = true;
+        package = final.nixfmt-rfc-style;
+      };
+
+      rustfmt = {
+        enable = true;
+        packageOverrides = {
+          cargo = rust;
+          rustfmt = rust;
+        };
+      };
+    };
+  };
+
   devShells.default = mkShell {
     name = "mu-shell";
 
     packages = [
+      checks.pre-commit.enabledPackages
+
       rust
       (attrValues dependencies)
       systemDeps.${final.system}
@@ -76,11 +96,18 @@ let
     RISC0_DEV_MODE = 1;
     RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
     RUSTFLAGS = concatStringsSep " " systemFlags.${final.system};
+
+    inherit (checks.pre-commit) shellHook;
   };
 in
 {
   mugraph = {
-    inherit devShells inputs packages;
+    inherit
+      devShells
+      inputs
+      packages
+      checks
+      ;
 
     dependencies = dependencies // {
       inherit rust rustPlatform;

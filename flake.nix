@@ -8,6 +8,19 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    gitignore = {
+      url = "github:hercules-ci/gitignore.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    pre-commit-hooks = {
+      url = "github:cachix/pre-commit-hooks.nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        gitignore.follows = "gitignore";
+      };
+    };
+
     risc0 = {
       url = "github:risc0/risc0/v1.0.3";
       flake = false;
@@ -33,7 +46,7 @@
         };
       in
       {
-        inherit (pkgs.mugraph) packages devShells;
+        inherit (pkgs.mugraph) packages devShells checks;
       }
     );
 }
