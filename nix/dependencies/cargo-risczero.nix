@@ -17,7 +17,6 @@ mugraph.dependencies.rustPlatform.buildRustPackage {
   buildAndTestSubdir = "risc0/cargo-risczero";
   buildInputs = [
     openssl.dev
-
   ] ++ optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
 
   doCheck = false;

@@ -13,7 +13,7 @@ let
     if isDarwin then
       "sha256:0zx3lky6jh572gzvdfb43r3f4g62iwpj4i0zfv4vw343v8wk6jxv"
     else
-      "sha256:1ll3vzmqiglplbrv8r7v0llnnpilpwd2c3b3ngph1yhykr39d12f";
+      "sha256-+IXVTmBH0MEI0x1rTfVfPgWUb04KaZzKK9vW1603dK8=";
 
   baseUrl = "https://github.com/risc0/rust/releases/download/r0.1.78.0";
 
