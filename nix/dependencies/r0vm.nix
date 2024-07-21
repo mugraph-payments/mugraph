@@ -12,7 +12,7 @@ let
   inherit (lib) optionals;
   inherit (stdenv) isDarwin;
 in
-mugraph.rustPlatform.buildRustPackage {
+mugraph.dependencies.rustPlatform.buildRustPackage {
   pname = "r0vm";
   version = "1.0.3";
   src = mugraph.inputs.risc0;

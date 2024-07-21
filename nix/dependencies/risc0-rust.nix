@@ -25,7 +25,7 @@ in
 mkDerivation {
   name = "risc0-rust";
 
-  inherit (mugraph.rust) meta;
+  inherit (mugraph.dependencies.rust) meta;
 
   unpackPhase = "true";
   nativeBuildInputs = [ zlib ];

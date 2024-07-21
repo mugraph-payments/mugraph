@@ -5,21 +5,28 @@
 }:
 let
   inherit (lib) makeBinPath;
+  inherit (mugraph.dependencies)
+    rustPlatform
+    rust
+    r0vm
+    rustup-mock
+    ;
 in
-mugraph.rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage {
   pname = "mugraph-node";
   version = "0.0.1";
   src = ../..;
 
-  prePatch = ''
-    export RISC0_RUST_SRC="${mugraph.rust}/lib/rustlib/src/rust"
-  '';
+  env.RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
 
   cargoLock.lockFile = ../../Cargo.lock;
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [
+    makeWrapper
+    rustup-mock
+  ];
 
   postInstall = ''
     wrapProgram $out/bin/host \
-      --set PATH ${makeBinPath [ mugraph.packages.r0vm ]}
+      --set PATH ${makeBinPath [ r0vm ]}
   '';
 }

@@ -3,7 +3,7 @@
   darwin,
   mugraph,
 }:
-mugraph.rustPlatform.buildRustPackage {
+mugraph.dependencies.rustPlatform.buildRustPackage {
   pname = "cargo-risczero";
   version = "1.0.3";
   src = mugraph.inputs.risc0;

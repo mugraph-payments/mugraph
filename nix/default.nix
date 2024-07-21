@@ -2,6 +2,7 @@ inputs: final: prev:
 let
   inherit (builtins)
     attrNames
+    attrValues
     elemAt
     listToAttrs
     match
@@ -10,11 +11,11 @@ let
 
   inherit (prev) mkShell;
 
-  packages = listToAttrs (
+  dependencies = listToAttrs (
     map (file: {
       name = elemAt (match "(.*)\\.nix" file) 0;
-      value = final.callPackage (./packages + "/${file}") { };
-    }) (attrNames (readDir ./packages))
+      value = final.callPackage (./dependencies + "/${file}") { };
+    }) (attrNames (readDir ./dependencies))
   );
 
   rust = final.symlinkJoin {
@@ -23,7 +24,7 @@ let
     name = "mugraph-rustc";
     paths = [
       (final.rust-bin.nightly.latest.complete)
-      packages.risc0-rust
+      dependencies.risc0-rust
     ];
   };
 
@@ -32,16 +33,19 @@ let
     cargo = rust;
   };
 
+  packages = listToAttrs (
+    map (file: {
+      name = elemAt (match "(.*)\\.nix" file) 0;
+      value = final.callPackage (./packages + "/${file}") { };
+    }) (attrNames (readDir ./packages))
+  );
+
   devShells.default = mkShell {
     name = "mu-shell";
 
     packages = [
       rust
-
-      packages.cargo-risczero
-      packages.r0vm
-      packages.rustup-mock
-
+      (attrValues dependencies)
       final.cargo-nextest
       final.cargo-watch
     ];
@@ -52,12 +56,10 @@ let
 in
 {
   mugraph = {
-    inherit
-      devShells
-      inputs
-      packages
-      rust
-      rustPlatform
-      ;
+    inherit devShells inputs packages;
+
+    dependencies = dependencies // {
+      inherit rust rustPlatform;
+    };
   };
 }
