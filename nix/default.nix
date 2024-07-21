@@ -10,6 +10,7 @@ let
     ;
 
   inherit (prev) mkShell;
+  inherit (prev.lib) concatStringsSep;
 
   dependencies = listToAttrs (
     map (file: {
@@ -40,18 +41,41 @@ let
     }) (attrNames (readDir ./packages))
   );
 
+  systemFlags = {
+    "x86_64-darwin" = [ "-C link-arg=-fuse-ld=lld" ];
+    "aarch64-darwin" = systemFlags."x86_64-darwin";
+    "x86_64-linux" = [
+      "-C link-arg=-fuse-ld=mold"
+      "-C link-arg=-Wl,--separate-debug-file"
+    ];
+    "aarch64-linux" = systemFlags."x86_64-linux";
+  };
+
+  systemDeps = {
+    "aarch64-darwin" = with prev; [
+      darwin.apple_sdk.frameworks.SystemConfiguration
+      lld
+    ];
+    "x86_64-darwin" = systemDeps."aarch64-darwin";
+    "x86_64-linux" = with prev; [ mold ];
+    "aarch64-linux" = systemDeps."x86_64-linux";
+  };
+
   devShells.default = mkShell {
     name = "mu-shell";
 
     packages = [
       rust
       (attrValues dependencies)
+      systemDeps.${final.system}
+
       final.cargo-nextest
       final.cargo-watch
     ];
 
     RISC0_DEV_MODE = 1;
     RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
+    RUSTFLAGS = concatStringsSep " " systemFlags.${final.system};
   };
 in
 {
