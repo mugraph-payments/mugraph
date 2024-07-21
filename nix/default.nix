@@ -2,7 +2,6 @@ inputs: final: prev:
 let
   inherit (builtins)
     attrNames
-    attrValues
     elemAt
     listToAttrs
     match
@@ -18,17 +17,13 @@ let
     }) (attrNames (readDir ./packages))
   );
 
-  risc0Platform = final.makeRustPlatform {
-    rustc = packages.risc0-rust;
-    cargo = packages.risc0-rust;
-  };
+  rust = final.symlinkJoin {
+    inherit (final.rust-bin.nightly.latest.complete) meta;
 
-  rust = final.rust-bin.nightly.latest.complete.override {
-    extensions = [
-      "rust-src"
-      "clippy"
-      "rustfmt"
-      "rust-analyzer"
+    name = "mugraph-rustc";
+    paths = [
+      (final.rust-bin.nightly.latest.complete)
+      packages.risc0-rust
     ];
   };
 
@@ -41,9 +36,10 @@ let
     name = "mu-shell";
 
     packages = [
+      rust
+
       packages.cargo-risczero
       packages.r0vm
-      packages.risc0-rust
       packages.rustup-mock
 
       final.cargo-nextest
@@ -51,6 +47,7 @@ let
     ];
 
     RISC0_DEV_MODE = 1;
+    RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
   };
 in
 {
@@ -59,11 +56,8 @@ in
       devShells
       inputs
       packages
-      risc0Platform
       rust
-
       rustPlatform
-
       ;
   };
 }

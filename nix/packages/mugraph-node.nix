@@ -6,7 +6,7 @@
 let
   inherit (lib) makeBinPath;
 in
-mugraph.risc0Platform.buildRustPackage {
+mugraph.rustPlatform.buildRustPackage {
   pname = "mugraph-node";
   version = "0.0.1";
   src = ../..;

@@ -7,7 +7,7 @@ writeShellApplication {
       printf "risc0\n"
     elif [[ "$1" = "+risc0" ]]
     then
-      printf "${mugraph.packages.risc0-rust}/bin/rustc"
+      printf "${mugraph.rust}/bin/rustc"
     fi
   '';
 }

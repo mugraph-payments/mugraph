@@ -8,11 +8,7 @@
 let
   inherit (stdenv) isDarwin mkDerivation;
 
-  tarballFile =
-    if isDarwin then
-      "rust-toolchain-aarch64-apple-darwin.tar.gz"
-    else
-      "rust-toolchain-x86_64-unknown-linux-gnu.tar.gz";
+  arch = if isDarwin then "aarch64-apple-darwin" else "x86_64-unknown-linux-gnu";
   tarballChecksum =
     if isDarwin then
       "sha256:0zx3lky6jh572gzvdfb43r3f4g62iwpj4i0zfv4vw343v8wk6jxv"
@@ -22,7 +18,7 @@ let
   baseUrl = "https://github.com/risc0/rust/releases/download/r0.1.78.0";
 
   risc0-rust-tarball = fetchurl {
-    url = "${baseUrl}/${tarballFile}";
+    url = "${baseUrl}/rust-toolchain-${arch}.tar.gz";
     sha256 = tarballChecksum;
   };
 in
@@ -39,7 +35,9 @@ mkDerivation {
     mkdir -p $out
     cd $out
     tar xzf ${risc0-rust-tarball}
-    chmod +x bin/*
+
+    rm -rf bin lib/*.dylib lib/rustlib/${arch}
+
     runHook postInstall
     runHook autoPatchelfHook
   '';
