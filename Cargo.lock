@@ -863,6 +863,13 @@ dependencies = [
 name = "mugraph-circuits"
 version = "0.0.1"
 dependencies = [
+ "mugraph-circuits-send-note",
+]
+
+[[package]]
+name = "mugraph-circuits-send-note"
+version = "0.0.1"
+dependencies = [
  "risc0-build",
 ]
 

@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["node", "circuits", "rpc"]
+members = [
+  "node",
+  "circuits/base",
+  "circuits/send-note",
+  "rpc"
+]
 
 # Always optimize; building and running the guest takes much longer without optimization.
 [profile.dev]
