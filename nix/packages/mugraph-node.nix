@@ -23,6 +23,9 @@ rustPlatform.buildRustPackage {
   version = "0.0.1";
   src = ../..;
 
+  auditable = false;
+  doCheck = false;
+
   env.RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
 
   cargoLock.lockFile = ../../Cargo.lock;
@@ -44,6 +47,7 @@ rustPlatform.buildRustPackage {
 
   postInstall = ''
     wrapProgram $out/bin/host \
-      --set PATH ${makeBinPath [ r0vm ]}
+      --set PATH ${makeBinPath [ r0vm ]} \
+      --set RISC0_DEV_MODE 0
   '';
 }
