@@ -12,3 +12,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 [features]
 default = []
 darwin = ["risc0-zkvm/metal"]
+cuda = ["risc0-zkvm/cuda"]

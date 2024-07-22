@@ -5,6 +5,7 @@
   stdenv,
   pkgs,
   darwin,
+  cudaPackages,
 }:
 let
   inherit (stdenv) isDarwin;
@@ -31,11 +32,13 @@ rustPlatform.buildRustPackage {
     rustup-mock
   ];
 
-  buildInputs = optionals isDarwin [
-    darwin.apple_sdk.frameworks.CoreGraphics
-    darwin.apple_sdk.frameworks.Metal
-    darwin.apple_sdk.frameworks.SystemConfiguration
-  ];
+  buildInputs =
+    optionals isDarwin [
+      darwin.apple_sdk.frameworks.CoreGraphics
+      darwin.apple_sdk.frameworks.Metal
+      darwin.apple_sdk.frameworks.SystemConfiguration
+    ]
+    ++ optionals cudaSupport [ cudaPackages.cudatoolkit ];
 
   buildFeatures = [ ] ++ optional isDarwin "darwin" ++ optional cudaSupport "cuda";
 
