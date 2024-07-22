@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 mugraph-circuits = { path = "../circuits/base" }
-risc0-zkvm = { version = "1.0.3" }
+risc0-zkvm = { version = "1.0.3", features = ["std"] }
 serde = "1.0.204"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[features]
+default = []
+darwin = ["risc0-zkvm/metal"]

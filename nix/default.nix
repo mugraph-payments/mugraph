@@ -54,6 +54,8 @@ let
   systemDeps = {
     "aarch64-darwin" = with prev; [
       darwin.apple_sdk.frameworks.SystemConfiguration
+      darwin.apple_sdk.frameworks.Metal
+      darwin.apple_sdk.frameworks.CoreGraphics
       lld
     ];
     "x86_64-darwin" = systemDeps."aarch64-darwin";
