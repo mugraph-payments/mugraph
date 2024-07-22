@@ -11,12 +11,17 @@ It is not a blockchain but a payment network, where **Delegators** hold and tran
 
 ## Documentation
 
+### Introduction
+
 1. [Introduction](./docs/introduction.md)
 1. [Motivation](./docs/motivation.md)
 1. [Roadmap](./docs/roadmap.md)
+1. [Licensing](./docs/licensing.md)
 
-## License
+### The Protocol
 
-Mugraph (and all related projects within the organization) is dual-licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE-APACHE) licenses.
+1. [Delegators](./protocol/delegators.md)
 
-You are free to choose the license that best suits your use case. If neither license meets your needs, please contact us to discuss alternative arrangements.
+### The Future
+
+1. [Cross-node Transfers](./future/cross-node-transfers.md)
