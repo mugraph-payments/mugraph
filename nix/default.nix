@@ -44,10 +44,7 @@ let
   systemFlags = {
     "x86_64-darwin" = [ "-C link-arg=-fuse-ld=lld" ];
     "aarch64-darwin" = systemFlags."x86_64-darwin";
-    "x86_64-linux" = [
-      "-C link-arg=-fuse-ld=mold"
-      "-C link-arg=-Wl,--separate-debug-file"
-    ];
+    "x86_64-linux" = [ "-C link-arg=-fuse-ld=mold" ];
     "aarch64-linux" = systemFlags."x86_64-linux";
   };
 
