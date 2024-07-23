@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 511cba7f8a2f7f96ddc4688e857a202287d3c381628c1cfdd83047fe47993085 # shrinks to input = _TestDiffieHellmanFlowArgs { secret: [], secret_b: [0] }
