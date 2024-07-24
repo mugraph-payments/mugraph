@@ -43,15 +43,21 @@
    - Compute $B' = y + G \cdot r$
    - Return $(y, r, B')$
 
-2. `diffie_hellman::sign_blinded(private_key: Scalar, blinded_point: RistrettoPoint) -> (RistrettoPoint, Signature)`:
+2. `diffie_hellman::sign_blinded(private_key: Scalar, blinded_point: RistrettoPoint) -> (RistrettoPoint, DLEQProof)`:
    - Compute $C' = \text{blinded point} \cdot \text{private key}$
-   - Generate Schnorr signature:
-     - Call `schnorr::sign(private_key, &C'.compress().to_bytes())` to get `signature`
-   - Return $(C', \text{signature})$
+   - Generate DLEQ proof:
+     - Generate random $k$
+     - Compute $R_1 = G \cdot k$
+     - Compute $R_2 = \text{blinded point} \cdot k$
+     - Compute $e = \text{hash}(R_1, R_2, G \cdot \text{private key}, C')$
+     - Compute $s = k + e \cdot \text{private key}$
+   - Return $(C', \text{DLEQProof}(e, s))$
 
-3. `diffie_hellman::unblind_and_verify_signature(signed_point: RistrettoPoint, blinding_factor: Scalar, public_key: RistrettoPoint, signature: Signature) -> Option<RistrettoPoint>`:
-   - Verify Schnorr signature:
-     - Call `schnorr::verify(public_key, signature, &signed_point.compress().to_bytes())`
+3. `diffie_hellman::unblind_and_verify_signature(signed_point: RistrettoPoint, blinding_factor: Scalar, public_key: RistrettoPoint, proof: DLEQProof, blinded_point: RistrettoPoint) -> Option<RistrettoPoint>`:
+   - Verify DLEQ proof:
+     - Compute $R_1 = G \cdot s - \text{public key} \cdot e$
+     - Compute $R_2 = \text{blinded point} \cdot s - \text{signed point} \cdot e$
+     - Check if $e == \text{hash}(R_1, R_2, \text{public key}, \text{signed point})$
    - If verification succeeds, return $C = \text{signed point} - \text{public key} \cdot \text{blinding factor}$
    - Otherwise, return None
 
@@ -94,11 +100,11 @@
 4. Alice sends proof of deposit with amounts, transaction preimage, and $B'$ to $d$.
 
 5. Dave (the delegator) responds:
-   - Call `diffie_hellman::sign_blinded(a, B')` to get $(C', \text{signature})$.
-   - Send the blind signature $(C', \text{signature})$ for each input in $t_0$.
+   - Call `diffie_hellman::sign_blinded(a, B')` to get $(C', \text{DLEQProof})$.
+   - Send the blind signature $(C', \text{DLEQProof})$ for each input in $t_0$.
 
 6. Alice unblind-verifies the signature:
-   - Call `diffie_hellman::unblind_and_verify_signature(C', r, A, signature)` to get $C$.
+   - Call `diffie_hellman::unblind_and_verify_signature(C', r, A, DLEQProof, B')` to get $C$.
    - If $C$ is None, the verification failed.
    - Otherwise, Alice has the unblinded signature $C$.
 
