@@ -4,9 +4,4 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-blake2 = "0.10.6"
-curve25519-dalek = { version = "4.1.3", features = ["rand_core"] }
-proptest = "1.5.0"
-rand = "0.8.5"
-serde = "1.0.204"
-test-strategy = "0.4.0"
+mugraph-core = { path = "../core" }

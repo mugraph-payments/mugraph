@@ -2,7 +2,6 @@ inputs: final: prev:
 let
   inherit (builtins)
     attrNames
-    attrValues
     elemAt
     listToAttrs
     match
@@ -12,22 +11,7 @@ let
   inherit (prev) mkShell;
   inherit (prev.lib) concatStringsSep;
 
-  dependencies = listToAttrs (
-    map (file: {
-      name = elemAt (match "(.*)\\.nix" file) 0;
-      value = final.callPackage (./dependencies + "/${file}") { };
-    }) (attrNames (readDir ./dependencies))
-  );
-
-  rust = final.symlinkJoin {
-    inherit (final.rust-bin.nightly.latest.complete) meta;
-
-    name = "mugraph-rustc";
-    paths = [
-      (final.rust-bin.nightly.latest.complete)
-      dependencies.risc0-rust
-    ];
-  };
+  rust = final.rust-bin.nightly.latest.complete;
 
   rustPlatform = final.makeRustPlatform {
     rustc = rust;
@@ -49,15 +33,16 @@ let
   };
 
   systemDeps = {
-    "aarch64-darwin" = with prev; [
-      darwin.apple_sdk.frameworks.CoreGraphics
-      darwin.apple_sdk.frameworks.Metal
-      darwin.apple_sdk.frameworks.SystemConfiguration
-      lld
+    "x86_64-darwin" = [
+      rust
+      final.lld
     ];
-    "x86_64-darwin" = systemDeps."aarch64-darwin";
-    "x86_64-linux" = with prev; [ mold ];
-    "aarch64-linux" = systemDeps."x86_64-linux";
+    "aarch64-darwin" = systemDeps."x86_64-darwin";
+    "x86_64-linux" = [
+      rust
+      final.mold
+    ];
+    "aarch64-linux" = systemFlags."x86_64-linux";
   };
 
   checks.pre-commit = inputs.pre-commit-hooks.lib.${final.system}.run {
@@ -79,24 +64,18 @@ let
   };
 
   devShells.default = mkShell {
+    inherit (checks.pre-commit) shellHook;
+
     name = "mu-shell";
 
     packages = [
       checks.pre-commit.enabledPackages
-
-      rust
-      (attrValues dependencies)
-      systemDeps.${final.system}
-
       final.cargo-nextest
       final.cargo-watch
+      systemDeps.${final.system}
     ];
 
-    RISC0_DEV_MODE = 1;
-    RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
     RUSTFLAGS = concatStringsSep " " systemFlags.${final.system};
-
-    inherit (checks.pre-commit) shellHook;
   };
 in
 {
@@ -106,10 +85,8 @@ in
       inputs
       packages
       checks
+      rust
+      rustPlatform
       ;
-
-    dependencies = dependencies // {
-      inherit rust rustPlatform;
-    };
   };
 }

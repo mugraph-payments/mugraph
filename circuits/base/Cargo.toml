@@ -1,7 +1,0 @@
-[package]
-name = "mugraph-circuits"
-version = "0.0.1"
-edition = "2021"
-
-[dependencies]
-mugraph-circuits-send-note = { path = "../send-note" }

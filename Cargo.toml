@@ -2,15 +2,9 @@
 resolver = "2"
 members = [
   "node",
-  "circuits/base",
-  "circuits/send-note",
-  "rpc"
+  "core"
 ]
 
-# Always optimize; building and running the guest takes much longer without optimization.
-[profile.dev]
-opt-level = 3
-
 [profile.release]
-debug = 1
-lto = true
+debug = 0
+lto = "thin"
