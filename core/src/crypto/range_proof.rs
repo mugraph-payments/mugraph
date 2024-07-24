@@ -1,119 +1,237 @@
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
-use curve25519_dalek::ristretto::CompressedRistretto;
-use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
-use rand_core::{CryptoRng, RngCore};
+use std::collections::HashMap;
 
-use crate::crypto::{hash_to_curve, G, H};
+use crate::crypto::*;
 use crate::Hash;
 
-pub struct AssetCommitment {
-    pub commitment: CompressedRistretto,
-    pub asset_proof: AssetProof,
-    pub range_proof: RangeProof,
+#[derive(Debug, Clone)]
+pub struct AggregatedAssetCommitment {
+    pub bulletproof: RangeProof,
+    pub commitments: Vec<CompressedRistretto>,
+    pub asset_ids: Vec<Hash>,
 }
 
-pub struct AssetProof {
-    pub t: CompressedRistretto,
-    pub s: Scalar,
-    pub asset_id_commitment: CompressedRistretto,
+fn create_transcript(label: &'static [u8]) -> Transcript {
+    let mut transcript = Transcript::new(label);
+    transcript.append_message(b"protocol-name", b"AggregatedAssetCommitment");
+    transcript
 }
 
-pub fn create_asset_commitment<R: RngCore + CryptoRng>(
-    rng: &mut R,
-    asset_id: &Hash,
-    amount: u64,
-    blinding: Scalar,
-) -> Result<AssetCommitment, &'static str> {
+pub fn create_aggregated_asset_commitment(
+    asset_ids: &[Hash],
+    amounts: &[u64],
+    blindings: &[Scalar],
+) -> Result<AggregatedAssetCommitment, String> {
+    if asset_ids.len() != amounts.len() || amounts.len() != blindings.len() {
+        return Err(format!(
+            "Mismatched input lengths: asset_ids={}, amounts={}, blindings={}",
+            asset_ids.len(),
+            amounts.len(),
+            blindings.len()
+        ));
+    }
+
     let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(64, 1);
 
-    // Create the commitment
-    let h_a = hash_to_curve(asset_id);
-    let commitment = (*G * Scalar::from(amount) + *H * blinding + h_a).compress();
+    // Round up to the next power of 2
+    let party_capacity = amounts.len().next_power_of_two();
+    let bp_gens = BulletproofGens::new(64, party_capacity);
 
-    // Create the range proof
-    let mut prover_transcript = Transcript::new(b"AssetRangeProof");
-    let (range_proof, _) = RangeProof::prove_single(
+    // Pad amounts and blindings to the next power of 2
+    let mut padded_amounts = amounts.to_vec();
+    let mut padded_blindings = blindings.to_vec();
+    while padded_amounts.len() < party_capacity {
+        padded_amounts.push(0);
+        padded_blindings.push(Scalar::ZERO);
+    }
+
+    // Create individual commitments
+    let mut commitments = Vec::with_capacity(amounts.len());
+    let mut transcript = create_transcript(b"AggregatedAssetCommitment");
+
+    for i in 0..amounts.len() {
+        let h_a = hash_to_curve(&asset_ids[i]);
+        let commitment =
+            (pc_gens.B * Scalar::from(amounts[i]) + pc_gens.B_blinding * blindings[i] + h_a)
+                .compress();
+        commitments.push(commitment);
+
+        transcript.append_message(b"asset_id", &asset_ids[i]);
+        transcript.append_message(b"commitment", commitment.as_bytes());
+    }
+
+    // Create the aggregated range proof
+    let (bulletproof, _) = RangeProof::prove_multiple(
         &bp_gens,
         &pc_gens,
-        &mut prover_transcript,
-        amount,
-        &blinding,
+        &mut transcript,
+        &padded_amounts,
+        &padded_blindings,
         64,
     )
-    .map_err(|_| "Failed to create range proof")?;
+    .map_err(|e| format!("Failed to create aggregated range proof: {:?}", e))?;
 
-    // Create the asset proof
-    let r = Scalar::random(rng);
-    let asset_id_commitment = (*G * Scalar::from_bytes_mod_order(*asset_id) + *H * r).compress();
-    let t = (h_a * blinding).compress();
-    let challenge = compute_challenge(&commitment, &asset_id_commitment, &t);
-    let s = r + challenge * blinding;
-
-    Ok(AssetCommitment {
-        commitment,
-        asset_proof: AssetProof {
-            t,
-            s,
-            asset_id_commitment,
-        },
-        range_proof,
+    Ok(AggregatedAssetCommitment {
+        bulletproof,
+        commitments,
+        asset_ids: asset_ids.to_vec(),
     })
 }
 
-pub fn verify_asset_commitment(
-    commitment: &AssetCommitment,
-    asset_id: &Hash,
+pub fn verify_aggregated_asset_commitment(
+    commitment: &AggregatedAssetCommitment,
 ) -> Result<(), &'static str> {
-    let pc_gens = PedersenGens::default();
-    let bp_gens = BulletproofGens::new(64, 1);
+    if commitment.commitments.len() != commitment.asset_ids.len() {
+        return Err("Mismatched commitment and asset_id lengths");
+    }
 
-    // Verify the range proof
-    let mut verifier_transcript = Transcript::new(b"AssetRangeProof");
+    let pc_gens = PedersenGens::default();
+    let party_capacity = commitment.commitments.len().next_power_of_two();
+    let bp_gens = BulletproofGens::new(64, party_capacity);
+
+    // Verify the aggregated range proof
+    let mut verifier_transcript = create_transcript(b"AggregatedAssetCommitment");
+    for (commitment, asset_id) in commitment
+        .commitments
+        .iter()
+        .zip(commitment.asset_ids.iter())
+    {
+        verifier_transcript.append_message(b"asset_id", asset_id);
+        verifier_transcript.append_message(b"commitment", commitment.as_bytes());
+    }
     commitment
-        .range_proof
-        .verify_single(
+        .bulletproof
+        .verify_multiple(
             &bp_gens,
             &pc_gens,
             &mut verifier_transcript,
-            &commitment.commitment,
+            &commitment.commitments,
             64,
         )
-        .map_err(|_| "Range proof verification failed")?;
+        .map_err(|_| "Aggregated range proof verification failed")?;
 
-    // Verify the asset proof
-    let h_a = hash_to_curve(asset_id);
-    let challenge = compute_challenge(
-        &commitment.commitment,
-        &commitment.asset_proof.asset_id_commitment,
-        &commitment.asset_proof.t,
-    );
-    let lhs = *G * commitment.asset_proof.s + h_a * challenge;
-    let rhs = commitment
-        .asset_proof
-        .asset_id_commitment
-        .decompress()
-        .unwrap()
-        + commitment.asset_proof.t.decompress().unwrap() * challenge;
+    // Verify that each commitment is well-formed
+    for (commitment, asset_id) in commitment
+        .commitments
+        .iter()
+        .zip(commitment.asset_ids.iter())
+    {
+        let h_a = hash_to_curve(asset_id);
 
-    if lhs != rhs {
-        return Err("Asset proof verification failed");
+        // Decompress the commitment point
+        let commitment_point = commitment.decompress().ok_or("Invalid commitment point")?;
+
+        // Check that the commitment point is not the identity (all zeros)
+        if commitment_point == RistrettoPoint::identity() {
+            return Err("Commitment cannot be the identity point");
+        }
+
+        // Check that the commitment point is not equal to h_a
+        // This ensures that the commitment includes some amount and/or blinding factor
+        if commitment_point == h_a {
+            return Err("Commitment cannot be equal to the asset-specific generator");
+        }
+
+        // Note: We can't fully verify C = aG + bH + h_a without knowing a and b
     }
 
     Ok(())
 }
 
-fn compute_challenge(
-    commitment: &CompressedRistretto,
-    asset_id_commitment: &CompressedRistretto,
-    t: &CompressedRistretto,
-) -> Scalar {
-    let mut transcript = Transcript::new(b"AssetProofChallenge");
-    transcript.append_message(b"commitment", commitment.as_bytes());
-    transcript.append_message(b"asset_id_commitment", asset_id_commitment.as_bytes());
-    transcript.append_message(b"t", t.as_bytes());
-    let mut challenge_bytes = [0u8; 64];
-    transcript.challenge_bytes(b"challenge", &mut challenge_bytes);
-    Scalar::from_bytes_mod_order_wide(&challenge_bytes)
+pub fn check_balance(
+    inputs: &[AggregatedAssetCommitment],
+    outputs: &[AggregatedAssetCommitment],
+) -> Result<(), &'static str> {
+    let mut balance = HashMap::new();
+
+    // Sum up input commitments
+    for input in inputs {
+        for (commitment, asset_id) in input.commitments.iter().zip(input.asset_ids.iter()) {
+            let entry = balance
+                .entry(asset_id)
+                .or_insert(CompressedRistretto::identity());
+            *entry = (entry.decompress().ok_or("Invalid commitment point")?
+                + commitment.decompress().ok_or("Invalid commitment point")?)
+            .compress();
+        }
+    }
+
+    // Subtract output commitments
+    for output in outputs {
+        for (commitment, asset_id) in output.commitments.iter().zip(output.asset_ids.iter()) {
+            let entry = balance
+                .entry(asset_id)
+                .or_insert(CompressedRistretto::identity());
+            *entry = (entry.decompress().ok_or("Invalid commitment point")?
+                - commitment.decompress().ok_or("Invalid commitment point")?)
+            .compress();
+        }
+    }
+
+    // Check if all balances are zero
+    for (_, commitment) in balance {
+        if commitment != CompressedRistretto::identity() {
+            return Err("Balance check failed");
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::testing::*;
+    use ::proptest::{collection::vec, prelude::*};
+    use curve25519_dalek::scalar::Scalar;
+    use test_strategy::proptest;
+
+    #[proptest(cases = 1)]
+    fn test_create_aggregated_asset_commitment_success(
+        #[strategy(1..=10usize)] num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec(0..u64::MAX, #num_assets))] amounts: Vec<u64>,
+        #[strategy(vec(scalar(), #num_assets))] blindings: Vec<Scalar>,
+    ) {
+        // Test creating an aggregated asset commitment
+        let result = create_aggregated_asset_commitment(&asset_ids, &amounts, &blindings);
+
+        prop_assert!(
+            result.is_ok(),
+            "Failed to create aggregated asset commitment"
+        );
+
+        let commitment = result.unwrap();
+        prop_assert_eq!(
+            commitment.commitments.len(),
+            num_assets,
+            "Incorrect number of commitments"
+        );
+        prop_assert_eq!(
+            commitment.asset_ids.len(),
+            num_assets,
+            "Incorrect number of asset IDs"
+        );
+    }
+
+    #[proptest(cases = 1)]
+    fn test_create_aggregated_asset_commitment_failure(
+        #[strategy(2..=10usize)] _num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec(0..u64::MAX, #_num_assets + 1))] amounts: Vec<u64>,
+        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
+    ) {
+        // Test creating an aggregated asset commitment with invalid data
+        let result = create_aggregated_asset_commitment(&asset_ids, &amounts, &blindings);
+
+        prop_assert!(
+            result.is_err(),
+            "Expected an error due to mismatched input lengths"
+        );
+        prop_assert!(
+            result.unwrap_err().contains("Mismatched input lengths"),
+            "Unexpected error message"
+        );
+    }
 }

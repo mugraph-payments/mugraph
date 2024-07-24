@@ -67,20 +67,6 @@
    - Compute $y = f_\text{htc}(m)$
    - Return 1 if $y \cdot sk = C$, 0 otherwise
 
-1. $\text{Commit}(v, r, H) \rightarrow C$
-
-   This function creates a Pedersen Commitment:
-   
-   - Compute $C = G \cdot v + H \cdot r$
-   - Return $C$
-
-1. $\text{VerifyCommitment}(C, v, r, H) \rightarrow \{0, 1\}$
-
-   This function verifies a Pedersen Commitment:
-   
-   - Compute $C' = G \cdot v + H \cdot r$
-   - Return 1 if $C = C'$, 0 otherwise
-
 1. $\text{SchnorrSign}(sk, m) \rightarrow (R, s)$
 
    This function signs a message $m$ using private key $sk$:
@@ -100,32 +86,39 @@
    - Compute $RHS = R + pk \cdot e$
    - Return 1 if $LHS = RHS$, 0 otherwise
 
-12. $\text{CreateAssetCommitment}(asset\_id, amount, blinding) \rightarrow AssetCommitment$
+12. $\text{CreateAggregatedAssetCommitment}(asset\_ids, amounts, blindings) \rightarrow AggregatedAssetCommitment$
 
-    This function creates an asset commitment:
+    This function creates an aggregated asset commitment using a single Bulletproof:
     
-    - Compute $h_a = \text{hash\_to\_curve}(asset\_id)$
-    - Compute $commitment = G \cdot amount + H \cdot blinding + h_a$
-    - Create a range proof for $amount$
-    - Generate random $r$
-    - Compute $asset\_id\_commitment = G \cdot asset\_id + H \cdot r$
-    - Compute $t = h_a \cdot blinding$
-    - Compute $challenge = \mathcal{H}(commitment, asset\_id\_commitment, t)$
-    - Compute $s = r + challenge \cdot blinding$
-    - Return $AssetCommitment(commitment, AssetProof(t, s, asset\_id\_commitment), range\_proof)$
+    - Initialize a Merlin transcript for the commitment
+    - For each $(asset\_id_i, amount_i, blinding_i)$:
+      - Compute $h_i = \text{hash\_to\_curve}(asset\_id_i)$
+      - Compute $C_i = amount_i \cdot G + blinding_i \cdot H + h_i$
+      - Append $asset\_id_i$ and $C_i$ to the transcript
+    - Create a single 64-bit Bulletproof for all $amounts$ using $blindings$ as the blinding factors
+    - Return $AggregatedAssetCommitment(bulletproof, \{C_i\}, \{asset\_id_i\})$
 
-13. $\text{VerifyAssetCommitment}(commitment, asset\_id) \rightarrow \{0, 1\}$
+13. $\text{VerifyAggregatedAssetCommitment}(commitment) \rightarrow \{0, 1\}$
 
-    This function verifies an asset commitment:
+    This function verifies an aggregated asset commitment:
     
-    - Verify the range proof
-    - Compute $h_a = \text{hash\_to\_curve}(asset\_id)$
-    - Compute $challenge = \mathcal{H}(commitment.commitment, commitment.asset\_proof.asset\_id\_commitment, commitment.asset\_proof.t)$
-    - Compute $LHS = G \cdot commitment.asset\_proof.s + h_a \cdot challenge$
-    - Compute $RHS = commitment.asset\_proof.asset\_id\_commitment + commitment.asset\_proof.t \cdot challenge$
-    - Return 1 if $LHS = RHS$, 0 otherwise
+    - Verify the Bulletproof for all amounts
+    - For each $(C_i, asset\_id_i)$ in the commitment:
+      - Compute $h_i = \text{hash\_to\_curve}(asset\_id_i)$
+      - Verify that $C_i$ is a valid point on the curve
+      - Verify that $C_i$ is not the identity point
+      - Verify that $C_i \neq h_i$
+    - Return 1 if all verifications succeed, 0 otherwise
 
-Note: In the actual implementation, $R$ is a Ristretto point, $s$ is a scalar, and the public key $pk$ is also a Ristretto point. The basepoint $G$ is the Ristretto basepoint.
+14. $\text{CheckBalance}(inputs, outputs) \rightarrow \{0, 1\}$
+
+    This function checks the balance of inputs and outputs:
+    
+    - For each asset type:
+      - Sum all input commitments
+      - Subtract all output commitments
+      - Verify that the result is the identity point (representing zero)
+    - Return 1 if all asset types balance, 0 otherwise
 
 ## Workflows
 
@@ -133,13 +126,10 @@ Note: In the actual implementation, $R$ is a Ristretto point, $s$ is a scalar, a
 
 1. Dave generates a private key $a$ and computes the public key $A = G \cdot a$.
 
-1. Dave generates another generator point $H$, which will be used for Pedersen commitments.
-
 1. Dave sends a transaction to the network, including:
    - A list of active valid keys for the delegator set (currently ${A}$)
    - A list of expired keys for the delegator set (currently empty)
    - $G$: the generator point of the elliptic curve
-   - $H$: the second generator point for Pedersen commitments
 
 1. Dave creates the vault $d_v$ on the network.
 
@@ -170,62 +160,56 @@ Note: In the actual implementation, $R$ is a Ristretto point, $s$ is a scalar, a
 
 1. Dave can verify Alice's proof by calling $\text{VerifyUnblindedPoint}(a, x, C)$.
 
-### Swapping Tokens (Multi-Asset Version with Visible Asset Types and Asset Commitments)
+### Swapping Tokens (Single Proof Version)
 
 1. Define asset types $\{A_1, A_2, ..., A_k\}$.
 
-2. Alice prepares input proofs $P_1, P_2, ..., P_n$ with amounts $\{a_{1,j}, a_{2,j}, ..., a_{n,j}\}$ for each asset type $j$.
+2. Alice prepares input amounts $\{a_{1,j}, a_{2,j}, ..., a_{n,j}\}$ for each asset type $j$.
 
-3. Alice generates output secret messages $x_1, x_2, ..., x_m$ with amounts $\{b_{1,j}, b_{2,j}, ..., b_{m,j}\}$ for each asset type $j$.
+3. Alice generates output amounts $\{b_{1,j}, b_{2,j}, ..., b_{m,j}\}$ for each asset type $j$.
 
-4. For each input and asset type, Alice creates an asset commitment:
-   - Generate random blinding factor $r_{i,j}$
-   - Call $\text{CreateAssetCommitment}(A_j, a_{i,j}, r_{i,j})$ to obtain $C_{i,j}^{in}$
+4. Alice creates a single aggregated asset commitment for all inputs and outputs:
+   - Generate random blinding factors $r_{i,j}$ for inputs and $s_{i,j}$ for outputs
+   - Call $\text{CreateAggregatedAssetCommitment}(\{A_j\}, \{a_{i,j}\} \cup \{b_{i,j}\}, \{r_{i,j}\} \cup \{s_{i,j}\})$ to obtain $C_{agg}$
 
-5. For each output and asset type, Alice creates an asset commitment:
-   - Generate random blinding factor $s_{i,j}$
-   - Call $\text{CreateAssetCommitment}(A_j, b_{i,j}, s_{i,j})$ to obtain $C_{i,j}^{out}$
+5. Alice generates output secret messages $x_1, x_2, ..., x_m$ corresponding to the output amounts.
 
-6. Alice computes the difference commitment for each asset type:
-   $C_j = \sum_{i=1}^n C_{i,j}^{in}.commitment - \sum_{i=1}^m C_{i,j}^{out}.commitment$
-
-7. Alice blinds each output secret message:
+6. Alice blinds each output secret message:
    - Call $\text{Blind}(x_i)$ to obtain $(y_i, t_i, B'_i)$
 
-8. Alice sends to Dave:
-   - Input proofs: $\{P_1, P_2, ..., P_n\}$
-   - Input asset commitments: $\{C_{i,j}^{in}\}$ for all $i$ and $j$
-   - Output asset commitments: $\{C_{i,j}^{out}\}$ for all $i$ and $j$
-   - Difference commitments: $\{C_1, C_2, ..., C_k\}$
+7. Alice sends to Dave:
+   - Input proofs: $\{P_1, P_2, ..., P_n\}$ (proofs of ownership for input amounts)
+   - Aggregated asset commitment: $C_{agg}$
    - Blinded output points: $\{B'_1, B'_2, ..., B'_m\}$
 
-9. Dave verifies:
+8. Dave verifies:
    - Validity of input proofs $P_1, ..., P_n$
-   - All asset commitments using $\text{VerifyAssetCommitment}$
-   - For each asset type $j$: $C_j = \mathcal{O}$ (the identity element)
+   - Aggregated asset commitment using $\text{VerifyAggregatedAssetCommitment}$
+   - That the sum of input amounts equals the sum of output amounts for each asset type (this is implicitly verified by the structure of the aggregated commitment)
 
-10. If verified, Dave blind signs each $B'_i$.
+9. If verified, Dave blind signs each $B'_i$.
 
-11. Alice unblinds and verifies signatures, obtaining new proofs $\{(x_1, C_1), ..., (x_m, C_m)\}$.
+10. Alice unblinds and verifies signatures, obtaining new proofs $\{(x_1, C_1), ..., (x_m, C_m)\}$.
 
-12. Alice stores new proofs; system invalidates original input proofs.
+11. Alice stores new proofs; system invalidates original input proofs.
 
-### Creating and Verifying Asset Commitments
+### Creating and Verifying Aggregated Asset Commitments
 
-1. To create an asset commitment for asset type $A$ with amount $v$:
-   - Generate a random blinding factor $r$
-   - Call $\text{CreateAssetCommitment}(A, v, r)$ to obtain $C$
-   - Store $(A, v, r, C)$ securely
+1. To create an aggregated asset commitment for multiple asset types and amounts:
+   - For each asset type $A_i$ and amount $v_i$:
+     - Generate a random blinding factor $r_i$
+   - Call $\text{CreateAggregatedAssetCommitment}(\{A_i\}, \{v_i\}, \{r_i\})$ to obtain $C_{agg}$
+   - The function internally creates individual commitments and a single Bulletproof for all amounts
 
-2. To prove ownership of an asset commitment $C$:
-   - Retrieve the stored $(A, v, r, C)$
-   - Send $(A, v, r, C)$ to the verifier
+2. To verify an aggregated asset commitment:
+   - Receive the aggregated asset commitment $C_{agg}$
+   - Call $\text{VerifyAggregatedAssetCommitment}(C_{agg})$
+   - The function verifies the Bulletproof and checks each commitment's structure
 
-3. To verify an asset commitment:
-   - Receive $(A, v, r, C)$ from the prover
-   - Call $\text{VerifyAssetCommitment}(C, A)$
-   - If verification succeeds, the commitment is valid for asset type $A$
-   - To verify the amount, check that $C.commitment = G \cdot v + H \cdot r + \text{hash\_to\_curve}(A)$
+3. To check the balance in a transaction:
+   - Collect all input commitments $\{C_{in}\}$ and output commitments $\{C_{out}\}$
+   - Call $\text{CheckBalance}(\{C_{in}\}, \{C_{out}\})$
+   - The function ensures that for each asset type, inputs equal outputs
 
 ### Receiving Swapped Tokens
 

@@ -82,16 +82,9 @@ pub fn verify_unblinded_point(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::testing::*;
     use proptest::prelude::*;
     use test_strategy::proptest;
-
-    fn scalar() -> impl Strategy<Value = Scalar> {
-        any::<[u8; 32]>().prop_map(|bytes| Scalar::from_bytes_mod_order(bytes))
-    }
-
-    fn keypair() -> impl Strategy<Value = (Scalar, RistrettoPoint)> {
-        scalar().prop_map(|s| (s, RISTRETTO_BASEPOINT_POINT * s))
-    }
 
     #[proptest]
     fn test_blind_diffie_hellman_flow(

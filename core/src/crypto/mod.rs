@@ -8,7 +8,11 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 
-pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
+pub use curve25519_dalek::{
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    scalar::Scalar,
+    traits::*,
+};
 
 pub const DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_HASH_TO_CURVE_";
 pub const DLEQ_DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_DLEQ_PROOF_";
@@ -38,4 +42,18 @@ pub fn generate_keypair() -> (SecretKey, PublicKey) {
     let privkey = Scalar::random(&mut OsRng);
     let pubkey = RISTRETTO_BASEPOINT_POINT * privkey;
     (privkey, pubkey)
+}
+
+#[cfg(test)]
+pub mod testing {
+    use super::*;
+    use proptest::prelude::*;
+
+    pub fn scalar() -> impl Strategy<Value = Scalar> {
+        any::<[u8; 32]>().prop_map(|bytes| Scalar::from_bytes_mod_order(bytes))
+    }
+
+    pub fn keypair() -> impl Strategy<Value = (Scalar, RistrettoPoint)> {
+        scalar().prop_map(|s| (s, RISTRETTO_BASEPOINT_POINT * s))
+    }
 }
