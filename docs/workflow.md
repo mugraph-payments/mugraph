@@ -86,60 +86,62 @@
    - Compute $RHS = R + pk \cdot e$
    - Return 1 if $LHS = RHS$, 0 otherwise
 
-12. $\text{CreateAggregatedAssetCommitment}(asset\_ids, amounts, blindings) \rightarrow AggregatedAssetCommitment$
+12. $\text{CreateAggregatedAssetCommitment}(a, v, b) \rightarrow AggregatedAssetCommitment$
 
     This function creates an aggregated asset commitment using a single Bulletproof:
     
     - Initialize a Merlin transcript for the commitment
-    - For each $(asset\_id_i, amount_i, blinding_i)$:
-      - Compute $h_i = \text{hash\_to\_curve}(asset\_id_i)$
-      - Compute $C_i = amount_i \cdot G + blinding_i \cdot H + h_i$
-      - Append $asset\_id_i$ and $C_i$ to the transcript
-    - Create a single 64-bit Bulletproof for all $amounts$ using $blindings$ as the blinding factors
-    - Return $AggregatedAssetCommitment(bulletproof, \{C_i\}, \{asset\_id_i\})$
+    - For each $(a_i, v_i, b_i)$:
+      - Compute $h_i = \text{hash to curve}(a_i)$
+      - Compute $C_i = v_i \cdot G + b_i \cdot H + h_i$
+      - Append $a_i$ and $C_i$ to the transcript
+    - Create a single 64-bit Bulletproof for all $v$ using $b$ as the blinding factors
+    - Return $AggregatedAssetCommitment(bulletproof, \{C_i\}, \{a_i\})$
 
     Where:
+    - $a$ are asset ids (32-byte Hashes)
+    - $v$ are amounts
+    - $b$ are blinding factors
     - $bulletproof$ is a RangeProof
     - $\{C_i\}$ are CompressedRistretto points
-    - $\{asset\_id_i\}$ are 32-byte Hashes
 
-13. $\text{VerifyAggregatedAssetCommitment}(commitment) \rightarrow \{0, 1\}$
+13. $\text{VerifyAggregatedAssetCommitment}(c) \rightarrow \{0, 1\}$
 
     This function verifies an aggregated asset commitment:
     
     - Verify the Bulletproof for all amounts
-    - For each $(C_i, asset\_id_i)$ in the commitment:
-      - Compute $h_i = \text{hash\_to\_curve}(asset\_id_i)$
+    - For each $(C_i, a_i)$ in the commitment $c$:
+      - Compute $h_i = \text{hash to curve}(a_i)$
       - Verify that $C_i$ is a valid point on the curve (not the identity point)
       - Verify that $C_i \neq h_i$ (ensures the commitment includes some amount and/or blinding factor)
     - Return 1 if all verifications succeed, 0 otherwise
 
-14. $\text{CheckBalance}(inputs, outputs) \rightarrow \{0, 1\}$
+14. $\text{CheckBalance}(i, o) \rightarrow \{0, 1\}$
 
     This function checks the balance of inputs and outputs:
     
     - Initialize a HashMap to track balances for each asset type
-    - For each input commitment:
+    - For each input commitment in $i$:
       - Add the commitment to the balance of its asset type
-    - For each output commitment:
+    - For each output commitment in $o$:
       - Subtract the commitment from the balance of its asset type
     - Verify that the final balance for each asset type is the identity point (representing zero)
     - Return 1 if all asset types balance, 0 otherwise
 
 15. $\text{Proof}$: A structure containing:
-    - $asset\_id$: Hash
-    - $amount\_commitment$: RistrettoPoint (Pedersen Commitment on the input amount)
-    - $secret$: RistrettoPoint
-    - $unblinded\_signature$: RistrettoPoint
+    - $\text{asset id}$: Hash
+    - $\text{amount commitment}$: RistrettoPoint (Pedersen Commitment on the input amount)
+    - $\text{secret}$: RistrettoPoint
+    - $\text{unblinded signature}$: RistrettoPoint
 
 16. $\text{BlindedMessage}$: A structure containing:
-    - $asset\_id$: Hash
-    - $amount\_commitment$: RistrettoPoint (Pedersen Commitment on the output amount)
-    - $blinded\_point$: RistrettoPoint
+    - $\text{asset id}$: Hash
+    - $\text{amount commitment}$: RistrettoPoint (Pedersen Commitment on the output amount)
+    - $\text{blinded point}$: RistrettoPoint
 
 17. $\text{BlindSignature}$: A structure containing:
-    - $signed\_point$: RistrettoPoint
-    - $dleq\_proof$: DLEQProof
+    - $\text{signed point}$: RistrettoPoint
+    - $\text{dleq proof}$: DLEQProof
 
 ## Workflows
 
