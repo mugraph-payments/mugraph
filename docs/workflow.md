@@ -98,6 +98,11 @@
     - Create a single 64-bit Bulletproof for all $amounts$ using $blindings$ as the blinding factors
     - Return $AggregatedAssetCommitment(bulletproof, \{C_i\}, \{asset\_id_i\})$
 
+    Where:
+    - $bulletproof$ is a RangeProof
+    - $\{C_i\}$ are CompressedRistretto points
+    - $\{asset\_id_i\}$ are 32-byte Hashes
+
 13. $\text{VerifyAggregatedAssetCommitment}(commitment) \rightarrow \{0, 1\}$
 
     This function verifies an aggregated asset commitment:
@@ -105,20 +110,36 @@
     - Verify the Bulletproof for all amounts
     - For each $(C_i, asset\_id_i)$ in the commitment:
       - Compute $h_i = \text{hash\_to\_curve}(asset\_id_i)$
-      - Verify that $C_i$ is a valid point on the curve
-      - Verify that $C_i$ is not the identity point
-      - Verify that $C_i \neq h_i$
+      - Verify that $C_i$ is a valid point on the curve (not the identity point)
+      - Verify that $C_i \neq h_i$ (ensures the commitment includes some amount and/or blinding factor)
     - Return 1 if all verifications succeed, 0 otherwise
 
 14. $\text{CheckBalance}(inputs, outputs) \rightarrow \{0, 1\}$
 
     This function checks the balance of inputs and outputs:
     
-    - For each asset type:
-      - Sum all input commitments
-      - Subtract all output commitments
-      - Verify that the result is the identity point (representing zero)
+    - Initialize a HashMap to track balances for each asset type
+    - For each input commitment:
+      - Add the commitment to the balance of its asset type
+    - For each output commitment:
+      - Subtract the commitment from the balance of its asset type
+    - Verify that the final balance for each asset type is the identity point (representing zero)
     - Return 1 if all asset types balance, 0 otherwise
+
+15. $\text{Proof}$: A structure containing:
+    - $asset\_id$: Hash
+    - $amount\_commitment$: RistrettoPoint (Pedersen Commitment on the input amount)
+    - $secret$: RistrettoPoint
+    - $unblinded\_signature$: RistrettoPoint
+
+16. $\text{BlindedMessage}$: A structure containing:
+    - $asset\_id$: Hash
+    - $amount\_commitment$: RistrettoPoint (Pedersen Commitment on the output amount)
+    - $blinded\_point$: RistrettoPoint
+
+17. $\text{BlindSignature}$: A structure containing:
+    - $signed\_point$: RistrettoPoint
+    - $dleq\_proof$: DLEQProof
 
 ## Workflows
 

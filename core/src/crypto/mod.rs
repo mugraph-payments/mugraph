@@ -1,5 +1,4 @@
 pub mod diffie_hellman;
-pub mod pedersen;
 pub mod range_proof;
 pub mod schnorr;
 
