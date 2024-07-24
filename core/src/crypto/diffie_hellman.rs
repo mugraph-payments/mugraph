@@ -79,11 +79,6 @@ pub fn verify_unblinded(
     &y * private_key == *unblinded_point
 }
 
-pub fn pedersen_commit(value: Scalar, blinding_factor: Scalar) -> RistrettoPoint {
-    let h = hash_to_curve(b"PEDERSEN_H");
-    RISTRETTO_BASEPOINT_POINT * value + h * blinding_factor
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,5 @@
 pub mod diffie_hellman;
+pub mod pedersen;
 pub mod schnorr;
 
 use blake2::{Blake2b, Digest};
