@@ -128,21 +128,6 @@
     - Verify that the final balance for each asset type is the identity point (representing zero)
     - Return 1 if all asset types balance, 0 otherwise
 
-15. $\text{Proof}$: A structure containing:
-    - $\text{asset id}$: Hash
-    - $\text{amount commitment}$: RistrettoPoint (Pedersen Commitment on the input amount)
-    - $\text{secret}$: RistrettoPoint
-    - $\text{unblinded signature}$: RistrettoPoint
-
-16. $\text{BlindedMessage}$: A structure containing:
-    - $\text{asset id}$: Hash
-    - $\text{amount commitment}$: RistrettoPoint (Pedersen Commitment on the output amount)
-    - $\text{blinded point}$: RistrettoPoint
-
-17. $\text{BlindSignature}$: A structure containing:
-    - $\text{signed point}$: RistrettoPoint
-    - $\text{dleq proof}$: DLEQProof
-
 ## Workflows
 
 ### Setting Up a Delegator
@@ -183,7 +168,7 @@
 
 1. Dave can verify Alice's proof by calling $\text{VerifyUnblindedPoint}(a, x, C)$.
 
-### Swapping Tokens (Single Proof Version)
+### Swapping Tokens
 
 1. Define asset types $\{A_1, A_2, ..., A_k\}$.
 
