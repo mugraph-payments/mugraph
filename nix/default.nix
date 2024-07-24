@@ -83,10 +83,13 @@ in
     inherit
       devShells
       inputs
-      packages
       checks
       rust
       rustPlatform
       ;
+
+    packages = packages // {
+      default = packages.mugraph-node;
+    };
   };
 }
