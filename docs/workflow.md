@@ -28,23 +28,23 @@
    - Generate random $k$
    - Compute $r = G \cdot k$
    - Compute $e = \text{hash}(r, \text{message})$
-   - Compute $s = k + e \cdot \text{private\_key}$
+   - Compute $s = k + e \cdot \text{private key}$
    - Return Signature$(r, s)$
 
 2. `schnorr::verify(public_key: RistrettoPoint, signature: Signature, message: [u8]) -> bool`:
    - Compute $e = \text{hash}(r, \text{message})$
-   - Check if $G \cdot s = r + \text{public\_key} \cdot e$
+   - Check if $G \cdot s = r + \text{public key} \cdot e$
 
 ### Blind Diffie-Hellman Key Exchange (BDHKE)
 
 1. `diffie_hellman::blind(secret_message: [u8]) -> (RistrettoPoint, Scalar, RistrettoPoint)`:
-   - Compute $y = f_\text{htc}(\text{secret\_message})$
+   - Compute $y = f_\text{htc}(\text{secret message})$
    - Generate random $r$
    - Compute $B' = y + G \cdot r$
    - Return $(y, r, B')$
 
 2. `diffie_hellman::sign_blinded(private_key: Scalar, blinded_point: RistrettoPoint) -> (RistrettoPoint, Signature)`:
-   - Compute $C' = \text{blinded\_point} \cdot \text{private\_key}$
+   - Compute $C' = \text{blinded point} \cdot \text{private key}$
    - Generate Schnorr signature:
      - Call `schnorr::sign(private_key, &C'.compress().to_bytes())` to get `signature`
    - Return $(C', \text{signature})$
@@ -52,22 +52,22 @@
 3. `diffie_hellman::unblind_and_verify_signature(signed_point: RistrettoPoint, blinding_factor: Scalar, public_key: RistrettoPoint, signature: Signature) -> Option<RistrettoPoint>`:
    - Verify Schnorr signature:
      - Call `schnorr::verify(public_key, signature, &signed_point.compress().to_bytes())`
-   - If verification succeeds, return $C = \text{signed\_point} - \text{public\_key} \cdot \text{blinding\_factor}$
+   - If verification succeeds, return $C = \text{signed point} - \text{public key} \cdot \text{blinding factor}$
    - Otherwise, return None
 
 4. `diffie_hellman::verify_unblinded_point(private_key: Scalar, message: [u8], unblinded_point: RistrettoPoint) -> bool`:
    - Compute $y = f_\text{htc}(\text{message})$
-   - Check if $y \cdot \text{private\_key} = \text{unblinded\_point}$
+   - Check if $y \cdot \text{private key} = \text{unblinded point}$
 
 ### Pedersen Commitments
 
 1. `pedersen::commit(value: Scalar, blinding_factor: Scalar, h: RistrettoPoint) -> RistrettoPoint`:
-   - Compute $\text{commitment} = G \cdot \text{value} + h \cdot \text{blinding\_factor}$
+   - Compute $\text{commitment} = G \cdot \text{value} + h \cdot \text{blinding factor}$
    - Return $\text{commitment}$
 
 2. `pedersen::verify(commitment: RistrettoPoint, value: Scalar, blinding_factor: Scalar, h: RistrettoPoint) -> bool`:
-   - Compute $\text{computed\_commitment} = G \cdot \text{value} + h \cdot \text{blinding\_factor}$
-   - Check if $\text{commitment} == \text{computed\_commitment}$
+   - Compute $\text{computed commitment} = G \cdot \text{value} + h \cdot \text{blinding factor}$
+   - Check if $\text{commitment} == \text{computed commitment}$
 
 ## Workflows
 
