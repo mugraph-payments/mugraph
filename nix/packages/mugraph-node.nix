@@ -17,12 +17,14 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = ../../Cargo.lock;
 
-  buildInputs = optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
+  buildInputs = [
+    makeWrapper
+  ] ++ optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
 
   useNextest = true;
 
   postInstall = ''
-    ${makeWrapper}/bin/wrapProgram $out/bin/mugraph-node \
+    wrapProgram $out/bin/mugraph-node \
       --set RUST_LOG info
   '';
 }
