@@ -1,4 +1,7 @@
-use crate::{crypto::RistrettoPoint, Hash};
+use crate::{
+    crypto::{RistrettoPoint, Scalar},
+    Hash,
+};
 
 pub struct Proof {
     pub asset_id: Hash,

@@ -1,9 +1,11 @@
 pub mod diffie_hellman;
 pub mod pedersen;
+pub mod range_proof;
 pub mod schnorr;
 
 use blake2::{Blake2b, Digest};
 use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 
 pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
@@ -13,6 +15,11 @@ pub const DLEQ_DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_DLEQ_PROOF_";
 
 pub type PublicKey = RistrettoPoint;
 pub type SecretKey = Scalar;
+
+lazy_static! {
+    pub static ref G: RistrettoPoint = RISTRETTO_BASEPOINT_POINT;
+    pub static ref H: RistrettoPoint = RistrettoPoint::random(&mut OsRng);
+}
 
 pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     let mut hasher = Blake2b::new();

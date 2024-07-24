@@ -3,7 +3,9 @@
 ## Assumptions
 
 - Mithril aggregators generate non-repudiable proofs that a transaction has been included in a valid block with sufficient stake validation.
-- [Additional assumptions will be added as the system develops]
+- All Vaults initialize with a default balance of Zero.
+- All hash functions utilize Blake2B-256.
+- All cryptographic operations are performed using the Ristretto25519 curve.
 
 ## Participants
 
@@ -98,6 +100,31 @@
    - Compute $RHS = R + pk \cdot e$
    - Return 1 if $LHS = RHS$, 0 otherwise
 
+12. $\text{CreateAssetCommitment}(asset\_id, amount, blinding) \rightarrow AssetCommitment$
+
+    This function creates an asset commitment:
+    
+    - Compute $h_a = \text{hash\_to\_curve}(asset\_id)$
+    - Compute $commitment = G \cdot amount + H \cdot blinding + h_a$
+    - Create a range proof for $amount$
+    - Generate random $r$
+    - Compute $asset\_id\_commitment = G \cdot asset\_id + H \cdot r$
+    - Compute $t = h_a \cdot blinding$
+    - Compute $challenge = \mathcal{H}(commitment, asset\_id\_commitment, t)$
+    - Compute $s = r + challenge \cdot blinding$
+    - Return $AssetCommitment(commitment, AssetProof(t, s, asset\_id\_commitment), range\_proof)$
+
+13. $\text{VerifyAssetCommitment}(commitment, asset\_id) \rightarrow \{0, 1\}$
+
+    This function verifies an asset commitment:
+    
+    - Verify the range proof
+    - Compute $h_a = \text{hash\_to\_curve}(asset\_id)$
+    - Compute $challenge = \mathcal{H}(commitment.commitment, commitment.asset\_proof.asset\_id\_commitment, commitment.asset\_proof.t)$
+    - Compute $LHS = G \cdot commitment.asset\_proof.s + h_a \cdot challenge$
+    - Compute $RHS = commitment.asset\_proof.asset\_id\_commitment + commitment.asset\_proof.t \cdot challenge$
+    - Return 1 if $LHS = RHS$, 0 otherwise
+
 Note: In the actual implementation, $R$ is a Ristretto point, $s$ is a scalar, and the public key $pk$ is also a Ristretto point. The basepoint $G$ is the Ristretto basepoint.
 
 ## Workflows
@@ -143,55 +170,62 @@ Note: In the actual implementation, $R$ is a Ristretto point, $s$ is a scalar, a
 
 1. Dave can verify Alice's proof by calling $\text{VerifyUnblindedPoint}(a, x, C)$.
 
-### Swapping Tokens
+### Swapping Tokens (Multi-Asset Version with Visible Asset Types and Asset Commitments)
 
-The swap operation allows users to split, combine, or exchange tokens while maintaining privacy of the amounts. It involves multiple inputs (Proofs) and outputs (BlindedMessages), using Pedersen commitments to hide the actual amounts.
+1. Define asset types $\{A_1, A_2, ..., A_k\}$.
 
-To swap tokens:
+2. Alice prepares input proofs $P_1, P_2, ..., P_n$ with amounts $\{a_{1,j}, a_{2,j}, ..., a_{n,j}\}$ for each asset type $j$.
 
-1. Alice prepares her existing tokens. She has proofs $P_1, P_2, ..., P_n$ with corresponding amounts $a_1, a_2, ..., a_n$.
+3. Alice generates output secret messages $x_1, x_2, ..., x_m$ with amounts $\{b_{1,j}, b_{2,j}, ..., b_{m,j}\}$ for each asset type $j$.
 
-1. Alice generates new secret messages $x_1, x_2, ..., x_m$ for the desired output tokens with corresponding amounts $b_1, b_2, ..., b_m$.
+4. For each input and asset type, Alice creates an asset commitment:
+   - Generate random blinding factor $r_{i,j}$
+   - Call $\text{CreateAssetCommitment}(A_j, a_{i,j}, r_{i,j})$ to obtain $C_{i,j}^{in}$
 
-1. For each input amount $a_i$, Alice creates a Pedersen commitment:
-   - Generate a random blinding factor $r_i$
-   - Call $\text{Commit}(a_i, r_i, H)$ to obtain $C_i^{in}$
+5. For each output and asset type, Alice creates an asset commitment:
+   - Generate random blinding factor $s_{i,j}$
+   - Call $\text{CreateAssetCommitment}(A_j, b_{i,j}, s_{i,j})$ to obtain $C_{i,j}^{out}$
 
-1. For each output amount $b_i$, Alice creates a Pedersen commitment:
-   - Generate a random blinding factor $s_i$
-   - Call $\text{Commit}(b_i, s_i, H)$ to obtain $C_i^{out}$
+6. Alice computes the difference commitment for each asset type:
+   $C_j = \sum_{i=1}^n C_{i,j}^{in}.commitment - \sum_{i=1}^m C_{i,j}^{out}.commitment$
 
-1. For each secret message $x_i$, Alice performs the blinding operation:
+7. Alice blinds each output secret message:
    - Call $\text{Blind}(x_i)$ to obtain $(y_i, t_i, B'_i)$
 
-1. Alice prepares the swap request:
-   - Inputs: $\{(P_1, C_1^{in}, r_1), (P_2, C_2^{in}, r_2), ..., (P_n, C_n^{in}, r_n)\}$
-   - Outputs: $\{(B'_1, C_1^{out}, s_1), (B'_2, C_2^{out}, s_2), ..., (B'_m, C_m^{out}, s_m)\}$
-   
-   Alice keeps the actual amounts $a_i$ and $b_i$ private.
+8. Alice sends to Dave:
+   - Input proofs: $\{P_1, P_2, ..., P_n\}$
+   - Input asset commitments: $\{C_{i,j}^{in}\}$ for all $i$ and $j$
+   - Output asset commitments: $\{C_{i,j}^{out}\}$ for all $i$ and $j$
+   - Difference commitments: $\{C_1, C_2, ..., C_k\}$
+   - Blinded output points: $\{B'_1, B'_2, ..., B'_m\}$
 
-1. Alice sends the swap request to Dave's delegator node $d$.
+9. Dave verifies:
+   - Validity of input proofs $P_1, ..., P_n$
+   - All asset commitments using $\text{VerifyAssetCommitment}$
+   - For each asset type $j$: $C_j = \mathcal{O}$ (the identity element)
 
-1. Dave verifies the input proofs and checks that the sum of input commitments equals the sum of output commitments:
-   - Compute $\sum_{i=1}^n C_i^{in} = \sum_{i=1}^m C_i^{out}$
-   - This equality holds due to the homomorphic property of Pedersen commitments
+10. If verified, Dave blind signs each $B'_i$.
 
-1. For each output $(B'_i, C_i^{out}, s_i)$, Dave:
-   - Calls $\text{SignBlinded}(a, B'_i)$ to obtain $(C'_i, \text{DLEQProof}_i)$
+11. Alice unblinds and verifies signatures, obtaining new proofs $\{(x_1, C_1), ..., (x_m, C_m)\}$.
 
-10. Dave sends the blind signatures $\{(C'_1, \text{DLEQProof}_1), ..., (C'_m, \text{DLEQProof}_m)\}$ to Alice.
+12. Alice stores new proofs; system invalidates original input proofs.
 
-11. For each received blind signature, Alice:
-    - Calls $\text{UnblindAndVerifySignature}(C'_i, t_i, A, \text{DLEQProof}_i, B'_i)$ to obtain $C_i$
-    - If any $C_i$ is None, the verification fails
+### Creating and Verifying Asset Commitments
 
-12. Alice now has new proofs $\{(x_1, C_1), (x_2, C_2), ..., (x_m, C_m)\}$ with corresponding amounts $\{b_1, b_2, ..., b_m\}$
+1. To create an asset commitment for asset type $A$ with amount $v$:
+   - Generate a random blinding factor $r$
+   - Call $\text{CreateAssetCommitment}(A, v, r)$ to obtain $C$
+   - Store $(A, v, r, C)$ securely
 
-13. Alice stores these new proofs and their associated amounts in her database.
+2. To prove ownership of an asset commitment $C$:
+   - Retrieve the stored $(A, v, r, C)$
+   - Send $(A, v, r, C)$ to the verifier
 
-14. The system invalidates the original input proofs $P_1, P_2, ..., P_n$, preventing their further use.
-
-Note: To preserve privacy, Alice should randomize the order of both inputs and outputs in the swap request.
+3. To verify an asset commitment:
+   - Receive $(A, v, r, C)$ from the prover
+   - Call $\text{VerifyAssetCommitment}(C, A)$
+   - If verification succeeds, the commitment is valid for asset type $A$
+   - To verify the amount, check that $C.commitment = G \cdot v + H \cdot r + \text{hash\_to\_curve}(A)$
 
 ### Receiving Swapped Tokens
 
