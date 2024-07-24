@@ -50,7 +50,7 @@ Bob makes $K$ publicly available.
 Alice performs the following steps:
 
 a. Choose a secret message $x$. In ecash protocols, this message is remembered to prevent double spending.
-b. Compute $Y = \text{hash\_to\_curve}(x)$, where $\text{hash\_to\_curve}$ is a function that maps the secret to a point on the elliptic curve.
+b. Compute $Y = H(x)$, where $H$ is a function that maps the secret to a point on the elliptic curve (hash to curve).
 c. Generate a random blinding factor $r$.
 d. Compute the blinded point $B'$:
 
@@ -92,7 +92,7 @@ $$
 
 To verify the signature, Alice (or any verifier) can check if:
 
-$$C = k \cdot \text{hash\_to\_curve}(x)$$
+$$C = k \cdot H(x)$$
 
 If this equality holds, it proves that $C$ originated from Bob's private key $k$, without Bob knowing the original message $x$.
 
@@ -100,7 +100,7 @@ If this equality holds, it proves that $C$ originated from Bob's private key $k$
 
 1. The security of BDHKE relies on the hardness of the Elliptic Curve Discrete Logarithm Problem (ECDLP).
 2. The blinding factor $r$ must be kept secret by Alice to maintain the blindness property.
-3. The $\text{hash\_to\_curve}$ function should be carefully chosen to ensure it maps uniformly to the elliptic curve and does not introduce vulnerabilities.
+3. The $H$ function should be carefully chosen to ensure it maps uniformly to the elliptic curve and does not introduce vulnerabilities.
 
 ## Additional Security Measure: Discrete Log Equality Proof
 
@@ -110,23 +110,26 @@ Alice provides a Discrete Log Equality Proof (DLEQ) to demonstrate that the $a$ 
 
 1. Alice generates a random nonce $r$.
 2. Alice computes:
-   $$
-   \begin{align}
-   R_1 &= r \cdot G \\
-   R_2 &= r \cdot B' \\
-   e &= \text{hash}(R_1, R_2, A, C') \\
-   s &= r + e \cdot a
-   \end{align}
-   $$
+
+$$
+\begin{align}
+R_1 &= r \cdot G \\
+R_2 &= r \cdot B' \\
+e &= \text{hash}(R_1, R_2, A, C') \\
+s &= r + e \cdot a
+\end{align}
+$$
+
 3. Alice sends $e$ and $s$ to Bob.
 4. Bob verifies the proof by checking:
-   $$
-   \begin{align}
-   R_1 &= s \cdot G - e \cdot A \\
-   R_2 &= s \cdot B' - e \cdot C' \\
-   e &= \text{hash}(R_1, R_2, A, C')
-   \end{align}
-   $$
+
+$$
+\begin{align}
+R_1 &= s \cdot G - e \cdot A \\
+R_2 &= s \cdot B' - e \cdot C' \\
+e &= \text{hash}(R_1, R_2, A, C')
+\end{align}
+$$
 
 If the verification passes, Bob can be confident that Alice correctly generated $C'$.
 
