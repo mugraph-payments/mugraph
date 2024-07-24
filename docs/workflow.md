@@ -143,6 +143,39 @@
 
 ### Minting Tokens
 
+```mermaid
+sequenceDiagram
+    participant Alice
+    participant Network
+    participant Dave as Dave (Delegator)
+    participant ma as Mithril Aggregator
+    participant dv as Dave's Vault
+
+    Alice->>dv: Deposit 100 ADA
+    dv-->>Alice: Confirm deposit
+    Alice->>ma: Generate transaction snapshot (t0)
+    ma-->>Alice: Return transaction snapshot
+
+    Note over Alice: Choose secret message x
+    Note over Alice: Call Blind(x) to get (y, r, B')
+
+    Alice->>Dave: Send proof of deposit, amounts, transaction preimage, and B'
+    
+    loop For each input in t0
+        Note over Dave: Call SignBlinded(a, B') to get (C', DLEQProof)
+        Dave-->>Alice: Send blind signature (C', DLEQProof)
+    end
+
+    Note over Alice: Call UnblindAndVerifySignature(C', r, A, DLEQProof, B')
+    Note over Alice: Obtain unblinded signature C
+    
+    Alice->>Alice: Store unblinded signature C in database
+
+    Note over Alice: Alice can now prove ownership of minted tokens
+
+    Note over Dave: Dave can verify Alice's proof by calling VerifyUnblindedPoint(a, x, C)
+```
+
 1. Alice deposits 100 ADA into $d_v$.
 
 1. Upon confirmation, Alice generates a transaction snapshot for her transaction $t_0$ at $m_a$.
