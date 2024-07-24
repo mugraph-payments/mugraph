@@ -1,6 +1,7 @@
-use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, traits::MultiscalarMul};
+use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use rand::rngs::OsRng;
 
+use super::schnorr::{sign, verify, Signature};
 use super::*;
 
 pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
@@ -15,62 +16,26 @@ pub fn blind(secret_message: &[u8]) -> (RistrettoPoint, Scalar, RistrettoPoint) 
 pub fn sign_blinded(
     private_key: &Scalar,
     blinded_point: &RistrettoPoint,
-) -> (RistrettoPoint, Scalar, Scalar) {
+) -> (RistrettoPoint, Signature) {
     let signed_point = blinded_point * private_key;
-
-    // Generate DLEQ proof
-    let random_scalar = Scalar::random(&mut OsRng);
-    let r1 = RISTRETTO_BASEPOINT_POINT * random_scalar;
-    let r2 = blinded_point * random_scalar;
-
-    let challenge = hash_to_scalar(&[
-        DLEQ_DOMAIN_SEPARATOR,
-        &r1.compress().to_bytes(),
-        &r2.compress().to_bytes(),
-        &(RISTRETTO_BASEPOINT_POINT * private_key)
-            .compress()
-            .to_bytes(),
-        &signed_point.compress().to_bytes(),
-    ]);
-    let response = random_scalar + challenge * private_key;
-
-    (signed_point, challenge, response)
+    let signature = sign(private_key, &signed_point.compress().to_bytes());
+    (signed_point, signature)
 }
 
-pub fn unblind_verify(
+pub fn unblind_and_verify_signature(
     signed_point: &RistrettoPoint,
     blinding_factor: &Scalar,
     public_key: &RistrettoPoint,
-    blinded_point: &RistrettoPoint,
-    challenge: &Scalar,
-    response: &Scalar,
+    signature: &Signature,
 ) -> Option<RistrettoPoint> {
-    // Verify DLEQ proof
-    let r1 = RistrettoPoint::multiscalar_mul(
-        &[*response, -*challenge],
-        &[RISTRETTO_BASEPOINT_POINT, *public_key],
-    );
-    let r2 = RistrettoPoint::multiscalar_mul(
-        &[*response, -*challenge],
-        &[*blinded_point, *signed_point],
-    );
-
-    let computed_challenge = hash_to_scalar(&[
-        DLEQ_DOMAIN_SEPARATOR,
-        &r1.compress().to_bytes(),
-        &r2.compress().to_bytes(),
-        &public_key.compress().to_bytes(),
-        &signed_point.compress().to_bytes(),
-    ]);
-
-    if computed_challenge == *challenge {
+    if verify(public_key, signature, &signed_point.compress().to_bytes()) {
         Some(signed_point - (public_key * blinding_factor))
     } else {
         None
     }
 }
 
-pub fn verify_unblinded(
+pub fn verify_unblinded_point(
     private_key: &Scalar,
     message: &[u8],
     unblinded_point: &RistrettoPoint,
@@ -104,18 +69,18 @@ mod tests {
         // Bob blinds the secret message
         let (_, r, b_prime) = blind(&secret_message);
 
-        // Alice signs and produces DLEQ proof
-        let (c_prime, e, s) = sign_blinded(&a, &b_prime);
+        // Alice signs and produces Schnorr signature
+        let (c_prime, signature) = sign_blinded(&a, &b_prime);
 
-        // Bob unblinds and verifies DLEQ proof
-        let c = unblind_verify(&c_prime, &r, &a_pub, &b_prime, &e, &s).unwrap();
+        // Bob unblinds and verifies Schnorr signature
+        let c = unblind_and_verify_signature(&c_prime, &r, &a_pub, &signature).unwrap();
 
         // Alice verifies the unblinded signature
-        prop_assert!(verify_unblinded(&a, &secret_message, &c));
+        prop_assert!(verify_unblinded_point(&a, &secret_message, &c));
     }
 
     #[proptest]
-    fn test_dleq_proof_tampering(
+    fn test_schnorr_signature_tampering(
         #[strategy(keypair())] a: (Scalar, RistrettoPoint),
         secret_message: Vec<u8>,
     ) {
@@ -125,16 +90,19 @@ mod tests {
         // Bob blinds the secret message
         let (_, r, b_prime) = blind(&secret_message);
 
-        // Alice signs and produces DLEQ proof
-        let (c_prime, e, s) = sign_blinded(&a, &b_prime);
+        // Alice signs and produces Schnorr signature
+        let (c_prime, signature) = sign_blinded(&a, &b_prime);
 
-        // Tamper with c_prime
-        let tampered_c_prime = c_prime + RISTRETTO_BASEPOINT_POINT;
+        // Tamper with the signature
+        let tampered_signature = Signature {
+            r: signature.r + RISTRETTO_BASEPOINT_POINT,
+            s: signature.s,
+        };
 
-        // Bob tries to unblind with tampered c_prime
-        let result = unblind_verify(&tampered_c_prime, &r, &a_pub, &b_prime, &e, &s);
+        // Bob tries to unblind with tampered signature
+        let result = unblind_and_verify_signature(&c_prime, &r, &a_pub, &tampered_signature);
 
-        // The unblinding should fail due to invalid DLEQ proof
+        // The unblinding should fail due to invalid Schnorr signature
         prop_assert!(result.is_none());
     }
 }
