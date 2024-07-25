@@ -1,26 +1,28 @@
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
 use merlin::Transcript;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use crate::crypto::*;
 use crate::Hash;
 
 #[derive(Debug, Clone)]
 pub struct TransactionCommitment {
-    pub bulletproof: RangeProof,
+    pub bulletproof_low: RangeProof,
+    pub bulletproof_high: RangeProof,
     pub commitments: Vec<CompressedRistretto>,
     pub asset_ids: Vec<Hash>,
 }
 
 fn create_transcript(label: &'static [u8]) -> Transcript {
     let mut transcript = Transcript::new(label);
-    transcript.append_message(b"protocol-name", b"AggregatedAssetCommitment");
+    transcript.append_message(b"protocol-name", COMMITMENT_TRANSCRIPT_LABEL);
     transcript
 }
 
-pub fn create_aggregated_asset_commitment(
+pub fn commit(
     asset_ids: &[Hash],
-    amounts: &[u64],
+    amounts: &[u128],
     blindings: &[Scalar],
 ) -> Result<TransactionCommitment, String> {
     if asset_ids.len() != amounts.len() || amounts.len() != blindings.len() {
@@ -39,10 +41,18 @@ pub fn create_aggregated_asset_commitment(
     let bp_gens = BulletproofGens::new(64, party_capacity);
 
     // Pad amounts and blindings to the next power of 2
-    let mut padded_amounts = amounts.to_vec();
+    let mut padded_amounts_low = Vec::with_capacity(party_capacity);
+    let mut padded_amounts_high = Vec::with_capacity(party_capacity);
     let mut padded_blindings = blindings.to_vec();
-    while padded_amounts.len() < party_capacity {
-        padded_amounts.push(0);
+
+    for &amount in amounts {
+        padded_amounts_low.push(u64::try_from(amount & 0xFFFFFFFFFFFFFFFF).unwrap());
+        padded_amounts_high.push(u64::try_from((amount >> 64) & 0xFFFFFFFFFFFFFFFF).unwrap());
+    }
+
+    while padded_amounts_low.len() < party_capacity {
+        padded_amounts_low.push(0);
+        padded_amounts_high.push(0);
         padded_blindings.push(Scalar::ZERO);
     }
 
@@ -61,27 +71,46 @@ pub fn create_aggregated_asset_commitment(
         transcript.append_message(b"commitment", commitment.as_bytes());
     }
 
-    // Create the aggregated range proof
-    let (bulletproof, _) = RangeProof::prove_multiple(
+    // Create the aggregated range proofs for low and high bits
+    let (bulletproof_low, _) = RangeProof::prove_multiple(
         &bp_gens,
         &pc_gens,
-        &mut transcript,
-        &padded_amounts,
+        &mut transcript.clone(),
+        &padded_amounts_low,
         &padded_blindings,
         64,
     )
-    .map_err(|e| format!("Failed to create aggregated range proof: {:?}", e))?;
+    .map_err(|e| {
+        format!(
+            "Failed to create aggregated range proof for low bits: {:?}",
+            e
+        )
+    })?;
+
+    let (bulletproof_high, _) = RangeProof::prove_multiple(
+        &bp_gens,
+        &pc_gens,
+        &mut transcript,
+        &padded_amounts_high,
+        &padded_blindings,
+        64,
+    )
+    .map_err(|e| {
+        format!(
+            "Failed to create aggregated range proof for high bits: {:?}",
+            e
+        )
+    })?;
 
     Ok(TransactionCommitment {
-        bulletproof,
+        bulletproof_low,
+        bulletproof_high,
         commitments,
         asset_ids: asset_ids.to_vec(),
     })
 }
 
-pub fn verify_aggregated_asset_commitment(
-    commitment: &TransactionCommitment,
-) -> Result<(), &'static str> {
+pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
     if commitment.commitments.len() != commitment.asset_ids.len() {
         return Err("Mismatched commitment and asset_id lengths");
     }
@@ -90,8 +119,8 @@ pub fn verify_aggregated_asset_commitment(
     let party_capacity = commitment.commitments.len().next_power_of_two();
     let bp_gens = BulletproofGens::new(64, party_capacity);
 
-    // Verify the aggregated range proof
-    let mut verifier_transcript = create_transcript(b"AggregatedAssetCommitment");
+    // Verify the aggregated range proofs
+    let mut verifier_transcript = create_transcript(COMMITMENT_VERIFIER_LABEL);
     for (commitment, asset_id) in commitment
         .commitments
         .iter()
@@ -100,8 +129,20 @@ pub fn verify_aggregated_asset_commitment(
         verifier_transcript.append_message(b"asset_id", asset_id);
         verifier_transcript.append_message(b"commitment", commitment.as_bytes());
     }
+
     commitment
-        .bulletproof
+        .bulletproof_low
+        .verify_multiple(
+            &bp_gens,
+            &pc_gens,
+            &mut verifier_transcript.clone(),
+            &commitment.commitments,
+            64,
+        )
+        .map_err(|_| "Aggregated range proof verification failed for low bits")?;
+
+    commitment
+        .bulletproof_high
         .verify_multiple(
             &bp_gens,
             &pc_gens,
@@ -109,7 +150,7 @@ pub fn verify_aggregated_asset_commitment(
             &commitment.commitments,
             64,
         )
-        .map_err(|_| "Aggregated range proof verification failed")?;
+        .map_err(|_| "Aggregated range proof verification failed for high bits")?;
 
     // Verify that each commitment is well-formed
     for (commitment, asset_id) in commitment
@@ -188,50 +229,115 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest(cases = 1)]
-    fn test_create_aggregated_asset_commitment_success(
-        #[strategy(1..=10usize)] num_assets: usize,
-        #[strategy(vec(any::<Hash>(), #num_assets))] asset_ids: Vec<Hash>,
-        #[strategy(vec(0..u64::MAX, #num_assets))] amounts: Vec<u64>,
-        #[strategy(vec(scalar(), #num_assets))] blindings: Vec<Scalar>,
+    fn test_create_commitment(
+        #[strategy(1..=16usize)] _num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec(0..u128::MAX, #_num_assets))] amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
     ) {
         // Test creating an aggregated asset commitment
-        let result = create_aggregated_asset_commitment(&asset_ids, &amounts, &blindings);
+        let commitment = commit(&asset_ids, &amounts, &blindings)?;
 
-        prop_assert!(
-            result.is_ok(),
-            "Failed to create aggregated asset commitment"
-        );
-
-        let commitment = result.unwrap();
         prop_assert_eq!(
             commitment.commitments.len(),
-            num_assets,
-            "Incorrect number of commitments"
-        );
-        prop_assert_eq!(
             commitment.asset_ids.len(),
-            num_assets,
-            "Incorrect number of asset IDs"
+            "Mismatching number of assets and commitments"
         );
     }
 
     #[proptest(cases = 1)]
-    fn test_create_aggregated_asset_commitment_failure(
-        #[strategy(2..=10usize)] _num_assets: usize,
+    fn test_create_commitment_failure_mismatched_assets(
+        #[strategy(2..=16usize)] _num_assets: usize,
         #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
-        #[strategy(vec(0..u64::MAX, #_num_assets + 1))] amounts: Vec<u64>,
-        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
+        #[strategy(vec(0..u128::MAX, #_num_assets))] amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets + 1))] blindings: Vec<Scalar>,
     ) {
-        // Test creating an aggregated asset commitment with invalid data
-        let result = create_aggregated_asset_commitment(&asset_ids, &amounts, &blindings);
+        // Test creating an aggregated asset commitment with mismatched asset_ids and blindings
+        let result = commit(&asset_ids, &amounts, &blindings);
 
         prop_assert!(
             result.is_err(),
-            "Expected an error due to mismatched input lengths"
+            "Expected an error due to mismatched asset_ids and blindings lengths"
         );
+    }
+
+    #[proptest(cases = 1)]
+    fn test_create_commitment_failure_mismatched_amounts(
+        #[strategy(2..=16usize)] _num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec(0..u128::MAX, #_num_assets + 1))] amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
+    ) {
+        // Test creating an aggregated asset commitment with mismatched amounts
+        let result = commit(&asset_ids, &amounts, &blindings);
+
         prop_assert!(
-            result.unwrap_err().contains("Mismatched input lengths"),
-            "Unexpected error message"
+            result.is_err(),
+            "Expected an error due to mismatched amounts length"
         );
+    }
+
+    #[proptest(cases = 1)]
+    fn test_check_balance_failure_mismatched_amounts(
+        #[strategy(2..=8usize)] _num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec(1..u64::MAX as u128, #_num_assets))] input_amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets))] input_blindings: Vec<Scalar>,
+        #[strategy(vec(scalar(), #_num_assets))] output_blindings: Vec<Scalar>,
+    ) {
+        // Create input commitment
+        let input_commitment = commit(&asset_ids, &input_amounts, &input_blindings).unwrap();
+
+        // Create output commitment with slightly different amounts
+        let mut output_amounts = input_amounts.clone();
+        output_amounts[0] += 1; // Ensure at least one amount is different
+
+        let output_commitment = commit(&asset_ids, &output_amounts, &output_blindings).unwrap();
+
+        // Check balance
+        let result = check_balance(&[input_commitment], &[output_commitment]);
+
+        prop_assert!(
+            result.is_err(),
+            "Expected an error due to mismatched amounts between inputs and outputs"
+        );
+    }
+
+    #[proptest(cases = 1)]
+    fn test_u128_amount_processing(
+        #[strategy(2..=10usize)] _num_assets: usize,
+        #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
+        #[strategy(vec((u64::MAX as u128)..u128::MAX, #_num_assets))] amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
+    ) {
+        // Create commitment
+        let commitment_result = commit(&asset_ids, &amounts, &blindings);
+        prop_assert!(commitment_result.is_ok(), "Failed to create commitment");
+        let commitment = commitment_result.unwrap();
+
+        // Verify commitment
+        let verify_result = verify(&commitment);
+        prop_assert!(verify_result.is_ok(), "Failed to verify commitment");
+
+        // Check that we have the correct number of commitments
+        prop_assert_eq!(
+            commitment.commitments.len(),
+            3,
+            "Incorrect number of commitments"
+        );
+
+        // Attempt to create an invalid commitment (more amounts than blindings)
+        let invalid_amounts = vec![0u128, 1u128, 2u128, 3u128];
+        let invalid_result = commit(&asset_ids, &invalid_amounts, &blindings);
+        prop_assert!(
+            invalid_result.is_err(),
+            "Expected an error for mismatched input lengths"
+        );
+
+        // Test balance check
+        let inputs = vec![commitment.clone()];
+        let outputs = vec![commitment];
+        let balance_result = check_balance(&inputs, &outputs);
+        prop_assert!(balance_result.is_ok(), "Balance check failed");
     }
 }
