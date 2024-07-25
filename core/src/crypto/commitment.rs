@@ -14,7 +14,7 @@ const MAX_OUTPUTS: usize = 16;
 
 #[derive(Debug, Clone)]
 pub struct TransactionCommitment {
-    pub bulletproof: RangeProof,
+    pub proof: RangeProof,
     pub asset_commitments: HashMap<CompressedRistretto, CompressedRistretto>,
 }
 
@@ -122,7 +122,7 @@ pub fn commit(inputs: &[Atom], outputs: &[Atom]) -> Result<TransactionCommitment
     })?;
 
     Ok(TransactionCommitment {
-        bulletproof,
+        proof: bulletproof,
         asset_commitments,
     })
 }
@@ -149,7 +149,7 @@ pub fn verify(swap: &Swap) -> Result<(), Error> {
 
     // Verify the bulletproof
     swap.commitment
-        .bulletproof
+        .proof
         .verify_multiple(
             &bp_gens,
             &pc_gens,
@@ -172,4 +172,173 @@ pub fn verify(swap: &Swap) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::op::swap::*;
+    use ::proptest::prelude::*;
+    use proptest::{prelude::prop::collection::vec, sample::SizeRange};
+    use test_strategy::proptest;
+
+    fn atoms(
+        input_count: impl Into<SizeRange>,
+        output_count: impl Into<SizeRange>,
+    ) -> impl Strategy<Value = (Vec<Atom>, Vec<Atom>)> {
+        (
+            vec(any::<Atom>(), input_count.into()),
+            vec(any::<Atom>(), output_count.into()),
+        )
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_balance_check(#[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>)) {
+        let (inputs, outputs) = atoms;
+        let result = commit(&inputs, &outputs);
+        prop_assert!(result.is_ok());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_balance_check_failure(#[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>)) {
+        let (mut inputs, outputs) = atoms;
+        if !inputs.is_empty() {
+            inputs[0].amount += 1; // Ensure imbalance
+        }
+        let result = commit(&inputs, &outputs);
+        prop_assert!(result.is_err());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_range_proof_validity(#[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>)) {
+        let (inputs, outputs) = atoms;
+        let commitment = commit(&inputs, &outputs).unwrap();
+        let swap = create_swap_from_commitment(commitment, inputs.len(), outputs.len());
+        let result = verify(&swap);
+        prop_assert!(result.is_ok());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_zero_amount_check(#[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>)) {
+        let (mut inputs, outputs) = atoms;
+        if !inputs.is_empty() {
+            inputs[0].amount = 0;
+        }
+        let result = commit(&inputs, &outputs);
+        prop_assert!(result.is_err());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_input_output_limits(
+        #[strategy(atoms(16..=20, 16..=20))] atoms: (Vec<Atom>, Vec<Atom>),
+    ) {
+        let (inputs, outputs) = atoms;
+        let result = commit(&inputs, &outputs);
+        prop_assert!(result.is_err());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_commitment_uniqueness(#[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>)) {
+        let (inputs, outputs) = atoms;
+        let commitment1 = commit(&inputs, &outputs).unwrap();
+        let commitment2 = commit(&inputs, &outputs).unwrap();
+
+        prop_assert_ne!(commitment1.proof.to_bytes(), commitment2.proof.to_bytes());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_asset_id_blinding(
+        #[strategy(any::<Atom>())] atom1: Atom,
+        #[strategy(any::<Atom>())] mut atom2: Atom,
+    ) {
+        atom2.asset_id = atom1.asset_id;
+        atom2.amount = atom1.amount;
+
+        let commitment1 = commit(&[atom1.clone()], &[]).unwrap();
+        let commitment2 = commit(&[atom2], &[]).unwrap();
+
+        prop_assert_ne!(
+            commitment1.asset_commitments.keys().next().unwrap(),
+            commitment2.asset_commitments.keys().next().unwrap()
+        );
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_valid_bulletproof_verification(
+        #[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>),
+    ) {
+        let (inputs, outputs) = atoms;
+        let commitment = commit(&inputs, &outputs).unwrap();
+        let swap = create_swap_from_commitment(commitment, inputs.len(), outputs.len());
+
+        // Verify valid commitment
+        prop_assert!(verify(&swap).is_ok());
+    }
+
+    #[proptest(cases = 1, fork = false)]
+    fn test_invalid_bulletproof_verification(
+        #[strategy(atoms(1..=8, 1..=8))] atoms: (Vec<Atom>, Vec<Atom>),
+        #[strategy(atoms(1..=8, 1..=8))] other_atoms: (Vec<Atom>, Vec<Atom>),
+    ) {
+        prop_assume!(atoms != other_atoms);
+
+        let (inputs, outputs) = atoms;
+        let (other_inputs, other_outputs) = other_atoms;
+        let commitment = commit(&inputs, &outputs).unwrap();
+        let other_commitment = commit(&other_inputs, &other_outputs).unwrap();
+        let mut swap = create_swap_from_commitment(commitment, inputs.len(), outputs.len());
+
+        // Modify bulletproof to make it invalid
+        swap.commitment.proof = other_commitment.proof;
+
+        // Ensure verification fails with invalid bulletproof
+        prop_assert!(verify(&swap).is_err());
+    }
+
+    // Helper function to create a Swap from a TransactionCommitment
+    fn create_swap_from_commitment(
+        commitment: TransactionCommitment,
+        input_count: usize,
+        output_count: usize,
+    ) -> Swap {
+        let mut rng = rand::thread_rng();
+
+        let inputs: Vec<Input> = (0..input_count)
+            .map(|_| {
+                let private_key = Scalar::random(&mut rng);
+                let nullifier = RistrettoPoint::random(&mut rng);
+                let blinded_point = RistrettoPoint::random(&mut rng);
+                let (_signed_point, dleq_proof) = dh::sign_blinded(&private_key, &blinded_point);
+
+                Input {
+                    nullifier,
+                    dleq_proof,
+                }
+            })
+            .collect();
+
+        let outputs: Vec<Output> = (0..output_count)
+            .map(|_| Output {
+                blinded_secret: RistrettoPoint::random(&mut rng),
+            })
+            .collect();
+
+        let witnesses: Vec<Signature> = inputs
+            .iter()
+            .map(|input| {
+                let private_key = Scalar::random(&mut rng);
+                let nullifier = input.nullifier.clone().compress();
+                let message = nullifier.as_bytes();
+
+                schnorr::sign(&private_key, message)
+            })
+            .collect();
+
+        Swap {
+            inputs,
+            outputs,
+            commitment,
+            witnesses,
+        }
+    }
 }

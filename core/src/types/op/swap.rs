@@ -28,10 +28,11 @@ pub struct Output {
 
 /// An atom for a swap, the input that is used to generate the RangeProof for
 /// the transaction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Atom {
     pub asset_id: Hash,
+    #[cfg_attr(test, strategy(1u128..=u128::MAX))]
     pub amount: u128,
     #[cfg_attr(test, strategy(crate::testing::point()))]
     pub nullifier: RistrettoPoint,
