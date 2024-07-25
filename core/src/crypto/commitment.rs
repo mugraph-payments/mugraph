@@ -18,6 +18,20 @@ pub struct TransactionCommitment {
     pub asset_commitments: HashMap<CompressedRistretto, CompressedRistretto>,
 }
 
+#[cfg(test)]
+impl proptest::arbitrary::Arbitrary for TransactionCommitment {
+    type Parameters = ();
+    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        use proptest::{collection::vec, prelude::*};
+
+        (vec(any::<Atom>(), 1..=8), vec(any::<Atom>(), 1..=8))
+            .prop_map(|(inputs, outputs)| commit(&inputs, &outputs).unwrap())
+            .boxed()
+    }
+}
+
 fn create_transcript(label: &'static [u8]) -> Transcript {
     let mut transcript = Transcript::new(label);
     transcript.append_message(b"protocol-name", COMMITMENT_TRANSCRIPT_LABEL);

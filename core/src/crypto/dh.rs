@@ -6,8 +6,12 @@ use crate::error::Error;
 
 pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
 
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct DLEQProof {
+    #[cfg_attr(test, strategy(crate::testing::scalar()))]
     e: Scalar,
+    #[cfg_attr(test, strategy(crate::testing::scalar()))]
     s: Scalar,
 }
 

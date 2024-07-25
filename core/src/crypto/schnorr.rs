@@ -4,8 +4,12 @@ use rand::rngs::OsRng;
 use super::hash_to_scalar;
 use crate::error::Error;
 
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Signature {
+    #[cfg_attr(test, strategy(crate::testing::point()))]
     pub r: RistrettoPoint,
+    #[cfg_attr(test, strategy(crate::testing::scalar()))]
     pub s: Scalar,
 }
 
