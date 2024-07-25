@@ -1,6 +1,8 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::Hash;
+
 #[derive(Error, Debug, Diagnostic)]
 pub enum Error {
     #[error("Invalid scalar bytes")]
@@ -68,12 +70,12 @@ pub enum Error {
     )]
     BulletproofVerificationFailed,
 
-    #[error("Invalid transaction commitment")]
+    #[error("Invalid commitment")]
     #[diagnostic(
-        code(mugraph_core::invalid_transaction_commitment),
-        help("The transaction commitment is not valid. Ensure all components (bulletproofs, commitments, asset_ids) are correctly formed.")
+        code(mugraph_core::invalid_commitment),
+        help("The commitment is not valid. Ensure all components are correctly formed.")
     )]
-    InvalidTransactionCommitment,
+    InvalidCommitment,
 
     #[error("Mismatched input lengths")]
     #[diagnostic(
@@ -88,4 +90,32 @@ pub enum Error {
         help("An error occurred during the range proof process. Review the specific error message for more details.")
     )]
     BulletproofError(#[from] bulletproofs::ProofError),
+
+    #[error("Too many inputs ({0})")]
+    #[diagnostic(
+        code(mugraph_core::too_many_inputs),
+        help("The transaction has exceeded the maximum allowed number of inputs ({0}). Check the transaction construction and ensure it adheres to the protocol limits for inputs.")
+    )]
+    TooManyInputs(usize),
+
+    #[error("Too many outputs ({0})")]
+    #[diagnostic(
+        code(mugraph_core::too_many_outputs),
+        help("The transaction has exceeded the maximum allowed number of outputs ({0}). Check the transaction construction and ensure it adheres to the protocol limits for outputs.")
+    )]
+    TooManyOutputs(usize),
+
+    #[error("Transaction does not clear to zero: {0:?}")]
+    #[diagnostic(
+        code(mugraph_core::transaction_not_clear),
+        help("The transaction does not clear to zero for at least one asset. Ensure the transaction is balanced.")
+    )]
+    TransactionNotClear(Hash),
+
+    #[error("Zero amount is not allowed")]
+    #[diagnostic(
+        code(mugraph_core::zero_amount),
+        help("A zero amount was provided, which is not allowed. Ensure all amounts in the transaction are greater than zero.")
+    )]
+    ZeroAmount,
 }
