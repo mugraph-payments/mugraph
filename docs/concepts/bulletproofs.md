@@ -27,7 +27,7 @@ This section outlines the key mathematical concepts underlying Bulletproofs.
 
 A Pedersen commitment to $x \in \mathbb{Z}_p$ using randomness $r \in \mathbb{Z}_p$ is defined as:
 
-$\text{Com}(x; r) = g^x h^r$
+$$\text{Com}(x; r) = g^x h^r$$
 
 where $g, h \in \mathbb{G}$ are independent generators. Pedersen commitments are perfectly hiding and computationally binding under the discrete logarithm assumption.
 
@@ -35,13 +35,15 @@ where $g, h \in \mathbb{G}$ are independent generators. Pedersen commitments are
 
 For all probabilistic polynomial-time (PPT) adversaries $\mathcal{A}$ and for all $n \geq 2$, there exists a negligible function $\mu(\lambda)$ such that:
 
-$P[\mathbb{G} = \text{Setup}(1^\lambda), g_1, \ldots, g_n \stackrel{\$}{\leftarrow} \mathbb{G}; a_1, \ldots, a_n \in \mathbb{Z}_p \leftarrow \mathcal{A}(\mathbb{G}, g_1, \ldots, g_n) : \exists a_i \neq 0 \wedge \prod_{i=1}^n g_i^{a_i} = 1] \leq \mu(\lambda)$
+$$
+P[\mathbb{G} = \text{Setup}(1^\lambda), g_1, \ldots, g_n \stackrel{\$}{\leftarrow} \mathbb{G}; a_1, \ldots, a_n \in \mathbb{Z}_p \leftarrow \mathcal{A}(\mathbb{G}, g_1, \ldots, g_n) : \exists a_i \neq 0 \wedge \prod_{i=1}^n g_i^{a_i} = 1] \leq \mu(\lambda)
+$$
 
 ## Inner Product Argument
 
 The core of Bulletproofs is an efficient inner product argument. For generators $\mathbf{g}, \mathbf{h} \in \mathbb{G}^n$, $u \in \mathbb{G}$, and $P \in \mathbb{G}$, the prover convinces the verifier that it knows vectors $\mathbf{a}, \mathbf{b} \in \mathbb{Z}_p^n$ such that:
 
-$P = \mathbf{g}^{\mathbf{a}} \mathbf{h}^{\mathbf{b}} \cdot u^{\langle \mathbf{a}, \mathbf{b} \rangle}$
+$$P = \mathbf{g}^{\mathbf{a}} \mathbf{h}^{\mathbf{b}} \cdot u^{\langle \mathbf{a}, \mathbf{b} \rangle}$$
 
 ### Protocol
 
