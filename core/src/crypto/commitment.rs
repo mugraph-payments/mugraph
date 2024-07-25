@@ -6,7 +6,7 @@ use crate::crypto::*;
 use crate::Hash;
 
 #[derive(Debug, Clone)]
-pub struct AggregatedAssetCommitment {
+pub struct TransactionCommitment {
     pub bulletproof: RangeProof,
     pub commitments: Vec<CompressedRistretto>,
     pub asset_ids: Vec<Hash>,
@@ -22,7 +22,7 @@ pub fn create_aggregated_asset_commitment(
     asset_ids: &[Hash],
     amounts: &[u64],
     blindings: &[Scalar],
-) -> Result<AggregatedAssetCommitment, String> {
+) -> Result<TransactionCommitment, String> {
     if asset_ids.len() != amounts.len() || amounts.len() != blindings.len() {
         return Err(format!(
             "Mismatched input lengths: asset_ids={}, amounts={}, blindings={}",
@@ -48,7 +48,7 @@ pub fn create_aggregated_asset_commitment(
 
     // Create individual commitments
     let mut commitments = Vec::with_capacity(amounts.len());
-    let mut transcript = create_transcript(b"AggregatedAssetCommitment");
+    let mut transcript = create_transcript(COMMITMENT_TRANSCRIPT_LABEL);
 
     for i in 0..amounts.len() {
         let h_a = hash_to_curve(&asset_ids[i]);
@@ -72,7 +72,7 @@ pub fn create_aggregated_asset_commitment(
     )
     .map_err(|e| format!("Failed to create aggregated range proof: {:?}", e))?;
 
-    Ok(AggregatedAssetCommitment {
+    Ok(TransactionCommitment {
         bulletproof,
         commitments,
         asset_ids: asset_ids.to_vec(),
@@ -80,7 +80,7 @@ pub fn create_aggregated_asset_commitment(
 }
 
 pub fn verify_aggregated_asset_commitment(
-    commitment: &AggregatedAssetCommitment,
+    commitment: &TransactionCommitment,
 ) -> Result<(), &'static str> {
     if commitment.commitments.len() != commitment.asset_ids.len() {
         return Err("Mismatched commitment and asset_id lengths");
@@ -140,8 +140,8 @@ pub fn verify_aggregated_asset_commitment(
 }
 
 pub fn check_balance(
-    inputs: &[AggregatedAssetCommitment],
-    outputs: &[AggregatedAssetCommitment],
+    inputs: &[TransactionCommitment],
+    outputs: &[TransactionCommitment],
 ) -> Result<(), &'static str> {
     let mut balance = HashMap::new();
 

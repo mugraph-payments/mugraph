@@ -1,5 +1,5 @@
+pub mod commitment;
 pub mod dh;
-pub mod range_proof;
 pub mod schnorr;
 
 use blake2::{Blake2b, Digest};
@@ -15,6 +15,8 @@ pub use curve25519_dalek::{
 
 pub const DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_HASH_TO_CURVE_";
 pub const DLEQ_DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_DLEQ_PROOF_";
+pub const COMMITMENT_TRANSCRIPT_LABEL: &[u8] = b"MUGRAPH_V1_CURVE_25519_COMMITMENT_";
+pub const RANGE_PROOF_DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_RANGE_PROOF_";
 
 pub type PublicKey = RistrettoPoint;
 pub type SecretKey = Scalar;
