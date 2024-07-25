@@ -2,6 +2,7 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use rand::rngs::OsRng;
 
 use super::*;
+use crate::error::Error;
 
 pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
 
@@ -44,7 +45,7 @@ pub fn verify_dleq_proof(
     blinded_point: &RistrettoPoint,
     signed_point: &RistrettoPoint,
     proof: &DLEQProof,
-) -> bool {
+) -> Result<(), Error> {
     let r1 = (RISTRETTO_BASEPOINT_POINT * proof.s) - (public_key * proof.e);
     let r2 = (blinded_point * proof.s) - (signed_point * proof.e);
     let e = hash_to_scalar(&[
@@ -53,7 +54,12 @@ pub fn verify_dleq_proof(
         public_key.compress().as_bytes(),
         signed_point.compress().as_bytes(),
     ]);
-    e == proof.e
+
+    if e == proof.e {
+        Ok(())
+    } else {
+        Err(Error::InvalidDLEQProof)
+    }
 }
 
 pub fn unblind_and_verify_signature(
@@ -62,28 +68,30 @@ pub fn unblind_and_verify_signature(
     public_key: &RistrettoPoint,
     proof: &DLEQProof,
     blinded_point: &RistrettoPoint,
-) -> Option<RistrettoPoint> {
-    if verify_dleq_proof(public_key, blinded_point, signed_point, proof) {
-        Some(signed_point - (public_key * blinding_factor))
-    } else {
-        None
-    }
+) -> Result<RistrettoPoint, Error> {
+    verify_dleq_proof(public_key, blinded_point, signed_point, proof)?;
+
+    Ok(signed_point - (public_key * blinding_factor))
 }
 
 pub fn verify_unblinded_point(
     private_key: &Scalar,
     message: &[u8],
     unblinded_point: &RistrettoPoint,
-) -> bool {
+) -> Result<(), Error> {
     let y = hash_to_curve(message);
-    &y * private_key == *unblinded_point
+
+    if &y * private_key == *unblinded_point {
+        Ok(())
+    } else {
+        Err(Error::InvalidUnblindedPoint)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::crypto::testing::*;
-    use proptest::prelude::*;
     use test_strategy::proptest;
 
     #[proptest]
@@ -101,13 +109,14 @@ mod tests {
         let (c_prime, proof) = sign_blinded(&a, &b_prime);
 
         // Bob unblinds and verifies Schnorr signature
-        let c = unblind_and_verify_signature(&c_prime, &r, &a_pub, &proof, &b_prime).unwrap();
+        let c = unblind_and_verify_signature(&c_prime, &r, &a_pub, &proof, &b_prime)?;
 
         // Alice verifies the unblinded signature
-        prop_assert!(verify_unblinded_point(&a, &secret_message, &c));
+        verify_unblinded_point(&a, &secret_message, &c)?;
     }
 
     #[proptest]
+    #[should_panic]
     fn test_schnorr_signature_tampering(
         #[strategy(keypair())] a: (Scalar, RistrettoPoint),
         secret_message: Vec<u8>,
@@ -128,9 +137,6 @@ mod tests {
         };
 
         // Bob tries to unblind with tampered signature
-        let result = unblind_and_verify_signature(&c_prime, &r, &a_pub, &tampered_proof, &b_prime);
-
-        // The unblinding should fail due to invalid Schnorr signature
-        prop_assert!(result.is_none());
+        unblind_and_verify_signature(&c_prime, &r, &a_pub, &tampered_proof, &b_prime)?;
     }
 }

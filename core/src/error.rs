@@ -1,16 +1,8 @@
-use bulletproofs;
 use miette::Diagnostic;
-use std::io;
+use thiserror::Error;
 
-#[derive(thiserror::Error, Debug, Diagnostic)]
+#[derive(Error, Debug, Diagnostic)]
 pub enum Error {
-    #[error("Failed to hash data")]
-    #[diagnostic(
-        code(mugraph_core::hash_error),
-        help("Verify that the input data is valid and try again. This error might occur in the hash_to_scalar or hash_to_curve functions.")
-    )]
-    HashError,
-
     #[error("Invalid scalar bytes")]
     #[diagnostic(
         code(mugraph_core::invalid_scalar),
@@ -39,13 +31,6 @@ pub enum Error {
     )]
     InvalidDLEQProof,
 
-    #[error("Failed to unblind signature")]
-    #[diagnostic(
-        code(mugraph_core::unblind_signature_error),
-        help("The unblinding process failed. Verify that the blinding factor and other parameters are correct. This error might occur in the unblind_and_verify_signature function.")
-    )]
-    UnblindSignatureError,
-
     #[error("Invalid unblinded point")]
     #[diagnostic(
         code(mugraph_core::invalid_unblinded_point),
@@ -53,56 +38,12 @@ pub enum Error {
     )]
     InvalidUnblindedPoint,
 
-    #[error("Commitment error: {0}")]
-    #[diagnostic(
-        code(mugraph_core::commitment_error),
-        help("An error occurred during the commitment process. Review the specific error message for more details. This error might occur in the commitment module.")
-    )]
-    CommitmentError(String),
-
     #[error("Range proof error: {0}")]
     #[diagnostic(
         code(mugraph_core::range_proof_error),
         help("An error occurred during the range proof process. Review the specific error message for more details. This error might occur when creating or verifying range proofs.")
     )]
     RangeProofError(String),
-
-    #[error("Invalid transaction input")]
-    #[diagnostic(
-        code(mugraph_core::invalid_transaction_input),
-        help("The transaction input is not valid. Verify that all required fields (asset_id, amount, and proof) are present and correctly formatted.")
-    )]
-    InvalidTransactionInput,
-
-    #[error("Invalid transaction output")]
-    #[diagnostic(
-        code(mugraph_core::invalid_transaction_output),
-        help("The transaction output is not valid. Verify that all required fields (asset_id, amount, and blinded_message) are present and correctly formatted.")
-    )]
-    InvalidTransactionOutput,
-
-    #[error("Cryptographic operation failed")]
-    #[diagnostic(
-        code(mugraph_core::crypto_operation_failed),
-        help("A cryptographic operation failed. This could be due to invalid input parameters or an internal error in the cryptographic library. Review the input parameters and ensure they are valid.")
-    )]
-    CryptoOperationFailed,
-
-    #[error("Invalid blinding factor")]
-    #[diagnostic(
-        code(mugraph_core::invalid_blinding_factor),
-        help(
-            "The blinding factor is not valid. Ensure that it's a properly generated Scalar value."
-        )
-    )]
-    InvalidBlindingFactor,
-
-    #[error("Invalid asset ID")]
-    #[diagnostic(
-        code(mugraph_core::invalid_asset_id),
-        help("The asset ID is not valid. Ensure it's a 32-byte array representing a valid asset identifier.")
-    )]
-    InvalidAssetId,
 
     #[error("Invalid amount")]
     #[diagnostic(
@@ -147,20 +88,4 @@ pub enum Error {
         help("An error occurred during the range proof process. Review the specific error message for more details.")
     )]
     BulletproofError(#[from] bulletproofs::ProofError),
-
-    #[error("IO error: {0}")]
-    #[diagnostic(
-        code(mugraph_core::io_error),
-        help(
-            "An I/O error occurred. This might be due to file system issues or network problems."
-        )
-    )]
-    IoError(#[from] io::Error),
-
-    #[error("Unexpected error: {0}")]
-    #[diagnostic(
-        code(mugraph_core::unexpected_error),
-        help("An unexpected error occurred. Please report this issue with the error details.")
-    )]
-    UnexpectedError(String),
 }

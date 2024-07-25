@@ -2,6 +2,7 @@ use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, RistrettoPoint, Sca
 use rand::rngs::OsRng;
 
 use super::hash_to_scalar;
+use crate::error::Error;
 
 pub struct Signature {
     pub r: RistrettoPoint,
@@ -17,9 +18,18 @@ pub fn sign(private_key: &Scalar, message: &[u8]) -> Signature {
     Signature { r, s }
 }
 
-pub fn verify(public_key: &RistrettoPoint, signature: &Signature, message: &[u8]) -> bool {
+pub fn verify(
+    public_key: &RistrettoPoint,
+    signature: &Signature,
+    message: &[u8],
+) -> Result<(), Error> {
     let e = hash_to_scalar(&[&signature.r.compress().to_bytes(), message]);
     let lhs = RISTRETTO_BASEPOINT_POINT * signature.s;
     let rhs = signature.r + public_key * e;
-    lhs == rhs
+
+    if lhs == rhs {
+        Ok(())
+    } else {
+        Err(Error::InvalidSignature)
+    }
 }

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 use crate::crypto::*;
+use crate::error::Error;
 use crate::Hash;
 
 #[derive(Debug, Clone)]
@@ -24,14 +25,9 @@ pub fn commit(
     asset_ids: &[Hash],
     amounts: &[u128],
     blindings: &[Scalar],
-) -> Result<TransactionCommitment, String> {
+) -> Result<TransactionCommitment, Error> {
     if asset_ids.len() != amounts.len() || amounts.len() != blindings.len() {
-        return Err(format!(
-            "Mismatched input lengths: asset_ids={}, amounts={}, blindings={}",
-            asset_ids.len(),
-            amounts.len(),
-            blindings.len()
-        ));
+        return Err(Error::MismatchedInputLengths);
     }
 
     let pc_gens = PedersenGens::default();
@@ -46,8 +42,11 @@ pub fn commit(
     let mut padded_blindings = blindings.to_vec();
 
     for &amount in amounts {
-        padded_amounts_low.push(u64::try_from(amount & 0xFFFFFFFFFFFFFFFF).unwrap());
-        padded_amounts_high.push(u64::try_from((amount >> 64) & 0xFFFFFFFFFFFFFFFF).unwrap());
+        padded_amounts_low
+            .push(u64::try_from(amount & 0xFFFFFFFFFFFFFFFF).map_err(|_| Error::InvalidAmount)?);
+        padded_amounts_high.push(
+            u64::try_from((amount >> 64) & 0xFFFFFFFFFFFFFFFF).map_err(|_| Error::InvalidAmount)?,
+        );
     }
 
     while padded_amounts_low.len() < party_capacity {
@@ -81,10 +80,10 @@ pub fn commit(
         64,
     )
     .map_err(|e| {
-        format!(
+        Error::RangeProofError(format!(
             "Failed to create aggregated range proof for low bits: {:?}",
             e
-        )
+        ))
     })?;
 
     let (bulletproof_high, _) = RangeProof::prove_multiple(
@@ -96,10 +95,10 @@ pub fn commit(
         64,
     )
     .map_err(|e| {
-        format!(
+        Error::RangeProofError(format!(
             "Failed to create aggregated range proof for high bits: {:?}",
             e
-        )
+        ))
     })?;
 
     Ok(TransactionCommitment {
@@ -110,9 +109,9 @@ pub fn commit(
     })
 }
 
-pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
+pub fn verify(commitment: &TransactionCommitment) -> Result<(), Error> {
     if commitment.commitments.len() != commitment.asset_ids.len() {
-        return Err("Mismatched commitment and asset_id lengths");
+        return Err(Error::InvalidTransactionCommitment);
     }
 
     let pc_gens = PedersenGens::default();
@@ -139,7 +138,7 @@ pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
             &commitment.commitments,
             64,
         )
-        .map_err(|_| "Aggregated range proof verification failed for low bits")?;
+        .map_err(|_| Error::BulletproofVerificationFailed)?;
 
     commitment
         .bulletproof_high
@@ -150,7 +149,7 @@ pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
             &commitment.commitments,
             64,
         )
-        .map_err(|_| "Aggregated range proof verification failed for high bits")?;
+        .map_err(|_| Error::BulletproofVerificationFailed)?;
 
     // Verify that each commitment is well-formed
     for (commitment, asset_id) in commitment
@@ -161,17 +160,19 @@ pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
         let h_a = hash_to_curve(asset_id);
 
         // Decompress the commitment point
-        let commitment_point = commitment.decompress().ok_or("Invalid commitment point")?;
+        let commitment_point = commitment
+            .decompress()
+            .ok_or(Error::InvalidPointCompression)?;
 
         // Check that the commitment point is not the identity (all zeros)
         if commitment_point == RistrettoPoint::identity() {
-            return Err("Commitment cannot be the identity point");
+            return Err(Error::InvalidTransactionCommitment);
         }
 
         // Check that the commitment point is not equal to h_a
         // This ensures that the commitment includes some amount and/or blinding factor
         if commitment_point == h_a {
-            return Err("Commitment cannot be equal to the asset-specific generator");
+            return Err(Error::InvalidTransactionCommitment);
         }
 
         // Note: We can't fully verify C = aG + bH + h_a without knowing a and b
@@ -183,7 +184,7 @@ pub fn verify(commitment: &TransactionCommitment) -> Result<(), &'static str> {
 pub fn check_balance(
     inputs: &[TransactionCommitment],
     outputs: &[TransactionCommitment],
-) -> Result<(), &'static str> {
+) -> Result<(), Error> {
     let mut balance = HashMap::new();
 
     // Sum up input commitments
@@ -192,8 +193,10 @@ pub fn check_balance(
             let entry = balance
                 .entry(asset_id)
                 .or_insert(CompressedRistretto::identity());
-            *entry = (entry.decompress().ok_or("Invalid commitment point")?
-                + commitment.decompress().ok_or("Invalid commitment point")?)
+            *entry = (entry.decompress().ok_or(Error::InvalidPointCompression)?
+                + commitment
+                    .decompress()
+                    .ok_or(Error::InvalidPointCompression)?)
             .compress();
         }
     }
@@ -204,8 +207,10 @@ pub fn check_balance(
             let entry = balance
                 .entry(asset_id)
                 .or_insert(CompressedRistretto::identity());
-            *entry = (entry.decompress().ok_or("Invalid commitment point")?
-                - commitment.decompress().ok_or("Invalid commitment point")?)
+            *entry = (entry.decompress().ok_or(Error::InvalidPointCompression)?
+                - commitment
+                    .decompress()
+                    .ok_or(Error::InvalidPointCompression)?)
             .compress();
         }
     }
@@ -213,7 +218,7 @@ pub fn check_balance(
     // Check if all balances are zero
     for (_, commitment) in balance {
         if commitment != CompressedRistretto::identity() {
-            return Err("Balance check failed");
+            return Err(Error::BalanceCheckFailed);
         }
     }
 
@@ -256,8 +261,8 @@ mod tests {
         let result = commit(&asset_ids, &amounts, &blindings);
 
         prop_assert!(
-            result.is_err(),
-            "Expected an error due to mismatched asset_ids and blindings lengths"
+            matches!(result, Err(Error::MismatchedInputLengths)),
+            "Expected a MismatchedInputLengths error due to mismatched asset_ids and blindings lengths"
         );
     }
 
@@ -272,8 +277,8 @@ mod tests {
         let result = commit(&asset_ids, &amounts, &blindings);
 
         prop_assert!(
-            result.is_err(),
-            "Expected an error due to mismatched amounts length"
+            matches!(result, Err(Error::MismatchedInputLengths)),
+            "Expected a MismatchedInputLengths error due to mismatched amounts length"
         );
     }
 
@@ -286,20 +291,20 @@ mod tests {
         #[strategy(vec(scalar(), #_num_assets))] output_blindings: Vec<Scalar>,
     ) {
         // Create input commitment
-        let input_commitment = commit(&asset_ids, &input_amounts, &input_blindings).unwrap();
+        let input_commitment = commit(&asset_ids, &input_amounts, &input_blindings)?;
 
         // Create output commitment with slightly different amounts
         let mut output_amounts = input_amounts.clone();
         output_amounts[0] += 1; // Ensure at least one amount is different
 
-        let output_commitment = commit(&asset_ids, &output_amounts, &output_blindings).unwrap();
+        let output_commitment = commit(&asset_ids, &output_amounts, &output_blindings)?;
 
         // Check balance
         let result = check_balance(&[input_commitment], &[output_commitment]);
 
         prop_assert!(
-            result.is_err(),
-            "Expected an error due to mismatched amounts between inputs and outputs"
+            matches!(result, Err(Error::BalanceCheckFailed)),
+            "Expected a BalanceCheckFailed error due to mismatched amounts between inputs and outputs"
         );
     }
 
@@ -311,9 +316,7 @@ mod tests {
         #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
     ) {
         // Create commitment
-        let commitment_result = commit(&asset_ids, &amounts, &blindings);
-        prop_assert!(commitment_result.is_ok(), "Failed to create commitment");
-        let commitment = commitment_result.unwrap();
+        let commitment = commit(&asset_ids, &amounts, &blindings)?;
 
         // Verify commitment
         let verify_result = verify(&commitment);
@@ -330,8 +333,8 @@ mod tests {
         let invalid_amounts = vec![0u128, 1u128, 2u128, 3u128];
         let invalid_result = commit(&asset_ids, &invalid_amounts, &blindings);
         prop_assert!(
-            invalid_result.is_err(),
-            "Expected an error for mismatched input lengths"
+            matches!(invalid_result, Err(Error::MismatchedInputLengths)),
+            "Expected a MismatchedInputLengths error for mismatched input lengths"
         );
 
         // Test balance check
