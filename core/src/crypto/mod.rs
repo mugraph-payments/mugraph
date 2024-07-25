@@ -7,11 +7,14 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 
+pub use bulletproofs::RangeProof;
 pub use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
     traits::*,
 };
+
+pub use schnorr::Signature;
 
 pub const DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_HASH_TO_CURVE_";
 pub const DLEQ_DOMAIN_SEPARATOR: &[u8] = b"MUGRAPH_V1_CURVE_25519_DLEQ_PROOF_";
