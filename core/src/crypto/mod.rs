@@ -29,10 +29,12 @@ lazy_static! {
 
 pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     let mut hasher = Blake2b::new();
+
     for item in data {
         hasher.update(item);
     }
-    Scalar::from_bytes_mod_order_wide(&hasher.finalize().try_into().unwrap())
+
+    Scalar::from_bytes_mod_order(hasher.finalize().into())
 }
 
 pub fn hash_to_curve(message: &[u8]) -> RistrettoPoint {
