@@ -14,6 +14,9 @@
     <a href="https://opensource.org/licenses/MIT">
       <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT Licensed" />
     </a>
+    <a href="https://discord.gg/npSJU6Qk">
+      <img src="https://dcbadge.limes.pink/api/server/npSJU6Qk?style=social" alt="Mugraph Discord Server" />
+    </a>
   </p>
 </p>
 <hr />
