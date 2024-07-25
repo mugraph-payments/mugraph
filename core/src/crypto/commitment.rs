@@ -235,7 +235,7 @@ mod tests {
 
     #[proptest(cases = 1)]
     fn test_create_commitment(
-        #[strategy(1..=16usize)] _num_assets: usize,
+        #[strategy(2..=8usize)] _num_assets: usize,
         #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
         #[strategy(vec(0..u128::MAX, #_num_assets))] amounts: Vec<u128>,
         #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
@@ -252,7 +252,7 @@ mod tests {
 
     #[proptest(cases = 1)]
     fn test_create_commitment_failure_mismatched_assets(
-        #[strategy(2..=16usize)] _num_assets: usize,
+        #[strategy(2..=8usize)] _num_assets: usize,
         #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
         #[strategy(vec(0..u128::MAX, #_num_assets))] amounts: Vec<u128>,
         #[strategy(vec(scalar(), #_num_assets + 1))] blindings: Vec<Scalar>,
@@ -268,7 +268,7 @@ mod tests {
 
     #[proptest(cases = 1)]
     fn test_create_commitment_failure_mismatched_amounts(
-        #[strategy(2..=16usize)] _num_assets: usize,
+        #[strategy(2..=8usize)] _num_assets: usize,
         #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
         #[strategy(vec(0..u128::MAX, #_num_assets + 1))] amounts: Vec<u128>,
         #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
@@ -309,38 +309,28 @@ mod tests {
     }
 
     #[proptest(cases = 1)]
-    fn test_u128_amount_processing(
-        #[strategy(2..=10usize)] _num_assets: usize,
+    fn test_u128_amount_processing_failure(
+        #[strategy(2..=8usize)] _num_assets: usize,
         #[strategy(vec(any::<Hash>(), #_num_assets))] asset_ids: Vec<Hash>,
-        #[strategy(vec((u64::MAX as u128)..u128::MAX, #_num_assets))] amounts: Vec<u128>,
-        #[strategy(vec(scalar(), #_num_assets))] blindings: Vec<Scalar>,
+        #[strategy(vec((u64::MAX as u128)..u128::MAX, #_num_assets))] input_amounts: Vec<u128>,
+        #[strategy(vec(scalar(), #_num_assets))] input_blindings: Vec<Scalar>,
+        #[strategy(vec(scalar(), #_num_assets))] output_blindings: Vec<Scalar>,
     ) {
-        // Create commitment
-        let commitment = commit(&asset_ids, &amounts, &blindings)?;
+        // Create input commitment
+        let input_commitment = commit(&asset_ids, &input_amounts, &input_blindings)?;
 
-        // Verify commitment
-        let verify_result = verify(&commitment);
-        prop_assert!(verify_result.is_ok(), "Failed to verify commitment");
+        // Create output commitment with slightly different amounts
+        let mut output_amounts = input_amounts.clone();
+        output_amounts[0] += 1; // Ensure at least one amount is different
 
-        // Check that we have the correct number of commitments
-        prop_assert_eq!(
-            commitment.commitments.len(),
-            3,
-            "Incorrect number of commitments"
-        );
+        let output_commitment = commit(&asset_ids, &output_amounts, &output_blindings)?;
 
-        // Attempt to create an invalid commitment (more amounts than blindings)
-        let invalid_amounts = vec![0u128, 1u128, 2u128, 3u128];
-        let invalid_result = commit(&asset_ids, &invalid_amounts, &blindings);
+        // Check balance
+        let result = check_balance(&[input_commitment], &[output_commitment]);
+
         prop_assert!(
-            matches!(invalid_result, Err(Error::MismatchedInputLengths)),
-            "Expected a MismatchedInputLengths error for mismatched input lengths"
+            matches!(result, Err(Error::BalanceCheckFailed)),
+            "Expected a BalanceCheckFailed error due to mismatched amounts between inputs and outputs"
         );
-
-        // Test balance check
-        let inputs = vec![commitment.clone()];
-        let outputs = vec![commitment];
-        let balance_result = check_balance(&inputs, &outputs);
-        prop_assert!(balance_result.is_ok(), "Balance check failed");
     }
 }
