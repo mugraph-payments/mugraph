@@ -1,5 +1,5 @@
 use crate::{
-    crypto::{diffie_hellman::DLEQProof, RistrettoPoint, Scalar},
+    crypto::{dh::DLEQProof, RistrettoPoint, Scalar},
     Hash,
 };
 

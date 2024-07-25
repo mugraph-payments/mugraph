@@ -1,4 +1,4 @@
-pub mod diffie_hellman;
+pub mod dh;
 pub mod range_proof;
 pub mod schnorr;
 
