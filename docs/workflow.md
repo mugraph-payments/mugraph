@@ -2,10 +2,19 @@
 
 ## Assumptions
 
-- Mithril aggregators generate non-repudiable proofs that a transaction has been included in a valid block with sufficient stake validation.
-- All Vaults initialize with a default balance of Zero.
-- All hash functions utilize Blake2B-256.
-- All cryptographic operations are performed using the Ristretto25519 curve.
+### Cryptography
+
+- **Discrete Logarithm Assumption**: For a cyclic group $\mathbb{G}$ of prime order $p$ with generator $g$, given $h = g^x$, it is computationally infeasible to determine $x$.
+- **Curve**: We are using the Ristretto25519 curve.
+- **Signature Scheme**: We are using Schnorr Signatures.
+- **Hash Function**: We are using Blake2B-256.
+
+### Blockchain
+
+- **Cardano:** This project is implemented on the Cardano Blockchain.
+- **Delegator Set:** The delegator set is a set of public keys that are used to validate transactions.
+- **Vault:** A Vault is a smart contract that holds user tokens.
+- **Mithril Aggregator:** Mithril aggregators generate non-repudiable proofs that a transaction has been included in a valid block with sufficient stake validation.
 
 ## Participants
 
