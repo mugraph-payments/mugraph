@@ -47,17 +47,3 @@ pub fn generate_keypair() -> (SecretKey, PublicKey) {
     let pubkey = RISTRETTO_BASEPOINT_POINT * privkey;
     (privkey, pubkey)
 }
-
-#[cfg(test)]
-pub mod testing {
-    use super::*;
-    use proptest::prelude::*;
-
-    pub fn scalar() -> impl Strategy<Value = Scalar> {
-        any::<[u8; 32]>().prop_map(|bytes| Scalar::from_bytes_mod_order(bytes))
-    }
-
-    pub fn keypair() -> impl Strategy<Value = (Scalar, RistrettoPoint)> {
-        scalar().prop_map(|s| (s, RISTRETTO_BASEPOINT_POINT * s))
-    }
-}

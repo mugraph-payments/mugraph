@@ -228,9 +228,9 @@ pub fn check_balance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::testing::*;
-    use ::proptest::{collection::vec, prelude::*};
+    use crate::testing::*;
     use curve25519_dalek::scalar::Scalar;
+    use proptest::{collection::vec, prelude::*};
     use test_strategy::proptest;
 
     #[proptest(cases = 1)]

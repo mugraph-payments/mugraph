@@ -91,7 +91,7 @@ pub fn verify_unblinded_point(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::testing::*;
+    use crate::testing::*;
     use test_strategy::proptest;
 
     #[proptest]
