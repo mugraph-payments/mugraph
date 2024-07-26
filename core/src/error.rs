@@ -118,4 +118,25 @@ pub enum Error {
         help("A zero amount was provided, which is not allowed. Ensure all amounts in the transaction are greater than zero.")
     )]
     ZeroAmount,
+
+    #[error("Invalid proof")]
+    #[diagnostic(
+        code(mugraph_core::invalid_proof),
+        help("The provided zero-knowledge proof is invalid. Ensure that the proof was generated correctly and matches the given swap data.")
+    )]
+    InvalidProof,
+
+    #[error("Unknown error: {0}")]
+    #[diagnostic(
+        code(mugraph_core::unknown_error),
+        help("An unexpected error occurred. Please check the error details and report this issue if it persists.")
+    )]
+    UnknownError(#[from] anyhow::Error),
+
+    #[error("Too many assets ({0})")]
+    #[diagnostic(
+        code(mugraph_core::too_many_assets),
+        help("The transaction has exceeded the maximum allowed number of unique assets ({0}). The limit is 8 unique assets per transaction.")
+    )]
+    TooManyAssets(usize),
 }

@@ -5,6 +5,13 @@ use proptest::{collection::vec, prelude::*};
 #[cfg(test)]
 use test_strategy::Arbitrary;
 
+use plonky2::{
+    field::goldilocks_field::GoldilocksField,
+    plonk::{
+        circuit_data::CircuitData, config::PoseidonGoldilocksConfig, proof::ProofWithPublicInputs,
+    },
+};
+
 pub mod delegate;
 
 pub use curve25519_dalek::traits::*;
@@ -32,7 +39,7 @@ pub struct Note {
     pub asset_id: Hash,
 
     /// The amount included in this note
-    pub amount: u128,
+    pub amount: u64,
 
     /// Unblinded signature from the server from this note creation
     ///
@@ -45,19 +52,32 @@ pub struct Note {
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct UnblindedNote {
     pub asset_id: Hash,
-    pub amount: u128,
+    pub amount: u64,
     pub nonce: Hash,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(Arbitrary))]
-pub struct Proof;
+#[derive(Debug)]
+pub struct Proof {
+    pub proof: ProofWithPublicInputs<GoldilocksField, PoseidonGoldilocksConfig, 2>,
+    pub circuit_data: CircuitData<GoldilocksField, PoseidonGoldilocksConfig, 2>,
+}
+
+#[cfg(test)]
+impl proptest::arbitrary::Arbitrary for Proof {
+    type Parameters = ();
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        todo!()
+    }
+
+    type Strategy = BoxedStrategy<Self>;
+}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Commit {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Swap {
     #[cfg_attr(test, strategy(vec(any::<Signature>(), 0..=16)))]

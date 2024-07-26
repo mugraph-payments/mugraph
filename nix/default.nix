@@ -11,7 +11,7 @@ let
   inherit (prev) mkShell;
   inherit (prev.lib) concatStringsSep;
 
-  rust = final.rust-bin.stable.latest.complete;
+  rust = final.rust-bin.fromRustupToolchainFile ../rust-toolchain.toml;
 
   rustPlatform = final.makeRustPlatform {
     rustc = rust;
