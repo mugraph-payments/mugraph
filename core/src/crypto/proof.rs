@@ -88,7 +88,12 @@ pub fn prove_swap(inputs: &[Note], outputs: &[UnblindedNote]) -> Result<Proof, E
     let proof = circuit_data.prove(pw)?;
 
     Ok(Proof {
-        proof,
+        proof: proof
+            .compress(
+                &circuit_data.verifier_only.circuit_digest,
+                &circuit_data.common,
+            )
+            .unwrap(),
         data: VerifierCircuitData {
             verifier_only: circuit_data.verifier_only,
             common: circuit_data.common,
@@ -98,7 +103,7 @@ pub fn prove_swap(inputs: &[Note], outputs: &[UnblindedNote]) -> Result<Proof, E
 
 /// Verifies a Zero-Knowledge Proof for a Swap.
 pub fn verify_swap_proof(swap: Swap) -> Result<(), Error> {
-    swap.proof.data.verify(swap.proof.proof)?;
+    swap.proof.data.verify_compressed(swap.proof.proof)?;
 
     Ok(())
 }

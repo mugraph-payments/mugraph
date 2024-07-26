@@ -10,8 +10,9 @@ use test_strategy::Arbitrary;
 use plonky2::{
     field::goldilocks_field::GoldilocksField,
     plonk::{
-        circuit_data::VerifierCircuitData, config::PoseidonGoldilocksConfig,
-        proof::ProofWithPublicInputs,
+        circuit_data::VerifierCircuitData,
+        config::PoseidonGoldilocksConfig,
+        proof::{CompressedProof, CompressedProofWithPublicInputs, ProofWithPublicInputs},
     },
 };
 
@@ -102,7 +103,7 @@ pub struct UnblindedNote {
 
 #[derive(Debug, Clone)]
 pub struct Proof {
-    pub proof: ProofWithPublicInputs<GoldilocksField, PoseidonGoldilocksConfig, 2>,
+    pub proof: CompressedProofWithPublicInputs<GoldilocksField, PoseidonGoldilocksConfig, 2>,
     pub data: VerifierCircuitData<GoldilocksField, PoseidonGoldilocksConfig, 2>,
 }
 
@@ -111,14 +112,8 @@ impl Serialize for Proof {
     where
         S: Serializer,
     {
-        // Compress the proof
-        let common = self.data.common.clone();
-        let digest = self.data.verifier_only.circuit_digest.clone();
-
-        let compressed_proof = self.proof.clone().compress(&digest, &common).unwrap();
-
         // Serialize the compressed proof with public inputs
-        let bytes = compressed_proof.to_bytes();
+        let bytes = self.proof.to_bytes();
         serializer.serialize_str(&hex::encode(bytes))
     }
 }
