@@ -8,7 +8,9 @@ use test_strategy::Arbitrary;
 use plonky2::{
     field::goldilocks_field::GoldilocksField,
     plonk::{
-        circuit_data::CircuitData, config::PoseidonGoldilocksConfig, proof::ProofWithPublicInputs,
+        circuit_data::{CommonCircuitData, VerifierOnlyCircuitData},
+        config::PoseidonGoldilocksConfig,
+        proof::ProofWithPublicInputs,
     },
 };
 
@@ -48,7 +50,7 @@ pub struct Note {
     pub signature: Signature,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct UnblindedNote {
     pub asset_id: Hash,
@@ -56,10 +58,11 @@ pub struct UnblindedNote {
     pub nonce: Hash,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Proof {
     pub proof: ProofWithPublicInputs<GoldilocksField, PoseidonGoldilocksConfig, 2>,
-    pub circuit_data: CircuitData<GoldilocksField, PoseidonGoldilocksConfig, 2>,
+    pub common_data: CommonCircuitData<GoldilocksField, 2>,
+    pub verifier_only: VerifierOnlyCircuitData<PoseidonGoldilocksConfig, 2>,
 }
 
 #[cfg(test)]

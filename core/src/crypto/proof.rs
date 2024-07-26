@@ -5,7 +5,7 @@ use plonky2::{
     iop::witness::{PartialWitness, WitnessWrite},
     plonk::{
         circuit_builder::CircuitBuilder, circuit_data::CircuitConfig,
-        config::PoseidonGoldilocksConfig,
+        circuit_data::VerifierCircuitData, config::PoseidonGoldilocksConfig,
     },
 };
 
@@ -88,13 +88,19 @@ pub fn prove_swap(inputs: &[Note], outputs: &[UnblindedNote]) -> Result<Proof, E
 
     Ok(Proof {
         proof,
-        circuit_data,
+        common_data: circuit_data.common,
+        verifier_only: circuit_data.verifier_only,
     })
 }
 
 /// Verifies a Zero-Knowledge Proof for a Swap.
 pub fn verify_swap_proof(swap: Swap) -> Result<(), Error> {
-    swap.proof.circuit_data.verify(swap.proof.proof)?;
+    let verifier_circuit_data = VerifierCircuitData {
+        verifier_only: swap.proof.verifier_only,
+        common: swap.proof.common_data,
+    };
+    verifier_circuit_data.verify(swap.proof.proof)?;
+
     Ok(())
 }
 
