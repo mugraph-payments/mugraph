@@ -15,6 +15,7 @@ pub fn prove_swap(inputs: &[Note], outputs: &[UnblindedNote]) -> Result<Proof, E
     if inputs.len() > 8 {
         return Err(Error::TooManyInputs(inputs.len()));
     }
+
     if outputs.len() > 8 {
         return Err(Error::TooManyOutputs(outputs.len()));
     }
@@ -88,18 +89,16 @@ pub fn prove_swap(inputs: &[Note], outputs: &[UnblindedNote]) -> Result<Proof, E
 
     Ok(Proof {
         proof,
-        common_data: circuit_data.common,
-        verifier_only: circuit_data.verifier_only,
+        data: VerifierCircuitData {
+            verifier_only: circuit_data.verifier_only,
+            common: circuit_data.common,
+        },
     })
 }
 
 /// Verifies a Zero-Knowledge Proof for a Swap.
 pub fn verify_swap_proof(swap: Swap) -> Result<(), Error> {
-    let verifier_circuit_data = VerifierCircuitData {
-        verifier_only: swap.proof.verifier_only,
-        common: swap.proof.common_data,
-    };
-    verifier_circuit_data.verify(swap.proof.proof)?;
+    swap.proof.data.verify(swap.proof.proof)?;
 
     Ok(())
 }

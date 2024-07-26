@@ -2,14 +2,14 @@
 use crate::testing::*;
 #[cfg(test)]
 use proptest::{collection::vec, prelude::*};
+use serde::{Serialize, Serializer};
 #[cfg(test)]
 use test_strategy::Arbitrary;
 
 use plonky2::{
     field::goldilocks_field::GoldilocksField,
     plonk::{
-        circuit_data::{CommonCircuitData, VerifierOnlyCircuitData},
-        config::PoseidonGoldilocksConfig,
+        circuit_data::VerifierCircuitData, config::PoseidonGoldilocksConfig,
         proof::ProofWithPublicInputs,
     },
 };
@@ -25,7 +25,7 @@ pub type PublicKey = Point;
 pub type SecretKey = Scalar;
 pub type CompressedPoint = curve25519_dalek::ristretto::CompressedRistretto;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Signature {
     #[cfg_attr(test, strategy(point()))]
@@ -34,7 +34,7 @@ pub struct Signature {
     pub s: Scalar,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Note {
     /// The ID for the asset in the Cardano blockchain
@@ -50,7 +50,7 @@ pub struct Note {
     pub signature: Signature,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct UnblindedNote {
     pub asset_id: Hash,
@@ -61,8 +61,24 @@ pub struct UnblindedNote {
 #[derive(Debug, Clone)]
 pub struct Proof {
     pub proof: ProofWithPublicInputs<GoldilocksField, PoseidonGoldilocksConfig, 2>,
-    pub common_data: CommonCircuitData<GoldilocksField, 2>,
-    pub verifier_only: VerifierOnlyCircuitData<PoseidonGoldilocksConfig, 2>,
+    pub data: VerifierCircuitData<GoldilocksField, PoseidonGoldilocksConfig, 2>,
+}
+
+impl Serialize for Proof {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Compress the proof
+        let common = self.data.common.clone();
+        let digest = self.data.verifier_only.circuit_digest.clone();
+
+        let compressed_proof = self.proof.clone().compress(&digest, &common).unwrap();
+
+        // Serialize the compressed proof with public inputs
+        let bytes = compressed_proof.to_bytes();
+        serializer.serialize_str(&hex::encode(bytes))
+    }
 }
 
 #[cfg(test)]
@@ -76,11 +92,11 @@ impl proptest::arbitrary::Arbitrary for Proof {
     type Strategy = BoxedStrategy<Self>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Commit {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub struct Swap {
     #[cfg_attr(test, strategy(vec(any::<Signature>(), 0..=16)))]
