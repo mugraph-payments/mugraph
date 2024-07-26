@@ -1,10 +1,7 @@
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use rand::rngs::OsRng;
 
 use super::*;
-use crate::error::Error;
-
-pub use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
+use crate::{error::Error, types::*, G};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -15,23 +12,20 @@ pub struct DLEQProof {
     s: Scalar,
 }
 
-pub fn blind(secret_message: &[u8]) -> (RistrettoPoint, Scalar, RistrettoPoint) {
+pub fn blind(secret_message: &[u8]) -> (Point, Scalar, Point) {
     let y = hash_to_curve(secret_message);
     let r = Scalar::random(&mut OsRng);
-    let b_prime = y + (RISTRETTO_BASEPOINT_POINT * r);
+    let b_prime = y + (*G * r);
     (y, r, b_prime)
 }
 
-pub fn sign_blinded(
-    private_key: &Scalar,
-    blinded_point: &RistrettoPoint,
-) -> (RistrettoPoint, DLEQProof) {
+pub fn sign_blinded(private_key: &Scalar, blinded_point: &Point) -> (Point, DLEQProof) {
     let signed_point = blinded_point * private_key;
-    let public_key = RISTRETTO_BASEPOINT_POINT * private_key;
+    let public_key = *G * private_key;
 
     // Generate DLEQ proof
     let r = Scalar::random(&mut OsRng);
-    let r1 = RISTRETTO_BASEPOINT_POINT * r;
+    let r1 = *G * r;
     let r2 = blinded_point * r;
     let e = hash_to_scalar(&[
         r1.compress().as_bytes(),
@@ -45,12 +39,12 @@ pub fn sign_blinded(
 }
 
 pub fn verify_dleq_proof(
-    public_key: &RistrettoPoint,
-    blinded_point: &RistrettoPoint,
-    signed_point: &RistrettoPoint,
+    public_key: &Point,
+    blinded_point: &Point,
+    signed_point: &Point,
     proof: &DLEQProof,
 ) -> Result<(), Error> {
-    let r1 = (RISTRETTO_BASEPOINT_POINT * proof.s) - (public_key * proof.e);
+    let r1 = (*G * proof.s) - (public_key * proof.e);
     let r2 = (blinded_point * proof.s) - (signed_point * proof.e);
     let e = hash_to_scalar(&[
         r1.compress().as_bytes(),
@@ -67,12 +61,12 @@ pub fn verify_dleq_proof(
 }
 
 pub fn unblind_and_verify_signature(
-    signed_point: &RistrettoPoint,
+    signed_point: &Point,
     blinding_factor: &Scalar,
-    public_key: &RistrettoPoint,
+    public_key: &Point,
     proof: &DLEQProof,
-    blinded_point: &RistrettoPoint,
-) -> Result<RistrettoPoint, Error> {
+    blinded_point: &Point,
+) -> Result<Point, Error> {
     verify_dleq_proof(public_key, blinded_point, signed_point, proof)?;
 
     Ok(signed_point - (public_key * blinding_factor))
@@ -81,7 +75,7 @@ pub fn unblind_and_verify_signature(
 pub fn verify_unblinded_point(
     private_key: &Scalar,
     message: &[u8],
-    unblinded_point: &RistrettoPoint,
+    unblinded_point: &Point,
 ) -> Result<(), Error> {
     let y = hash_to_curve(message);
 
@@ -100,7 +94,7 @@ mod tests {
 
     #[proptest]
     fn test_blind_diffie_hellman_flow(
-        #[strategy(keypair())] a: (Scalar, RistrettoPoint),
+        #[strategy(keypair())] a: (Scalar, Point),
         secret_message: Vec<u8>,
     ) {
         // Alice initializes
@@ -122,7 +116,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn test_schnorr_signature_tampering(
-        #[strategy(keypair())] a: (Scalar, RistrettoPoint),
+        #[strategy(keypair())] a: (Scalar, Point),
         secret_message: Vec<u8>,
     ) {
         // Alice initializes

@@ -1,7 +1,7 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::Hash;
+use crate::types::Hash;
 
 #[derive(Error, Debug, Diagnostic)]
 pub enum Error {

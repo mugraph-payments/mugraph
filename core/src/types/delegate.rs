@@ -1,4 +1,4 @@
-use crate::crypto::*;
+use crate::types::*;
 
 pub struct Settings {
     pub public_key: PublicKey,

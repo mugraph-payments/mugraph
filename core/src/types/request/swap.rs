@@ -1,7 +1,9 @@
-use crate::{
-    crypto::{commitment::TransactionCommitment, dh::DLEQProof, *},
-    Hash,
-};
+use crate::crypto::dh::DLEQProof;
+use crate::types::*;
+
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct Commitment;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -10,7 +12,8 @@ pub struct Input {
     ///
     /// Corresponds to x in the protocol.
     #[cfg_attr(test, strategy(crate::testing::point()))]
-    pub nullifier: RistrettoPoint,
+    pub nullifier: Point,
+
     /// A proof sent by the delegate that the input blinded transaction was
     /// generated correctly.
     pub dleq_proof: DLEQProof,
@@ -23,18 +26,7 @@ pub struct Output {
     ///
     /// Corresponds to B' in the protocol.
     #[cfg_attr(test, strategy(crate::testing::point()))]
-    pub blinded_secret: RistrettoPoint,
-}
-
-/// An atom for a swap, the input that is used to generate the RangeProof for
-/// the transaction.
-#[derive(Debug, Clone)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Atom {
-    pub asset_id: Hash,
-    pub amount: u128,
-    #[cfg_attr(test, strategy(crate::testing::point()))]
-    pub nullifier: RistrettoPoint,
+    pub blinded_secret: Point,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +34,7 @@ pub struct Atom {
 pub struct Swap {
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
-    pub commitment: TransactionCommitment,
+    pub commitment: Commitment,
 
     /// The unblided signatures for each included Input
     pub witnesses: Vec<Signature>,
