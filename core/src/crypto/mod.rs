@@ -1,4 +1,5 @@
 pub mod dh;
+pub mod proof;
 pub mod schnorr;
 
 use blake2::{Blake2b, Digest};
