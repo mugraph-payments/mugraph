@@ -19,9 +19,9 @@ pub fn blind(secret_message: &[u8]) -> (Point, Scalar, Point) {
     (y, r, b_prime)
 }
 
-pub fn sign_blinded(private_key: &Scalar, blinded_point: &Point) -> (Point, DLEQProof) {
-    let signed_point = blinded_point * private_key;
-    let public_key = *G * private_key;
+pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> (Point, DLEQProof) {
+    let signed_point = blinded_point * secret_key;
+    let public_key = *G * secret_key;
 
     // Generate DLEQ proof
     let r = Scalar::random(&mut OsRng);
@@ -33,7 +33,7 @@ pub fn sign_blinded(private_key: &Scalar, blinded_point: &Point) -> (Point, DLEQ
         public_key.compress().as_bytes(),
         signed_point.compress().as_bytes(),
     ]);
-    let s = r + e * private_key;
+    let s = r + e * secret_key;
 
     (signed_point, DLEQProof { e, s })
 }
@@ -73,13 +73,11 @@ pub fn unblind_and_verify_signature(
 }
 
 pub fn verify_unblinded_point(
-    private_key: &Scalar,
+    secret_key: &SecretKey,
     message: &[u8],
     unblinded_point: &Point,
 ) -> Result<(), Error> {
-    let y = hash_to_curve(message);
-
-    if &y * private_key == *unblinded_point {
+    if hash_to_curve(message) * secret_key == *unblinded_point {
         Ok(())
     } else {
         Err(Error::InvalidUnblindedPoint)

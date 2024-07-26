@@ -2,7 +2,7 @@ use crate::{types::*, G};
 use proptest::prelude::*;
 
 pub fn scalar() -> impl Strategy<Value = Scalar> {
-    any::<[u8; 32]>().prop_map(|bytes| Scalar::from_bytes_mod_order(bytes))
+    any::<[u8; 32]>().prop_map(Scalar::from_bytes_mod_order)
 }
 
 pub fn point() -> impl Strategy<Value = Point> {
