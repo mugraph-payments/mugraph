@@ -8,10 +8,9 @@ let
     readDir
     ;
 
-  inherit (prev) mkShell;
-  inherit (prev.lib) concatStringsSep;
+  inherit (prev) mkShell callPackage;
 
-  rust = final.rust-bin.fromRustupToolchainFile ../rust-toolchain.toml;
+  rust = callPackage ./rust { };
 
   rustPlatform = final.makeRustPlatform {
     rustc = rust;
@@ -24,26 +23,6 @@ let
       value = final.callPackage (./packages + "/${file}") { };
     }) (attrNames (readDir ./packages))
   );
-
-  systemFlags = {
-    "x86_64-darwin" = [ "-C link-arg=-fuse-ld=lld" ];
-    "aarch64-darwin" = systemFlags."x86_64-darwin";
-    "x86_64-linux" = [ "-C link-arg=-fuse-ld=mold" ];
-    "aarch64-linux" = systemFlags."x86_64-linux";
-  };
-
-  systemDeps = {
-    "x86_64-darwin" = [
-      rust
-      final.lld
-    ];
-    "aarch64-darwin" = systemDeps."x86_64-darwin";
-    "x86_64-linux" = [
-      rust
-      final.mold
-    ];
-    "aarch64-linux" = systemFlags."x86_64-linux";
-  };
 
   checks.pre-commit = inputs.pre-commit-hooks.lib.${final.system}.run {
     src = ../.;
@@ -65,17 +44,20 @@ let
 
   devShells.default = mkShell {
     inherit (checks.pre-commit) shellHook;
+    inherit (rust) RUSTFLAGS;
 
     name = "mu-shell";
 
     packages = [
+      rust
+      packages.cargo-risczero
       checks.pre-commit.enabledPackages
+
       final.cargo-nextest
       final.cargo-watch
-      systemDeps.${final.system}
     ];
 
-    RUSTFLAGS = concatStringsSep " " systemFlags.${final.system};
+    RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
   };
 in
 {
@@ -89,6 +71,8 @@ in
       ;
 
     packages = packages // {
+      inherit rust;
+
       default = packages.mugraph-node;
     };
   };
