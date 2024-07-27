@@ -10,8 +10,12 @@ fn main() {
     let mut output_balances = BTreeMap::new();
     let mut nullifiers = BTreeSet::new();
 
+    let mut input_count: u8 = 0;
+    let mut output_count: u8 = 0;
+
     for note in transaction.inputs {
         if let Some(note) = note {
+            input_count += 1;
             env::commit_slice(&note.nullifier);
 
             input_balances
@@ -19,14 +23,18 @@ fn main() {
                 .and_modify(|x| *x += note.amount)
                 .or_insert(note.amount);
 
-            assert!(!nullifiers.contains(&note.nullifier));
+            assert!(!nullifiers.contains(&note.nullifier), "duplicate nullifier");
 
             nullifiers.insert(note.nullifier);
         }
     }
 
+    assert!(input_count > 0, "no inputs");
+
     for note in transaction.outputs {
         if let Some(note) = note {
+            output_count += 1;
+
             let bytes = [
                 note.asset_id.as_ref(),
                 note.amount.to_le_bytes().as_ref(),
@@ -41,11 +49,13 @@ fn main() {
                 .and_modify(|x| *x += note.amount)
                 .or_insert(note.amount);
 
-            assert!(!nullifiers.contains(&note.nullifier));
+            assert!(!nullifiers.contains(&note.nullifier), "duplicate nullifier");
 
             nullifiers.insert(note.nullifier);
         }
     }
+
+    assert!(output_count > 0, "no outputs");
 
     assert_eq!(input_balances, output_balances);
 }
