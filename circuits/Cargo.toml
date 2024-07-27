@@ -3,12 +3,9 @@ name = "mugraph-circuits"
 version = "0.0.1"
 edition = "2021"
 
-[dependencies]
-mugraph-core = { workspace = true }
-mugraph-circuits-swap = { path = "./swap" }
+[build-dependencies]
+risc0-build = { workspace = true }
+serde = { workspace = true }
 
-hex = { workspace = true }
-miette = { workspace = true }
-risc0-zkvm = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
+[package.metadata.risc0]
+methods = ["guest"]

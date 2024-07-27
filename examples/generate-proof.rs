@@ -1,5 +1,6 @@
-use mugraph_circuits::{default_prover, swap::ELF, Error, ExecutorEnv, Result};
-use mugraph_core::{Note, Swap, Transaction, TransactionBuilder};
+use mugraph_circuits::*;
+use mugraph_core::{Error, Note, Result, Swap, Transaction, TransactionBuilder};
+use risc0_zkvm::{default_prover, ExecutorEnv};
 
 fn main() -> Result<()> {
     let mut transaction = Transaction::default();

@@ -1,5 +1,5 @@
 [package]
-name = "mugraph-circuits-swap-guest"
+name = "mugraph-circuits-guest"
 version = "0.1.0"
 edition = "2021"
 
