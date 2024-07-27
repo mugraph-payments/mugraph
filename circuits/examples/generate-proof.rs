@@ -1,41 +1,30 @@
 use mugraph_circuits::{default_prover, swap::ELF, Error, ExecutorEnv, Result};
-use mugraph_core::{Note, Transaction};
+use mugraph_core::{Note, Transaction, TransactionBuilder};
 
 fn main() -> Result<()> {
-    let transaction = Transaction {
-        inputs: [
-            Some(Note {
-                asset_id: [1u8; 32],
-                amount: 100,
-                nullifier: [2u8; 32],
-            }),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ],
-        outputs: [
-            Some(Note {
-                asset_id: [1u8; 32],
-                amount: 50,
-                nullifier: [5u8; 32],
-            }),
-            Some(Note {
-                asset_id: [1u8; 32],
-                amount: 50,
-                nullifier: [4u8; 32],
-            }),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ],
-    };
+    let mut transaction = Transaction::default();
+    let builder = TransactionBuilder::new(&mut transaction);
+    builder
+        .add_input(Note {
+            asset_id: [1u8; 32],
+            amount: 100,
+            nullifier: [2u8; 32],
+        })
+        .unwrap()
+        .add_output(Note {
+            asset_id: [1u8; 32],
+            amount: 50,
+            nullifier: [5u8; 32],
+        })
+        .unwrap()
+        .add_output(Note {
+            asset_id: [1u8; 32],
+            amount: 50,
+            nullifier: [4u8; 32],
+        })
+        .unwrap()
+        .build()
+        .unwrap();
 
     let env = ExecutorEnv::builder()
         .write(&transaction)
