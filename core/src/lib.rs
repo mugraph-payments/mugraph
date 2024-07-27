@@ -9,7 +9,8 @@ pub struct Note {
     pub nullifier: [u8; 32],
 }
 
-pub struct Transaction<const M: usize, const N: usize> {
-    pub inputs: [Note; M],
-    pub outputs: [Note; N],
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Transaction {
+    pub inputs: [Option<Note>; 8],
+    pub outputs: [Option<Note>; 8],
 }

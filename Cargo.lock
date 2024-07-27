@@ -892,6 +892,7 @@ dependencies = [
 name = "mugraph-circuits"
 version = "0.0.1"
 dependencies = [
+ "hex",
  "miette",
  "mugraph-circuits-swap",
  "mugraph-core",
