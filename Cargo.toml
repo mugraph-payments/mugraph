@@ -1,10 +1,22 @@
 [workspace]
 resolver = "2"
 members = [
+  "circuits",
+  "circuits/swap",
+  "circuits/swap/guest",
+  "core",
   "node",
-  "core"
 ]
 
+[workspace.dependencies]
+risc0-zkvm = { version = "1.0.3", features = ["std"] }
+risc0-build = { version = "1.0.3" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[profile.dev]
+opt-level = 3
+
 [profile.release]
-debug = 0
-lto = "thin"
+debug = 1
+lto = true
