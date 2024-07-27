@@ -2,13 +2,18 @@ use mugraph_core::Transaction;
 use risc0_zkvm::guest::env;
 use risc0_zkvm::sha::{Impl, Sha256};
 
-const MAX_ASSET_TYPES: usize = 8;
 const MAX_NOTES: usize = 8;
+/// There are at max 8 inputs/outputs in a transaction, so there are at most 4 asset types
+const MAX_ASSET_TYPES: usize = 4;
 
 fn main() {
     let transaction: Transaction = env::read();
 
-    let mut balances = [0i64; MAX_ASSET_TYPES];
+    assert!(transaction.presence > 0, "no inputs and no outputs");
+    assert!(transaction.presence & transaction.kinds > 0, "no inputs");
+    assert!(transaction.presence ^ transaction.kinds > 0, "no outputs");
+
+    let mut balances = [0u64; MAX_ASSET_TYPES];
     let mut nullifiers = [[0u8; 32]; MAX_NOTES];
     let mut nullifier_count = 0;
 
@@ -21,6 +26,12 @@ fn main() {
         let (asset_id_index, amount) = transaction.amounts[i];
         let nullifier = transaction.nullifiers[i];
 
+        assert_eq!(
+            transaction.presence & (1 << i) == 0,
+            nullifier == [0u8; 32],
+            "nullifier is not zero for non-present note, or zero for present note"
+        );
+
         let is_output = (transaction.kinds & (1 << i)) != 0;
         if is_output {
             // Output
@@ -32,11 +43,15 @@ fn main() {
             .concat();
 
             env::commit_slice(&Impl::hash_bytes(&bytes).as_bytes());
-            balances[asset_id_index as usize] -= amount as i64;
+            balances[asset_id_index as usize] = balances[asset_id_index as usize]
+                .checked_sub(amount)
+                .expect("Output amount overflow");
         } else {
             // Input
             env::commit_slice(&nullifier);
-            balances[asset_id_index as usize] += amount as i64;
+            balances[asset_id_index as usize] = balances[asset_id_index as usize]
+                .checked_add(amount)
+                .expect("Input amount overflow");
         }
 
         assert!(
@@ -46,23 +61,6 @@ fn main() {
         nullifiers[nullifier_count] = nullifier;
         nullifier_count += 1;
     }
-
-    let mut input_count = 0;
-    let mut output_count = 0;
-    for i in 0..MAX_NOTES {
-        if (transaction.presence & (1 << i)) != 0 {
-            if (transaction.kinds & (1 << i)) == 0 {
-                input_count += 1;
-            } else {
-                output_count += 1;
-            }
-        } else {
-            break; // No more notes to process
-        }
-    }
-
-    assert!(input_count > 0, "no inputs");
-    assert!(output_count > 0, "no outputs");
 
     // Check balance
     for balance in balances.iter() {
