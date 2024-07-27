@@ -1,5 +1,5 @@
 use mugraph_circuits::{default_prover, swap::ELF, Error, ExecutorEnv, Result};
-use mugraph_core::{Note, Transaction, TransactionBuilder};
+use mugraph_core::{Note, Swap, Transaction, TransactionBuilder};
 
 fn main() -> Result<()> {
     let mut transaction = Transaction::default();
@@ -35,10 +35,11 @@ fn main() -> Result<()> {
     let prover = default_prover();
 
     let receipt = prover.prove(env, ELF).unwrap().receipt;
+    let swap: Swap = receipt.journal.decode().unwrap();
 
     println!(
-        "Hello, world! I generated a proof of guest execution!\nReceipt:\n\n{}",
-        serde_json::to_string(&receipt).unwrap()
+        "Hello, world! I generated a proof of guest execution!\nSwap:\n\n{}",
+        serde_json::to_string_pretty(&swap).unwrap()
     );
 
     Ok(())

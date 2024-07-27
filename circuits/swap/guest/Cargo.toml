@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 mugraph-core = { workspace = true }
+
 risc0-zkvm = { workspace = true }

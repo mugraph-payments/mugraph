@@ -1,4 +1,4 @@
-use mugraph_core::{Swap, Transaction};
+use mugraph_core::{Hash, Swap, Transaction};
 use risc0_zkvm::guest::env;
 use risc0_zkvm::sha::{Impl, Sha256};
 
@@ -30,7 +30,7 @@ fn main() {
 
         if (transaction.kinds & (1 << i)) == 0 {
             // Input
-            swap.inputs[i] = nullifier;
+            swap.inputs[i] = Hash(nullifier);
 
             balances[asset_id_index as usize] = balances[asset_id_index as usize]
                 .checked_add(amount)
@@ -46,7 +46,7 @@ fn main() {
 
             let hash = Impl::hash_bytes(&bytes);
 
-            swap.outputs[i] = hash.as_bytes().try_into().unwrap();
+            swap.outputs[i] = Hash(hash.as_bytes().try_into().unwrap());
             balances[asset_id_index as usize] = balances[asset_id_index as usize]
                 .checked_sub(amount)
                 .expect("Output amount underflow");
