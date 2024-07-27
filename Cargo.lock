@@ -871,6 +871,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mugraph-examples"
+version = "0.0.1"
+dependencies = [
+ "mugraph-circuits",
+ "mugraph-core",
+ "risc0-zkvm",
+ "serde_json",
+]
+
+[[package]]
 name = "mugraph-node"
 version = "0.0.1"
 dependencies = [

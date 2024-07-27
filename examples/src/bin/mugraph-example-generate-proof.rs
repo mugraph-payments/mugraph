@@ -29,13 +29,13 @@ fn main() -> Result<()> {
 
     let env = ExecutorEnv::builder()
         .write(&transaction)
-        .map_err(|e| Error::FailedToWriteValue(e.to_string()))?
+        .map_err(|_| Error::FailedToWriteValue)?
         .build()
-        .map_err(|e| Error::FailedToInitializeExecutor(e.to_string()))?;
+        .map_err(|_| Error::FailedToInitializeExecutor)?;
 
     let prover = default_prover();
 
-    let receipt = prover.prove(env, ELF).unwrap().receipt;
+    let receipt = prover.prove(env, SWAP_ELF).unwrap().receipt;
     let swap: Swap = receipt.journal.decode().unwrap();
 
     println!(
