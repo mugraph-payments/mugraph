@@ -1,4 +1,4 @@
-use mugraph_core::{Hash, Swap, Transaction};
+use mugraph_core::{Hash, Note, Swap, Transaction};
 use risc0_zkvm::guest::env;
 use risc0_zkvm::sha::{Impl, Sha256};
 
@@ -37,15 +37,14 @@ fn main() {
                 .expect("Input amount overflow");
         } else {
             // Output
-            let bytes = [
-                transaction.asset_ids[asset_id_index as usize].as_ref(),
-                amount.to_le_bytes().as_ref(),
-                nullifier.as_ref(),
-            ]
-            .concat();
+            let asset_id = transaction.asset_ids[asset_id_index as usize];
+            let note = Note {
+                asset_id,
+                amount,
+                nullifier,
+            };
 
-            let hash = Impl::hash_bytes(&bytes);
-
+            let hash = Impl::hash_bytes(&note.as_bytes());
             swap.outputs[i] = Hash(hash.as_bytes().try_into().unwrap());
             balances[asset_id_index as usize] = balances[asset_id_index as usize]
                 .checked_sub(amount)
