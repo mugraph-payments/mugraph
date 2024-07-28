@@ -1,19 +1,19 @@
-use crate::{Error, Point, Scalar};
-use curve25519_dalek::ristretto::CompressedRistretto;
 use hex::{serde::deserialize as hex_deserialize, serde::serialize as hex_serialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::{Error, Hash};
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Signature {
-    pub r: Point,
-    pub s: Scalar,
+    pub r: Hash,
+    pub s: Hash,
 }
 
 impl Signature {
     fn to_bytes(&self) -> [u8; 64] {
         let mut bytes = [0u8; 64];
-        bytes[..32].copy_from_slice(&self.r.compress().to_bytes());
-        bytes[32..64].copy_from_slice(&self.s.to_bytes());
+        bytes[..32].copy_from_slice(&*self.r);
+        bytes[32..64].copy_from_slice(&*self.s);
         bytes
     }
 
@@ -22,14 +22,11 @@ impl Signature {
             return Err(Error::InvalidSignature);
         }
 
-        let r = CompressedRistretto::from_slice(&bytes[0..32])
-            .map_err(|_| Error::InvalidSignature)?
-            .decompress()
-            .ok_or(Error::InvalidSignature)?;
+        let mut this = Self::default();
+        this.r.0.copy_from_slice(&bytes[..32]);
+        this.s.0.copy_from_slice(&bytes[32..]);
 
-        let s = Scalar::from_slice(&bytes[32..64]).map_err(|_| Error::InvalidSignature)?;
-
-        Ok(Signature { r, s })
+        Ok(this)
     }
 }
 
@@ -48,6 +45,6 @@ impl<'de> Deserialize<'de> for Signature {
         D: Deserializer<'de>,
     {
         let bytes: [u8; 64] = hex_deserialize(deserializer)?;
-        Signature::from_bytes(&bytes).map_err(serde::de::Error::custom)
+        Self::from_bytes(&bytes).map_err(serde::de::Error::custom)
     }
 }

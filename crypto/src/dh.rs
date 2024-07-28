@@ -1,5 +1,5 @@
-use super::*;
 use crate::*;
+use mugraph_core::{Error, Result};
 use rand_core::{CryptoRng, RngCore};
 
 pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> (Point, Scalar, Point) {

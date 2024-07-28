@@ -1,5 +1,6 @@
 use core::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{Error, Result};
 
@@ -23,32 +24,28 @@ impl Hash {
         self.0.is_empty() || self.0 == [0u8; 32]
     }
 
-    #[cfg(feature = "guest")]
     pub fn digest(value: &[u8]) -> Result<Self> {
-        use risc0_zkvm::sha::{Impl, Sha256};
-
-        Impl::hash_bytes(&value).as_bytes().try_into()
+        let mut hasher = Sha256::new();
+        hasher.update(value);
+        let result = hasher.finalize();
+        result.as_slice().try_into()
     }
 
-    #[cfg(feature = "guest")]
     pub fn combine(a: Self, b: Self) -> Result<Self> {
-        let mut value = [0u8; 64];
-
-        value[..32].copy_from_slice(&a.0);
-        value[32..].copy_from_slice(&b.0);
-
-        Self::digest(&value)
+        let mut hasher = Sha256::new();
+        hasher.update(a.0);
+        hasher.update(b.0);
+        let result = hasher.finalize();
+        result.as_slice().try_into()
     }
 
-    #[cfg(feature = "guest")]
     pub fn combine3(a: Self, b: Self, c: Self) -> Result<Self> {
-        let mut value = [0u8; 96];
-
-        value[..32].copy_from_slice(&a.0);
-        value[32..64].copy_from_slice(&b.0);
-        value[64..].copy_from_slice(&c.0);
-
-        Self::digest(&value)
+        let mut hasher = Sha256::new();
+        hasher.update(a.0);
+        hasher.update(b.0);
+        hasher.update(c.0);
+        let result = hasher.finalize();
+        result.as_slice().try_into()
     }
 }
 

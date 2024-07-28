@@ -1,9 +1,15 @@
+use mugraph_core::{Hash, HTC_SEP};
 use rand_core::{CryptoRng, RngCore};
 
 pub mod dh;
 pub mod schnorr;
 
-use crate::{Hash, Point, PublicKey, Scalar, SecretKey, DOMAIN_SEPARATOR, G};
+pub type Point = curve25519_dalek::ristretto::RistrettoPoint;
+pub type Scalar = curve25519_dalek::scalar::Scalar;
+pub type SecretKey = Scalar;
+pub type PublicKey = Point;
+
+pub const G: Point = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
 pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     let mut hash = Hash::default();
@@ -20,7 +26,7 @@ pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
 }
 
 pub fn hash_to_curve(message: &[u8]) -> Point {
-    let scalar = hash_to_scalar(&[DOMAIN_SEPARATOR, message]);
+    let scalar = hash_to_scalar(&[&*HTC_SEP, message]);
     G * scalar
 }
 

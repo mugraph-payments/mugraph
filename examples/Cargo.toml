@@ -7,5 +7,5 @@ edition = "2021"
 mugraph-circuits = { path = "../circuits" }
 mugraph-core = { path = "../core" }
 
-risc0-zkvm = { version = "1.0.3", default-features = false, features = ["std"] }
-serde_json = { workspace = true }
+risc0-zkvm = { version = "1.0.3", features = ["std"] }
+serde_json = "1.0.120"

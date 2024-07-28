@@ -4,13 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-curve25519-dalek = { workspace = true }
 hex = { workspace = true }
 onlyerror = { workspace = true }
-rand_core = { workspace = true }
-risc0-zkvm = { workspace = true, optional = true }
 serde = { workspace = true }
-
-[features]
-default = []
-guest = ["dep:risc0-zkvm"]
+sha2 = { workspace = true }
