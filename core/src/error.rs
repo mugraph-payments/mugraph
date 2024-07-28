@@ -16,6 +16,9 @@ pub enum Error {
     #[error("Failed to decode journal")]
     JournalDecode,
 
+    #[error("Failed to decode standard output")]
+    StdoutDecode,
+
     #[error("Invalid Hash")]
     InvalidHash,
 }
