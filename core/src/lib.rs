@@ -3,7 +3,6 @@
 mod error;
 mod hash;
 mod note;
-mod swap;
-mod transaction;
+mod operation;
 
-pub use self::{error::*, hash::*, note::*, swap::*, transaction::*};
+pub use self::{error::*, hash::*, note::*, operation::*};

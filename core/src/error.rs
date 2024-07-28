@@ -4,9 +4,18 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Failed to write value to guest")]
-    FailedToWriteValue,
+    #[error("Failed to write value to executor")]
+    ExecutorWriteValue,
 
     #[error("Failed to initialize executor")]
-    FailedToInitializeExecutor,
+    ExecutorInitialize,
+
+    #[error("Failed to generate proof")]
+    ProofGenerate,
+
+    #[error("Failed to decode journal")]
+    JournalDecode,
+
+    #[error("Invalid Hash")]
+    InvalidHash,
 }

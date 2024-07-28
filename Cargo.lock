@@ -867,6 +867,7 @@ version = "0.0.1"
 dependencies = [
  "hex",
  "onlyerror",
+ "risc0-zkvm",
  "serde",
 ]
 

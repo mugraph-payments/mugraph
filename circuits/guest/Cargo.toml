@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mugraph-core = { workspace = true }
-
+mugraph-core = { path = "../../core", features = ["guest"] }
 risc0-zkvm = { workspace = true }
