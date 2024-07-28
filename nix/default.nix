@@ -58,6 +58,8 @@ let
     ];
 
     RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
+    RISC0_EXECUTOR = "ipc";
+    RISC0_SERVER_PATH = "${packages.r0vm}/bin/r0vm";
   };
 in
 {

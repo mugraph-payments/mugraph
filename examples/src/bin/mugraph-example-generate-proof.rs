@@ -1,6 +1,5 @@
 use mugraph_circuits::*;
 use mugraph_core::{Error, Fission, Hash, Note, Result, Split};
-use risc0_zkvm::{default_prover, serde::from_slice, ExecutorEnv, ProverOpts};
 
 fn main() -> Result<()> {
     let request = Split {
@@ -12,27 +11,11 @@ fn main() -> Result<()> {
         amount: 50,
     };
 
-    let mut stdout = Vec::new();
+    let mut prover = Prover::new();
+    let receipt = prover.prove(&request)?;
 
-    let env = ExecutorEnv::builder()
-        .write(&request)
-        .map_err(|_| Error::ExecutorWriteValue)?
-        .stdout(&mut stdout)
-        .build()
-        .map_err(|_| Error::ExecutorInitialize)?;
-
-    let prover = default_prover();
-    let opts = ProverOpts::fast();
-
-    let receipt = prover
-        .prove_with_opts(env, FISSION_ELF, &opts)
-        .map_err(|e| {
-            println!("Error: {}", e);
-            Error::ProofGenerate
-        })?
-        .receipt;
     let fission: Fission = receipt.journal.decode().map_err(|_| Error::JournalDecode)?;
-    let (output, change): (Note, Note) = from_slice(&stdout).map_err(|_| Error::StdoutDecode)?;
+    let (output, change): (Note, Note) = prover.read()?;
 
     println!(
         "Spend:\n\n{}",

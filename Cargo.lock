@@ -873,7 +873,9 @@ dependencies = [
 name = "mugraph-circuits"
 version = "0.0.1"
 dependencies = [
+ "mugraph-core",
  "risc0-build",
+ "risc0-zkvm",
  "serde",
 ]
 
@@ -911,7 +913,6 @@ version = "0.0.1"
 dependencies = [
  "mugraph-circuits",
  "mugraph-core",
- "risc0-zkvm",
  "serde_json",
 ]
 
