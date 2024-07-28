@@ -1,10 +1,11 @@
 #![no_std]
 
-use mugraph_core::{Hash, NakedNote, RequestSpend, Result, Spend, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{Fission, Fusion, Hash, NakedNote, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 use risc0_zkvm::guest::env;
 
-fn main() -> Result<()> {
-    let request: RequestSpend = env::read();
+#[inline(always)]
+fn run() -> Result<()> {
+    let request: Split = env::read();
 
     assert!(!request.input.nullifier.is_empty());
     assert_ne!(request.amount, 0);
@@ -45,7 +46,7 @@ fn main() -> Result<()> {
         )?,
     };
 
-    let spend = Spend {
+    let fission = Fission {
         input: input_hash,
         outputs: [
             Hash::digest(&output.as_bytes())?,
@@ -54,7 +55,14 @@ fn main() -> Result<()> {
     };
 
     env::write(&(output, change));
-    env::commit(&spend);
+    env::commit(&fission);
 
     Ok(())
+}
+
+fn main() {
+    match run() {
+        Ok(_) => {}
+        Err(e) => panic!("{}", e),
+    }
 }
