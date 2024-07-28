@@ -22,7 +22,7 @@ rustPlatform.buildRustPackage {
   ] ++ optionals isDarwin [ darwin.apple_sdk.frameworks.SystemConfiguration ];
 
   doCheck = false;
-  cargoLock.lockFile = "${mugraph.inputs.risc0}/Cargo.lock";
+  cargoLock.lockFile = "${risc0}/Cargo.lock";
 
   meta = {
     homepage = "https://github.com/risc0/risc0";
