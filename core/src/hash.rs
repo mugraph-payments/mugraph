@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Error, Result};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Hash(
@@ -16,7 +16,7 @@ pub struct Hash(
 
 impl Hash {
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.0.is_empty() || self.0 == [0u8; 32]
     }
 
     #[cfg(feature = "guest")]
@@ -24,6 +24,27 @@ impl Hash {
         use risc0_zkvm::sha::{Impl, Sha256};
 
         Impl::hash_bytes(&value).as_bytes().try_into()
+    }
+
+    #[cfg(feature = "guest")]
+    pub fn combine(a: Self, b: Self) -> Result<Self> {
+        let mut value = [0u8; 64];
+
+        value[..32].copy_from_slice(&a.0);
+        value[32..].copy_from_slice(&b.0);
+
+        Self::digest(&value)
+    }
+
+    #[cfg(feature = "guest")]
+    pub fn combine3(a: Self, b: Self, c: Self) -> Result<Self> {
+        let mut value = [0u8; 96];
+
+        value[..32].copy_from_slice(&a.0);
+        value[32..64].copy_from_slice(&b.0);
+        value[64..].copy_from_slice(&c.0);
+
+        Self::digest(&value)
     }
 }
 
