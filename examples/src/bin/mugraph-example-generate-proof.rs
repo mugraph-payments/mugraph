@@ -2,6 +2,8 @@ use mugraph_circuits::*;
 use mugraph_core::{Error, Fission, Hash, Note, Result, Split};
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     let request = Split {
         input: Note {
             asset_id: Hash([1u8; 32]),
