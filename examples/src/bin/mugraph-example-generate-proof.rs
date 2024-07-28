@@ -22,9 +22,10 @@ fn main() -> Result<()> {
         .map_err(|_| Error::ExecutorInitialize)?;
 
     let prover = default_prover();
+    let opts = ProverOpts::fast();
 
     let receipt = prover
-        .prove_with_opts(env, FISSION_ELF, &ProverOpts::succinct())
+        .prove_with_opts(env, FISSION_ELF, &opts)
         .map_err(|e| {
             println!("Error: {}", e);
             Error::ProofGenerate
