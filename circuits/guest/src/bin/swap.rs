@@ -1,3 +1,5 @@
+#![no_std]
+
 use mugraph_core::{Hash, Note, Swap, Transaction};
 use risc0_zkvm::guest::env;
 use risc0_zkvm::sha::{Impl, Sha256};
@@ -12,6 +14,14 @@ fn main() {
     assert!(transaction.presence > 0, "no inputs and no outputs");
     assert!(transaction.presence & transaction.kinds > 0, "no inputs");
     assert!(transaction.presence ^ transaction.kinds > 0, "no outputs");
+    assert!(
+        (transaction.presence & transaction.kinds).count_ones() <= 4,
+        "more than 4 inputs"
+    );
+    assert!(
+        (transaction.presence ^ transaction.kinds).count_ones() <= 4,
+        "more than 4 outputs"
+    );
 
     let mut balances = [0u64; MAX_ASSET_TYPES];
     let mut nullifiers = [[0u8; 32]; MAX_NOTES];
@@ -22,6 +32,7 @@ fn main() {
     for i in 0..MAX_NOTES {
         let (asset_id_index, amount) = transaction.amounts[i];
         let nullifier = transaction.nullifiers[i];
+
         assert_eq!(
             transaction.presence & (1 << i) == 0,
             nullifier == [0u8; 32],
@@ -30,33 +41,43 @@ fn main() {
 
         if (transaction.kinds & (1 << i)) == 0 {
             // Input
-            swap.inputs[i] = Hash(nullifier);
+            if transaction.presence & (1 << i) != 0 {
+                swap.inputs[i] = Hash(nullifier);
 
-            balances[asset_id_index as usize] = balances[asset_id_index as usize]
-                .checked_add(amount)
-                .expect("Input amount overflow");
+                balances[asset_id_index as usize] = balances[asset_id_index as usize]
+                    .checked_add(amount)
+                    .expect("Input amount overflow");
+            }
         } else {
             // Output
-            let asset_id = transaction.asset_ids[asset_id_index as usize];
-            let note = Note {
-                asset_id,
-                amount,
-                nullifier,
-            };
+            if transaction.presence & (1 << i) != 0 {
+                assert!(
+                    asset_id_index < MAX_ASSET_TYPES as u8,
+                    "asset_id_index out of bounds"
+                );
+                let asset_id = transaction.asset_ids[asset_id_index as usize];
+                let note = Note {
+                    asset_id,
+                    amount,
+                    nullifier,
+                };
 
-            let hash = Impl::hash_bytes(&note.as_bytes());
-            swap.outputs[i] = Hash(hash.as_bytes().try_into().unwrap());
-            balances[asset_id_index as usize] = balances[asset_id_index as usize]
-                .checked_sub(amount)
-                .expect("Output amount underflow");
+                let hash = Impl::hash_bytes(&note.as_bytes());
+                swap.outputs[i] = Hash(hash.as_bytes().try_into().unwrap());
+                balances[asset_id_index as usize] = balances[asset_id_index as usize]
+                    .checked_sub(amount)
+                    .expect("Output amount underflow");
+            }
         }
 
-        assert!(
-            !contains_nullifier(&nullifiers, nullifier_count, &nullifier),
-            "duplicate nullifier"
-        );
-        nullifiers[nullifier_count] = nullifier;
-        nullifier_count += 1;
+        if nullifier != [0u8; 32] {
+            assert!(
+                !contains_nullifier(&nullifiers, nullifier_count, &nullifier),
+                "duplicate nullifier"
+            );
+            nullifiers[nullifier_count] = nullifier;
+            nullifier_count += 1;
+        }
     }
 
     // Check balance
