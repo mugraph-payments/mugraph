@@ -4,7 +4,8 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-mugraph-circuits = { workspace = true }
-mugraph-core = { workspace = true }
-risc0-zkvm = { workspace = true }
+mugraph-circuits = { path = "../circuits" }
+mugraph-core = { path = "../core" }
+
+risc0-zkvm = { version = "1.0.3", default-features = false, features = ["std"] }
 serde_json = { workspace = true }

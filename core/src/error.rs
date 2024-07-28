@@ -21,4 +21,10 @@ pub enum Error {
 
     #[error("Invalid Hash")]
     InvalidHash,
+
+    #[error("Invalid signature")]
+    InvalidSignature,
+
+    #[error("Invalid unblinded point")]
+    InvalidUnblindedPoint,
 }
