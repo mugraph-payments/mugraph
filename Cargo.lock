@@ -879,7 +879,9 @@ dependencies = [
 name = "mugraph-circuits"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "mugraph-core",
+ "onlyerror",
  "risc0-build",
  "risc0-zkvm",
  "serde",

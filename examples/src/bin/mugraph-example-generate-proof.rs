@@ -1,5 +1,5 @@
 use mugraph_circuits::*;
-use mugraph_core::{Error, Fission, Hash, Note, Result, Split};
+use mugraph_core::{Fission, Hash, Note, Split};
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -16,7 +16,7 @@ fn main() -> Result<()> {
     let mut prover = Prover::new();
     let receipt = prover.prove(&request)?;
 
-    let fission: Fission = receipt.journal.decode().map_err(|_| Error::JournalDecode)?;
+    let fission: Fission = receipt.journal.decode()?;
     let (output, change): (Note, Note) = prover.read()?;
 
     println!(

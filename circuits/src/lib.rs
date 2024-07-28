@@ -1,6 +1,9 @@
-use mugraph_core::{Error, Result};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt};
 use serde::{de::DeserializeOwned, Serialize};
+
+mod error;
+
+pub use self::error::{Error, Result};
 
 include!(concat!(env!("OUT_DIR"), "/methods.rs"));
 
@@ -19,21 +22,16 @@ impl Prover {
 
     pub fn prove<T: Serialize>(&mut self, input: T) -> Result<Receipt> {
         let env = ExecutorEnv::builder()
-            .write(&input)
-            .map_err(|_| Error::ExecutorWriteValue)?
+            .write(&input)?
             .stdout(&mut self.stdout)
-            .build()
-            .map_err(|_| Error::ExecutorInitialize)?;
+            .build()?;
 
-        let prover = default_prover();
+        let proof = default_prover().prove_with_opts(env, FISSION_ELF, &self.opts)?;
 
-        Ok(prover
-            .prove_with_opts(env, FISSION_ELF, &self.opts)
-            .map_err(|_| Error::ProofGenerate)?
-            .receipt)
+        Ok(proof.receipt)
     }
 
     pub fn read<T: DeserializeOwned>(&self) -> Result<T> {
-        risc0_zkvm::serde::from_slice(&self.stdout).map_err(|_| Error::StdoutDecode)
+        Ok(risc0_zkvm::serde::from_slice(&self.stdout)?)
     }
 }

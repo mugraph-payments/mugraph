@@ -57,7 +57,7 @@ let
 
         final.cargo-nextest
         final.cargo-watch
-      ];
+      ] ++ optionals isLinux [ packages.r0vm ];
 
       RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
       RUST_LOG = "info";
