@@ -50,7 +50,7 @@ let
 
     packages = [
       rust
-      packages.cargo-risczero
+      packages.r0vm
       checks.pre-commit.enabledPackages
 
       final.cargo-nextest
