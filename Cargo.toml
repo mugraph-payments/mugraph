@@ -13,11 +13,12 @@ mugraph-core = { path = "core" }
 mugraph-circuits = { path = "circuits" }
 
 hex = { version = "0.4.3", default-features = false, features = ["serde"] }
+onlyerror = { version = "0.1.4", default-features = false }
 risc0-build = { version = "1.0.3" }
 risc0-zkvm = { version = "1.0.3" }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0.120"
-onlyerror = { version = "0.1.4", default-features = false }
+sha2 = { version = "0.10.8", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [profile.dev]

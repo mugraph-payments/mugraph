@@ -1,6 +1,6 @@
 #![no_std]
 
-use mugraph_core::{Fission, Fusion, Hash, NakedNote, Result, Split, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{Fission, Hash, NakedNote, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 use risc0_zkvm::guest::env;
 
 #[inline(always)]
@@ -25,7 +25,7 @@ fn run() -> Result<()> {
         amount,
         blinded_secret: Hash::combine3(
             input_hash,
-            Hash::digest(&CHANGE_SEP).unwrap(),
+            CHANGE_SEP,
             Hash::digest(&amount.to_le_bytes()).unwrap(),
         )?,
     };
@@ -41,7 +41,7 @@ fn run() -> Result<()> {
         amount,
         blinded_secret: Hash::combine3(
             input_hash,
-            Hash::digest(&OUTPUT_SEP).unwrap(),
+            OUTPUT_SEP,
             Hash::digest(&amount.to_le_bytes()).unwrap(),
         )?,
     };

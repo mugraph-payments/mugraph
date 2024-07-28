@@ -869,6 +869,7 @@ dependencies = [
  "onlyerror",
  "risc0-zkvm",
  "serde",
+ "sha2",
 ]
 
 [[package]]

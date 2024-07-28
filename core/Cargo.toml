@@ -8,6 +8,7 @@ hex = { workspace = true }
 serde = { workspace = true }
 onlyerror = { workspace = true }
 risc0-zkvm = { workspace = true, optional = true }
+sha2 = { workspace = true }
 
 [features]
 default = []

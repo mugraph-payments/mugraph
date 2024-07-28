@@ -15,6 +15,10 @@ pub struct Hash(
 );
 
 impl Hash {
+    pub const fn new(input: [u8; 32]) -> Self {
+        Self(input)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty() || self.0 == [0u8; 32]
     }
@@ -45,6 +49,12 @@ impl Hash {
         value[64..].copy_from_slice(&c.0);
 
         Self::digest(&value)
+    }
+}
+
+impl AsRef<[u8]> for Hash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
