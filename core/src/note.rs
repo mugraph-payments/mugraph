@@ -18,3 +18,20 @@ impl Note {
         bytes
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct NakedNote {
+    pub asset_id: Hash,
+    pub amount: u64,
+    pub blinded_secret: Hash,
+}
+
+impl NakedNote {
+    pub fn as_bytes(&self) -> [u8; 72] {
+        let mut bytes = [0u8; 72];
+        bytes[..32].copy_from_slice(&*self.asset_id);
+        bytes[32..40].copy_from_slice(&self.amount.to_le_bytes());
+        bytes[40..].copy_from_slice(&*self.blinded_secret);
+        bytes
+    }
+}

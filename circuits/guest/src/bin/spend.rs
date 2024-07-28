@@ -1,6 +1,6 @@
 #![no_std]
 
-use mugraph_core::{Hash, Note, RequestSpend, Result, Spend, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{Hash, NakedNote, RequestSpend, Result, Spend, CHANGE_SEP, OUTPUT_SEP};
 use risc0_zkvm::guest::env;
 
 fn main() -> Result<()> {
@@ -19,10 +19,10 @@ fn main() -> Result<()> {
         .checked_sub(request.amount)
         .expect("input bigger than amount");
 
-    let change = Note {
+    let change = NakedNote {
         asset_id: request.input.asset_id,
         amount,
-        nullifier: Hash::combine3(
+        blinded_secret: Hash::combine3(
             input_hash,
             Hash::digest(&CHANGE_SEP).unwrap(),
             Hash::digest(&amount.to_le_bytes()).unwrap(),
@@ -35,10 +35,10 @@ fn main() -> Result<()> {
         .checked_sub(change.amount)
         .expect("input bigger than amount");
 
-    let output = Note {
+    let output = NakedNote {
         asset_id: request.input.asset_id,
         amount,
-        nullifier: Hash::combine3(
+        blinded_secret: Hash::combine3(
             input_hash,
             Hash::digest(&OUTPUT_SEP).unwrap(),
             Hash::digest(&amount.to_le_bytes()).unwrap(),
