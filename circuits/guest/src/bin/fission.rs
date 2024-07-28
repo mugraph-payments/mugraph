@@ -1,7 +1,7 @@
 #![no_std]
 
 use mugraph_circuits_guest::*;
-use mugraph_core::{Fission, NakedNote, Result, Split, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{BlindedNote, Fission, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 
 use risc0_zkvm::guest::env;
 
@@ -22,7 +22,7 @@ fn run() -> Result<()> {
         .checked_sub(request.amount)
         .expect("input bigger than amount");
 
-    let change = NakedNote {
+    let change = BlindedNote {
         asset_id: request.input.asset_id,
         amount,
         blinded_secret: combine3(
@@ -38,7 +38,7 @@ fn run() -> Result<()> {
         .checked_sub(change.amount)
         .expect("input bigger than amount");
 
-    let output = NakedNote {
+    let output = BlindedNote {
         asset_id: request.input.asset_id,
         amount,
         blinded_secret: combine3(

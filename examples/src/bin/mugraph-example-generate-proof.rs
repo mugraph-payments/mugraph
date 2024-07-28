@@ -1,14 +1,20 @@
 use mugraph_circuits::*;
-use mugraph_core::{Fission, Hash, Note, Split};
+use mugraph_core::{BlindedNote, Fission, Hash, Note, Split};
+use mugraph_crypto::{generate_keypair, schnorr::sign};
+use rand::rngs::OsRng;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+    let rng = &mut OsRng;
+
+    let (server_priv, _) = generate_keypair(rng);
+    let nullifier = sign(rng, &server_priv, [2u8; 32].as_ref());
 
     let request = Split {
         input: Note {
             asset_id: Hash([1u8; 32]),
             amount: 100,
-            nullifier: Hash([2u8; 32]),
+            nullifier,
         },
         amount: 50,
     };
@@ -17,7 +23,14 @@ fn main() -> Result<()> {
     let receipt = prover.prove(&request)?;
 
     let fission: Fission = receipt.journal.decode()?;
-    let (output, change): (Note, Note) = prover.read()?;
+
+    let (output, change): (BlindedNote, BlindedNote) = prover.read()?;
+    let (so, sc) = (
+        sign(rng, &server_priv, output.blinded_secret.as_ref()),
+        sign(rng, &server_priv, change.blinded_secret.as_ref()),
+    );
+
+    let (output, change) = (output.unblind(so), change.unblind(sc));
 
     println!(
         "Spend:\n\n{}",

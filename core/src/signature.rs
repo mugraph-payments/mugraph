@@ -10,14 +10,18 @@ pub struct Signature {
 }
 
 impl Signature {
-    fn to_bytes(&self) -> [u8; 64] {
+    pub fn is_empty(&self) -> bool {
+        self.r.is_empty() || self.s.is_empty()
+    }
+
+    pub fn to_bytes(&self) -> [u8; 64] {
         let mut bytes = [0u8; 64];
         bytes[..32].copy_from_slice(&*self.r);
         bytes[32..64].copy_from_slice(&*self.s);
         bytes
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != 64 {
             return Err(Error::InvalidSignature);
         }

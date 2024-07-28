@@ -921,6 +921,8 @@ version = "0.0.1"
 dependencies = [
  "mugraph-circuits",
  "mugraph-core",
+ "mugraph-crypto",
+ "rand",
  "serde_json",
  "tracing-subscriber 0.3.18",
 ]
