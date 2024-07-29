@@ -7,10 +7,11 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let rng = &mut OsRng;
 
-    let (server_priv, _) = generate_keypair(rng);
+    let (server_priv, server_pub) = generate_keypair(rng);
     let nullifier = sign(rng, &server_priv, [2u8; 32].as_ref());
 
     let request = Split {
+        server_key: server_pub.compress().to_bytes(),
         input: Note {
             asset_id: Hash([1u8; 32]),
             amount: 100,

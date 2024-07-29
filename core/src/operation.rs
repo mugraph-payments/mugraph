@@ -1,10 +1,9 @@
-use crate::{Hash, Note};
+use crate::{Note, PublicKey};
 use serde::{Deserialize, Serialize};
-
-pub type Nullifier = Hash;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Split {
+    pub server_key: PublicKey,
     pub input: Note,
     pub amount: u64,
 }
