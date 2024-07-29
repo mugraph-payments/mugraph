@@ -44,28 +44,26 @@ let
     };
   };
 
-  devShells.default =
-    mkShell {
-      inherit (checks.pre-commit) shellHook;
-      inherit (rust) RUSTFLAGS;
+  devShells.default = mkShell {
+    inherit (checks.pre-commit) shellHook;
+    inherit (rust) RUSTFLAGS;
 
-      name = "mu-shell";
+    name = "mu-shell";
 
-      packages = [
-        rust
-        checks.pre-commit.enabledPackages
+    packages = [
+      rust
+      checks.pre-commit.enabledPackages
+      packages.r0vm
 
-        final.cargo-nextest
-        final.cargo-watch
-      ] ++ optionals isLinux [ packages.r0vm ];
+      final.cargo-nextest
+      final.cargo-watch
+    ];
 
-      RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
-      RUST_LOG = "info";
-    }
-    // optionalAttrs isLinux {
-      RISC0_EXECUTOR = "ipc";
-      RISC0_SERVER_PATH = "${packages.r0vm}/bin/r0vm";
-    };
+    RUST_LOG = "info";
+    RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
+    RISC0_EXECUTOR = "ipc";
+    RISC0_SERVER_PATH = "${packages.r0vm}/bin/r0vm";
+  };
 in
 {
   mugraph = {
