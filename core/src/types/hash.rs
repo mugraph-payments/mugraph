@@ -7,7 +7,7 @@ use crate::{Error, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
+pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 impl Hash {
     pub const fn new(input: [u8; 32]) -> Self {

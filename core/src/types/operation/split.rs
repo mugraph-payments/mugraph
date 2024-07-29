@@ -13,13 +13,13 @@ impl Split {
 
     pub fn to_slice(&self, out: &mut [u8; Self::SIZE]) {
         out[..32].copy_from_slice(&self.server_key);
-        out[32..32 + Note::SIZE].copy_from_slice(&self.input.as_bytes());
+        self.input.to_slice(&mut out[32..32 + Note::SIZE]);
         out[32 + Note::SIZE..].copy_from_slice(&self.amount.to_le_bytes());
     }
 
     pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self> {
         let server_key = PublicKey::try_from(&bytes[..32]).unwrap();
-        let input = Note::from_bytes(&bytes[32..32 + Note::SIZE].try_into().unwrap())?;
+        let input = Note::from_bytes(&bytes[32..32 + Note::SIZE])?;
         let amount = u64::from_le_bytes(bytes[32 + Note::SIZE..].try_into().unwrap());
 
         Ok(Self {

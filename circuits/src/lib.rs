@@ -8,7 +8,7 @@ pub use self::error::{Error, Result};
 include!(concat!(env!("OUT_DIR"), "/methods.rs"));
 
 pub struct Prover {
-    stdout: Vec<u8>,
+    pub stdout: Vec<u8>,
     opts: ProverOpts,
 }
 

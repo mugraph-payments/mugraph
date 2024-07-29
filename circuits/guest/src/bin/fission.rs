@@ -5,6 +5,9 @@ use risc0_zkvm::guest::env;
 #[inline(always)]
 fn run() -> Result<()> {
     let mut buf = [0u8; Split::SIZE];
+    let mut out = [0u8; BlindedNote::SIZE];
+    let mut chan = [0u8; BlindedNote::SIZE];
+
     env::read_slice(&mut buf);
 
     let request = Split::from_bytes(&buf)?;
@@ -14,7 +17,7 @@ fn run() -> Result<()> {
     assert_ne!(request.input.amount, 0);
     assert!(request.input.amount >= request.amount);
 
-    let input_hash = Hash::digest(&request.input.as_bytes())?;
+    let input_hash = request.input.digest();
 
     let amount = request
         .input
@@ -27,6 +30,7 @@ fn run() -> Result<()> {
         amount,
         secret: Hash::combine3(input_hash, CHANGE_SEP, Hash::digest(&amount.to_le_bytes())?)?,
     };
+    change.to_slice(&mut chan);
 
     let amount = request
         .input
@@ -39,16 +43,10 @@ fn run() -> Result<()> {
         amount,
         secret: Hash::combine3(input_hash, OUTPUT_SEP, Hash::digest(&amount.to_le_bytes())?)?,
     };
+    output.to_slice(&mut out);
 
-    env::commit_slice(
-        &[
-            *input_hash,
-            *Hash::digest(&output.as_bytes())?,
-            *Hash::digest(&change.as_bytes())?,
-        ]
-        .concat(),
-    );
-    env::write(&(output, change));
+    env::commit_slice(&[*input_hash, *output.digest(), *change.digest()].concat());
+    env::write_slice(&[out, chan].concat());
 
     Ok(())
 }

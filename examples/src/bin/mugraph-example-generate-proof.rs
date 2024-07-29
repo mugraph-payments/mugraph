@@ -36,11 +36,11 @@ fn main() -> Result<()> {
     let fission_receipt = prover.prove(&buf)?;
 
     info!("Parsing fission journal");
-    let buf = fission_receipt.journal.bytes;
-    let fission: Fission = Fission::from_bytes(&buf)?;
+    let fission: Fission = Fission::from_bytes(&fission_receipt.journal.bytes)?;
 
     info!("Reading fission stdout");
-    let (output, change): (BlindedNote, BlindedNote) = prover.read()?;
+    let output = BlindedNote::from_bytes(&prover.stdout[..BlindedNote::SIZE])?;
+    let change = BlindedNote::from_bytes(&prover.stdout[BlindedNote::SIZE..])?;
 
     info!("[server] signing outputs");
     let (so, sc) = (
@@ -75,11 +75,10 @@ fn main() -> Result<()> {
     let fusion_receipt = prover.prove(&buf)?;
 
     info!("Parsing fusion journal");
-    let buf = fusion_receipt.journal.bytes;
-    let fusion: Fusion = Fusion::from_bytes(&buf)?;
+    let fusion: Fusion = Fusion::from_bytes(&fusion_receipt.journal.bytes)?;
 
     info!("Reading fusion stdout");
-    let fused_output: BlindedNote = prover.read()?;
+    let fused_output = BlindedNote::from_bytes(&prover.stdout[..BlindedNote::SIZE])?;
 
     info!("[server] signing output");
     let sf = sign(rng, &server_priv, fused_output.secret.as_ref());

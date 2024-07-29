@@ -1,13 +1,12 @@
 #![no_std]
 
-use mugraph_core::{BlindedNote, Fusion, Hash, Join, Result, OUTPUT_SEP};
+use mugraph_core::{BlindedNote, Hash, Join, Result, OUTPUT_SEP};
 
 use risc0_zkvm::guest::env;
 
 #[inline(always)]
 fn run() -> Result<()> {
     let mut buf = [0u8; Join::SIZE];
-    let mut out = [0u8; Fusion::SIZE];
     env::read_slice(&mut buf);
 
     let join = Join::from_bytes(&buf)?;
@@ -18,8 +17,8 @@ fn run() -> Result<()> {
     assert!(!input_b.nullifier.is_empty());
     assert_ne!(input_a.nullifier, input_b.nullifier);
 
-    let a = Hash::digest(&input_a.as_bytes())?;
-    let b = Hash::digest(&input_b.as_bytes())?;
+    let a = input_a.digest();
+    let b = input_b.digest();
 
     let total = input_a
         .amount
@@ -34,14 +33,7 @@ fn run() -> Result<()> {
 
     env::write(&output);
 
-    let fusion = Fusion {
-        a,
-        b,
-        c: Hash::digest(&output.as_bytes())?,
-    };
-    fusion.to_slice(&mut out);
-
-    env::commit_slice(&out);
+    env::commit_slice(&[*a, *b, *output.digest()].concat());
 
     Ok(())
 }
