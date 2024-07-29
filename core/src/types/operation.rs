@@ -8,6 +8,7 @@ pub struct Split {
     pub amount: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Join {
     pub inputs: [Note; 2],
 }

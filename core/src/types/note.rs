@@ -37,7 +37,7 @@ impl Note {
 pub struct BlindedNote {
     pub asset_id: Hash,
     pub amount: u64,
-    pub blinded_secret: Hash,
+    pub secret: Hash,
 }
 
 impl BlindedNote {
@@ -45,7 +45,7 @@ impl BlindedNote {
         let mut bytes = [0u8; 72];
         bytes[..32].copy_from_slice(&*self.asset_id);
         bytes[32..40].copy_from_slice(&self.amount.to_le_bytes());
-        bytes[40..].copy_from_slice(&*self.blinded_secret);
+        bytes[40..].copy_from_slice(&*self.secret);
         bytes
     }
 
@@ -61,7 +61,7 @@ impl BlindedNote {
         Ok(Self {
             asset_id,
             amount: u64::from_le_bytes(amount),
-            blinded_secret,
+            secret: blinded_secret,
         })
     }
 

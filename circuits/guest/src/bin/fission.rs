@@ -1,7 +1,6 @@
 #![no_std]
 
-use mugraph_circuits_guest::*;
-use mugraph_core::{BlindedNote, Fission, Result, Split, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{BlindedNote, Fission, Hash, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 
 use risc0_zkvm::guest::env;
 
@@ -14,7 +13,7 @@ fn run() -> Result<()> {
     assert_ne!(request.input.amount, 0);
     assert!(request.input.amount >= request.amount);
 
-    let input_hash = digest(&request.input.as_bytes())?;
+    let input_hash = Hash::digest(&request.input.as_bytes())?;
 
     let amount = request
         .input
@@ -25,10 +24,10 @@ fn run() -> Result<()> {
     let change = BlindedNote {
         asset_id: request.input.asset_id,
         amount,
-        blinded_secret: combine3(
+        secret: Hash::combine3(
             input_hash,
             CHANGE_SEP,
-            digest(&amount.to_le_bytes()).unwrap(),
+            Hash::digest(&amount.to_le_bytes()).unwrap(),
         )?,
     };
 
@@ -41,16 +40,19 @@ fn run() -> Result<()> {
     let output = BlindedNote {
         asset_id: request.input.asset_id,
         amount,
-        blinded_secret: combine3(
+        secret: Hash::combine3(
             input_hash,
             OUTPUT_SEP,
-            digest(&amount.to_le_bytes()).unwrap(),
+            Hash::digest(&amount.to_le_bytes()).unwrap(),
         )?,
     };
 
     let fission = Fission {
         input: input_hash,
-        outputs: [digest(&output.as_bytes())?, digest(&change.as_bytes())?],
+        outputs: [
+            Hash::digest(&output.as_bytes())?,
+            Hash::digest(&change.as_bytes())?,
+        ],
     };
 
     env::write(&(output, change));

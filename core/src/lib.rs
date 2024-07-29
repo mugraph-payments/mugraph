@@ -1,15 +1,9 @@
 #![no_std]
 
 mod error;
-mod event;
-mod hash;
-mod note;
-mod operation;
-mod signature;
+mod types;
 
-pub use self::{error::*, event::*, hash::*, note::*, operation::*, signature::*};
-
-pub type PublicKey = [u8; 32];
+pub use self::{error::*, types::*};
 
 pub const OUTPUT_SEP: Hash = Hash::new([
     251, 27, 10, 119, 219, 137, 49, 221, 246, 211, 108, 158, 213, 143, 56, 34, 184, 84, 252, 192,

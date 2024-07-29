@@ -1,9 +1,8 @@
-use hex::{serde::deserialize as hex_deserialize, serde::serialize as hex_serialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{Error, Hash};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Signature {
     pub r: Hash,
     pub s: Hash,
