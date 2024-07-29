@@ -1,5 +1,6 @@
 use mugraph_core::{Hash, HTC_SEP};
 use rand_core::{CryptoRng, RngCore};
+use sha2::{Digest, Sha256};
 
 pub mod dh;
 pub mod schnorr;
@@ -12,16 +13,13 @@ pub type PublicKey = Point;
 pub const G: Point = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
 pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
-    let mut hash = Hash::default();
+    let mut hasher = Sha256::new();
 
     for item in data {
-        if hash.is_empty() {
-            hash = Hash::digest(item).unwrap();
-        } else {
-            hash = Hash::combine(hash, Hash::digest(item).unwrap()).unwrap();
-        }
+        hasher.update(&item);
     }
 
+    let hash: Hash = hasher.finalize().as_slice().try_into().unwrap();
     Scalar::from_bytes_mod_order(*hash)
 }
 

@@ -9,3 +9,4 @@ mugraph-core = { workspace = true }
 curve25519-dalek = { workspace = true }
 rand_core = { version = "0.6.4" }
 serde = { workspace = true }
+sha2 = { workspace = true }

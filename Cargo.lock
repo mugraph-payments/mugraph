@@ -930,6 +930,7 @@ dependencies = [
  "mugraph-core",
  "rand_core",
  "serde",
+ "sha2",
 ]
 
 [[package]]
