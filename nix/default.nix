@@ -51,12 +51,12 @@ let
     name = "mu-shell";
 
     packages = [
-      rust
       checks.pre-commit.enabledPackages
-      packages.r0vm
-
       final.cargo-nextest
       final.cargo-watch
+      packages.cargo-risczero
+      packages.r0vm
+      rust
     ];
 
     RUST_LOG = "info";
