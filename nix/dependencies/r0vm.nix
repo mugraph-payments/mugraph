@@ -10,9 +10,8 @@ let
   inherit (builtins) fetchurl;
   inherit (darwin.apple_sdk) frameworks;
   inherit (lib) optionals;
-  inherit (mugraph) rustPlatform;
+  inherit (mugraph.lib.defaults) rustPlatform rust;
   inherit (mugraph.inputs) risc0;
-  inherit (mugraph.dependencies) rust;
   inherit (stdenv) isDarwin;
 
   # see https://github.com/risc0/risc0/blob/main/risc0/circuit/recursion/build.rs

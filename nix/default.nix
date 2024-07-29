@@ -1,87 +1,51 @@
 inputs: final: prev:
 let
-  inherit (builtins)
-    attrNames
-    attrValues
-    listToAttrs
-    readDir
-    ;
+  lib = import ./lib.nix { pkgs = final; };
 
+  inherit (builtins) concatStringsSep;
+  inherit (lib) buildPackageSet;
   inherit (prev) mkShell;
-  inherit (prev.lib) removeSuffix;
-
-  env = import ./env.nix { pkgs = final; };
-
-  buildPackageSet =
-    dir:
-    let
-      dirContents = readDir dir;
-      entries = map (n: {
-        name = removeSuffix ".nix" n;
-        path = n;
-      }) (attrNames dirContents);
-      build =
-        { name, path }:
-        {
-          inherit name;
-          value = final.callPackage path { };
-        };
-    in
-    listToAttrs (map build entries);
 
   packages = buildPackageSet ./packages;
   dependencies = buildPackageSet ./dependencies;
+  checks = buildPackageSet ./checks;
 
-  rustPlatform = final.makeRustPlatform {
-    rustc = dependencies.rust;
-    cargo = dependencies.rust;
+  devShells.default = mkShell {
+    name = "mu-shell";
+
+    packages = [
+      lib.defaults.rust
+      checks.pre-commit.enabledPackages
+
+      final.rustup
+      final.cargo-watch
+      final.cargo-nextest
+    ];
+
+    inherit (lib.defaults.env) RUST_LOG RISC0_RUST_SRC RUSTFLAGS;
+
+    RISC0_EXECUTOR = "ipc";
+    RISC0_SERVER_PATH = "${dependencies.r0vm}/bin/r0vm";
+
+    shellHook = concatStringsSep "\n\n" [
+      checks.pre-commit.shellHook
+      ''
+        rustup toolchain link mugraph ${lib.defaults.rust}
+        rustup toolchain link risc0 ${lib.defaults.rust}
+        rustup override set mugraph
+      ''
+    ];
   };
-
-  checks.pre-commit = inputs.pre-commit-hooks.lib.${final.system}.run {
-    src = ../.;
-    hooks = {
-      nixfmt = {
-        enable = true;
-        package = final.nixfmt-rfc-style;
-      };
-
-      rustfmt = {
-        enable = true;
-        packageOverrides = {
-          cargo = dependencies.rust;
-          rustfmt = dependencies.rust;
-        };
-      };
-    };
-  };
-
-  devShells.default =
-    mkShell {
-      inherit (checks.pre-commit) shellHook;
-
-      name = "mu-shell";
-
-      packages = [
-        checks.pre-commit.enabledPackages
-        (attrValues dependencies)
-      ];
-
-      RISC0_EXECUTOR = "ipc";
-    }
-    // env;
 in
 {
   mugraph = {
     inherit
       checks
-
       devShells
+      lib
       inputs
       packages
+      dependencies
       ;
-
-    dependencies = dependencies // {
-      inherit rustPlatform;
-    };
   };
 }

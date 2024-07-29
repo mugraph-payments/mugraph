@@ -8,7 +8,7 @@
 let
   inherit (stdenv) isDarwin;
   inherit (lib) optionals;
-  inherit (mugraph) rustPlatform;
+  inherit (mugraph.lib.defaults) rustPlatform;
 in
 rustPlatform.buildRustPackage {
   pname = "mugraph-node";

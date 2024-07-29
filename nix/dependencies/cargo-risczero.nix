@@ -8,7 +8,7 @@
 let
   inherit (lib) optionals;
   inherit (stdenv) isDarwin;
-  inherit (mugraph) rustPlatform;
+  inherit (mugraph.lib.defaults) rustPlatform;
   inherit (mugraph.inputs) risc0;
 in
 rustPlatform.buildRustPackage {
