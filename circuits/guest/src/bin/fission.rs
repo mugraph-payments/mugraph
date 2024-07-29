@@ -1,11 +1,10 @@
-use mugraph_core::{BlindedNote, Fission, Hash, Result, Split, CHANGE_SEP, OUTPUT_SEP};
+use mugraph_core::{BlindedNote, Hash, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 
 use risc0_zkvm::guest::env;
 
 #[inline(always)]
 fn run() -> Result<()> {
     let mut buf = [0u8; Split::SIZE];
-    let mut out = [0u8; Fission::SIZE];
     env::read_slice(&mut buf);
 
     let request = Split::from_bytes(&buf)?;
@@ -41,15 +40,15 @@ fn run() -> Result<()> {
         secret: Hash::combine3(input_hash, OUTPUT_SEP, Hash::digest(&amount.to_le_bytes())?)?,
     };
 
-    let fission = Fission {
-        a: input_hash,
-        b: Hash::digest(&output.as_bytes())?,
-        c: Hash::digest(&change.as_bytes())?,
-    };
-    fission.to_slice(&mut out);
-
+    env::commit_slice(
+        &[
+            *input_hash,
+            *Hash::digest(&output.as_bytes())?,
+            *Hash::digest(&change.as_bytes())?,
+        ]
+        .concat(),
+    );
     env::write(&(output, change));
-    env::commit_slice(&out);
 
     Ok(())
 }
