@@ -8,6 +8,7 @@ if ! which rustc &>/dev/null; then
 fi
 
 CMD="${1:-none}"
+echo "[rustup-mock] Running stub command: rustup ${*}"
 
 case "$CMD" in
 toolchain)

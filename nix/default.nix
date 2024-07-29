@@ -2,29 +2,40 @@ inputs: final: prev:
 let
   inherit (builtins)
     attrNames
-    elemAt
+    attrValues
     listToAttrs
-    match
     readDir
     ;
 
-  inherit (prev) mkShell callPackage;
-  inherit (final.stdenv) isLinux;
-  inherit (final.lib) optionals optionalAttrs;
+  inherit (prev) mkShell;
+  inherit (prev.lib) removeSuffix;
 
-  rust = callPackage ./rust { };
+  env = import ./env.nix { pkgs = final; };
+
+  buildPackageSet =
+    dir:
+    let
+      dirContents = readDir dir;
+      entries = map (n: {
+        name = removeSuffix ".nix" n;
+        path = n;
+      }) (attrNames dirContents);
+      build =
+        { name, path }:
+        {
+          inherit name;
+          value = final.callPackage path { };
+        };
+    in
+    listToAttrs (map build entries);
+
+  packages = buildPackageSet ./packages;
+  dependencies = buildPackageSet ./dependencies;
 
   rustPlatform = final.makeRustPlatform {
-    rustc = rust;
-    cargo = rust;
+    rustc = dependencies.rust;
+    cargo = dependencies.rust;
   };
-
-  packages = listToAttrs (
-    map (file: {
-      name = elemAt (match "(.*)\\.nix" file) 0;
-      value = final.callPackage (./packages + "/${file}") { };
-    }) (attrNames (readDir ./packages))
-  );
 
   checks.pre-commit = inputs.pre-commit-hooks.lib.${final.system}.run {
     src = ../.;
@@ -37,48 +48,40 @@ let
       rustfmt = {
         enable = true;
         packageOverrides = {
-          cargo = rust;
-          rustfmt = rust;
+          cargo = dependencies.rust;
+          rustfmt = dependencies.rust;
         };
       };
     };
   };
 
-  devShells.default = mkShell {
-    inherit (checks.pre-commit) shellHook;
-    inherit (rust) RUSTFLAGS;
+  devShells.default =
+    mkShell {
+      inherit (checks.pre-commit) shellHook;
 
-    name = "mu-shell";
+      name = "mu-shell";
 
-    packages = [
-      checks.pre-commit.enabledPackages
-      final.cargo-nextest
-      final.cargo-watch
-      packages.cargo-risczero
-      packages.r0vm
-      rust
-    ];
+      packages = [
+        checks.pre-commit.enabledPackages
+        (attrValues dependencies)
+      ];
 
-    RUST_LOG = "info";
-    RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
-    RISC0_EXECUTOR = "ipc";
-    RISC0_SERVER_PATH = "${packages.r0vm}/bin/r0vm";
-  };
+      RISC0_EXECUTOR = "ipc";
+    }
+    // env;
 in
 {
   mugraph = {
     inherit
+      checks
+
       devShells
       inputs
-      checks
-      rust
-      rustPlatform
+      packages
       ;
 
-    packages = packages // {
-      inherit rust;
-
-      default = packages.mugraph-node;
+    dependencies = dependencies // {
+      inherit rustPlatform;
     };
   };
 }
