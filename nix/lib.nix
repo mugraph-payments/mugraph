@@ -51,6 +51,11 @@ in
       ];
     };
 
+    paths = {
+      root = ./..;
+      cargoLock = ./../Cargo.lock;
+    };
+
     rustPlatform = pkgs.makeRustPlatform {
       rustc = rust;
       cargo = rust;
