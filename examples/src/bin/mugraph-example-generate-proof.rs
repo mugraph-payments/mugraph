@@ -11,23 +11,29 @@ fn main() -> Result<()> {
     info!("Generating server keys");
     let (server_priv, server_pub) = generate_keypair(rng);
 
-    info!("Creating fission request");
     let nullifier = sign(rng, &server_priv, [2u8; 32].as_ref());
 
-    let fission_request = Split {
+    let split = Split {
         server_key: server_pub.compress().to_bytes(),
         input: Note {
             asset_id: Hash([1u8; 32]),
-            amount: 100,
+            amount: 1000, // Increased this
             nullifier,
         },
         amount: 50,
     };
+    info!(
+        input_amount = split.input.amount,
+        split_amount = split.amount,
+        "Creating fission request"
+    );
 
     let mut prover = Prover::new();
 
     info!("Creating Fission Proof");
-    let fission_receipt = prover.prove(&fission_request)?;
+    let mut buf = [0u8; Split::SIZE];
+    split.to_slice(&mut buf);
+    let fission_receipt = prover.prove(&buf)?;
 
     info!("Parsing fission journal");
     let fission: Fission = fission_receipt.journal.decode()?;
@@ -58,12 +64,14 @@ fn main() -> Result<()> {
     );
 
     info!("Creating fusion request");
-    let fusion_request = Join {
+    let join = Join {
         inputs: [output.clone(), change.clone()],
     };
 
     info!("Creating Fusion Proof");
-    let fusion_receipt = prover.prove(&fusion_request)?;
+    let mut buf = [0u8; Join::SIZE];
+    join.to_slice(&mut buf);
+    let fusion_receipt = prover.prove(&buf)?;
 
     info!("Parsing fusion journal");
     let fusion: Fusion = fusion_receipt.journal.decode()?;

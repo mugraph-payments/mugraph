@@ -1,5 +1,5 @@
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts, Receipt};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 
 mod error;
 
@@ -20,9 +20,9 @@ impl Prover {
         }
     }
 
-    pub fn prove<T: Serialize>(&mut self, input: T) -> Result<Receipt> {
+    pub fn prove(&mut self, input: &[u8]) -> Result<Receipt> {
         let env = ExecutorEnv::builder()
-            .write(&input)?
+            .write_slice(input)
             .stdout(&mut self.stdout)
             .build()?;
 

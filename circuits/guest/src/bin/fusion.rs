@@ -10,39 +10,31 @@ fn run() -> Result<()> {
 
     let [input_a, input_b] = request.inputs;
 
+    assert_eq!(input_a.asset_id, input_b.asset_id);
     assert!(!input_a.nullifier.is_empty());
     assert!(!input_b.nullifier.is_empty());
-
-    assert_eq!(input_a.asset_id, input_b.asset_id);
     assert_ne!(input_a.nullifier, input_b.nullifier);
 
-    assert_ne!(input_a.amount, 0);
-    assert_ne!(input_b.amount, 0);
+    let a = Hash::digest(&input_a.as_bytes())?;
+    let b = Hash::digest(&input_b.as_bytes())?;
 
-    let hash_a = Hash::digest(&input_a.as_bytes())?;
-    let hash_b = Hash::digest(&input_b.as_bytes())?;
-
-    let total_amount = input_a
+    let total = input_a
         .amount
         .checked_add(input_b.amount)
         .expect("overflow in total amount");
 
     let output = BlindedNote {
         asset_id: input_a.asset_id,
-        amount: total_amount,
-        secret: Hash::combine4(
-            hash_a,
-            hash_b,
-            OUTPUT_SEP,
-            Hash::digest(&total_amount.to_le_bytes())?,
-        )?,
+        amount: total,
+        secret: Hash::combine3(OUTPUT_SEP, a, b)?,
     };
 
     env::write(&output);
 
     let fusion = Fusion {
-        inputs: [hash_a, hash_b],
-        output: Hash::digest(&output.as_bytes())?,
+        a,
+        b,
+        c: Hash::digest(&output.as_bytes())?,
     };
 
     env::commit(&fusion);
