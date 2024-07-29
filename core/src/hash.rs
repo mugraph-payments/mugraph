@@ -7,13 +7,7 @@ use crate::{Error, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(
-    #[serde(
-        serialize_with = "hex::serialize",
-        deserialize_with = "hex::deserialize"
-    )]
-    pub [u8; 32],
-);
+pub struct Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl Hash {
     pub const fn new(input: [u8; 32]) -> Self {
@@ -21,7 +15,7 @@ impl Hash {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty() || self.0 == [0u8; 32]
+        self.0 == [0u8; 32]
     }
 
     pub fn digest(value: &[u8]) -> Result<Self> {
@@ -31,6 +25,7 @@ impl Hash {
         result.as_slice().try_into()
     }
 
+    #[inline(always)]
     pub fn combine(a: Self, b: Self) -> Result<Self> {
         let mut hasher = Sha256::new();
         hasher.update(a.0);
@@ -39,11 +34,23 @@ impl Hash {
         result.as_slice().try_into()
     }
 
+    #[inline(always)]
     pub fn combine3(a: Self, b: Self, c: Self) -> Result<Self> {
         let mut hasher = Sha256::new();
         hasher.update(a.0);
         hasher.update(b.0);
         hasher.update(c.0);
+        let result = hasher.finalize();
+        result.as_slice().try_into()
+    }
+
+    #[inline(always)]
+    pub fn combine4(a: Self, b: Self, c: Self, d: Self) -> Result<Self> {
+        let mut hasher = Sha256::new();
+        hasher.update(a.0);
+        hasher.update(b.0);
+        hasher.update(c.0);
+        hasher.update(d.0);
         let result = hasher.finalize();
         result.as_slice().try_into()
     }

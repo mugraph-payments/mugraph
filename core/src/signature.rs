@@ -39,7 +39,7 @@ impl Serialize for Signature {
     where
         S: Serializer,
     {
-        hex_serialize(&self.to_bytes(), serializer)
+        serde_bytes::serialize(&self.to_bytes(), serializer)
     }
 }
 
@@ -48,7 +48,7 @@ impl<'de> Deserialize<'de> for Signature {
     where
         D: Deserializer<'de>,
     {
-        let bytes: [u8; 64] = hex_deserialize(deserializer)?;
+        let bytes: [u8; 64] = serde_bytes::deserialize(deserializer)?;
         Self::from_bytes(&bytes).map_err(serde::de::Error::custom)
     }
 }
