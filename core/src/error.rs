@@ -10,6 +10,9 @@ pub enum Error {
     #[error("Invalid signature")]
     InvalidSignature,
 
+    #[error("Failed Deserialization")]
+    FailedDeserialization,
+
     #[error("Invalid unblinded point")]
     InvalidUnblindedPoint,
 }

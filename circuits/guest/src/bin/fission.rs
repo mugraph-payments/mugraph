@@ -5,6 +5,7 @@ use risc0_zkvm::guest::env;
 #[inline(always)]
 fn run() -> Result<()> {
     let mut buf = [0u8; Split::SIZE];
+    let mut out = [0u8; Fission::SIZE];
     env::read_slice(&mut buf);
 
     let request = Split::from_bytes(&buf)?;
@@ -45,9 +46,10 @@ fn run() -> Result<()> {
         b: Hash::digest(&output.as_bytes())?,
         c: Hash::digest(&change.as_bytes())?,
     };
+    fission.to_slice(&mut out);
 
     env::write(&(output, change));
-    env::commit(&fission);
+    env::commit_slice(&out);
 
     Ok(())
 }

@@ -1,4 +1,4 @@
-use crate::{Hash, Result, Signature};
+use crate::{Error, Hash, Result, Signature};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,10 @@ impl Note {
     }
 
     pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self> {
+        if bytes.len() != Self::SIZE {
+            return Err(Error::FailedDeserialization);
+        }
+
         let mut asset_id = Hash::default();
         let mut amount = [0u8; 8];
 
@@ -43,15 +47,21 @@ pub struct BlindedNote {
 }
 
 impl BlindedNote {
-    pub fn as_bytes(&self) -> [u8; 72] {
-        let mut bytes = [0u8; 72];
+    pub const SIZE: usize = 72;
+
+    pub fn as_bytes(&self) -> [u8; Self::SIZE] {
+        let mut bytes = [0u8; Self::SIZE];
         bytes[..32].copy_from_slice(&*self.asset_id);
         bytes[32..40].copy_from_slice(&self.amount.to_le_bytes());
         bytes[40..].copy_from_slice(&*self.secret);
         bytes
     }
 
-    pub fn from_bytes(bytes: &[u8; 72]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self> {
+        if bytes.len() != Self::SIZE {
+            return Err(Error::FailedDeserialization);
+        }
+
         let mut asset_id = Hash::default();
         let mut blinded_secret = Hash::default();
         let mut amount = [0u8; 8];

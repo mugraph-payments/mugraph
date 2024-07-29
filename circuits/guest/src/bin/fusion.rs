@@ -6,9 +6,12 @@ use risc0_zkvm::guest::env;
 
 #[inline(always)]
 fn run() -> Result<()> {
-    let request: Join = env::read();
+    let mut buf = [0u8; Join::SIZE];
+    let mut out = [0u8; Fusion::SIZE];
+    env::read_slice(&mut buf);
 
-    let [input_a, input_b] = request.inputs;
+    let join = Join::from_bytes(&buf)?;
+    let [input_a, input_b] = join.inputs;
 
     assert_eq!(input_a.asset_id, input_b.asset_id);
     assert!(!input_a.nullifier.is_empty());
@@ -36,8 +39,9 @@ fn run() -> Result<()> {
         b,
         c: Hash::digest(&output.as_bytes())?,
     };
+    fusion.to_slice(&mut out);
 
-    env::commit(&fusion);
+    env::commit_slice(&out);
 
     Ok(())
 }

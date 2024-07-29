@@ -1,4 +1,4 @@
-use crate::{Hash, Result};
+use crate::{Error, Hash, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -17,7 +17,11 @@ impl Fusion {
         out[64..].copy_from_slice(&*self.c);
     }
 
-    pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() != Self::SIZE {
+            return Err(Error::FailedDeserialization);
+        }
+
         let mut buf = [0u8; 32];
 
         buf.copy_from_slice(&bytes[..32]);

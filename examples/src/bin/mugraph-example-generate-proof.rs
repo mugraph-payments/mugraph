@@ -36,7 +36,8 @@ fn main() -> Result<()> {
     let fission_receipt = prover.prove(&buf)?;
 
     info!("Parsing fission journal");
-    let fission: Fission = fission_receipt.journal.decode()?;
+    let buf = fission_receipt.journal.bytes;
+    let fission: Fission = Fission::from_bytes(&buf)?;
 
     info!("Reading fission stdout");
     let (output, change): (BlindedNote, BlindedNote) = prover.read()?;
@@ -74,7 +75,8 @@ fn main() -> Result<()> {
     let fusion_receipt = prover.prove(&buf)?;
 
     info!("Parsing fusion journal");
-    let fusion: Fusion = fusion_receipt.journal.decode()?;
+    let buf = fusion_receipt.journal.bytes;
+    let fusion: Fusion = Fusion::from_bytes(&buf)?;
 
     info!("Reading fusion stdout");
     let fused_output: BlindedNote = prover.read()?;
