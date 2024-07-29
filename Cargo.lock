@@ -944,6 +944,7 @@ dependencies = [
  "mugraph-crypto",
  "rand",
  "serde_json",
+ "tracing",
  "tracing-subscriber 0.3.18",
 ]
 

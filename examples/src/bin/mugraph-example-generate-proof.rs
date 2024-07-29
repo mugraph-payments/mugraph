@@ -2,12 +2,16 @@ use mugraph_circuits::*;
 use mugraph_core::{BlindedNote, Fission, Hash, Note, Split};
 use mugraph_crypto::{generate_keypair, schnorr::sign};
 use rand::rngs::OsRng;
+use tracing::info;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let rng = &mut OsRng;
 
+    info!("Generating server keys");
     let (server_priv, server_pub) = generate_keypair(rng);
+
+    info!("Creating request");
     let nullifier = sign(rng, &server_priv, [2u8; 32].as_ref());
 
     let request = Split {
@@ -20,17 +24,21 @@ fn main() -> Result<()> {
         amount: 50,
     };
 
+    info!("Creating Proof");
     let mut prover = Prover::new();
     let receipt = prover.prove(&request)?;
 
+    info!("Parsing journal");
     let fission: Fission = receipt.journal.decode()?;
 
+    info!("Reading stdout");
     let (output, change): (BlindedNote, BlindedNote) = prover.read()?;
     let (so, sc) = (
         sign(rng, &server_priv, output.blinded_secret.as_ref()),
         sign(rng, &server_priv, change.blinded_secret.as_ref()),
     );
 
+    info!("Unblinding tokens");
     let (output, change) = (output.unblind(so), change.unblind(sc));
 
     println!(
