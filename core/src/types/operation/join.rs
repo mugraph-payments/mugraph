@@ -12,7 +12,7 @@ impl SerializeBytes for Join {
 
     fn to_slice(&self, out: &mut [u8]) {
         self.inputs[0].to_slice(&mut out[..Note::SIZE]);
-        self.inputs[1].to_slice(&mut out[Note::SIZE..Note::SIZE * 2]);
+        self.inputs[1].to_slice(&mut out[Note::SIZE..]);
     }
 
     fn from_slice(bytes: &[u8]) -> Result<Self> {

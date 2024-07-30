@@ -116,3 +116,12 @@ impl SerializeBytes for Hash {
         input.try_into()
     }
 }
+
+impl core::fmt::Debug for Hash {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut output = [0u8; 64];
+
+        hex::encode_to_slice(self.0, &mut output).unwrap();
+        core::str::from_utf8(&output).unwrap().fmt(f)
+    }
+}
