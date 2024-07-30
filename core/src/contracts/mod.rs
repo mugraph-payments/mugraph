@@ -1,9 +1,12 @@
+use sha2::{Digest, Sha256};
+
 use crate::{Reader, Result, SerializeBytes, Writer};
 
 pub mod fission;
 pub mod fusion;
 
 pub struct Context<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize> {
+    pub hasher: Sha256,
     pub stdin: [u8; STDIN],
     pub stdout: [u8; STDOUT],
     pub journal: [u8; JOURNAL],
@@ -14,6 +17,7 @@ impl<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize>
 {
     pub fn new() -> Self {
         Self {
+            hasher: Sha256::new(),
             stdin: [0; STDIN],
             stdout: [0; STDOUT],
             journal: [0; JOURNAL],

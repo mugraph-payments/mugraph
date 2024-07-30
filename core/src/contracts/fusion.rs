@@ -1,7 +1,5 @@
-use contracts::Context;
 use mugraph_derive::SerializeBytes;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 
 use crate::*;
 
@@ -20,11 +18,11 @@ pub struct Output {
     pub c: Hash,
 }
 
+pub type Context =
+    crate::contracts::Context<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>;
+
 #[inline]
-pub fn fusion(
-    hasher: &mut Sha256,
-    context: &mut Context<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>,
-) -> Result<()> {
+pub fn fusion(context: &mut Context) -> Result<()> {
     let Input { a: ia, b: ib } = context.read_stdin()?;
 
     assert_eq!(ia.asset_id, ib.asset_id);
@@ -37,19 +35,22 @@ pub fn fusion(
         .checked_add(ib.amount)
         .expect("overflow in total amount");
 
-    let (a, b) = (Hash::digest(hasher, &ia)?, Hash::digest(hasher, &ib)?);
+    let (a, b) = (
+        Hash::digest(&mut context.hasher, &ia)?,
+        Hash::digest(&mut context.hasher, &ib)?,
+    );
 
     let output = BlindedNote {
         asset_id: ia.asset_id,
         amount: total,
-        secret: Hash::combine3(hasher, OUTPUT_SEP, a, b)?,
+        secret: Hash::combine3(&mut context.hasher, OUTPUT_SEP, a, b)?,
     };
     context.write_stdout(&output);
 
     let fusion = Output {
         a,
         b,
-        c: Hash::digest(hasher, &output)?,
+        c: Hash::digest(&mut context.hasher, &output)?,
     };
     context.write_journal(&fusion);
 
@@ -61,7 +62,6 @@ mod tests {
     use super::*;
 
     use proptest::prelude::*;
-    use sha2::Digest;
     use test_strategy::proptest;
 
     #[proptest]
@@ -71,9 +71,7 @@ mod tests {
     ) {
         prop_assume!(a.amount.checked_add(b.amount).is_some());
 
-        let mut hasher = Sha256::new();
-        let mut context =
-            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
+        let mut context = Context::new();
 
         let input = Input {
             a: a.clone(),
@@ -81,7 +79,7 @@ mod tests {
         };
         input.to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut context)?;
+        fusion(&mut context)?;
         let result = BlindedNote::from_slice(&context.stdout)?;
 
         assert_eq!(a.asset_id, result.asset_id);
@@ -101,14 +99,12 @@ mod tests {
         }))]
         b: Note,
     ) {
-        let mut hasher = Sha256::new();
-        let mut context =
-            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
+        let mut context = Context::new();
 
         let input = Input { a, b };
         input.to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut context)?;
+        fusion(&mut context)?;
     }
 
     #[proptest]
@@ -116,13 +112,11 @@ mod tests {
     fn test_fusion_asset_id_mismatch(a: Note, b: Note) {
         prop_assume!(a.asset_id != b.asset_id);
 
-        let mut hasher = Sha256::new();
-        let mut context =
-            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
+        let mut context = Context::new();
 
         let input = Input { a, b };
         input.to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut context)?;
+        fusion(&mut context)?;
     }
 }
