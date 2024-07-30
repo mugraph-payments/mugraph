@@ -101,16 +101,15 @@ pub fn fission(hasher: &mut Sha256, memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Re
         secret: Hash::combine3(hasher, input_hash, OUTPUT_SEP, request_amount_digest)?,
     };
 
-    let stdout = &mut memory[FISSION_STDOUT_RANGE];
+    Output {
+        a: input_hash,
+        b: output.digest(hasher),
+        c: change.digest(hasher),
+    }
+    .to_slice(&mut memory[FISSION_JOURNAL_RANGE]);
 
-    output.to_slice(&mut stdout[..BlindedNote::SIZE]);
-    change.to_slice(&mut stdout[BlindedNote::SIZE..]);
-
-    let journal = &mut memory[FISSION_JOURNAL_RANGE];
-
-    journal[..Hash::SIZE].copy_from_slice(&*input_hash);
-    journal[Hash::SIZE..Hash::SIZE * 2].copy_from_slice(&*output.digest(hasher));
-    journal[Hash::SIZE * 2..].copy_from_slice(&*change.digest(hasher));
+    change.to_slice(&mut memory[FISSION_STDOUT_RANGE][..BlindedNote::SIZE]);
+    output.to_slice(&mut memory[FISSION_STDOUT_RANGE][BlindedNote::SIZE..]);
 
     Ok(())
 }

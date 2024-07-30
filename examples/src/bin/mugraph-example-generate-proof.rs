@@ -43,8 +43,8 @@ fn main() -> Result<()> {
     let fission: fission::Output = fission::Output::from_slice(&fission_receipt.journal.bytes)?;
 
     info!("reading fission stdout");
-    let output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
-    let change = BlindedNote::from_slice(&prover.stdout[BlindedNote::SIZE..])?;
+    let (output, change) =
+        <(BlindedNote, BlindedNote)>::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
 
     info!("[server] signing outputs");
     let (so, sc) = (
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
     let fusion: fusion::Output = fusion::Output::from_slice(&fusion_receipt.journal.bytes)?;
 
     info!("Reading fusion stdout");
-    let fused_output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
+    let fused_output = BlindedNote::from_slice(&prover.stdout)?;
 
     info!("[server] signing output");
     let sf = sign(rng, &server_priv, fused_output.secret.as_ref());

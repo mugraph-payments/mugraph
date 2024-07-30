@@ -66,8 +66,8 @@ pub const FUSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..
 
 #[inline]
 pub fn fusion(hasher: &mut Sha256, memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
-    let join = Input::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
-    let [ia, ib] = join.inputs;
+    let input = Input::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
+    let [ia, ib] = input.inputs;
     let (a, b) = (ia.digest(hasher), ib.digest(hasher));
 
     assert_eq!(ia.asset_id, ib.asset_id);
@@ -97,4 +97,72 @@ pub fn fusion(hasher: &mut Sha256, memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Resu
     fusion.to_slice(&mut memory[FUSION_JOURNAL_RANGE]);
 
     Ok(())
+}
+
+#[cfg(all(feature = "std", test))]
+mod tests {
+    use super::*;
+
+    use proptest::prelude::*;
+    use sha2::Digest;
+    use test_strategy::proptest;
+
+    #[proptest]
+    fn test_fusion_success(
+        a: Note,
+        #[strategy(any::<Note>().prop_map(move |mut b| { b.asset_id = #a.asset_id; b }))] b: Note,
+    ) {
+        prop_assume!(a.amount.checked_add(b.amount).is_some());
+
+        let mut hasher = Sha256::new();
+        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+
+        Input {
+            inputs: [a.clone(), b.clone()],
+        }
+        .to_slice(&mut memory[FUSION_STDIN_RANGE]);
+
+        fusion(&mut hasher, &mut memory)?;
+        let result = BlindedNote::from_slice(&memory[FUSION_STDOUT_RANGE])?;
+
+        assert_eq!(a.asset_id, result.asset_id);
+        assert_eq!(a.amount + b.amount, result.amount);
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn test_fusion_overflow(
+        #[strategy((u64::MAX / 2) + 1..u64::MAX)] _amount_a: u64,
+        #[strategy((u64::MAX / 2) + 1..u64::MAX)] _amount_b: u64,
+        #[strategy(any::<Note>().prop_map(move |mut a| { a.amount = #_amount_a; a }))] a: Note,
+        #[strategy(any::<Note>().prop_map(move |mut b| {
+            b.asset_id = #a.asset_id;
+            b.amount = #_amount_b;
+            b
+        }))]
+        b: Note,
+    ) {
+        let mut hasher = Sha256::new();
+        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+
+        Input {
+            inputs: [a.clone(), b.clone()],
+        }
+        .to_slice(&mut memory[FUSION_STDIN_RANGE]);
+
+        fusion(&mut hasher, &mut memory)?;
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn test_fusion_asset_id_mismatch(a: Note, b: Note) {
+        prop_assume!(a.asset_id != b.asset_id);
+
+        let mut hasher = Sha256::new();
+        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+
+        Input { inputs: [a, b] }.to_slice(&mut memory[FUSION_STDIN_RANGE]);
+
+        fusion(&mut hasher, &mut memory)?;
+    }
 }
