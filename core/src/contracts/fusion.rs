@@ -7,7 +7,8 @@ use crate::*;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Input {
-    pub inputs: [Note; 2],
+    pub a: Note,
+    pub b: Note,
 }
 
 impl SerializeBytes for Input {
@@ -16,15 +17,16 @@ impl SerializeBytes for Input {
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
         let mut w = Writer::new(out);
-        w.write(&self.inputs[0]);
-        w.write(&self.inputs[1]);
+        w.write(&self.a);
+        w.write(&self.b);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
         let mut r = Reader::new(input);
         Ok(Self {
-            inputs: [r.read()?, r.read()?],
+            a: r.read()?,
+            b: r.read()?,
         })
     }
 }
@@ -43,6 +45,7 @@ impl SerializeBytes for Output {
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
         let mut w = Writer::new(out);
+
         w.write(&self.a);
         w.write(&self.b);
         w.write(&self.c);
@@ -51,6 +54,7 @@ impl SerializeBytes for Output {
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
         let mut r = Reader::new(input);
+
         Ok(Self {
             a: r.read()?,
             b: r.read()?,
@@ -64,9 +68,7 @@ pub fn fusion(
     hasher: &mut Sha256,
     context: &mut Context<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>,
 ) -> Result<()> {
-    let input: Input = context.read_stdin()?;
-    let [ia, ib] = input.inputs;
-    let (a, b) = (Hash::digest(hasher, &ia)?, Hash::digest(hasher, &ib)?);
+    let Input { a: ia, b: ib } = context.read_stdin()?;
 
     assert_eq!(ia.asset_id, ib.asset_id);
     assert!(!ia.nullifier.is_empty());
@@ -77,6 +79,8 @@ pub fn fusion(
         .amount
         .checked_add(ib.amount)
         .expect("overflow in total amount");
+
+    let (a, b) = (Hash::digest(hasher, &ia)?, Hash::digest(hasher, &ib)?);
 
     let output = BlindedNote {
         asset_id: ia.asset_id,
@@ -114,10 +118,11 @@ mod tests {
         let mut context =
             Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
-        Input {
-            inputs: [a.clone(), b.clone()],
-        }
-        .to_slice(&mut context.stdin);
+        let input = Input {
+            a: a.clone(),
+            b: b.clone(),
+        };
+        input.to_slice(&mut context.stdin);
 
         fusion(&mut hasher, &mut context)?;
         let result = BlindedNote::from_slice(&context.stdout)?;
@@ -143,10 +148,8 @@ mod tests {
         let mut context =
             Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
-        Input {
-            inputs: [a.clone(), b.clone()],
-        }
-        .to_slice(&mut context.stdin);
+        let input = Input { a, b };
+        input.to_slice(&mut context.stdin);
 
         fusion(&mut hasher, &mut context)?;
     }
@@ -160,10 +163,8 @@ mod tests {
         let mut context =
             Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
-        Input {
-            inputs: [a.clone(), b.clone()],
-        }
-        .to_slice(&mut context.stdin);
+        let input = Input { a, b };
+        input.to_slice(&mut context.stdin);
 
         fusion(&mut hasher, &mut context)?;
     }

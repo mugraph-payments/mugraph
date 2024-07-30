@@ -70,7 +70,8 @@ fn main() -> Result<()> {
 
     info!("Creating fusion request");
     let input = fusion::Input {
-        inputs: [output.clone(), change.clone()],
+        a: output,
+        b: change,
     };
 
     info!("Creating fusion::Output Proof");

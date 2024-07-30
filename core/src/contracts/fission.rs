@@ -108,7 +108,8 @@ pub fn fission(
     };
 
     context.write_journal(&fission);
-    context.write_stdout(&(output, change));
+    context.write_stdout(&output);
+    context.write_stdout(&change);
 
     Ok(())
 }
