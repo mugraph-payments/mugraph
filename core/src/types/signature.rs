@@ -19,22 +19,18 @@ impl SerializeBytes for Signature {
     const SIZE: usize = Hash::SIZE * 2;
 
     fn to_slice(&self, out: &mut [u8]) {
-        self.r.to_slice(&mut out[..Hash::SIZE]);
-        self.s.to_slice(&mut out[Hash::SIZE..]);
+        let mut w = Writer::new(out);
+
+        w.write(&self.r);
+        w.write(&self.s);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        if input.len() < 64 {
-            return Err(Error::InvalidSignature);
-        }
-
-        let mut this = Self::default();
-        this.r.0.copy_from_slice(&input[..32]);
-        this.s.0.copy_from_slice(&input[32..]);
+        let mut r = Reader::new(input);
 
         Ok(Self {
-            r: Hash::from_slice(&input[..32])?,
-            s: Hash::from_slice(&input[32..])?,
+            r: r.read()?,
+            s: r.read()?,
         })
     }
 }

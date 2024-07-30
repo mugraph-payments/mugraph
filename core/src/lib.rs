@@ -21,3 +21,41 @@ pub const HTC_SEP: Hash = Hash::new([
     244, 129, 16, 184, 206, 78, 78, 149, 20, 45, 241, 229, 142, 175, 218, 14, 173, 29, 12, 6, 180,
     108, 3, 238, 41, 141, 212, 239, 112, 242, 238, 62,
 ]);
+
+pub struct Reader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Reader<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    pub fn read<T: SerializeBytes>(&mut self) -> Result<T> {
+        assert!(self.offset + T::SIZE <= self.data.len() - 1);
+
+        let result = T::from_slice(&self.data[self.offset..T::SIZE])?;
+        self.offset += T::SIZE;
+
+        Ok(result)
+    }
+}
+
+pub struct Writer<'a> {
+    data: &'a mut [u8],
+    offset: usize,
+}
+
+impl<'a> Writer<'a> {
+    pub fn new(data: &'a mut [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    pub fn write<T: SerializeBytes>(&mut self, value: &T) {
+        assert!(self.offset + T::SIZE <= self.data.len() - 1);
+
+        value.to_slice(&mut self.data[self.offset..T::SIZE]);
+        self.offset += T::SIZE;
+    }
+}

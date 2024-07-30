@@ -1,6 +1,4 @@
-use sha2::Sha256;
-
-use crate::{Hash, Result};
+use crate::*;
 
 pub trait SerializeBytes
 where
@@ -10,13 +8,6 @@ where
 
     fn to_slice(&self, out: &mut [u8]);
     fn from_slice(input: &[u8]) -> Result<Self>;
-
-    fn digest(&self, hasher: &mut Sha256) -> Hash {
-        let mut out = [0u8; 1024];
-        self.to_slice(&mut out);
-
-        Hash::digest(hasher, &out).unwrap()
-    }
 }
 
 impl SerializeBytes for u64 {
@@ -33,24 +24,6 @@ impl SerializeBytes for u64 {
     }
 }
 
-impl<A: SerializeBytes, B: SerializeBytes> SerializeBytes for (A, B) {
-    const SIZE: usize = A::SIZE + B::SIZE;
-
-    #[inline]
-    fn to_slice(&self, out: &mut [u8]) {
-        self.0.to_slice(&mut out[..A::SIZE]);
-        self.1.to_slice(&mut out[A::SIZE..B::SIZE]);
-    }
-
-    #[inline]
-    fn from_slice(input: &[u8]) -> Result<Self> {
-        let a = A::from_slice(&input[..A::SIZE])?;
-        let b = B::from_slice(&input[A::SIZE..B::SIZE])?;
-
-        Ok((a, b))
-    }
-}
-
 impl<const N: usize> SerializeBytes for [u8; N] {
     const SIZE: usize = N;
 
@@ -60,5 +33,23 @@ impl<const N: usize> SerializeBytes for [u8; N] {
 
     fn from_slice(input: &[u8]) -> Result<Self> {
         Ok(input[..N].try_into()?)
+    }
+}
+
+impl<A: SerializeBytes, B: SerializeBytes> SerializeBytes for (A, B) {
+    const SIZE: usize = A::SIZE + B::SIZE;
+
+    #[inline]
+    fn to_slice(&self, out: &mut [u8]) {
+        let mut w = Writer::new(out);
+        w.write(&self.0);
+        w.write(&self.1);
+    }
+
+    #[inline]
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(input);
+
+        Ok((r.read()?, r.read()?))
     }
 }

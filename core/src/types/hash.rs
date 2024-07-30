@@ -24,8 +24,12 @@ impl Hash {
     }
 
     #[inline]
-    pub fn digest(hasher: &mut Sha256, value: &[u8]) -> Result<Self> {
-        hasher.update(value);
+    pub fn digest<T: SerializeBytes>(hasher: &mut Sha256, value: &T) -> Result<Self> {
+        let mut buf = [0u8; 512];
+        value.to_slice(&mut buf);
+
+        hasher.update(&buf[..T::SIZE]);
+
         let result = hasher.finalize_reset();
         result.as_slice().try_into()
     }
@@ -82,11 +86,7 @@ impl TryFrom<&[u8]> for Hash {
 
     #[inline]
     fn try_from(value: &[u8]) -> core::result::Result<Self, Self::Error> {
-        debug_assert_eq!(value.len(), 32);
-
-        if value.len() != 32 {
-            return Err(Error::FailedDeserialization);
-        }
+        assert_eq!(value.len(), 32);
 
         let bytes: [u8; 32] = unsafe { *(value.as_ptr() as *const [u8; 32]) };
 
@@ -99,13 +99,15 @@ impl SerializeBytes for Hash {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        debug_assert!(out.len() >= 32);
+        assert!(out.len() >= 32);
 
         out.copy_from_slice(&self.0)
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
+        assert!(input.len() >= 32);
+
         input.try_into()
     }
 }

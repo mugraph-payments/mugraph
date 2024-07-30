@@ -1,8 +1,7 @@
-use contracts::Context;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::*;
+use crate::{contracts::Context, *};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
@@ -17,21 +16,21 @@ impl SerializeBytes for Input {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        debug_assert!(out.len() >= Self::SIZE);
+        let mut w = Writer::new(out);
 
-        self.server_key.to_slice(&mut out[..32]);
-        self.input.to_slice(&mut out[32..32 + Note::SIZE]);
-        self.amount.to_slice(&mut out[32 + Note::SIZE..Self::SIZE]);
+        w.write(&self.server_key);
+        w.write(&self.input);
+        w.write(&self.amount);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
-        debug_assert!(input.len() >= Self::SIZE);
+        let mut r = Reader::new(input);
 
         Ok(Self {
-            server_key: PublicKey::from_slice(&input[..32])?,
-            input: Note::from_slice(&input[32..32 + Note::SIZE])?,
-            amount: u64::from_slice(&input[32 + Note::SIZE..Self::SIZE])?,
+            server_key: r.read()?,
+            input: r.read()?,
+            amount: r.read()?,
         })
     }
 }
@@ -49,21 +48,21 @@ impl SerializeBytes for Output {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        debug_assert!(out.len() >= Self::SIZE);
+        let mut w = Writer::new(out);
 
-        self.a.to_slice(&mut out[..32]);
-        self.b.to_slice(&mut out[32..64]);
-        self.c.to_slice(&mut out[64..Self::SIZE]);
+        w.write(&self.a);
+        w.write(&self.b);
+        w.write(&self.c);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
-        debug_assert!(input.len() >= Self::SIZE);
+        let mut r = Reader::new(input);
 
         Ok(Self {
-            a: Hash::from_slice(&input[..32])?,
-            b: Hash::from_slice(&input[32..64])?,
-            c: Hash::from_slice(&input[64..Self::SIZE])?,
+            a: r.read()?,
+            b: r.read()?,
+            c: r.read()?,
         })
     }
 }
@@ -80,15 +79,15 @@ pub fn fission(
     assert_ne!(request.input.amount, 0);
     assert!(request.input.amount >= request.amount);
 
-    let input_hash = request.input.digest(hasher);
+    let input_hash = Hash::digest(hasher, &request.input)?;
 
     let amount = request
         .input
         .amount
         .checked_sub(request.amount)
         .expect("input bigger than amount");
-    let amount_digest = amount.digest(hasher);
-    let request_amount_digest = request.amount.digest(hasher);
+    let amount_digest = Hash::digest(hasher, &amount)?;
+    let request_amount_digest = Hash::digest(hasher, &request.amount)?;
 
     let change = BlindedNote {
         asset_id: request.input.asset_id,
@@ -104,8 +103,8 @@ pub fn fission(
 
     let fission = Output {
         a: input_hash,
-        b: output.digest(hasher),
-        c: change.digest(hasher),
+        b: Hash::digest(hasher, &output)?,
+        c: Hash::digest(hasher, &change)?,
     };
 
     context.write_journal(&fission);

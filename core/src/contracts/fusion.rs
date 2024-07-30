@@ -15,17 +15,16 @@ impl SerializeBytes for Input {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        self.inputs[0].to_slice(&mut out[..Note::SIZE]);
-        self.inputs[1].to_slice(&mut out[Note::SIZE..]);
+        let mut w = Writer::new(out);
+        w.write(&self.inputs[0]);
+        w.write(&self.inputs[1]);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(input);
         Ok(Self {
-            inputs: [
-                Note::from_slice(&input[..Note::SIZE])?,
-                Note::from_slice(&input[Note::SIZE..Self::SIZE])?,
-            ],
+            inputs: [r.read()?, r.read()?],
         })
     }
 }
@@ -43,17 +42,19 @@ impl SerializeBytes for Output {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        self.a.to_slice(&mut out[..Hash::SIZE]);
-        self.b.to_slice(&mut out[Hash::SIZE..Hash::SIZE * 2]);
-        self.c.to_slice(&mut out[Hash::SIZE * 2..Hash::SIZE * 3]);
+        let mut w = Writer::new(out);
+        w.write(&self.a);
+        w.write(&self.b);
+        w.write(&self.c);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
+        let mut r = Reader::new(input);
         Ok(Self {
-            a: Hash::from_slice(&input[..Hash::SIZE])?,
-            b: Hash::from_slice(&input[Hash::SIZE..Hash::SIZE * 2])?,
-            c: Hash::from_slice(&input[Hash::SIZE * 2..Hash::SIZE * 3])?,
+            a: r.read()?,
+            b: r.read()?,
+            c: r.read()?,
         })
     }
 }
@@ -65,7 +66,7 @@ pub fn fusion(
 ) -> Result<()> {
     let input: Input = context.read_stdin()?;
     let [ia, ib] = input.inputs;
-    let (a, b) = (ia.digest(hasher), ib.digest(hasher));
+    let (a, b) = (Hash::digest(hasher, &ia)?, Hash::digest(hasher, &ib)?);
 
     assert_eq!(ia.asset_id, ib.asset_id);
     assert!(!ia.nullifier.is_empty());
@@ -87,7 +88,7 @@ pub fn fusion(
     let fusion = Output {
         a,
         b,
-        c: output.digest(hasher),
+        c: Hash::digest(hasher, &output)?,
     };
     context.write_journal(&fusion);
 

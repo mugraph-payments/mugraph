@@ -14,22 +14,20 @@ impl SerializeBytes for Note {
     const SIZE: usize = Hash::SIZE + u64::SIZE + Signature::SIZE;
 
     fn to_slice(&self, out: &mut [u8]) {
-        debug_assert!(out.len() >= Self::SIZE);
+        let mut w = Writer::new(out);
 
-        self.asset_id.to_slice(&mut out[..Hash::SIZE]);
-        self.amount
-            .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
-        self.nullifier
-            .to_slice(&mut out[Hash::SIZE + u64::SIZE..Self::SIZE]);
+        w.write(&self.asset_id);
+        w.write(&self.amount);
+        w.write(&self.nullifier);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        debug_assert!(input.len() >= Self::SIZE);
+        let mut r = Reader::new(input);
 
         Ok(Self {
-            asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
-            amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
-            nullifier: Signature::from_slice(&input[Hash::SIZE + u64::SIZE..Self::SIZE])?,
+            asset_id: r.read()?,
+            amount: r.read()?,
+            nullifier: r.read()?,
         })
     }
 }
@@ -56,22 +54,20 @@ impl SerializeBytes for BlindedNote {
     const SIZE: usize = Hash::SIZE + u64::SIZE + Hash::SIZE;
 
     fn to_slice(&self, out: &mut [u8]) {
-        debug_assert!(out.len() >= Self::SIZE);
+        let mut w = Writer::new(out);
 
-        self.asset_id.to_slice(&mut out[..Hash::SIZE]);
-        self.amount
-            .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
-        self.secret
-            .to_slice(&mut out[Hash::SIZE + u64::SIZE..Self::SIZE]);
+        w.write(&self.asset_id);
+        w.write(&self.amount);
+        w.write(&self.secret);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        debug_assert!(input.len() >= Self::SIZE);
+        let mut r = Reader::new(input);
 
         Ok(Self {
-            asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
-            amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
-            secret: Hash::from_slice(&input[Hash::SIZE + u64::SIZE..Self::SIZE])?,
+            asset_id: r.read()?,
+            amount: r.read()?,
+            secret: r.read()?,
         })
     }
 }
