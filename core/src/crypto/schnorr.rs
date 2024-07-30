@@ -1,8 +1,7 @@
 use curve25519_dalek::ristretto::CompressedRistretto;
-use mugraph_core::{Error, Hash, Result, Signature};
 use rand_core::{CryptoRng, RngCore};
 
-use crate::{hash_to_scalar, PublicKey, Scalar, SecretKey, G};
+use crate::{crypto::*, Error, Hash, Result, Signature};
 
 pub fn sign<R: RngCore + CryptoRng>(
     rng: &mut R,

@@ -412,6 +412,7 @@ dependencies = [
  "rand_core",
  "rustc_version",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -911,7 +912,6 @@ name = "mugraph-circuits-guest"
 version = "0.1.0"
 dependencies = [
  "mugraph-core",
- "mugraph-crypto",
  "risc0-zkvm",
 ]
 
@@ -919,18 +919,9 @@ dependencies = [
 name = "mugraph-core"
 version = "0.0.1"
 dependencies = [
+ "curve25519-dalek",
  "hex",
  "onlyerror",
- "serde",
- "sha2",
-]
-
-[[package]]
-name = "mugraph-crypto"
-version = "0.0.1"
-dependencies = [
- "curve25519-dalek",
- "mugraph-core",
  "rand_core",
  "serde",
  "sha2",
@@ -942,7 +933,6 @@ version = "0.0.1"
 dependencies = [
  "mugraph-circuits",
  "mugraph-core",
- "mugraph-crypto",
  "rand",
  "serde_json",
  "tracing",

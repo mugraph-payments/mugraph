@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod contracts;
+pub mod crypto;
 
 mod error;
 mod serialize;

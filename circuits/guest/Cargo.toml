@@ -4,6 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mugraph-core = { path = "../../core" }
-mugraph-crypto = { path = "../../crypto" }
-risc0-zkvm = { workspace = true }
+mugraph-core = { path = "../../core", default-features = false }
+risc0-zkvm = { version = "1.0.3", default-features = false, features = ["std"] }

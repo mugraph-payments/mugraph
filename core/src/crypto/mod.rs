@@ -1,6 +1,7 @@
-use mugraph_core::{Hash, HTC_SEP};
 use rand_core::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
+
+use crate::{Hash, HTC_SEP};
 
 pub mod dh;
 pub mod schnorr;

@@ -1,6 +1,8 @@
 use mugraph_circuits::*;
-use mugraph_core::{BlindedNote, Fission, Fusion, Hash, Join, Note, SerializeBytes, Split};
-use mugraph_crypto::{generate_keypair, schnorr::sign};
+use mugraph_core::{
+    crypto::{generate_keypair, schnorr::sign},
+    BlindedNote, Fission, Fusion, Hash, Join, Note, SerializeBytes, Split,
+};
 use rand::rngs::OsRng;
 use tracing::info;
 

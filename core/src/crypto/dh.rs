@@ -1,6 +1,6 @@
-use crate::*;
-use mugraph_core::{Error, Result};
 use rand_core::{CryptoRng, RngCore};
+
+use crate::{crypto::*, Error, Result};
 
 pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> (Point, Scalar, Point) {
     let y = hash_to_curve(secret_message);
