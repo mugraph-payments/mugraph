@@ -33,9 +33,9 @@ impl<'a> Reader<'a> {
     }
 
     pub fn read<T: SerializeBytes>(&mut self) -> Result<T> {
-        assert!(self.offset + T::SIZE <= self.data.len() - 1);
+        assert!(self.offset + T::SIZE <= self.data.len());
 
-        let result = T::from_slice(&self.data[self.offset..T::SIZE])?;
+        let result = T::from_slice(&self.data[self.offset..self.offset + T::SIZE])?;
         self.offset += T::SIZE;
 
         Ok(result)
@@ -53,7 +53,7 @@ impl<'a> Writer<'a> {
     }
 
     pub fn write<T: SerializeBytes>(&mut self, value: &T) {
-        assert!(self.offset + T::SIZE <= self.data.len() - 1);
+        assert!(self.offset + T::SIZE <= self.data.len());
 
         value.to_slice(&mut self.data[self.offset..T::SIZE]);
         self.offset += T::SIZE;

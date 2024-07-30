@@ -40,19 +40,19 @@ pub fn fusion(context: &mut Context) -> Result<()> {
         Hash::digest(&mut context.hasher, &ib)?,
     );
 
-    let output = BlindedNote {
+    let note = BlindedNote {
         asset_id: ia.asset_id,
         amount: total,
         secret: Hash::combine3(&mut context.hasher, OUTPUT_SEP, a, b)?,
     };
-    context.write_stdout(&output);
+    context.write_stdout(&note);
 
-    let fusion = Output {
+    let output = Output {
         a,
         b,
-        c: Hash::digest(&mut context.hasher, &output)?,
+        c: Hash::digest(&mut context.hasher, &note)?,
     };
-    context.write_journal(&fusion);
+    context.write_journal(&output);
 
     Ok(())
 }
@@ -77,7 +77,7 @@ mod tests {
             a: a.clone(),
             b: b.clone(),
         };
-        input.to_slice(&mut context.stdin);
+        context.write_stdin(&input);
 
         fusion(&mut context)?;
         let result = BlindedNote::from_slice(&context.stdout)?;

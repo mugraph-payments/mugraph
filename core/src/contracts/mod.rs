@@ -29,6 +29,11 @@ impl<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize>
         r.read()
     }
 
+    pub fn write_stdin<T: SerializeBytes>(&mut self, value: &T) {
+        let mut w = Writer::new(&mut self.stdin);
+        w.write(value);
+    }
+
     pub fn write_stdout<T: SerializeBytes>(&mut self, value: &T) {
         let mut w = Writer::new(&mut self.stdout);
         w.write(value);

@@ -15,11 +15,13 @@ impl SerializeBytes for u64 {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
+        assert_eq!(out.len(), Self::SIZE);
         out[..Self::SIZE].copy_from_slice(&self.to_le_bytes())
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
+        assert_eq!(input.len(), Self::SIZE);
         Ok(Self::from_le_bytes(input[..Self::SIZE].try_into()?))
     }
 }

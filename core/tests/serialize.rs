@@ -1,5 +1,5 @@
 macro_rules! generate_serialize_roundtrip_tests {
-    ($($type:ty),+) => {
+    ($([$type:ty, $val: expr]),+) => {
         $(
             paste::paste! {
                 #[cfg(feature = "std")]
@@ -8,11 +8,13 @@ macro_rules! generate_serialize_roundtrip_tests {
                     use mugraph_core::SerializeBytes;
                     use proptest::prelude::*;
 
-                    let mut buffer = vec![0u8; <$type as SerializeBytes>::SIZE];
+                    let size = <$type as SerializeBytes>::SIZE;
+                    let mut buffer = vec![0u8; size];
                     value.to_slice(&mut buffer);
 
                     let deserialized = <$type as SerializeBytes>::from_slice(&buffer).unwrap();
                     prop_assert_eq!(value, deserialized);
+                    prop_assert_eq!(size, $val);
                 }
             }
         )+
@@ -28,13 +30,13 @@ type FusionInput = mugraph_core::contracts::fusion::Input;
 type FusionOutput = mugraph_core::contracts::fusion::Output;
 
 generate_serialize_roundtrip_tests!(
-    u64,
-    Hash,
-    Signature,
-    FissionInput,
-    FissionOutput,
-    FusionInput,
-    FusionOutput,
-    Note,
-    BlindedNote
+    [u64, 8],
+    [Hash, 32],
+    [Signature, 64],
+    [FissionInput, 144],
+    [FissionOutput, 96],
+    [FusionInput, 208],
+    [FusionOutput, 96],
+    [Note, 104],
+    [BlindedNote, 72]
 );
