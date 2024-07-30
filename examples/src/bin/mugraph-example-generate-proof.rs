@@ -37,7 +37,7 @@ fn main() -> Result<()> {
     info!("creating fission proof");
     let mut buf = [0u8; fission::Input::SIZE];
     split.to_slice(&mut buf);
-    let fission_receipt = prover.prove(&buf)?;
+    let fission_receipt = prover.prove(FISSION_ELF, &buf)?;
 
     info!("parsing fission journal");
     let fission: fission::Output = fission::Output::from_slice(&fission_receipt.journal.bytes)?;
@@ -76,7 +76,7 @@ fn main() -> Result<()> {
     info!("Creating fusion::Output Proof");
     let mut buf = [0u8; fusion::Input::SIZE];
     input.to_slice(&mut buf);
-    let fusion_receipt = prover.prove(&buf)?;
+    let fusion_receipt = prover.prove(FUSION_ELF, &buf)?;
 
     info!("Parsing fusion journal");
     let fusion: fusion::Output = fusion::Output::from_slice(&fusion_receipt.journal.bytes)?;

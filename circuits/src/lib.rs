@@ -20,13 +20,13 @@ impl Prover {
         }
     }
 
-    pub fn prove(&mut self, input: &[u8]) -> Result<Receipt> {
+    pub fn prove(&mut self, program: &[u8], input: &[u8]) -> Result<Receipt> {
         let env = ExecutorEnv::builder()
             .write_slice(input)
             .stdout(&mut self.stdout)
             .build()?;
 
-        let proof = default_prover().prove_with_opts(env, FISSION_ELF, &self.opts)?;
+        let proof = default_prover().prove_with_opts(env, program, &self.opts)?;
 
         Ok(proof.receipt)
     }
