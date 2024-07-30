@@ -1,6 +1,7 @@
 use core::ops::Range;
 
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use crate::*;
 
@@ -70,7 +71,7 @@ pub const FISSION_STDOUT_RANGE: Range<usize> = Input::SIZE..Input::SIZE + (Blind
 pub const FISSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..FISSION_TOTAL_SIZE;
 
 #[inline]
-pub fn fission(memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
+pub fn fission(hasher: &mut Sha256, memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
     let request = Input::from_slice(&mut memory[FISSION_STDIN_RANGE])?;
 
     assert!(!request.input.nullifier.is_empty());
@@ -78,24 +79,26 @@ pub fn fission(memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
     assert_ne!(request.input.amount, 0);
     assert!(request.input.amount >= request.amount);
 
-    let input_hash = request.input.digest();
+    let input_hash = request.input.digest(hasher);
 
     let amount = request
         .input
         .amount
         .checked_sub(request.amount)
         .expect("input bigger than amount");
+    let amount_digest = amount.digest(hasher);
+    let request_amount_digest = request.amount.digest(hasher);
 
     let change = BlindedNote {
         asset_id: request.input.asset_id,
         amount,
-        secret: Hash::combine3(input_hash, CHANGE_SEP, amount.digest())?,
+        secret: Hash::combine3(hasher, input_hash, CHANGE_SEP, amount_digest)?,
     };
 
     let output = BlindedNote {
         asset_id: request.input.asset_id,
         amount: request.amount,
-        secret: Hash::combine3(input_hash, OUTPUT_SEP, amount.digest())?,
+        secret: Hash::combine3(hasher, input_hash, OUTPUT_SEP, request_amount_digest)?,
     };
 
     let stdout = &mut memory[FISSION_STDOUT_RANGE];
@@ -106,8 +109,8 @@ pub fn fission(memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
     let journal = &mut memory[FISSION_JOURNAL_RANGE];
 
     journal[..Hash::SIZE].copy_from_slice(&*input_hash);
-    journal[Hash::SIZE..Hash::SIZE * 2].copy_from_slice(&*output.digest());
-    journal[Hash::SIZE * 2..].copy_from_slice(&*change.digest());
+    journal[Hash::SIZE..Hash::SIZE * 2].copy_from_slice(&*output.digest(hasher));
+    journal[Hash::SIZE * 2..].copy_from_slice(&*change.digest(hasher));
 
     Ok(())
 }

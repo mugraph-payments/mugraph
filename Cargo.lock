@@ -928,6 +928,7 @@ version = "0.1.0"
 dependencies = [
  "mugraph-core",
  "risc0-zkvm",
+ "sha2",
 ]
 
 [[package]]

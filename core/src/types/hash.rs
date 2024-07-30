@@ -24,29 +24,26 @@ impl Hash {
     }
 
     #[inline]
-    pub fn digest(value: &[u8]) -> Result<Self> {
-        let mut hasher = Sha256::new();
+    pub fn digest(hasher: &mut Sha256, value: &[u8]) -> Result<Self> {
         hasher.update(value);
-        let result = hasher.finalize();
+        let result = hasher.finalize_reset();
         result.as_slice().try_into()
     }
 
     #[inline]
-    pub fn combine(a: Self, b: Self) -> Result<Self> {
-        let mut hasher = Sha256::new();
+    pub fn combine(hasher: &mut Sha256, a: Self, b: Self) -> Result<Self> {
         hasher.update(a.0);
         hasher.update(b.0);
-        let result = hasher.finalize();
+        let result = hasher.finalize_reset();
         result.as_slice().try_into()
     }
 
     #[inline]
-    pub fn combine3(a: Self, b: Self, c: Self) -> Result<Self> {
-        let mut hasher = Sha256::new();
+    pub fn combine3(hasher: &mut Sha256, a: Self, b: Self, c: Self) -> Result<Self> {
         hasher.update(a.0);
         hasher.update(b.0);
         hasher.update(c.0);
-        let result = hasher.finalize();
+        let result = hasher.finalize_reset();
         result.as_slice().try_into()
     }
 }
@@ -128,14 +125,6 @@ mod tests {
     use test_strategy::proptest;
 
     use super::Hash;
-
-    #[proptest]
-    fn test_try_from(input: [u8; 32]) {
-        let input_ref: &[u8] = &input;
-        let result: Hash = input_ref.try_into()?;
-
-        prop_assert_eq!(result, Hash(input));
-    }
 
     #[proptest]
     fn test_try_from(input: [u8; 32]) {

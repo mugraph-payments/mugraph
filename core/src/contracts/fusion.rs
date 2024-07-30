@@ -1,6 +1,7 @@
 use core::ops::Range;
 
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use crate::*;
 
@@ -64,10 +65,10 @@ pub const FUSION_STDOUT_RANGE: Range<usize> = Input::SIZE..Input::SIZE + Blinded
 pub const FUSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..FUSION_TOTAL_SIZE;
 
 #[inline]
-pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
+pub fn fusion(hasher: &mut Sha256, memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
     let join = Input::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
     let [ia, ib] = join.inputs;
-    let (a, b) = (ia.digest(), ib.digest());
+    let (a, b) = (ia.digest(hasher), ib.digest(hasher));
 
     assert_eq!(ia.asset_id, ib.asset_id);
     assert!(!ia.nullifier.is_empty());
@@ -82,7 +83,7 @@ pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
     let output = BlindedNote {
         asset_id: ia.asset_id,
         amount: total,
-        secret: Hash::combine3(OUTPUT_SEP, a, b)?,
+        secret: Hash::combine3(hasher, OUTPUT_SEP, a, b)?,
     };
 
     output.to_slice(&mut memory[FUSION_STDOUT_RANGE]);
@@ -90,7 +91,7 @@ pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
     let fusion = Output {
         a,
         b,
-        c: output.digest(),
+        c: output.digest(hasher),
     };
 
     fusion.to_slice(&mut memory[FUSION_JOURNAL_RANGE]);
