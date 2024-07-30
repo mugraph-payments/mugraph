@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod contracts;
+
 mod error;
 mod types;
 

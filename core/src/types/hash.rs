@@ -10,12 +10,14 @@ use crate::{Error, Result};
 pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 impl Hash {
-    pub const fn new(input: [u8; 32]) -> Self {
+    pub const SIZE: usize = 32;
+
+    pub const fn new(input: [u8; Self::SIZE]) -> Self {
         Self(input)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0 == [0u8; 32]
+        self.0 == [0u8; Self::SIZE]
     }
 
     pub fn digest(value: &[u8]) -> Result<Self> {

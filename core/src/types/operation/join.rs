@@ -14,7 +14,7 @@ impl Join {
         self.inputs[1].to_slice(&mut out[Note::SIZE..2 * Note::SIZE]);
     }
 
-    pub fn from_bytes(bytes: &[u8; Self::SIZE]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         let inputs = [
             Note::from_bytes(&bytes[..Note::SIZE])?,
             Note::from_bytes(&bytes[Note::SIZE..2 * Note::SIZE])?,

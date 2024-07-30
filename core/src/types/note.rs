@@ -53,10 +53,10 @@ pub struct BlindedNote {
 impl BlindedNote {
     pub const SIZE: usize = 72;
 
-    pub fn to_slice(&self, out: &mut [u8; Self::SIZE]) {
+    pub fn to_slice(&self, out: &mut [u8]) {
         out[..32].copy_from_slice(&*self.asset_id);
         out[32..40].copy_from_slice(&self.amount.to_le_bytes());
-        out[40..].copy_from_slice(&*self.secret);
+        out[40..Self::SIZE].copy_from_slice(&*self.secret);
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
@@ -70,7 +70,7 @@ impl BlindedNote {
 
         asset_id.copy_from_slice(&bytes[..32]);
         amount.copy_from_slice(&bytes[32..40]);
-        blinded_secret.copy_from_slice(&bytes[40..]);
+        blinded_secret.copy_from_slice(&bytes[40..Self::SIZE]);
 
         Ok(Self {
             asset_id,
