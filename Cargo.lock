@@ -937,6 +937,7 @@ version = "0.0.1"
 dependencies = [
  "curve25519-dalek",
  "hex",
+ "mugraph-derive",
  "onlyerror",
  "paste",
  "proptest",
@@ -944,6 +945,15 @@ dependencies = [
  "serde",
  "sha2",
  "test-strategy",
+]
+
+[[package]]
+name = "mugraph-derive"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
 ]
 
 [[package]]

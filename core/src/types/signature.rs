@@ -1,8 +1,9 @@
+use mugraph_derive::SerializeBytes;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::*;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, SerializeBytes)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Signature {
     pub r: Hash,
@@ -12,26 +13,6 @@ pub struct Signature {
 impl Signature {
     pub fn is_empty(&self) -> bool {
         self.r.is_empty() || self.s.is_empty()
-    }
-}
-
-impl SerializeBytes for Signature {
-    const SIZE: usize = Hash::SIZE * 2;
-
-    fn to_slice(&self, out: &mut [u8]) {
-        let mut w = Writer::new(out);
-
-        w.write(&self.r);
-        w.write(&self.s);
-    }
-
-    fn from_slice(input: &[u8]) -> Result<Self> {
-        let mut r = Reader::new(input);
-
-        Ok(Self {
-            r: r.read()?,
-            s: r.read()?,
-        })
     }
 }
 

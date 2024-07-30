@@ -1,9 +1,10 @@
+use mugraph_derive::SerializeBytes;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::{contracts::Context, *};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SerializeBytes)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Input {
     pub server_key: PublicKey,
@@ -11,60 +12,12 @@ pub struct Input {
     pub amount: u64,
 }
 
-impl SerializeBytes for Input {
-    const SIZE: usize = 32 + Note::SIZE + 8;
-
-    #[inline]
-    fn to_slice(&self, out: &mut [u8]) {
-        let mut w = Writer::new(out);
-
-        w.write(&self.server_key);
-        w.write(&self.input);
-        w.write(&self.amount);
-    }
-
-    #[inline]
-    fn from_slice(input: &[u8]) -> Result<Self> {
-        let mut r = Reader::new(input);
-
-        Ok(Self {
-            server_key: r.read()?,
-            input: r.read()?,
-            amount: r.read()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, SerializeBytes)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Output {
     pub a: Hash,
     pub b: Hash,
     pub c: Hash,
-}
-
-impl SerializeBytes for Output {
-    const SIZE: usize = 3 * 32;
-
-    #[inline]
-    fn to_slice(&self, out: &mut [u8]) {
-        let mut w = Writer::new(out);
-
-        w.write(&self.a);
-        w.write(&self.b);
-        w.write(&self.c);
-    }
-
-    #[inline]
-    fn from_slice(input: &[u8]) -> Result<Self> {
-        let mut r = Reader::new(input);
-
-        Ok(Self {
-            a: r.read()?,
-            b: r.read()?,
-            c: r.read()?,
-        })
-    }
 }
 
 #[inline]
