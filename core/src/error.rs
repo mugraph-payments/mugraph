@@ -1,3 +1,7 @@
+#[cfg(feature = "std")]
+use std::array::TryFromSliceError;
+
+#[cfg(not(feature = "std"))]
 use core::array::TryFromSliceError;
 
 use onlyerror::Error;

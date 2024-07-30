@@ -1,3 +1,7 @@
+#[cfg(feature = "std")]
+use std::ops::Range;
+
+#[cfg(not(feature = "std"))]
 use core::ops::Range;
 
 use crate::*;

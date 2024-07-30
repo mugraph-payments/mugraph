@@ -1,4 +1,9 @@
+#[cfg(feature = "std")]
+use std::ops::{Deref, DerefMut};
+
+#[cfg(not(feature = "std"))]
 use core::ops::{Deref, DerefMut};
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
