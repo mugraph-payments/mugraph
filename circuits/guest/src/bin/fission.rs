@@ -3,7 +3,7 @@ use mugraph_core::{BlindedNote, Hash, Result, Split, CHANGE_SEP, OUTPUT_SEP};
 use risc0_zkvm::guest::env;
 
 #[inline(always)]
-fn run() -> Result<()> {
+fn main() -> Result<()> {
     let mut buf = [0u8; Split::SIZE];
     let mut out = [0u8; BlindedNote::SIZE];
     let mut chan = [0u8; BlindedNote::SIZE];
@@ -49,11 +49,4 @@ fn run() -> Result<()> {
     env::write_slice(&[out, chan].concat());
 
     Ok(())
-}
-
-fn main() {
-    match run() {
-        Ok(_) => {}
-        Err(e) => panic!("{}", e),
-    }
 }

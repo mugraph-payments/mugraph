@@ -4,8 +4,7 @@ use mugraph_core::{BlindedNote, Hash, Join, Result, OUTPUT_SEP};
 
 use risc0_zkvm::guest::env;
 
-#[inline(always)]
-fn run() -> Result<()> {
+fn main() -> Result<()> {
     let mut buf = [0u8; Join::SIZE];
     env::read_slice(&mut buf);
 
@@ -36,11 +35,4 @@ fn run() -> Result<()> {
     env::commit_slice(&[*a, *b, *output.digest()].concat());
 
     Ok(())
-}
-
-fn main() {
-    match run() {
-        Ok(_) => {}
-        Err(e) => panic!("{}", e),
-    }
 }
