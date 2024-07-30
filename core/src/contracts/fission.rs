@@ -1,6 +1,6 @@
 use core::ops::Range;
 
-use crate::{BlindedNote, Fission, Hash, Result, Split, CHANGE_SEP, OUTPUT_SEP};
+use crate::*;
 
 pub const FISSION_TOTAL_SIZE: usize = Split::SIZE + BlindedNote::SIZE + Fission::SIZE;
 pub const FISSION_STDIN_RANGE: Range<usize> = 0..Split::SIZE;
@@ -9,7 +9,7 @@ pub const FISSION_JOURNAL_RANGE: Range<usize> = Split::SIZE + BlindedNote::SIZE.
 
 #[inline(always)]
 pub fn fission(memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
-    let request = Split::from_bytes(&mut memory[FISSION_STDIN_RANGE])?;
+    let request = Split::from_slice(&mut memory[FISSION_STDIN_RANGE])?;
 
     assert!(!request.input.nullifier.is_empty());
     assert_ne!(request.amount, 0);

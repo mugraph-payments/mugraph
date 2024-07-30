@@ -1,6 +1,6 @@
 use core::ops::Range;
 
-use crate::{BlindedNote, Fusion, Hash, Join, Result, OUTPUT_SEP};
+use crate::*;
 
 pub const FUSION_TOTAL_SIZE: usize = Join::SIZE + BlindedNote::SIZE + Fusion::SIZE;
 pub const FUSION_STDIN_RANGE: Range<usize> = 0..Join::SIZE;
@@ -9,7 +9,7 @@ pub const FUSION_JOURNAL_RANGE: Range<usize> = Join::SIZE + BlindedNote::SIZE..F
 
 #[inline(always)]
 pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
-    let join = Join::from_bytes(&mut memory[FUSION_STDIN_RANGE])?;
+    let join = Join::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
     let [ia, ib] = join.inputs;
     let (a, b) = (ia.digest(), ib.digest());
 

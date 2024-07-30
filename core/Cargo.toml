@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-hex = { workspace = true }
+hex = { version = "0.4.3", default-features = false, features = ["serde"] }
 onlyerror = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }

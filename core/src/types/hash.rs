@@ -2,7 +2,7 @@ use core::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{Error, Result};
+use crate::{Error, Result, SerializeBytes};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -96,5 +96,17 @@ impl TryFrom<&[u8]> for Hash {
         bytes.copy_from_slice(value);
 
         Ok(Self(bytes))
+    }
+}
+
+impl SerializeBytes for Hash {
+    const SIZE: usize = <[u8; 32]>::SIZE;
+
+    fn to_slice(&self, out: &mut [u8]) {
+        out.copy_from_slice(&self.0)
+    }
+
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        input.try_into()
     }
 }

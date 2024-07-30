@@ -1,3 +1,5 @@
+use core::array::TryFromSliceError;
+
 use onlyerror::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -15,4 +17,10 @@ pub enum Error {
 
     #[error("Invalid unblinded point")]
     InvalidUnblindedPoint,
+}
+
+impl From<TryFromSliceError> for Error {
+    fn from(_: TryFromSliceError) -> Self {
+        Self::FailedDeserialization
+    }
 }

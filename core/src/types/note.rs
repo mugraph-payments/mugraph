@@ -1,6 +1,6 @@
-use crate::{Error, Hash, Result, Signature};
-
 use serde::{Deserialize, Serialize};
+
+use crate::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Note {
@@ -9,37 +9,31 @@ pub struct Note {
     pub nullifier: Signature,
 }
 
-impl Note {
-    pub const SIZE: usize = 104;
+impl SerializeBytes for Note {
+    const SIZE: usize = Hash::SIZE + u64::SIZE + Signature::SIZE;
 
-    pub fn to_slice(&self, out: &mut [u8]) {
-        out[..32].copy_from_slice(&*self.asset_id);
-        out[32..40].copy_from_slice(&self.amount.to_le_bytes());
-        out[40..].copy_from_slice(&self.nullifier.to_bytes());
+    fn to_slice(&self, out: &mut [u8]) {
+        self.asset_id.to_slice(&mut out[..Hash::SIZE]);
+        self.amount
+            .to_le_bytes()
+            .copy_from_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
+        self.nullifier.to_slice(&mut out[Hash::SIZE + u64::SIZE..]);
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() != Self::SIZE {
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        if input.len() < Self::SIZE {
             return Err(Error::FailedDeserialization);
         }
 
-        let mut asset_id = Hash::default();
-        let mut amount = [0u8; 8];
-
-        asset_id.copy_from_slice(&bytes[..32]);
-        amount.copy_from_slice(&bytes[32..40]);
-
         Ok(Self {
-            asset_id,
-            amount: u64::from_le_bytes(amount),
-            nullifier: Signature::from_bytes(&bytes[40..])?,
+            asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
+            amount: u64::from_le_bytes(
+                input[Hash::SIZE..Hash::SIZE + u64::SIZE]
+                    .try_into()
+                    .unwrap(),
+            ),
+            nullifier: Signature::from_slice(&input[Hash::SIZE + u64::SIZE..])?,
         })
-    }
-
-    pub fn digest(&self) -> Hash {
-        let mut buf = [0u8; Self::SIZE];
-        self.to_slice(&mut buf);
-        Hash::digest(&buf).unwrap()
     }
 }
 
@@ -53,43 +47,39 @@ pub struct BlindedNote {
 impl BlindedNote {
     pub const SIZE: usize = 72;
 
-    pub fn to_slice(&self, out: &mut [u8]) {
-        out[..32].copy_from_slice(&*self.asset_id);
-        out[32..40].copy_from_slice(&self.amount.to_le_bytes());
-        out[40..Self::SIZE].copy_from_slice(&*self.secret);
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() != Self::SIZE {
-            return Err(Error::FailedDeserialization);
-        }
-
-        let mut asset_id = Hash::default();
-        let mut blinded_secret = Hash::default();
-        let mut amount = [0u8; 8];
-
-        asset_id.copy_from_slice(&bytes[..32]);
-        amount.copy_from_slice(&bytes[32..40]);
-        blinded_secret.copy_from_slice(&bytes[40..Self::SIZE]);
-
-        Ok(Self {
-            asset_id,
-            amount: u64::from_le_bytes(amount),
-            secret: blinded_secret,
-        })
-    }
-
-    pub fn digest(&self) -> Hash {
-        let mut buf = [0u8; Self::SIZE];
-        self.to_slice(&mut buf);
-        Hash::digest(&buf).unwrap()
-    }
-
     pub fn unblind(self, signature: Signature) -> Note {
         Note {
             asset_id: self.asset_id,
             amount: self.amount,
             nullifier: signature,
         }
+    }
+}
+
+impl SerializeBytes for BlindedNote {
+    const SIZE: usize = Hash::SIZE + u64::SIZE + Hash::SIZE;
+
+    fn to_slice(&self, out: &mut [u8]) {
+        self.asset_id.to_slice(&mut out[..Hash::SIZE]);
+        self.amount
+            .to_le_bytes()
+            .copy_from_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
+        self.secret.to_slice(&mut out[Hash::SIZE + u64::SIZE..]);
+    }
+
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        if input.len() < Self::SIZE {
+            return Err(Error::FailedDeserialization);
+        }
+
+        Ok(Self {
+            asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
+            amount: u64::from_le_bytes(
+                input[Hash::SIZE..Hash::SIZE + u64::SIZE]
+                    .try_into()
+                    .unwrap(),
+            ),
+            secret: Hash::from_slice(&input[Hash::SIZE + u64::SIZE..])?,
+        })
     }
 }

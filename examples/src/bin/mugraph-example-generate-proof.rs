@@ -1,5 +1,5 @@
 use mugraph_circuits::*;
-use mugraph_core::{BlindedNote, Fission, Fusion, Hash, Join, Note, Split};
+use mugraph_core::{BlindedNote, Fission, Fusion, Hash, Join, Note, SerializeBytes, Split};
 use mugraph_crypto::{generate_keypair, schnorr::sign};
 use rand::rngs::OsRng;
 use tracing::info;
@@ -36,11 +36,11 @@ fn main() -> Result<()> {
     let fission_receipt = prover.prove(&buf)?;
 
     info!("Parsing fission journal");
-    let fission: Fission = Fission::from_bytes(&fission_receipt.journal.bytes)?;
+    let fission: Fission = Fission::from_slice(&fission_receipt.journal.bytes)?;
 
     info!("Reading fission stdout");
-    let output = BlindedNote::from_bytes(&prover.stdout[..BlindedNote::SIZE])?;
-    let change = BlindedNote::from_bytes(&prover.stdout[BlindedNote::SIZE..])?;
+    let output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
+    let change = BlindedNote::from_slice(&prover.stdout[BlindedNote::SIZE..])?;
 
     info!("[server] signing outputs");
     let (so, sc) = (
@@ -75,10 +75,10 @@ fn main() -> Result<()> {
     let fusion_receipt = prover.prove(&buf)?;
 
     info!("Parsing fusion journal");
-    let fusion: Fusion = Fusion::from_bytes(&fusion_receipt.journal.bytes)?;
+    let fusion: Fusion = Fusion::from_slice(&fusion_receipt.journal.bytes)?;
 
     info!("Reading fusion stdout");
-    let fused_output = BlindedNote::from_bytes(&prover.stdout[..BlindedNote::SIZE])?;
+    let fused_output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
 
     info!("[server] signing output");
     let sf = sign(rng, &server_priv, fused_output.secret.as_ref());

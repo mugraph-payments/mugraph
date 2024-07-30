@@ -1,4 +1,7 @@
+#![no_std]
+
 use mugraph_core::{contracts::fission::*, Result};
+
 use risc0_zkvm::guest::env;
 
 fn main() -> Result<()> {
