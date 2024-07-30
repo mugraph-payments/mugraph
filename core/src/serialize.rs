@@ -25,7 +25,7 @@ impl SerializeBytes for u64 {
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        Ok(Self::from_be_bytes(input[..Self::SIZE].try_into()?))
+        Ok(Self::from_le_bytes(input[..Self::SIZE].try_into()?))
     }
 }
 
