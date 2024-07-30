@@ -1,4 +1,4 @@
-use crate::{Error, Hash, Result, SerializeBytes};
+use crate::{Hash, Result, SerializeBytes};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -13,20 +13,16 @@ impl SerializeBytes for Fission {
     const SIZE: usize = 3 * 32;
 
     fn to_slice(&self, out: &mut [u8]) {
-        out[..32].copy_from_slice(&*self.a);
-        out[32..64].copy_from_slice(&*self.b);
-        out[64..].copy_from_slice(&*self.c);
+        self.a.to_slice(&mut out[..Hash::SIZE]);
+        self.b.to_slice(&mut out[Hash::SIZE..Hash::SIZE * 2]);
+        self.c.to_slice(&mut out[Hash::SIZE * 2..Hash::SIZE * 3]);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        if input.len() < Self::SIZE {
-            return Err(Error::FailedDeserialization);
-        }
-
-        let a = input[..32].try_into()?;
-        let b = input[Hash::SIZE..Hash::SIZE * 2].try_into()?;
-        let c = input[Hash::SIZE..Hash::SIZE * 2].try_into()?;
-
-        Ok(Self { a, b, c })
+        Ok(Self {
+            a: Hash::from_slice(&input[..Hash::SIZE])?,
+            b: Hash::from_slice(&input[Hash::SIZE..Hash::SIZE * 2])?,
+            c: Hash::from_slice(&input[Hash::SIZE * 2..Hash::SIZE * 3])?,
+        })
     }
 }

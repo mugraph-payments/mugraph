@@ -16,24 +16,16 @@ impl SerializeBytes for Note {
     fn to_slice(&self, out: &mut [u8]) {
         self.asset_id.to_slice(&mut out[..Hash::SIZE]);
         self.amount
-            .to_le_bytes()
-            .copy_from_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
-        self.nullifier.to_slice(&mut out[Hash::SIZE + u64::SIZE..]);
+            .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
+        self.nullifier
+            .to_slice(&mut out[Hash::SIZE + u64::SIZE..Self::SIZE]);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        if input.len() < Self::SIZE {
-            return Err(Error::FailedDeserialization);
-        }
-
         Ok(Self {
             asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
-            amount: u64::from_le_bytes(
-                input[Hash::SIZE..Hash::SIZE + u64::SIZE]
-                    .try_into()
-                    .unwrap(),
-            ),
-            nullifier: Signature::from_slice(&input[Hash::SIZE + u64::SIZE..])?,
+            amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
+            nullifier: Signature::from_slice(&input[Hash::SIZE + u64::SIZE..Self::SIZE])?,
         })
     }
 }
@@ -64,24 +56,16 @@ impl SerializeBytes for BlindedNote {
     fn to_slice(&self, out: &mut [u8]) {
         self.asset_id.to_slice(&mut out[..Hash::SIZE]);
         self.amount
-            .to_le_bytes()
-            .copy_from_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
-        self.secret.to_slice(&mut out[Hash::SIZE + u64::SIZE..]);
+            .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
+        self.secret
+            .to_slice(&mut out[Hash::SIZE + u64::SIZE..Self::SIZE]);
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
-        if input.len() < Self::SIZE {
-            return Err(Error::FailedDeserialization);
-        }
-
         Ok(Self {
             asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
-            amount: u64::from_le_bytes(
-                input[Hash::SIZE..Hash::SIZE + u64::SIZE]
-                    .try_into()
-                    .unwrap(),
-            ),
-            secret: Hash::from_slice(&input[Hash::SIZE + u64::SIZE..])?,
+            amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
+            secret: Hash::from_slice(&input[Hash::SIZE + u64::SIZE..Self::SIZE])?,
         })
     }
 }

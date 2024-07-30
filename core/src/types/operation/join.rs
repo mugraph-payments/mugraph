@@ -15,8 +15,12 @@ impl SerializeBytes for Join {
         self.inputs[1].to_slice(&mut out[Note::SIZE..]);
     }
 
-    fn from_slice(bytes: &[u8]) -> Result<Self> {
-        let (a, b) = <(Note, Note)>::from_slice(bytes)?;
-        Ok(Self { inputs: [a, b] })
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        Ok(Self {
+            inputs: [
+                Note::from_slice(&input[..Note::SIZE])?,
+                Note::from_slice(&input[Note::SIZE..Note::SIZE * 2])?,
+            ],
+        })
     }
 }
