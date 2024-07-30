@@ -1,5 +1,4 @@
-use core::ops::Range;
-
+use contracts::Context;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -18,21 +17,21 @@ impl SerializeBytes for Input {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
+        debug_assert!(out.len() >= Self::SIZE);
+
         self.server_key.to_slice(&mut out[..32]);
         self.input.to_slice(&mut out[32..32 + Note::SIZE]);
-        self.amount.to_slice(&mut out[32 + Note::SIZE..]);
+        self.amount.to_slice(&mut out[32 + Note::SIZE..Self::SIZE]);
     }
 
     #[inline]
-    fn from_slice(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() < Self::SIZE {
-            return Err(crate::Error::FailedDeserialization);
-        }
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        debug_assert!(input.len() >= Self::SIZE);
 
         Ok(Self {
-            server_key: PublicKey::from_slice(&bytes[..32])?,
-            input: Note::from_slice(&bytes[32..32 + Note::SIZE])?,
-            amount: u64::from_slice(&bytes[32 + Note::SIZE..])?,
+            server_key: PublicKey::from_slice(&input[..32])?,
+            input: Note::from_slice(&input[32..32 + Note::SIZE])?,
+            amount: u64::from_slice(&input[32 + Note::SIZE..Self::SIZE])?,
         })
     }
 }
@@ -50,29 +49,31 @@ impl SerializeBytes for Output {
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
-        self.a.to_slice(&mut out[..Hash::SIZE]);
-        self.b.to_slice(&mut out[Hash::SIZE..Hash::SIZE * 2]);
-        self.c.to_slice(&mut out[Hash::SIZE * 2..Hash::SIZE * 3]);
+        debug_assert!(out.len() >= Self::SIZE);
+
+        self.a.to_slice(&mut out[..32]);
+        self.b.to_slice(&mut out[32..64]);
+        self.c.to_slice(&mut out[64..Self::SIZE]);
     }
 
     #[inline]
     fn from_slice(input: &[u8]) -> Result<Self> {
+        debug_assert!(input.len() >= Self::SIZE);
+
         Ok(Self {
-            a: Hash::from_slice(&input[..Hash::SIZE])?,
-            b: Hash::from_slice(&input[Hash::SIZE..Hash::SIZE * 2])?,
-            c: Hash::from_slice(&input[Hash::SIZE * 2..Hash::SIZE * 3])?,
+            a: Hash::from_slice(&input[..32])?,
+            b: Hash::from_slice(&input[32..64])?,
+            c: Hash::from_slice(&input[64..Self::SIZE])?,
         })
     }
 }
 
-pub const FISSION_TOTAL_SIZE: usize = Input::SIZE + BlindedNote::SIZE + Output::SIZE;
-pub const FISSION_STDIN_RANGE: Range<usize> = 0..Input::SIZE;
-pub const FISSION_STDOUT_RANGE: Range<usize> = Input::SIZE..Input::SIZE + (BlindedNote::SIZE * 2);
-pub const FISSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..FISSION_TOTAL_SIZE;
-
 #[inline]
-pub fn fission(hasher: &mut Sha256, memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Result<()> {
-    let request = Input::from_slice(&mut memory[FISSION_STDIN_RANGE])?;
+pub fn fission(
+    hasher: &mut Sha256,
+    context: &mut Context<{ Input::SIZE }, { BlindedNote::SIZE * 2 }, { Output::SIZE }>,
+) -> Result<()> {
+    let request: Input = context.read_stdin()?;
 
     assert!(!request.input.nullifier.is_empty());
     assert_ne!(request.amount, 0);
@@ -101,15 +102,14 @@ pub fn fission(hasher: &mut Sha256, memory: &mut [u8; FISSION_TOTAL_SIZE]) -> Re
         secret: Hash::combine3(hasher, input_hash, OUTPUT_SEP, request_amount_digest)?,
     };
 
-    Output {
+    let fission = Output {
         a: input_hash,
         b: output.digest(hasher),
         c: change.digest(hasher),
-    }
-    .to_slice(&mut memory[FISSION_JOURNAL_RANGE]);
+    };
 
-    change.to_slice(&mut memory[FISSION_STDOUT_RANGE][..BlindedNote::SIZE]);
-    output.to_slice(&mut memory[FISSION_STDOUT_RANGE][BlindedNote::SIZE..]);
+    context.write_journal(&fission);
+    context.write_stdout(&(output, change));
 
     Ok(())
 }

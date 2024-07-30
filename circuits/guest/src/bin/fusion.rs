@@ -1,20 +1,23 @@
 #![no_std]
 
-use mugraph_core::{contracts::fusion::*, Result};
+use mugraph_core::{
+    contracts::{fusion::*, Context},
+    BlindedNote, Result, SerializeBytes,
+};
 
 use risc0_zkvm::guest::env;
 use sha2::{Digest, Sha256};
 
 fn main() -> Result<()> {
     let mut hasher = Sha256::new();
-    let mut memory = [0u8; FUSION_TOTAL_SIZE];
+    let mut context = Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
-    env::read_slice(&mut memory[FUSION_STDIN_RANGE]);
+    env::read_slice(&mut context.stdin);
 
-    fusion(&mut hasher, &mut memory)?;
+    fusion(&mut hasher, &mut context)?;
 
-    env::write_slice(&mut memory[FUSION_STDOUT_RANGE]);
-    env::commit_slice(&mut memory[FUSION_JOURNAL_RANGE]);
+    env::write_slice(&context.stdout);
+    env::commit_slice(&context.journal);
 
     Ok(())
 }

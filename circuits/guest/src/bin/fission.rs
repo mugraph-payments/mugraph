@@ -1,20 +1,24 @@
 #![no_std]
 
-use mugraph_core::{contracts::fission::*, Result};
+use mugraph_core::{
+    contracts::{fission::*, Context},
+    BlindedNote, Result, SerializeBytes,
+};
 
 use risc0_zkvm::guest::env;
 use sha2::{Digest, Sha256};
 
 fn main() -> Result<()> {
     let mut hasher = Sha256::new();
-    let mut memory = [0u8; FISSION_TOTAL_SIZE];
+    let mut context =
+        Context::<{ Input::SIZE }, { <(BlindedNote, BlindedNote)>::SIZE }, { Output::SIZE }>::new();
 
-    env::read_slice(&mut memory[FISSION_STDIN_RANGE]);
+    env::read_slice(&mut context.stdin);
 
-    fission(&mut hasher, &mut memory)?;
+    fission(&mut hasher, &mut context)?;
 
-    env::write_slice(&mut memory[FISSION_STDOUT_RANGE]);
-    env::commit_slice(&mut memory[FISSION_JOURNAL_RANGE]);
+    env::write_slice(&context.stdout);
+    env::commit_slice(&context.journal);
 
     Ok(())
 }

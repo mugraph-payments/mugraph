@@ -1,5 +1,4 @@
-use core::ops::Range;
-
+use contracts::Context;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -59,14 +58,12 @@ impl SerializeBytes for Output {
     }
 }
 
-pub const FUSION_TOTAL_SIZE: usize = Input::SIZE + BlindedNote::SIZE + Output::SIZE;
-pub const FUSION_STDIN_RANGE: Range<usize> = 0..Input::SIZE;
-pub const FUSION_STDOUT_RANGE: Range<usize> = Input::SIZE..Input::SIZE + BlindedNote::SIZE;
-pub const FUSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..FUSION_TOTAL_SIZE;
-
 #[inline]
-pub fn fusion(hasher: &mut Sha256, memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
-    let input = Input::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
+pub fn fusion(
+    hasher: &mut Sha256,
+    context: &mut Context<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>,
+) -> Result<()> {
+    let input: Input = context.read_stdin()?;
     let [ia, ib] = input.inputs;
     let (a, b) = (ia.digest(hasher), ib.digest(hasher));
 
@@ -85,16 +82,14 @@ pub fn fusion(hasher: &mut Sha256, memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Resu
         amount: total,
         secret: Hash::combine3(hasher, OUTPUT_SEP, a, b)?,
     };
-
-    output.to_slice(&mut memory[FUSION_STDOUT_RANGE]);
+    context.write_stdout(&output);
 
     let fusion = Output {
         a,
         b,
         c: output.digest(hasher),
     };
-
-    fusion.to_slice(&mut memory[FUSION_JOURNAL_RANGE]);
+    context.write_journal(&fusion);
 
     Ok(())
 }
@@ -115,15 +110,16 @@ mod tests {
         prop_assume!(a.amount.checked_add(b.amount).is_some());
 
         let mut hasher = Sha256::new();
-        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+        let mut context =
+            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
         Input {
             inputs: [a.clone(), b.clone()],
         }
-        .to_slice(&mut memory[FUSION_STDIN_RANGE]);
+        .to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut memory)?;
-        let result = BlindedNote::from_slice(&memory[FUSION_STDOUT_RANGE])?;
+        fusion(&mut hasher, &mut context)?;
+        let result = BlindedNote::from_slice(&context.stdout)?;
 
         assert_eq!(a.asset_id, result.asset_id);
         assert_eq!(a.amount + b.amount, result.amount);
@@ -143,14 +139,15 @@ mod tests {
         b: Note,
     ) {
         let mut hasher = Sha256::new();
-        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+        let mut context =
+            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
         Input {
             inputs: [a.clone(), b.clone()],
         }
-        .to_slice(&mut memory[FUSION_STDIN_RANGE]);
+        .to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut memory)?;
+        fusion(&mut hasher, &mut context)?;
     }
 
     #[proptest]
@@ -159,10 +156,14 @@ mod tests {
         prop_assume!(a.asset_id != b.asset_id);
 
         let mut hasher = Sha256::new();
-        let mut memory = [0u8; FUSION_TOTAL_SIZE];
+        let mut context =
+            Context::<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>::new();
 
-        Input { inputs: [a, b] }.to_slice(&mut memory[FUSION_STDIN_RANGE]);
+        Input {
+            inputs: [a.clone(), b.clone()],
+        }
+        .to_slice(&mut context.stdin);
 
-        fusion(&mut hasher, &mut memory)?;
+        fusion(&mut hasher, &mut context)?;
     }
 }

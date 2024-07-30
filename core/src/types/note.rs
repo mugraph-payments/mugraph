@@ -14,6 +14,8 @@ impl SerializeBytes for Note {
     const SIZE: usize = Hash::SIZE + u64::SIZE + Signature::SIZE;
 
     fn to_slice(&self, out: &mut [u8]) {
+        debug_assert!(out.len() >= Self::SIZE);
+
         self.asset_id.to_slice(&mut out[..Hash::SIZE]);
         self.amount
             .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
@@ -22,6 +24,8 @@ impl SerializeBytes for Note {
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
+        debug_assert!(input.len() >= Self::SIZE);
+
         Ok(Self {
             asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
             amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
@@ -39,8 +43,6 @@ pub struct BlindedNote {
 }
 
 impl BlindedNote {
-    pub const SIZE: usize = 72;
-
     pub fn unblind(self, signature: Signature) -> Note {
         Note {
             asset_id: self.asset_id,
@@ -54,6 +56,8 @@ impl SerializeBytes for BlindedNote {
     const SIZE: usize = Hash::SIZE + u64::SIZE + Hash::SIZE;
 
     fn to_slice(&self, out: &mut [u8]) {
+        debug_assert!(out.len() >= Self::SIZE);
+
         self.asset_id.to_slice(&mut out[..Hash::SIZE]);
         self.amount
             .to_slice(&mut out[Hash::SIZE..Hash::SIZE + u64::SIZE]);
@@ -62,6 +66,8 @@ impl SerializeBytes for BlindedNote {
     }
 
     fn from_slice(input: &[u8]) -> Result<Self> {
+        debug_assert!(input.len() >= Self::SIZE);
+
         Ok(Self {
             asset_id: Hash::from_slice(&input[..Hash::SIZE])?,
             amount: u64::from_slice(&input[Hash::SIZE..Hash::SIZE + u64::SIZE])?,
