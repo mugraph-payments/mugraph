@@ -22,14 +22,19 @@ macro_rules! generate_serialize_roundtrip_tests {
 #[cfg(feature = "std")]
 use mugraph_core::*;
 
+type FissionInput = mugraph_core::contracts::fission::Input;
+type FissionOutput = mugraph_core::contracts::fission::Output;
+type FusionInput = mugraph_core::contracts::fusion::Input;
+type FusionOutput = mugraph_core::contracts::fusion::Output;
+
 generate_serialize_roundtrip_tests!(
     u64,
     Hash,
     Signature,
-    Split,
-    Join,
-    Fission,
-    Fusion,
+    FissionInput,
+    FissionOutput,
+    FusionInput,
+    FusionOutput,
     Note,
     BlindedNote
 );

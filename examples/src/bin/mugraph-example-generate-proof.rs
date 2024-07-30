@@ -1,7 +1,9 @@
 use mugraph_circuits::*;
 use mugraph_core::{
+    contracts::fission,
+    contracts::fusion,
     crypto::{generate_keypair, schnorr::sign},
-    BlindedNote, Fission, Fusion, Hash, Join, Note, SerializeBytes, Split,
+    BlindedNote, Hash, Note, SerializeBytes,
 };
 use rand::rngs::OsRng;
 use tracing::info;
@@ -15,7 +17,7 @@ fn main() -> Result<()> {
 
     let nullifier = sign(rng, &server_priv, [2u8; 32].as_ref());
 
-    let split = Split {
+    let split = fission::Input {
         server_key: server_pub.compress().to_bytes(),
         input: Note {
             asset_id: Hash([1u8; 32]),
@@ -32,15 +34,15 @@ fn main() -> Result<()> {
 
     let mut prover = Prover::new();
 
-    info!("Creating Fission Proof");
-    let mut buf = [0u8; Split::SIZE];
+    info!("creating fission proof");
+    let mut buf = [0u8; fission::Input::SIZE];
     split.to_slice(&mut buf);
     let fission_receipt = prover.prove(&buf)?;
 
-    info!("Parsing fission journal");
-    let fission: Fission = Fission::from_slice(&fission_receipt.journal.bytes)?;
+    info!("parsing fission journal");
+    let fission: fission::Output = fission::Output::from_slice(&fission_receipt.journal.bytes)?;
 
-    info!("Reading fission stdout");
+    info!("reading fission stdout");
     let output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
     let change = BlindedNote::from_slice(&prover.stdout[BlindedNote::SIZE..])?;
 
@@ -67,17 +69,17 @@ fn main() -> Result<()> {
     );
 
     info!("Creating fusion request");
-    let join = Join {
+    let input = fusion::Input {
         inputs: [output.clone(), change.clone()],
     };
 
-    info!("Creating Fusion Proof");
-    let mut buf = [0u8; Join::SIZE];
-    join.to_slice(&mut buf);
+    info!("Creating fusion::Output Proof");
+    let mut buf = [0u8; fusion::Input::SIZE];
+    input.to_slice(&mut buf);
     let fusion_receipt = prover.prove(&buf)?;
 
     info!("Parsing fusion journal");
-    let fusion: Fusion = Fusion::from_slice(&fusion_receipt.journal.bytes)?;
+    let fusion: fusion::Output = fusion::Output::from_slice(&fusion_receipt.journal.bytes)?;
 
     info!("Reading fusion stdout");
     let fused_output = BlindedNote::from_slice(&prover.stdout[..BlindedNote::SIZE])?;

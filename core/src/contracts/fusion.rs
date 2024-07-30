@@ -1,19 +1,71 @@
-#[cfg(feature = "std")]
-use std::ops::Range;
-
-#[cfg(not(feature = "std"))]
 use core::ops::Range;
+
+use serde::{Deserialize, Serialize};
 
 use crate::*;
 
-pub const FUSION_TOTAL_SIZE: usize = Join::SIZE + BlindedNote::SIZE + Fusion::SIZE;
-pub const FUSION_STDIN_RANGE: Range<usize> = 0..Join::SIZE;
-pub const FUSION_STDOUT_RANGE: Range<usize> = Join::SIZE..Join::SIZE + BlindedNote::SIZE;
-pub const FUSION_JOURNAL_RANGE: Range<usize> = Join::SIZE + BlindedNote::SIZE..FUSION_TOTAL_SIZE;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
+pub struct Input {
+    pub inputs: [Note; 2],
+}
 
-#[inline(always)]
+impl SerializeBytes for Input {
+    const SIZE: usize = 2 * Note::SIZE;
+
+    #[inline]
+    fn to_slice(&self, out: &mut [u8]) {
+        self.inputs[0].to_slice(&mut out[..Note::SIZE]);
+        self.inputs[1].to_slice(&mut out[Note::SIZE..]);
+    }
+
+    #[inline]
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        Ok(Self {
+            inputs: [
+                Note::from_slice(&input[..Note::SIZE])?,
+                Note::from_slice(&input[Note::SIZE..Self::SIZE])?,
+            ],
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
+pub struct Output {
+    pub a: Hash,
+    pub b: Hash,
+    pub c: Hash,
+}
+
+impl SerializeBytes for Output {
+    const SIZE: usize = 3 * 32;
+
+    #[inline]
+    fn to_slice(&self, out: &mut [u8]) {
+        self.a.to_slice(&mut out[..Hash::SIZE]);
+        self.b.to_slice(&mut out[Hash::SIZE..Hash::SIZE * 2]);
+        self.c.to_slice(&mut out[Hash::SIZE * 2..Hash::SIZE * 3]);
+    }
+
+    #[inline]
+    fn from_slice(input: &[u8]) -> Result<Self> {
+        Ok(Self {
+            a: Hash::from_slice(&input[..Hash::SIZE])?,
+            b: Hash::from_slice(&input[Hash::SIZE..Hash::SIZE * 2])?,
+            c: Hash::from_slice(&input[Hash::SIZE * 2..Hash::SIZE * 3])?,
+        })
+    }
+}
+
+pub const FUSION_TOTAL_SIZE: usize = Input::SIZE + BlindedNote::SIZE + Output::SIZE;
+pub const FUSION_STDIN_RANGE: Range<usize> = 0..Input::SIZE;
+pub const FUSION_STDOUT_RANGE: Range<usize> = Input::SIZE..Input::SIZE + BlindedNote::SIZE;
+pub const FUSION_JOURNAL_RANGE: Range<usize> = Input::SIZE + BlindedNote::SIZE..FUSION_TOTAL_SIZE;
+
+#[inline]
 pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
-    let join = Join::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
+    let join = Input::from_slice(&mut memory[FUSION_STDIN_RANGE])?;
     let [ia, ib] = join.inputs;
     let (a, b) = (ia.digest(), ib.digest());
 
@@ -35,7 +87,7 @@ pub fn fusion(memory: &mut [u8; FUSION_TOTAL_SIZE]) -> Result<()> {
 
     output.to_slice(&mut memory[FUSION_STDOUT_RANGE]);
 
-    let fusion = Fusion {
+    let fusion = Output {
         a,
         b,
         c: output.digest(),
