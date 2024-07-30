@@ -9,9 +9,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{Error, Result, SerializeBytes};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 #[repr(transparent)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 impl Hash {

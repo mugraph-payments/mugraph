@@ -3,6 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::*;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Signature {
     pub r: Hash,
     pub s: Hash,

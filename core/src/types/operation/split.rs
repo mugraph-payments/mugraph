@@ -2,6 +2,7 @@ use crate::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Split {
     pub server_key: PublicKey,
     pub input: Note,

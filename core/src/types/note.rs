@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Note {
     pub asset_id: Hash,
     pub amount: u64,
@@ -38,6 +39,7 @@ impl SerializeBytes for Note {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct BlindedNote {
     pub asset_id: Hash,
     pub amount: u64,

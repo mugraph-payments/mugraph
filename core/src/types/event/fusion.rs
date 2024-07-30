@@ -2,6 +2,7 @@ use crate::{Error, Hash, Result, SerializeBytes};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Fusion {
     pub a: Hash,
     pub b: Hash,
