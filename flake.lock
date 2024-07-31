@@ -113,16 +113,16 @@
     "risc0": {
       "flake": false,
       "locked": {
-        "lastModified": 1721178026,
-        "narHash": "sha256-shlu6X2JzFU8xCo6yXSHZUxe+XAvzfwuQrWv/ck1a3E=",
+        "lastModified": 1722378504,
+        "narHash": "sha256-jtROtI5/4W2pNvn1ZYR/wQAZmECTr7YxuZGu2Ns9paw=",
         "owner": "risc0",
         "repo": "risc0",
-        "rev": "fa10e4c40a2db626a234b4adbed95332685103cb",
+        "rev": "a165a6e3443fbc2e4f7093d7552399cd56337928",
         "type": "github"
       },
       "original": {
         "owner": "risc0",
-        "ref": "v1.0.3",
+        "ref": "v1.0.5",
         "repo": "risc0",
         "type": "github"
       }

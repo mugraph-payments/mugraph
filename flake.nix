@@ -22,7 +22,7 @@
     };
 
     risc0 = {
-      url = "github:risc0/risc0/v1.0.3";
+      url = "github:risc0/risc0/v1.0.5";
       flake = false;
     };
   };

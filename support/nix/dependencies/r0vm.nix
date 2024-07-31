@@ -25,7 +25,7 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "r0vm";
-  version = "1.0.3";
+  version = "1.0.5";
   src = risc0;
 
   buildAndTestSubdir = "risc0/r0vm";
