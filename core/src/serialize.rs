@@ -26,7 +26,7 @@ where
 }
 
 impl SerializeBytes for u64 {
-    const SIZE: usize = size_of::<Self>();
+    const SIZE: usize = 8;
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {

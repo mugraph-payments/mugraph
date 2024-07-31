@@ -70,14 +70,32 @@ mod tests {
     use super::*;
 
     use proptest::prelude::*;
+    use std::ops::Range;
     use test_strategy::proptest;
 
+    fn pair() -> impl Strategy<Value = (Note, Note)> {
+        pair_amount_range(0..u64::MAX / 2, 0..u64::MAX / 2).boxed()
+    }
+
+    fn pair_amount_range(ra: Range<u64>, rb: Range<u64>) -> impl Strategy<Value = (Note, Note)> {
+        (any::<(Note, Note)>(), (ra, rb))
+            .prop_map(|((mut a, mut b), (ra, rb))| {
+                a.amount = ra;
+                b.amount = rb;
+
+                b.asset_id.copy_from_slice(&*a.asset_id);
+                b.server_key.copy_from_slice(&*a.asset_id);
+
+                (a, b)
+            })
+            .prop_filter("nullifiers must not be empty", |(a, b)| {
+                !a.nullifier.is_empty() && !b.nullifier.is_empty()
+            })
+    }
+
     #[proptest]
-    fn test_fusion_success(
-        a: Note,
-        #[strategy(any::<Note>().prop_map(move |mut b| { b.asset_id = #a.asset_id; b }))] b: Note,
-    ) {
-        prop_assume!(a.amount.checked_add(b.amount).is_some());
+    fn test_fusion_success(#[strategy(pair())] inputs: (Note, Note)) {
+        let (a, b) = inputs;
 
         let mut context = Context::new();
 
@@ -96,17 +114,11 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn test_fusion_overflow(
-        #[strategy((u64::MAX / 2) + 1..u64::MAX)] _amount_a: u64,
-        #[strategy((u64::MAX / 2) + 1..u64::MAX)] _amount_b: u64,
-        #[strategy(any::<Note>().prop_map(move |mut a| { a.amount = #_amount_a; a }))] a: Note,
-        #[strategy(any::<Note>().prop_map(move |mut b| {
-            b.asset_id = #a.asset_id;
-            b.amount = #_amount_b;
-            b
-        }))]
-        b: Note,
+    fn test_fusion_amount_overflow(
+        #[strategy(pair_amount_range(u64::MAX / 2 + 1..u64::MAX, u64::MAX / 2 + 1..u64::MAX))]
+        inputs: (Note, Note),
     ) {
+        let (a, b) = inputs;
         let mut context = Context::new();
 
         let input = Input { a, b };

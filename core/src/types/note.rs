@@ -7,7 +7,9 @@ use crate::*;
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Note {
     pub asset_id: Hash,
+    #[cfg_attr(feature = "std", filter(#server_key != [0u8; 32]))]
     pub server_key: PublicKey,
+    #[cfg_attr(feature = "std", filter(#amount > 0))]
     pub amount: u64,
     pub nullifier: Signature,
 }

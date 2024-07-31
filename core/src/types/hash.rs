@@ -9,7 +9,11 @@ use crate::{Error, Result, SerializeBytes};
 #[serde(transparent)]
 #[repr(transparent)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
-pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
+pub struct Hash(
+    #[cfg_attr(feature = "std", filter(#0 != [0u8; 32]))]
+    #[serde(with = "hex::serde")]
+    pub [u8; 32],
+);
 
 impl Hash {
     pub const SIZE: usize = 32;
@@ -123,7 +127,7 @@ impl TryFrom<&[u8]> for Hash {
 }
 
 impl SerializeBytes for Hash {
-    const SIZE: usize = <[u8; 32]>::SIZE;
+    const SIZE: usize = 32;
 
     #[inline]
     fn to_slice(&self, out: &mut [u8]) {
