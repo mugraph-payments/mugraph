@@ -44,12 +44,6 @@ crucial distinctions:
 An user can, and usually will, hold balance in multiple Delegates at once, and
 they do not need to have balance in a Delegate to receive payments there.
 
-Essentially, a Delegate has three main roles:
-
-1. Verifying *operation proofs* and signing **Blinded Notes**.
-1. Signing external transctions on behalf of the user.
-1. Emitting **Notes** in response to user deposits.
-
 ## ECash
 
 Mugraph is based on David Chaum seminal work [Blind Signatures for Untraceable
@@ -72,6 +66,24 @@ very solid, it also has some glaring flaws:
 2. Mints don't know which deposit they are redeeming, but they know what asset
    is being transacted and the amounts. Those increase risk of deanonimization
    with data and pattern analysis.
+
+We improve this scheme in two ways:
+
+1. Delegates (Mugraph equivalent to Mints) can not issue tokens by themselves.
+   Instead, users create them directly, using [Mithril Certified
+   Transactions](https://mithril.network). Those certificates ensure direct
+   fund availability on the Layer 1.
+2. Zero-Knowledge Proofs are used to both conceal asset ids and amounts, as
+   well as guaranteeing UTXO ledger variants, meaning no value is created or
+destroyed on a transaction.
+
+## Delegates
+
+The equivalent to Mints in Mugraph are **Delegates**.
+
+1. Verifying *operation proofs* and signing **Blinded Notes**.
+1. Signing external transctions on behalf of the user.
+1. Emitting **Notes** in response to user deposits.
 
 ## Types
 
