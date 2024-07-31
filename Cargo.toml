@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-  "circuits",
-  "circuits/guest",
   "core",
-  "derive",
+  "core/derive",
   "examples",
-  "node"
+  "node",
+  "programs",
+  "programs/guest",
 ]
 
 [workspace.dependencies]

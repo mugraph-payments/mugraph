@@ -911,27 +911,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mugraph-circuits"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "mugraph-core",
- "onlyerror",
- "risc0-build",
- "risc0-zkvm",
- "serde",
-]
-
-[[package]]
-name = "mugraph-circuits-guest"
-version = "0.1.0"
-dependencies = [
- "mugraph-core",
- "risc0-zkvm",
- "sha2",
-]
-
-[[package]]
 name = "mugraph-core"
 version = "0.0.1"
 dependencies = [
@@ -961,8 +940,8 @@ dependencies = [
 name = "mugraph-examples"
 version = "0.0.1"
 dependencies = [
- "mugraph-circuits",
  "mugraph-core",
+ "mugraph-programs",
  "paste",
  "rand",
  "serde_json",
@@ -975,6 +954,27 @@ name = "mugraph-node"
 version = "0.0.1"
 dependencies = [
  "mugraph-core",
+]
+
+[[package]]
+name = "mugraph-programs"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "mugraph-core",
+ "onlyerror",
+ "risc0-build",
+ "risc0-zkvm",
+ "serde",
+]
+
+[[package]]
+name = "mugraph-programs-guest"
+version = "0.1.0"
+dependencies = [
+ "mugraph-core",
+ "risc0-zkvm",
+ "sha2",
 ]
 
 [[package]]

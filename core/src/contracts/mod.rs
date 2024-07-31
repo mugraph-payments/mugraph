@@ -7,7 +7,7 @@ macro_rules! run_program {
         $crate::__dependencies::paste! {{
             use $crate::SerializeBytes;
 
-            let program_id = $crate::Hash::from(mugraph_circuits::[< $mod:upper _ID >]);
+            let program_id = $crate::Hash::from(mugraph_programs::[< $mod:upper _ID >]);
 
             ::tracing::info!(
                 id = %program_id,
@@ -15,8 +15,8 @@ macro_rules! run_program {
                 "Running risc0 program...",
             );
 
-            let mut prover = ::mugraph_circuits::Prover::new();
-            let receipt = prover.prove(mugraph_circuits::[< $mod:upper _ELF >], &$stdin.to_bytes())?;
+            let mut prover = ::mugraph_programs::Prover::new();
+            let receipt = prover.prove(mugraph_programs::[< $mod:upper _ELF >], &$stdin.to_bytes())?;
 
             let stdout = $crate::contracts::$mod::Stdout::from_slice(&prover.stdout)?;
             let journal = $crate::contracts::$mod::Output::from_slice(&receipt.journal.bytes)?;

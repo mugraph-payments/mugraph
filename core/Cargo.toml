@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-mugraph-derive = { path = "../derive" }
+mugraph-derive = { path = "./derive" }
 
 curve25519-dalek = { version = "4.1.2", default-features = false, features = ["rand_core"] }
 hex = { version = "0.4.3", default-features = false, features = ["serde"] }

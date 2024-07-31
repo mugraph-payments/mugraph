@@ -1,10 +1,10 @@
-use mugraph_circuits::*;
 use mugraph_core::{
     contracts::fission,
     contracts::fusion,
     crypto::{generate_keypair, schnorr::sign},
     run_program, Hash, Note,
 };
+use mugraph_programs::*;
 use rand::rngs::OsRng;
 use tracing::info;
 
