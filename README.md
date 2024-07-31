@@ -138,8 +138,6 @@ To verify the signature, Alice (or any verifier) can check if $C = k \cdot
 H(x)$. If this equality holds, it proves that $C$ originated from Bob's private
 key $k$, without Bob knowing the original message $x$.
 
-### Flaws
-
 This protocol has been implemented multiple times before, notably in the [
 Protocol](https://cashu.space), running on top of the Lightning Network. It is
 very cryptographically solid, even 40+ years after it was created, but it also
@@ -153,6 +151,16 @@ has some very known flaws:
 
 ## Protocol
 
+Mugraph differentiates itself from ECash because we use **Zero-Knowledge
+Proofs**, specifically ZK-SNARKS, to move the state forward. This means:
+
+1. Instead of Mints, we have **Delegates**. They don't emit tokens
+   or control the funds at all, instead they only verify and apply proofs.
+2. Users do all operations inside the system, delegates only protect against
+   double-spend.
+3. Notes themselves can have programs, allowing for arbitrary conditions on
+   spending.
+
 ### Delegates
 
 The equivalent to Mints in Mugraph are **Delegates**.
@@ -161,7 +169,7 @@ The equivalent to Mints in Mugraph are **Delegates**.
 1. Signing external transctions on behalf of the user.
 1. Emitting **Notes** in response to user deposits.
 
-### Operations
+### Default Programs
 
 #### $F$: Fission
 
