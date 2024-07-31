@@ -90,20 +90,60 @@ I'm building it.
 
 ## Overview
 
-Mugraph is based on David Chaum seminal work [Blind Signatures for Untraceable
-Payments](./docs/reference-material/papers/blind-signatures-for-untraceable-payments.md),
-more specifically the [Blind Diffie-Hellman
-Variant](./docs/concepts/blind-diffie-hellman.md) created by David Wagner.
+> [!NOTE]
+> This overview describes a variant of the blind signatures protocol proposed
+> by David Wagner here[2]. For all practical terms, they are equivalent.
 
-In it, Chaum describes a bank (called a Mint) that receive deposits and emit
-**Bearer Tokens**, and anyone holding them can redeem the value deposited.
-Those tokens are created through a process called **Blind Signing**, where the
-Mint knows they signed the token, but they don't know which deposit it
-corresponds to.
+In 1983, David Chaum conceived ECash, arguably the first form of
+cryptographically secure digital money, in his paper [Blind Signatures for
+Untraceable Payments][1]. In it, David Chaum describes a bank (called a Mint)
+that emit **Bearer Tokens**.
 
-This protocol has been implemented multiple times before, notably in the [Cashu
-Protocol](https://cashu.space), running on top of the Lightning Network. While
-very solid, it also has some glaring flaws:
+They are called "bearer" tokens because, like physical cash, possession of the token itself confers the right to redeem its value, and are created through a process called **Blind Signature**.
+
+### Blind Signatures
+
+A Blind Signature is a signature in which the signer is able to verify
+attribution (that they in fact signed it at some point), while not revealing
+what signed message created that input. Following the usual conventions for
+cryptographic examples, we have Alice (the user) and Bob (the Mint). Given
+that:
+
+- $G$ is a publicly available generator point on the Ristreto25519 curve,
+- Bob has a public/private keypair $k, K$, and $K$ is publicly available.
+- Alice has a secret $x$, representing her deposit on Bob.
+
+Then:
+
+1. Alice computes $Y = H(x)$, where $H$ is a function that maps the secret to a
+   point on the elliptic curve (hash to curve).
+1. Alice generats a random blinding factor $r$.
+1. Alice the blinded point $B' &= Y + r \cdot G$:
+1. Alice sends $B'$ to Bob.
+1. Bob receives $B'$ and computes the blinded signature $C' &= k \cdot B'$.
+1. Bob sends $C'$ back to Alice.
+1. Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
+
+$$
+\begin{align}
+C &= C' - r \cdot K \\
+  &= k \cdot B' - r \cdot K \\
+  &= k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
+  &= k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
+  &= k \cdot Y
+\end{align}
+$$
+
+To verify the signature, Alice (or any verifier) can check if $C = k \cdot
+H(x)$. If this equality holds, it proves that $C$ originated from Bob's private
+key $k$, without Bob knowing the original message $x$.
+
+### Flaws
+
+This protocol has been implemented multiple times before, notably in the [
+Protocol](https://cashu.space), running on top of the Lightning Network. It is
+very cryptographically solid, even 40+ years after it was created, but it also
+has some very known flaws:
 
 1. Mints are in total control of issuing tokens, and the only thing barring
    them from practicing fractional reserves is the risk of a Bank Run.
@@ -111,19 +151,8 @@ very solid, it also has some glaring flaws:
    is being transacted and the amounts. Those increase risk of deanonimization
    with data and pattern analysis.
 
-We improve this scheme in three ways:
-
-1. Delegates (Mugraph equivalent to Mints) can not issue tokens by themselves.
-   Instead, users create them directly, using [Mithril Certified
-   Transactions](https://mithril.network). Those certificates ensure direct
-   fund availability on the Layer 1.
-2. Zero-Knowledge Proofs are used to both conceal asset ids and amounts, as
-   well as guaranteeing UTXO ledger variants, meaning no value is created or
-   destroyed on a transaction.
-3. Mugraph tokens can have their own programs (using the same Zero-Knowledge
-   Proofs), allowing for some form of off-chain Smart Contracts.
-
 ## Protocol
+
 ### Delegates
 
 The equivalent to Mints in Mugraph are **Delegates**.
@@ -138,18 +167,22 @@ The equivalent to Mints in Mugraph are **Delegates**.
 
 Splits a note into two blinded notes. It is defined as:
 
-$F(n, i) \mapsto { n'_o, n'_c }$
+$$
+F(n, i) \mapsto { n'_o, n'_c }
+$$
 
 Where:
 
 - $n$ is the input note to be slit in two
 - $i$ is the output amount requested by the operation
 - $n'_o$ is a blinded note for the amount $i$
-- $n'_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the note amount.
+- $n'_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the
+  note amount.
 
 #### $F'$: Fusion
 
-Joins two notes with the same asset id and server keys into a single one. It is defined as:
+Joins two notes with the same Asset ID and server keys into a single one. It is
+defined as:
 
 $F'(n_0, n_1) \mapsto n'$
 
@@ -172,3 +205,6 @@ Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockcha
 
 1. [Roadmap](./docs/roadmap.md)
 1. [Licensing](./docs/licensing.md)
+
+[1]: ./docs/reference-material/papers/blind-signatures-for-untraceable-payments.md
+[2]: ./docs/reference-material/blind-dh.md
