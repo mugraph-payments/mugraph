@@ -963,6 +963,7 @@ version = "0.0.1"
 dependencies = [
  "mugraph-circuits",
  "mugraph-core",
+ "paste",
  "rand",
  "serde_json",
  "tracing",

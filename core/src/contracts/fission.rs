@@ -25,7 +25,7 @@ pub struct Stdout {
     pub change: BlindedNote,
 }
 
-build_contract_alias!(Input, Output, Stdout);
+build_context_alias!(Input, Output, Stdout);
 
 #[inline]
 pub fn fission(ctx: &mut Context) -> Result<()> {

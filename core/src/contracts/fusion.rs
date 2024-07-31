@@ -24,7 +24,7 @@ pub struct Stdout {
     pub note: BlindedNote,
 }
 
-build_contract_alias!(Input, Output, Stdout);
+build_context_alias!(Input, Output, Stdout);
 
 #[inline]
 pub fn fusion(context: &mut Context) -> Result<()> {

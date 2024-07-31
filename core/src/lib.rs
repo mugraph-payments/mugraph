@@ -4,10 +4,11 @@ pub mod contracts;
 pub mod crypto;
 
 mod error;
+mod io;
 mod serialize;
 mod types;
 
-pub use self::{error::*, serialize::*, types::*};
+pub use self::{error::*, io::*, serialize::*, types::*};
 
 pub const OUTPUT_SEP: Hash = Hash::new([
     251, 27, 10, 119, 219, 137, 49, 221, 246, 211, 108, 158, 213, 143, 56, 34, 184, 84, 252, 192,
@@ -22,40 +23,11 @@ pub const HTC_SEP: Hash = Hash::new([
     108, 3, 238, 41, 141, 212, 239, 112, 242, 238, 62,
 ]);
 
-pub struct Reader<'a> {
-    data: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Reader<'a> {
-    pub fn new(data: &'a [u8]) -> Self {
-        Self { data, offset: 0 }
-    }
-
-    pub fn read<T: SerializeBytes>(&mut self) -> Result<T> {
-        assert!(self.offset + T::SIZE <= self.data.len());
-
-        let result = T::from_slice(&self.data[self.offset..self.offset + T::SIZE])?;
-        self.offset += T::SIZE;
-
-        Ok(result)
-    }
-}
-
-pub struct Writer<'a> {
-    data: &'a mut [u8],
-    offset: usize,
-}
-
-impl<'a> Writer<'a> {
-    pub fn new(data: &'a mut [u8]) -> Self {
-        Self { data, offset: 0 }
-    }
-
-    pub fn write<T: SerializeBytes>(&mut self, value: &T) {
-        assert!(self.offset + T::SIZE <= self.data.len());
-
-        value.to_slice(&mut self.data[self.offset..T::SIZE]);
-        self.offset += T::SIZE;
-    }
+#[doc(hidden)]
+/// This is a hidden module, re-exporting crate dependencies.
+///
+/// This is necessary so the macros can be used directly without having to import those
+/// dependencies.
+pub mod __dependencies {
+    pub use paste::paste;
 }
