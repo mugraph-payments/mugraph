@@ -67,7 +67,7 @@ very solid, it also has some glaring flaws:
    is being transacted and the amounts. Those increase risk of deanonimization
    with data and pattern analysis.
 
-We improve this scheme in two ways:
+We improve this scheme in three ways:
 
 1. Delegates (Mugraph equivalent to Mints) can not issue tokens by themselves.
    Instead, users create them directly, using [Mithril Certified
@@ -75,7 +75,9 @@ We improve this scheme in two ways:
    fund availability on the Layer 1.
 2. Zero-Knowledge Proofs are used to both conceal asset ids and amounts, as
    well as guaranteeing UTXO ledger variants, meaning no value is created or
-destroyed on a transaction.
+   destroyed on a transaction.
+3. Mugraph tokens can have their own programs (using the same Zero-Knowledge
+   Proofs), allowing for some form of off-chain Smart Contracts.
 
 ## Delegates
 
