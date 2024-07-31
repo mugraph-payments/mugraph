@@ -24,8 +24,11 @@ macro_rules! generate_serialize_roundtrip_tests {
 #[cfg(feature = "std")]
 use mugraph_core::*;
 
+type FissionStdout = mugraph_core::programs::fission::Stdout;
 type FissionInput = mugraph_core::programs::fission::Input;
 type FissionOutput = mugraph_core::programs::fission::Output;
+
+type FusionStdout = mugraph_core::programs::fusion::Stdout;
 type FusionInput = mugraph_core::programs::fusion::Input;
 type FusionOutput = mugraph_core::programs::fusion::Output;
 
@@ -33,8 +36,10 @@ generate_serialize_roundtrip_tests!(
     [u64, 8],
     [Hash, 32],
     [Signature, 64],
+    [FissionStdout, 144],
     [FissionInput, 144],
     [FissionOutput, 96],
+    [FusionStdout, 208],
     [FusionInput, 208],
     [FusionOutput, 96],
     [Note, 104],
