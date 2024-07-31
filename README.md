@@ -44,7 +44,51 @@ crucial distinctions:
 An user can, and usually will, hold balance in multiple Delegates at once, and
 they do not need to have balance in a Delegate to receive payments there.
 
-## ECash
+## Motivation
+
+> Why are people not using cryptocurrencies for payments?
+
+This is the question I wanted to address when Mugraph started. Bitcoin was
+created to address this specific problem, yet [The Lightning
+Network](https://lightning.network) is not widely supported even in countries
+that adopted Bitcoin as legal tender.
+
+Even if Cardano has much more advanced technology than Bitcoin does (like eUTXO
+or Smart Contracts), buying groceries with [USDM](https://mehen.io) remains
+nighly impossible.
+
+ZeroHedge explains this phenomenon in their article ["What Happened to
+Bitcoin?"](https://www.zerohedge.com/crypto/what-happened-bitcoin):
+
+> At the same time, new technologies were becoming available that vastly
+> improved the efficiency and availability of exchange in fiat dollars. They
+> included Venmo, Zelle, CashApp, FB payments, and many others besides, in
+> addition to smartphone attachments and iPads that enabled any merchant of any
+> size to process credit cards. These technologies were completely different
+> from Bitcoin because they were permission-based and mediated by financial
+> companies. But to users, they seemed great and their presence in the
+> marketplace crowded out the use case of Bitcoin at the very time that my
+> beloved technology had become an unrecognizable version of itself.
+
+Excluding volatility (already being taken seriously by Stablecoins), we
+identified three main problems that prevent the average person from considering
+cryptocurrencies as a payment option:
+
+1. **Scalability**: Cryptocurrency transactions are slow compared to
+   centralized solutions. For example, credit cards have a practical
+confirmation limit of 2 seconds.
+
+1. **Privacy**: Users do not want to reveal their identity for every purchase.
+   Financial privacy is a human right, and in the age of big data analysis and
+AI, pseudonymity does not provide sufficient privacy.
+
+1. **Ease of Use**: Users prefer not to deal with complex protocols, multiple
+   wallets, or extensive security considerations.
+
+I think that Mugraph has a real shot of solving those problems, and that's why
+I'm building it.
+
+## Overview
 
 Mugraph is based on David Chaum seminal work [Blind Signatures for Untraceable
 Payments](./docs/reference-material/papers/blind-signatures-for-untraceable-payments.md),
@@ -79,7 +123,8 @@ We improve this scheme in three ways:
 3. Mugraph tokens can have their own programs (using the same Zero-Knowledge
    Proofs), allowing for some form of off-chain Smart Contracts.
 
-## Delegates
+## Protocol
+### Delegates
 
 The equivalent to Mints in Mugraph are **Delegates**.
 
@@ -87,19 +132,9 @@ The equivalent to Mints in Mugraph are **Delegates**.
 1. Signing external transctions on behalf of the user.
 1. Emitting **Notes** in response to user deposits.
 
-## Types
+### Operations
 
-### Notes
-
-TODO.
-
-### Blinded Notes
-
-TODO.
-
-## Operations
-
-### $F$: Fission
+#### $F$: Fission
 
 Splits a note into two blinded notes. It is defined as:
 
@@ -112,7 +147,7 @@ Where:
 - $n'_o$ is a blinded note for the amount $i$
 - $n'_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the note amount.
 
-### $F'$: Fusion
+#### $F'$: Fusion
 
 Joins two notes with the same asset id and server keys into a single one. It is defined as:
 
@@ -133,8 +168,7 @@ Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockcha
 | $n$    | A Note, blindly signed by the Delegate and ready to be used.            |
 | $n'$   | A Note with a blinded nullifier to be sent to the Delegate for signing. |
 
-## References
+## Further Reading
 
-1. [Motivation](./docs/motivation.md)
 1. [Roadmap](./docs/roadmap.md)
 1. [Licensing](./docs/licensing.md)
