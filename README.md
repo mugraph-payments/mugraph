@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source srcset="docs/assets/logo-white.svg" media="(prefers-color-scheme: dark)">
-    <img src="docs/assets/logo-dark.svg" alt="Mugraph Logo" width="300">
+    <source srcset="support/assets/logo-white.svg" media="(prefers-color-scheme: dark)">
+    <img src="support/assets/logo-dark.svg" alt="Mugraph Logo" width="300">
   </picture>
 
 <p align="center"><em>Instant, untraceable payments for Cardano.</em></p>
@@ -211,8 +211,8 @@ Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockcha
 
 ## Further Reading
 
-1. [Roadmap](./docs/roadmap.md)
-1. [Licensing](./docs/licensing.md)
+1. [Roadmap](./support/roadmap.md)
+1. [Licensing](./support/licensing.md)
 
-[1]: ./docs/reference-material/papers/blind-signatures-for-untraceable-payments.md
-[2]: ./docs/reference-material/blind-dh.md
+[1]: ./support/reference-material/papers/blind-signatures-for-untraceable-payments.md
+[2]: ./support/reference-material/blind-dh.md

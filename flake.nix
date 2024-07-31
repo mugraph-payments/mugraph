@@ -41,7 +41,7 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default
-            (import ./nix inputs)
+            (import ./support/nix inputs)
           ];
         };
       in

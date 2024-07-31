@@ -36,7 +36,7 @@ let
     }
     ."${platform}";
 
-  rust = pkgs.rust-bin.fromRustupToolchainFile ./../rust-toolchain.toml;
+  rust = pkgs.rust-bin.fromRustupToolchainFile ./../../rust-toolchain.toml;
 in
 {
   defaults = {
@@ -52,8 +52,8 @@ in
     };
 
     paths = {
-      root = ./..;
-      cargoLock = ./../Cargo.lock;
+      root = ./../..;
+      cargoLock = ./../../Cargo.lock;
     };
 
     rustPlatform = pkgs.makeRustPlatform {
