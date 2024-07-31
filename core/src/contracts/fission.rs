@@ -6,7 +6,6 @@ use crate::*;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, SerializeBytes)]
 #[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
 pub struct Input {
-    pub server_key: PublicKey,
     pub input: Note,
     pub amount: u64,
 }
@@ -54,6 +53,7 @@ pub fn fission(ctx: &mut Context) -> Result<()> {
     let stdout = Stdout {
         output: BlindedNote {
             asset_id: request.input.asset_id,
+            server_key: request.input.server_key,
             amount: request.amount,
             secret: Hash::combine3(
                 &mut ctx.hasher,
@@ -64,6 +64,7 @@ pub fn fission(ctx: &mut Context) -> Result<()> {
         },
         change: BlindedNote {
             asset_id: request.input.asset_id,
+            server_key: request.input.server_key,
             amount,
             secret: Hash::combine3(&mut ctx.hasher, input_hash, CHANGE_SEP, amount_digest)?,
         },

@@ -31,6 +31,7 @@ pub fn fusion(context: &mut Context) -> Result<()> {
     let Input { a: ia, b: ib } = context.read_stdin()?;
 
     assert_eq!(ia.asset_id, ib.asset_id);
+    assert_eq!(ia.server_key, ib.server_key);
     assert!(!ia.nullifier.is_empty());
     assert!(!ib.nullifier.is_empty());
     assert_ne!(ia.nullifier, ib.nullifier);
@@ -46,6 +47,7 @@ pub fn fusion(context: &mut Context) -> Result<()> {
     );
 
     let note = BlindedNote {
+        server_key: ia.server_key,
         asset_id: ia.asset_id,
         amount: total,
         secret: Hash::combine3(&mut context.hasher, OUTPUT_SEP, a, b)?,
