@@ -4,8 +4,8 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-mugraph-programs = { path = "../programs" }
-mugraph-core = { path = "../core" }
+mugraph-programs = { path = "../crates/programs" }
+mugraph-core = { path = "../crates/core" }
 paste = "1.0.15"
 
 rand = "0.8.5"
