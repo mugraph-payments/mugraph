@@ -23,7 +23,7 @@ impl Serialize for Signature {
     {
         let mut buf = [0u8; Self::SIZE];
         self.to_slice(&mut buf);
-        hex::serde::serialize(&buf, serializer)
+        hex::serde::serialize(buf, serializer)
     }
 }
 

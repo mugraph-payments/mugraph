@@ -17,7 +17,7 @@ pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     let mut hasher = Sha256::new();
 
     for item in data {
-        hasher.update(&item);
+        hasher.update(item);
     }
 
     let hash: Hash = hasher.finalize().as_slice().try_into().unwrap();
