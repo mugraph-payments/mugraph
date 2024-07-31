@@ -54,10 +54,14 @@ pub fn derive_serialize_bytes(input: TokenStream) -> TokenStream {
                 (
                     quote! {
                         fn to_slice(&self, out: &mut [u8]) {
+                            assert_eq!(out.len(), Self::SIZE);
+
                             #(#to_slice_impl)*
                         }
 
                         fn from_slice(input: &[u8]) -> Result<Self> {
+                            assert_eq!(input.len(), Self::SIZE);
+
                             Ok(Self {
                                 #(#from_slice_impl)*
                             })
