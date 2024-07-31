@@ -20,21 +20,29 @@
   </p>
 </p>
 
-Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockchain for untraceable payments with instant finality.
+Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano
+blockchain for untraceable payments with instant finality.
 
 By **untraceable**, we mean that, inside a given group $A$ of users:
 
-- All transactions between users inside $A$ are untraceable, meaning senders and receivers are not bound in any way.
-- All transactions to users outside $A$ come from a single, shared identity for all group participants.
+- All transactions between users inside $A$ are untraceable, meaning senders
+and receivers are not bound in any way.
+- All transactions to users outside $A$ come from a single, shared identity for
+all group participants.
 
-This shared identity comes from **Delegators**, behaving similarly to Payment Networks in the traditional banking system, like Paypal, Venmo or CashApp, but with some crucial distinctions:
+This shared identity comes from **Delegates**, similar to Payment Networks in
+the traditional banking system, like Paypal, Venmo or CashApp, but with some
+crucial distinctions:
 
-- Delegates hold funds in a fully auditable Smart Contract Vault, held in the Layer 1.
+- Delegates hold funds in a fully auditable Smart Contract Vault, held in the
+  Layer 1.
 - Delegates can not spend user funds without their authorization.
 - Delegates are **blind**, meaning they don't know who is transacting.
-- Delegates provide **group concealing** for their users, signing transactions on behalf of them.
+- Delegates provide **group concealing** for their users, signing transactions
+  on behalf of them.
 
-An user can, and usually will, hold balance in multiple Delegates at once, and they do not need to have balance in a Delegate to receive payments there.
+An user can, and usually will, hold balance in multiple Delegates at once, and
+they do not need to have balance in a Delegate to receive payments there.
 
 Essentially, a Delegate has three main roles:
 
@@ -42,13 +50,28 @@ Essentially, a Delegate has three main roles:
 1. Signing external transctions on behalf of the user.
 1. Emitting **Notes** in response to user deposits.
 
-## Glossary
+## ECash
 
-| Symbol | Description |
-|--------|-------------|
-| $G$    | A generator point in the Ristreto25519 curve. |
-| $n$    | A Note, blindly signed by the Delegate and ready to be used. |
-| $n'$    | A Note with a blinded nullifier to be sent to the Delegate for signing. |
+Mugraph is based on David Chaum seminal work [Blind Signatures for Untraceable
+Payments](./docs/reference-material/papers/blind-signatures-for-untraceable-payments.md),
+more specifically the [Blind Diffie-Hellman
+Variant](./docs/concepts/blind-diffie-hellman.md) created by David Wagner.
+
+In it, Chaum describes a bank (called a Mint) that receive deposits and emit
+**Bearer Tokens**, and anyone holding them can redeem the value deposited.
+Those tokens are created through a process called **Blind Signing**, where the
+Mint knows they signed the token, but they don't know which deposit it
+corresponds to.
+
+This protocol has been implemented multiple times before, notably in the [Cashu
+Protocol](https://cashu.space), running on top of the Lightning Network. While
+very solid, it also has some glaring flaws:
+
+1. Mints are in total control of issuing tokens, and the only thing barring
+   them from practicing fractional reserves is the risk of a Bank Run.
+2. Mints don't know which deposit they are redeeming, but they know what asset
+   is being transacted and the amounts. Those increase risk of deanonimization
+   with data and pattern analysis.
 
 ## Types
 
@@ -66,20 +89,20 @@ TODO.
 
 Splits a note into two blinded notes. It is defined as:
 
-$F(n, i) \\mapsto { n'\_o, n'\_c }$
+$F(n, i) \mapsto { n'_o, n'_c }$
 
 Where:
 
 - $n$ is the input note to be slit in two
 - $i$ is the output amount requested by the operation
-- $n'\_o$ is a blinded note for the amount $i$
-- $n'\_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the note amount.
+- $n'_o$ is a blinded note for the amount $i$
+- $n'_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the note amount.
 
 ### $F'$: Fusion
 
 Joins two notes with the same asset id and server keys into a single one. It is defined as:
 
-$F'(n_0, n_1) \\mapsto n'$
+$F'(n_0, n_1) \mapsto n'$
 
 Where:
 
@@ -88,19 +111,16 @@ Where:
 
 Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockchain for untraceable payments with instant finality. It is very simplified in both operations and architecture, meant to be easy to integrate anywhere.
 
-# Table of Contents
+## Glossary
 
-## The Basics
+| Symbol | Description                                                             |
+|--------|-------------------------------------------------------------------------|
+| $G$    | A generator point in the Ristreto25519 curve.                           |
+| $n$    | A Note, blindly signed by the Delegate and ready to be used.            |
+| $n'$   | A Note with a blinded nullifier to be sent to the Delegate for signing. |
+
+## References
 
 1. [Motivation](./docs/motivation.md)
 1. [Roadmap](./docs/roadmap.md)
 1. [Licensing](./docs/licensing.md)
-
-## The Protocol
-
-1. [Delegates](./protocol/delegates.md)
-1. [Wallets](./protocol/wallets.md)
-
-## The Future
-
-1. [Cross-node Transfers](./future/cross-node-transfers.md)
