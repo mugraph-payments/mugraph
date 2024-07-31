@@ -24,10 +24,23 @@ impl Hash {
     }
 
     #[inline]
+    #[cfg(not(feature = "std"))]
     pub fn digest<T: SerializeBytes>(hasher: &mut Sha256, value: &T) -> Result<Self> {
         let mut buf = [0u8; 512];
         let slice = &mut buf[0..T::SIZE];
         value.to_slice(slice);
+
+        hasher.update(slice);
+
+        let result = hasher.finalize_reset();
+        result.as_slice().try_into()
+    }
+
+    #[inline]
+    #[cfg(feature = "std")]
+    pub fn digest<T: SerializeBytes>(hasher: &mut Sha256, value: &T) -> Result<Self> {
+        let mut slice = Vec::with_capacity(T::SIZE);
+        value.to_slice(&mut slice);
 
         hasher.update(slice);
 
@@ -82,6 +95,22 @@ impl From<[u8; 32]> for Hash {
     }
 }
 
+impl From<[u32; 8]> for Hash {
+    #[inline]
+    fn from(input: [u32; 8]) -> Self {
+        let mut output = [0u8; 32];
+
+        for (i, &value) in input.iter().enumerate() {
+            output[i * 4] = (value & 0xFF) as u8;
+            output[i * 4 + 1] = ((value >> 8) & 0xFF) as u8;
+            output[i * 4 + 2] = ((value >> 16) & 0xFF) as u8;
+            output[i * 4 + 3] = ((value >> 24) & 0xFF) as u8;
+        }
+
+        Hash(output)
+    }
+}
+
 impl TryFrom<&[u8]> for Hash {
     type Error = Error;
 
@@ -114,6 +143,12 @@ impl core::fmt::Debug for Hash {
 
         hex::encode_to_slice(self.0, &mut output).unwrap();
         core::str::from_utf8(&output).unwrap().fmt(f)
+    }
+}
+
+impl core::fmt::Display for Hash {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        <Self as core::fmt::Debug>::fmt(self, f)
     }
 }
 

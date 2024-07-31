@@ -8,6 +8,21 @@ where
 
     fn to_slice(&self, out: &mut [u8]);
     fn from_slice(input: &[u8]) -> Result<Self>;
+
+    #[cfg(feature = "std")]
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(Self::SIZE);
+        self.to_slice(&mut buf);
+
+        buf
+    }
+
+    #[cfg(feature = "std")]
+    fn to_hex(&self) -> String {
+        let mut buf = Vec::with_capacity(Self::SIZE);
+        self.to_slice(&mut buf);
+        hex::encode(buf)
+    }
 }
 
 impl SerializeBytes for u64 {
