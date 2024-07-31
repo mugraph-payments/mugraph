@@ -118,19 +118,19 @@ Then:
 1. Alice computes $Y = H(x)$, where $H$ is a function that maps the secret to a
    point on the elliptic curve (hash to curve).
 1. Alice generats a random blinding factor $r$.
-1. Alice the blinded point $B' &= Y + r \cdot G$:
+1. Alice the blinded point $B' = Y + r \cdot G$:
 1. Alice sends $B'$ to Bob.
-1. Bob receives $B'$ and computes the blinded signature $C' &= k \cdot B'$.
+1. Bob receives $B'$ and computes the blinded signature $C' = k \cdot B'$.
 1. Bob sends $C'$ back to Alice.
 1. Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
 
 $$
 \begin{align}
-C &= C' - r \cdot K \\
-  &= k \cdot B' - r \cdot K \\
-  &= k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
-  &= k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
-  &= k \cdot Y
+C = C' - r \cdot K \\
+  = k \cdot B' - r \cdot K \\
+  = k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
+  = k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
+  = k \cdot Y
 \end{align}
 $$
 
