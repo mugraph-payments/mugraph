@@ -1,6 +1,6 @@
 #![no_std]
 
-use mugraph_core::{contracts::fusion::*, Result};
+use mugraph_core::{programs::fusion::*, Result};
 
 use risc0_zkvm::guest::env;
 

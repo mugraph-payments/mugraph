@@ -1,6 +1,6 @@
 #![no_std]
 
-use mugraph_core::{contracts::fission::*, Result};
+use mugraph_core::{programs::fission::*, Result};
 
 use risc0_zkvm::guest::env;
 

@@ -12,20 +12,20 @@ macro_rules! run_program {
             ::tracing::info!(
                 id = %program_id,
                 stdin = ?$stdin,
-                "Running risc0 program...",
+                "Running program",
             );
 
             let mut prover = ::mugraph_programs::Prover::new();
             let receipt = prover.prove(mugraph_programs::[< $mod:upper _ELF >], &$stdin.to_bytes())?;
 
-            let stdout = $crate::contracts::$mod::Stdout::from_slice(&prover.stdout)?;
-            let journal = $crate::contracts::$mod::Output::from_slice(&receipt.journal.bytes)?;
+            let stdout = $crate::programs::$mod::Stdout::from_slice(&prover.stdout)?;
+            let journal = $crate::programs::$mod::Output::from_slice(&receipt.journal.bytes)?;
 
             ::tracing::info!(
                 id = %program_id,
                 stdout = ?stdout,
                 journal = ?journal,
-                "Finished running risc0 program successfully..."
+                "Finished running program"
             );
 
             Ok::<_, $crate::Error>((stdout, journal))
