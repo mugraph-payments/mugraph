@@ -161,9 +161,8 @@ mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;
 
-    use crate::SerializeBytes;
-
     use super::Hash;
+    use crate::SerializeBytes;
 
     #[proptest]
     fn test_serialize_bytes(input: Hash) {

@@ -67,11 +67,12 @@ pub fn fusion(context: &mut Context) -> Result<()> {
 
 #[cfg(all(feature = "std", test))]
 mod tests {
-    use super::*;
+    use std::ops::Range;
 
     use proptest::prelude::*;
-    use std::ops::Range;
     use test_strategy::proptest;
+
+    use super::*;
 
     fn pair() -> impl Strategy<Value = (Note, Note)> {
         pair_amount_range(0..u64::MAX / 2, 0..u64::MAX / 2).boxed()

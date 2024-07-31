@@ -1,7 +1,6 @@
 #![no_std]
 
 use mugraph_core::{programs::fission::*, Result};
-
 use risc0_zkvm::guest::env;
 
 fn main() -> Result<()> {

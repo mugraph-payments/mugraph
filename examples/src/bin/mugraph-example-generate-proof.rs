@@ -1,7 +1,6 @@
 use mugraph_core::{
     crypto::{generate_keypair, schnorr::sign},
-    programs::fission,
-    programs::fusion,
+    programs::{fission, fusion},
     run_program, Hash, Note,
 };
 use mugraph_programs::*;
