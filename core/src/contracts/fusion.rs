@@ -24,7 +24,7 @@ pub struct Stdout {
     pub note: BlindedNote,
 }
 
-pub type Context = crate::contracts::Context<{ Input::SIZE }, { Stdout::SIZE }, { Output::SIZE }>;
+build_contract_alias!(Input, Output, Stdout);
 
 #[inline]
 pub fn fusion(context: &mut Context) -> Result<()> {

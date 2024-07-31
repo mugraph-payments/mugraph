@@ -25,11 +25,7 @@ pub struct Stdout {
     pub change: BlindedNote,
 }
 
-pub type Context = crate::contracts::Context<
-    { Input::SIZE },
-    { <(BlindedNote, BlindedNote)>::SIZE },
-    { Output::SIZE },
->;
+build_contract_alias!(Input, Output, Stdout);
 
 #[inline]
 pub fn fission(ctx: &mut Context) -> Result<()> {

@@ -5,6 +5,17 @@ use crate::{Reader, Result, SerializeBytes, Writer};
 pub mod fission;
 pub mod fusion;
 
+#[macro_export]
+macro_rules! build_contract_alias {
+    ($stdin:ty, $stdout:ty, $journal:ty) => {
+        pub type Context = $crate::contracts::Context<
+            { <$stdin>::SIZE },
+            { <$stdout>::SIZE },
+            { <$journal>::SIZE },
+        >;
+    };
+}
+
 pub struct Context<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize> {
     pub hasher: Sha256,
     pub stdin: [u8; STDIN],
