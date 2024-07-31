@@ -44,3 +44,11 @@ impl<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize>
         w.write(value);
     }
 }
+
+impl<const STDIN: usize, const STDOUT: usize, const JOURNAL: usize> Default
+    for Context<STDIN, STDOUT, JOURNAL>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}

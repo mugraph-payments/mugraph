@@ -3,7 +3,7 @@ use mugraph_core::{
     contracts::fission,
     contracts::fusion,
     crypto::{generate_keypair, schnorr::sign},
-    BlindedNote, Hash, Note, SerializeBytes,
+    Hash, Note, SerializeBytes,
 };
 use rand::rngs::OsRng;
 use tracing::info;
@@ -43,17 +43,16 @@ fn main() -> Result<()> {
     let fission: fission::Output = fission::Output::from_slice(&fission_receipt.journal.bytes)?;
 
     info!("reading fission stdout");
-    let (output, change) =
-        <(BlindedNote, BlindedNote)>::from_slice(&prover.stdout[..BlindedNote::SIZE])?;
+    let stdout = fission::Stdout::from_slice(&prover.stdout)?;
 
     info!("[server] signing outputs");
     let (so, sc) = (
-        sign(rng, &server_priv, output.secret.as_ref()),
-        sign(rng, &server_priv, change.secret.as_ref()),
+        sign(rng, &server_priv, stdout.output.secret.as_ref()),
+        sign(rng, &server_priv, stdout.change.secret.as_ref()),
     );
 
     info!("Unblinding fission tokens");
-    let (output, change) = (output.unblind(so), change.unblind(sc));
+    let (output, change) = (stdout.output.unblind(so), stdout.change.unblind(sc));
 
     println!(
         "Fission:\n\n{}",
@@ -83,13 +82,13 @@ fn main() -> Result<()> {
     let fusion: fusion::Output = fusion::Output::from_slice(&fusion_receipt.journal.bytes)?;
 
     info!("Reading fusion stdout");
-    let fused_output = BlindedNote::from_slice(&prover.stdout)?;
+    let stdout = fusion::Stdout::from_slice(&prover.stdout)?;
 
     info!("[server] signing output");
-    let sf = sign(rng, &server_priv, fused_output.secret.as_ref());
+    let sf = sign(rng, &server_priv, stdout.note.secret.as_ref());
 
     info!("Unblinding fusion token");
-    let fused_output = fused_output.unblind(sf);
+    let output = stdout.note.unblind(sf);
 
     println!(
         "Fusion:\n\n{}",
@@ -98,7 +97,7 @@ fn main() -> Result<()> {
 
     println!(
         "Fusion Output:\n\n{}",
-        serde_json::to_string_pretty(&fused_output).unwrap()
+        serde_json::to_string_pretty(&output).unwrap()
     );
 
     Ok(())

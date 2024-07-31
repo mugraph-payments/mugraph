@@ -18,8 +18,13 @@ pub struct Output {
     pub c: Hash,
 }
 
-pub type Context =
-    crate::contracts::Context<{ Input::SIZE }, { BlindedNote::SIZE }, { Output::SIZE }>;
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, SerializeBytes)]
+#[cfg_attr(feature = "std", derive(test_strategy::Arbitrary))]
+pub struct Stdout {
+    pub note: BlindedNote,
+}
+
+pub type Context = crate::contracts::Context<{ Input::SIZE }, { Stdout::SIZE }, { Output::SIZE }>;
 
 #[inline]
 pub fn fusion(context: &mut Context) -> Result<()> {
@@ -45,14 +50,15 @@ pub fn fusion(context: &mut Context) -> Result<()> {
         amount: total,
         secret: Hash::combine3(&mut context.hasher, OUTPUT_SEP, a, b)?,
     };
-    context.write_stdout(&note);
 
     let output = Output {
         a,
         b,
         c: Hash::digest(&mut context.hasher, &note)?,
     };
+
     context.write_journal(&output);
+    context.write_stdout(&Stdout { note });
 
     Ok(())
 }

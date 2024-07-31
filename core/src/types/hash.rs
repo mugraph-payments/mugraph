@@ -26,9 +26,10 @@ impl Hash {
     #[inline]
     pub fn digest<T: SerializeBytes>(hasher: &mut Sha256, value: &T) -> Result<Self> {
         let mut buf = [0u8; 512];
-        value.to_slice(&mut buf);
+        let slice = &mut buf[0..T::SIZE];
+        value.to_slice(slice);
 
-        hasher.update(&buf[..T::SIZE]);
+        hasher.update(slice);
 
         let result = hasher.finalize_reset();
         result.as_slice().try_into()
