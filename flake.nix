@@ -46,7 +46,7 @@
         };
       in
       {
-        inherit (pkgs.mugraph) packages devShells checks;
+        inherit (pkgs.mugraph) devShells checks;
       }
     );
 }

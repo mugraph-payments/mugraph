@@ -2,11 +2,8 @@
 resolver = "2"
 members = [
   "crates/core",
-  "crates/core/derive",
-  "crates/node",
-  "crates/programs",
-  "crates/programs/guest",
-  "examples",
+  "crates/core/programs",
+  "crates/core/programs/guest",
 ]
 
 [patch.crates-io]

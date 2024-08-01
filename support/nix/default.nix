@@ -5,8 +5,9 @@ let
   inherit (builtins) concatStringsSep;
   inherit (lib) buildPackageSet;
   inherit (prev) mkShell;
+  inherit (prev.lib) optionals;
+  inherit (prev.stdenv) isDarwin;
 
-  packages = buildPackageSet ./packages;
   dependencies = buildPackageSet ./dependencies;
   checks = buildPackageSet ./checks;
 
@@ -20,12 +21,12 @@ let
       final.rustup
       final.cargo-watch
       final.cargo-nextest
-    ];
+    ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
 
     inherit (lib.defaults.env) RUST_LOG RISC0_RUST_SRC RUSTFLAGS;
 
-    RISC0_EXECUTOR = "ipc";
-    RISC0_SERVER_PATH = "${dependencies.r0vm}/bin/r0vm";
+    RISC0_PROVER = "local";
+    RISC0_EXECUTOR = "local";
 
     shellHook = concatStringsSep "\n\n" [
       checks.pre-commit.shellHook
@@ -44,7 +45,6 @@ in
       devShells
       lib
       inputs
-      packages
       dependencies
       ;
   };
