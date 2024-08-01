@@ -65,6 +65,12 @@ impl From<risc0_zkvm::sha::Digest> for Hash {
     }
 }
 
+impl From<Hash> for risc0_zkvm::sha::Digest {
+    fn from(value: Hash) -> Self {
+        Self::from(value.0)
+    }
+}
+
 impl From<[u32; 8]> for Hash {
     fn from(value: [u32; 8]) -> Self {
         let mut result = [0u8; 32];
