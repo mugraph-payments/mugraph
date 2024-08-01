@@ -4,8 +4,8 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+risc0-zkvm = { version = "1.0.5", features = ["std"] }
 minicbor = { version = "0.24.2", default-features = false, features = ["derive"] }
-risc0-zkvm = { version = "1.0.5", features = ["metal", "std"] }
 
 [features]
 default = []
