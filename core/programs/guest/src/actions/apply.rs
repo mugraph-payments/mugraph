@@ -1,4 +1,4 @@
-use mugraph_core::types::{Note, Receipt};
+use mugraph_core::types::Note;
 
 pub struct Params {
     pub inputs: Vec<Note>,

@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/core",
-  "crates/core/programs",
-  "crates/core/programs/guest",
+  "core",
+  "core/programs",
+  "core/programs/guest",
 ]
 
 [profile.dev]
