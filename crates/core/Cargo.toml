@@ -6,9 +6,11 @@ edition = "2021"
 [dependencies]
 risc0-zkvm = { version = "1.0.5", features = ["std"] }
 minicbor = { version = "0.24.2", default-features = false, features = ["derive"] }
+serde = { version = "1.0.204", features = ["derive"] }
+serde_bytes = "0.11.15"
 
 [features]
-default = []
+default = ["std"]
 std = [
   "minicbor/std"
 ]
