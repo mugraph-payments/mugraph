@@ -72,17 +72,7 @@ impl From<Hash> for risc0_zkvm::sha::Digest {
 }
 
 impl From<[u32; 8]> for Hash {
-    fn from(value: [u32; 8]) -> Self {
-        let mut result = [0u8; 32];
-
-        for (i, &num) in value.iter().enumerate() {
-            let bytes = num.to_le_bytes();
-            result[i * 4] = bytes[0];
-            result[i * 4 + 1] = bytes[1];
-            result[i * 4 + 2] = bytes[2];
-            result[i * 4 + 3] = bytes[3];
-        }
-
-        result.into()
+    fn from(data: [u32; 8]) -> Self {
+        Hash(*bytemuck::cast_ref(&data))
     }
 }

@@ -4,11 +4,11 @@ use eyre::Result;
 use minicbor::{Decode, Encode, Encoder};
 use risc0_zkvm::sha::{Impl, Sha256};
 use serde::{Deserialize, Serialize};
-
 mod hash;
 mod seal;
+mod transaction;
 
-pub use self::{hash::Hash, seal::Sealed};
+pub use self::{hash::Hash, seal::Sealed, transaction::*};
 
 pub type Signature = [u8; 64];
 

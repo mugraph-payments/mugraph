@@ -13,6 +13,8 @@ serde_bytes = "0.11.15"
 proptest = { version = "1.5.0", optional = true }
 test-strategy = { version = "0.4.0", optional = true }
 bytemuck = "1.16.3"
+fixedbitset = "0.5.7"
+paste = "1.0.15"
 
 [features]
 default = ["proptest"]
