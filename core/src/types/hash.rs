@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::{Display, LowerHex, UpperHex},
+    ops::{Deref, DerefMut},
+};
 
 use minicbor::{Decode, Encode};
 use risc0_zkvm::sha::Digest;
@@ -21,7 +24,11 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 #[serde(transparent)]
 #[cbor(transparent)]
-pub struct Hash(#[n(0)] [u8; 32]);
+pub struct Hash(
+    #[n(0)]
+    #[serde(with = "serde_bytes")]
+    [u8; 32],
+);
 
 impl Hash {
     pub fn as_bytes(&self) -> &[u8; 32] {
@@ -74,5 +81,23 @@ impl From<Hash> for risc0_zkvm::sha::Digest {
 impl From<[u32; 8]> for Hash {
     fn from(data: [u32; 8]) -> Self {
         Hash(*bytemuck::cast_ref(&data))
+    }
+}
+
+impl LowerHex for Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&hex::encode(self.0), f)
+    }
+}
+
+impl UpperHex for Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&hex::encode_upper(self.0), f)
+    }
+}
+
+impl core::fmt::Display for Hash {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        f.write_fmt(format_args!("{:x}", self))
     }
 }

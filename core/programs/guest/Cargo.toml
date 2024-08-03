@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+minicbor = { version = "0.24.2", features = ["derive"] }
 mugraph-core = { path = "../..", default-features = false }
 risc0-zkvm = { version = "1.0.5", features = ["std"] }
