@@ -1,0 +1,12 @@
+[package]
+name = "mugraph-examples"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+mugraph-core = { path = "../core", default-features = false }
+mugraph-core-programs = { path = "../core/programs", default-features = false }
+risc0-zkvm = { version = "1.0.5", features = ["std"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+tracing-timing = "0.6.0"

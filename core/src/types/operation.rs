@@ -8,6 +8,15 @@ use crate::{error::Result, types::*};
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub enum Operation {
     #[n(0)]
+    #[allow(non_camel_case_types)]
+    /// This is a special operation to create notes that we use for testing while commits and decommits are not implemented.
+    ///
+    /// Please don't use it.
+    UNSAFE_Mint {
+        #[n(1)]
+        output: Sealed<Note>,
+    },
+    #[n(1)]
     #[cfg_attr(feature = "proptest", weight(3))]
     Consume {
         #[n(0)]
@@ -15,14 +24,14 @@ pub enum Operation {
         #[n(1)]
         output: Note,
     },
-    #[n(1)]
+    #[n(2)]
     Fission {
         #[n(0)]
         input: Sealed<Note>,
         #[b(1)]
         outputs: Vec<Note>,
     },
-    #[n(2)]
+    #[n(3)]
     Fusion {
         #[b(0)]
         inputs: Vec<Sealed<Note>>,

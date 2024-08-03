@@ -21,12 +21,14 @@ let
       final.rustup
       final.cargo-watch
       final.cargo-nextest
+
+      dependencies.r0vm
     ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
 
     inherit (lib.defaults.env) RUST_LOG RISC0_RUST_SRC RUSTFLAGS;
 
-    RISC0_PROVER = "local";
-    RISC0_EXECUTOR = "local";
+    RISC0_PROVER = "ipc";
+    RISC0_EXECUTOR = "ipc";
 
     shellHook = concatStringsSep "\n\n" [
       checks.pre-commit.shellHook

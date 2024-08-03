@@ -8,6 +8,9 @@ pub fn compose(operations: Vec<Operation>) -> Result<Reaction> {
         verify(operation)?;
 
         match operation {
+            Operation::UNSAFE_Mint { .. } => {
+                // Do nothing.
+            }
             Operation::Consume { input, .. } => {
                 nullifiers.push(input.hash()?);
             }
@@ -27,6 +30,9 @@ pub fn compose(operations: Vec<Operation>) -> Result<Reaction> {
 
 pub fn verify(operation: &Operation) -> Result<()> {
     match operation {
+        Operation::UNSAFE_Mint { .. } => {
+            // Do nothing.
+        }
         Operation::Fission { input, outputs } => {
             assert_ne!(outputs.len(), 0);
 
