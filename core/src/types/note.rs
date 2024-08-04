@@ -12,8 +12,6 @@ pub struct Note {
     pub amount: u64,
     #[n(2)]
     pub program_id: Option<Hash>,
-    #[n(3)]
-    pub sticky: bool,
-    #[cbor(n(5), with = "minicbor::bytes")]
+    #[cbor(n(4), with = "minicbor::bytes")]
     pub datum: Option<Vec<u8>>,
 }

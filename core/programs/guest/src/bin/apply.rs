@@ -1,10 +1,13 @@
-use mugraph_core::{error::Result, types::Operation};
+use minicbor::Decoder;
+use mugraph_core::types::Operation;
 use mugraph_core_programs_guest::verify;
 use risc0_zkvm::guest::env;
 
-fn main() -> Result<()> {
-    let op: Operation = env::read();
-    verify(&op)?;
+fn main() {
+    let mut buf = [0u8; size_of::<Operation>()];
+    env::read_slice(&mut buf);
+    let mut decoder = Decoder::new(&buf);
+    let op = decoder.decode().unwrap();
 
-    Ok(())
+    verify(&op).unwrap();
 }

@@ -1667,6 +1667,7 @@ dependencies = [
 name = "mugraph-examples"
 version = "0.0.1"
 dependencies = [
+ "minicbor",
  "mugraph-core",
  "mugraph-core-programs",
  "risc0-zkvm",

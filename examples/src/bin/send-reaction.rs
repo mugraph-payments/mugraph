@@ -1,3 +1,4 @@
+use minicbor::{Encode, Encoder};
 use mugraph_core::{
     error::{Error, Result},
     types::*,
@@ -25,24 +26,27 @@ macro_rules! timed {
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let input = Operation::UNSAFE_Mint {
-        output: Sealed {
-            parent: [1u8; 32].into(),
-            index: 0,
-            data: Note {
-                asset_id: [2u8; 32].into(),
-                amount: 1337,
-                program_id: None,
-                sticky: false,
-                datum: None,
-            },
+    let sealed_note = Sealed {
+        parent: [1u8; 32].into(),
+        index: 0,
+        data: Note {
+            asset_id: [2u8; 32].into(),
+            amount: 1337,
+            program_id: None,
+            datum: None,
         },
     };
+    let mint = Operation::UNSAFE_Mint {
+        output: sealed_note.clone(),
+    };
+
+    let mut buf = Vec::new();
+    let mut enc = Encoder::new(&mut buf);
+    enc.encode(&mint)?;
 
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .write(&input)
-            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .write_slice(&buf)
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
     });
@@ -52,21 +56,45 @@ fn main() -> Result<()> {
 
     // Produce a receipt by proving the specified ELF binary.
     let receipt = timed!(
-        "run prover",
+        "prove mint",
         prover
             .prove(env, APPLY_ELF)
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .receipt
     );
 
+    let consume = Operation::Consume {
+        input: sealed_note,
+        output: Note {
+            asset_id: [2u8; 32].into(),
+            amount: 1337,
+            program_id: None,
+            datum: None,
+        },
+    };
+
+    let mut buf = Vec::new();
+    let mut enc = Encoder::new(&mut buf);
+    enc.encode(&consume)?;
+
     let env = timed!("create executor", {
         ExecutorEnv::builder()
             .add_assumption(receipt)
-            .write(&input)
-            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .write_slice(&buf)
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
     });
+
+    // Produce a receipt by proving the specified ELF binary.
+    let receipt = timed!(
+        "prove consume",
+        prover
+            .prove(env, APPLY_ELF)
+            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .receipt
+    );
+
+    println!("Ok");
 
     Ok(())
 }
