@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 mugraph-core = { path = "../..", default-features = false }
-mugraph-core-programs = { path = "..", default-features = false }
 risc0-zkvm = { version = "1.0.5", features = ["std"] }
 
 [dev-dependencies]

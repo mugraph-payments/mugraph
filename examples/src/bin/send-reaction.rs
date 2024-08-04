@@ -2,7 +2,7 @@ use mugraph_core::{
     error::{Error, Result},
     types::*,
 };
-use mugraph_core_programs::__build::APPLY_ELF;
+use mugraph_core_programs::__build::{APPLY_ELF, APPLY_ID, COMPOSE_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use tracing::*;
 
@@ -25,6 +25,13 @@ macro_rules! timed {
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
+    let manifest = Manifest {
+        programs: ProgramSet {
+            apply: APPLY_ID.into(),
+            compose: COMPOSE_ID.into(),
+        },
+    };
+
     let sealed_note = Sealed {
         parent: [1u8; 32].into(),
         index: 0,
@@ -41,7 +48,10 @@ fn main() -> Result<()> {
 
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .write(&mint)
+            .write(&Request {
+                manifest: manifest.clone(),
+                data: mint,
+            })
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
@@ -72,7 +82,10 @@ fn main() -> Result<()> {
     let env = timed!("create executor", {
         ExecutorEnv::builder()
             .add_assumption(mint_receipt)
-            .write(&consume)
+            .write(&Request {
+                manifest,
+                data: consume,
+            })
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?

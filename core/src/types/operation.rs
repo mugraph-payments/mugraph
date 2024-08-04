@@ -13,7 +13,7 @@ pub enum Operation {
     ///
     /// Please don't use it.
     UNSAFE_Mint {
-        #[n(1)]
+        #[n(0)]
         output: Sealed<Note>,
     },
     #[n(1)]
@@ -49,7 +49,7 @@ impl Operation {
         let mut buf = Vec::new();
         let mut encoder = Encoder::new(&mut buf);
 
-        encoder.encode(&self)?;
+        encoder.encode(self)?;
 
         Ok(buf)
     }
