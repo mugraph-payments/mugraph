@@ -1,6 +1,6 @@
 #![no_std]
 
-use mugraph_core_programs_guest::compose;
+use mugraph_core::programs::compose;
 use risc0_zkvm::guest::env;
 
 fn main() {

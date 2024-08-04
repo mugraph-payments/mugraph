@@ -1,5 +1,6 @@
-use mugraph_core::{error::Result, types::*};
 use risc0_zkvm::guest::env;
+
+use crate::{error::Result, types::*};
 
 pub fn compose(req: Request<Vec<Operation>>) -> Result<Reaction> {
     let mut nullifiers = Vec::new();
