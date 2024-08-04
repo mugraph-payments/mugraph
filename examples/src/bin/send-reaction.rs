@@ -2,7 +2,7 @@ use mugraph_core::{
     error::{Error, Result},
     types::*,
 };
-use mugraph_core_programs::__build::{APPLY_ELF, APPLY_ID, COMPOSE_ID};
+use mugraph_core_programs::__build::{VALIDATE_ELF, VALIDATE_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use tracing::*;
 
@@ -25,34 +25,41 @@ macro_rules! timed {
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let manifest = Manifest {
-        programs: ProgramSet {
-            apply: APPLY_ID.into(),
-            compose: COMPOSE_ID.into(),
+    let transaction = Transaction {
+        manifest: Manifest {
+            programs: ProgramSet {
+                validate: VALIDATE_ID.into(),
+            },
         },
+        inputs: Inputs {
+            parents: [[0; 32].into(); 4],
+            indexes: [0, 1, 2, 3],
+            asset_ids: [1, 2, 3, 1],
+            amounts: [100, 200, 300, 400],
+            program_id: [[0; 32].into(); 4],
+            data: [u8::MAX; 4],
+        },
+        outputs: Outputs {
+            asset_ids: [1, 2, 3, 1],
+            amounts: [150, 200, 300, 350],
+            program_id: [[0; 32].into(); 4],
+            data: [u8::MAX; 4],
+        },
+        data: [0; 256 * 8],
+        assets: [
+            [1; 32].into(),
+            [2; 32].into(),
+            [3; 32].into(),
+            [0; 32].into(),
+        ],
     };
 
-    let sealed_note = Sealed {
-        parent: [1u8; 32].into(),
-        index: 0,
-        data: Note {
-            asset_id: [2u8; 32].into(),
-            amount: 1337,
-            program_id: None,
-            datum: None,
-        },
-    };
-    let mint = Operation::UNSAFE_Mint {
-        output: sealed_note.clone(),
-    };
-
+    let mut stdout = Vec::new();
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .write(&Request {
-                manifest: manifest.clone(),
-                data: mint,
-            })
+            .write(&transaction)
             .map_err(|e| Error::ZKVM(e.to_string()))?
+            .stdout(&mut stdout)
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
     });
@@ -61,48 +68,21 @@ fn main() -> Result<()> {
     let prover = timed!("create prover", default_prover());
 
     // Produce a receipt by proving the specified ELF binary.
-    let mint_receipt = timed!(
-        "prove mint",
+    let receipt = timed!(
+        "prove transaction",
         prover
-            .prove_with_opts(env, APPLY_ELF, &ProverOpts::fast())
+            .prove_with_opts(env, VALIDATE_ELF, &ProverOpts::fast())
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .receipt
     );
-
-    let consume = Operation::Consume {
-        input: sealed_note,
-        output: Note {
-            asset_id: [2u8; 32].into(),
-            amount: 1337,
-            program_id: None,
-            datum: None,
-        },
-    };
-
-    let env = timed!("create executor", {
-        ExecutorEnv::builder()
-            .add_assumption(mint_receipt)
-            .write(&Request {
-                manifest,
-                data: consume,
-            })
-            .map_err(|e| Error::ZKVM(e.to_string()))?
-            .build()
-            .map_err(|e| Error::ZKVM(e.to_string()))?
-    });
-
-    // Produce a receipt by proving the specified ELF binary.
-    let consume_receipt = timed!(
-        "prove consume",
-        prover
-            .prove_with_opts(env, APPLY_ELF, &ProverOpts::fast())
-            .map_err(|e| Error::ZKVM(e.to_string()))?
-            .receipt
-    );
+    let cycles: u64 = risc0_zkvm::serde::from_slice(&stdout)?;
+    info!("Proof took {} cycles.", cycles);
 
     let _compressed = timed!(
         "prove compress",
-        prover.compress(&ProverOpts::groth16(), &consume_receipt)
+        prover
+            .compress(&ProverOpts::groth16(), &receipt)
+            .map_err(|e| Error::ZKVM(e.to_string()))?
     );
 
     println!("Ok");

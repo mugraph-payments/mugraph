@@ -414,19 +414,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "calliper"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "044550178ec4934a8394fce2aa137da87399e6030aab4cba6343aa71665e4e44"
-dependencies = [
- "backtrace",
- "crabgrind",
- "rustversion",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "camino"
 version = "1.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -523,15 +510,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53fe5e26ff1b7aef8bca9c6080520cfb8d9333c7568e1829cef191a9723e5504"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "crabgrind"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9e99ec39194ed1508282dbb87c2ac9f97e6dc853a4fe4746a222265ab3f361b"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -1353,12 +1331,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iai"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71a816c97c42258aa5834d07590b718b4c9a598944cd39a52dc25b351185d678"
-
-[[package]]
 name = "idna"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1685,8 +1657,6 @@ dependencies = [
 name = "mugraph-examples"
 version = "0.0.1"
 dependencies = [
- "calliper",
- "iai",
  "minicbor",
  "mugraph-core",
  "mugraph-core-programs",
@@ -2675,12 +2645,6 @@ dependencies = [
  "rustls-pki-types",
  "untrusted",
 ]
-
-[[package]]
-name = "rustversion"
-version = "1.0.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "955d28af4278de8121b7ebeb796b6a45735dc01436d898801014aced2773a3d6"
 
 [[package]]
 name = "rusty-fork"

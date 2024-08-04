@@ -13,16 +13,8 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tracing-timing = "0.6.0"
 smallvec = { version = "1.13.2", features = ["serde"] }
-iai = "0.1.1"
 
 [features]
 default = []
 metal = ["risc0-zkvm/metal"]
 cuda = ["risc0-zkvm/cuda"]
-
-[[bench]]
-name = "foo"
-harness = false
-
-[dev-dependencies]
-calliper = "0.1.4"

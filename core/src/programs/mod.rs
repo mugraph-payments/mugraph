@@ -1,4 +1,3 @@
-mod apply;
-mod compose;
+mod validate;
 
-pub use self::{apply::*, compose::*};
+pub use self::validate::*;
