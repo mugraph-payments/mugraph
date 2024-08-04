@@ -6,7 +6,7 @@ let
   inherit (lib) buildPackageSet;
   inherit (prev) mkShell;
   inherit (prev.lib) optionals;
-  inherit (prev.stdenv) isDarwin;
+  inherit (prev.stdenv) isDarwin isLinux;
 
   dependencies = buildPackageSet ./dependencies;
   checks = buildPackageSet ./checks;
@@ -25,6 +25,7 @@ let
 
         dependencies.r0vm
       ]
+      ++ optionals isLinux [ final.valgrind ]
       ++ optionals isDarwin [
         final.darwin.apple_sdk.frameworks.SystemConfiguration
         final.darwin.apple_sdk.frameworks.Metal
