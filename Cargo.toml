@@ -1,10 +1,15 @@
 [workspace]
 resolver = "2"
-members = ["core", "core/programs", "core/programs/guest", "examples"]
+members = [
+  "core",
+  "core/programs",
+  "core/programs/guest",
+  "examples"
+]
 
 [profile.dev]
 opt-level = 3
 
 [profile.release]
-debug = 1
+debug = 0
 lto = "fat"

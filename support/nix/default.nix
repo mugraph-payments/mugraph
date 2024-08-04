@@ -19,9 +19,9 @@ let
         lib.defaults.rust
         checks.pre-commit.enabledPackages
 
-        final.rustup
-        final.cargo-watch
         final.cargo-nextest
+        final.cargo-watch
+        final.rustup
 
         dependencies.r0vm
       ]

@@ -3,18 +3,8 @@ name = "mugraph-core-programs"
 version = "0.0.1"
 edition = "2021"
 
-[dependencies]
-mugraph-core = { path = ".." }
-mugraph-core-programs-guest = { path = "guest" }
-risc0-zkvm = { version = "1.0.5", default-features = false }
-
 [build-dependencies]
 risc0-build = { version = "1.0.5" }
 
 [package.metadata.risc0]
 methods = ["guest"]
-
-[features]
-default = []
-metal = ["risc0-zkvm/metal"]
-cuda = ["risc0-zkvm/cuda"]

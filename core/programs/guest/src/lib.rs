@@ -1,11 +1,16 @@
 use mugraph_core::{error::Result, types::*};
+use mugraph_core_programs::methods;
 use risc0_zkvm::guest::env;
 
 pub fn compose(operations: Vec<Operation>) -> Result<Reaction> {
     let mut nullifiers = Vec::new();
 
     for operation in operations.iter() {
-        verify(operation)?;
+        env::verify(
+            Hash::try_from(methods::APPLY_ELF)?,
+            operation.id()?.as_ref(),
+        )
+        .unwrap();
 
         match operation {
             Operation::UNSAFE_Mint { .. } => {
@@ -14,10 +19,10 @@ pub fn compose(operations: Vec<Operation>) -> Result<Reaction> {
             Operation::Consume { input, .. } => {
                 nullifiers.push(input.hash()?);
             }
-            Operation::Fission { input, .. } => {
+            Operation::Split { input, .. } => {
                 nullifiers.push(input.hash()?);
             }
-            Operation::Fusion { inputs, .. } => {
+            Operation::Join { inputs, .. } => {
                 for input in inputs {
                     nullifiers.push(input.hash()?);
                 }
@@ -28,12 +33,12 @@ pub fn compose(operations: Vec<Operation>) -> Result<Reaction> {
     Ok(Reaction { nullifiers })
 }
 
-pub fn verify(operation: &Operation) -> Result<()> {
+pub fn verify(operation: &Operation) -> Result<Hash> {
     match operation {
         Operation::UNSAFE_Mint { .. } => {
             // Do nothing.
         }
-        Operation::Fission { input, outputs } => {
+        Operation::Split { input, outputs } => {
             assert_ne!(outputs.len(), 0);
 
             if let Some(program_id) = input.data.program_id {
@@ -52,7 +57,7 @@ pub fn verify(operation: &Operation) -> Result<()> {
 
             assert_eq!(input.data.amount, output_total);
         }
-        Operation::Fusion { inputs, output } => {
+        Operation::Join { inputs, output } => {
             assert_ne!(inputs.len(), 0);
 
             let asset_id = inputs[0].data.asset_id;
@@ -86,5 +91,5 @@ pub fn verify(operation: &Operation) -> Result<()> {
         }
     }
 
-    Ok(())
+    operation.id()
 }
