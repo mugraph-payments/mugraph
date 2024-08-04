@@ -4,18 +4,20 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-minicbor = { version = "0.24.2", features = ["std", "derive"] }
+bytemuck = "1.16.3"
+hex = "0.4.3"
+minicbor = { version = "0.24.2", default-features = false, features = [
+    "std",
+    "derive",
+] }
+onlyerror = { version = "0.1.4", default-features = false }
+paste = "1.0.15"
 risc0-zkvm = { version = "1.0.5" }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_bytes = "0.11.15"
 
 proptest = { version = "1.5.0", optional = true }
 test-strategy = { version = "0.4.0", optional = true }
-bytemuck = "1.16.3"
-fixedbitset = "0.5.7"
-paste = "1.0.15"
-onlyerror = "0.1.4"
-hex = "0.4.3"
 
 [features]
 default = ["proptest"]

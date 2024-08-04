@@ -84,6 +84,19 @@ impl From<[u32; 8]> for Hash {
     }
 }
 
+impl TryFrom<&[u8]> for Hash {
+    type Error = crate::error::Error;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        assert_eq!(value.len(), 32);
+
+        let mut result = Hash::default();
+        result.0.copy_from_slice(value);
+
+        Ok(result)
+    }
+}
+
 impl LowerHex for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&hex::encode(self.0), f)

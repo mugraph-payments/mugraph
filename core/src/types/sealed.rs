@@ -5,6 +5,16 @@ use serde::{Deserialize, Serialize};
 use crate::{error::Result, types::Hash};
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
+pub struct Seal {
+    #[n(0)]
+    pub parent: Hash,
+    #[n(1)]
+    pub index: u8,
+    #[n(2)]
+    pub data: Hash,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub struct Sealed<T> {
     #[n(0)]
@@ -23,5 +33,18 @@ impl<T: Encode<()>> Sealed<T> {
         encoder.encode(&self)?;
 
         Ok((*Impl::hash_bytes(&buf)).into())
+    }
+
+    pub fn seal(&self) -> Result<Seal> {
+        let mut buf = Vec::new();
+        let mut encoder = Encoder::new(&mut buf);
+        encoder.encode(&self.data)?;
+        let data = (*Impl::hash_bytes(&buf)).into();
+
+        Ok(Seal {
+            parent: self.parent,
+            index: self.index,
+            data,
+        })
     }
 }

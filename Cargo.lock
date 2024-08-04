@@ -879,12 +879,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fixedbitset"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
-
-[[package]]
 name = "flate2"
 version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1337,6 +1331,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "iai"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71a816c97c42258aa5834d07590b718b4c9a598944cd39a52dc25b351185d678"
+
+[[package]]
 name = "idna"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1632,7 +1632,6 @@ name = "mugraph-core"
 version = "0.0.1"
 dependencies = [
  "bytemuck",
- "fixedbitset",
  "hex",
  "minicbor",
  "onlyerror",
@@ -1649,16 +1648,14 @@ name = "mugraph-core-programs"
 version = "0.0.1"
 dependencies = [
  "mugraph-core",
- "mugraph-core-programs-guest",
  "risc0-build",
- "risc0-zkvm",
 ]
 
 [[package]]
 name = "mugraph-core-programs-guest"
 version = "0.0.1"
 dependencies = [
- "minicbor",
+ "iai",
  "mugraph-core",
  "risc0-zkvm",
 ]

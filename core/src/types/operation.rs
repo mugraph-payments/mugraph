@@ -25,14 +25,14 @@ pub enum Operation {
         output: Note,
     },
     #[n(2)]
-    Fission {
+    Split {
         #[n(0)]
         input: Sealed<Note>,
         #[b(1)]
         outputs: Vec<Note>,
     },
     #[n(3)]
-    Fusion {
+    Join {
         #[b(0)]
         inputs: Vec<Sealed<Note>>,
         #[n(1)]
