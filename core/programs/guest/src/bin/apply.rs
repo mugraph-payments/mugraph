@@ -1,8 +1,8 @@
 #![no_std]
 
-use mugraph_core::programs::verify;
+use mugraph_core::programs::apply;
 use risc0_zkvm::guest::env;
 
 fn main() {
-    verify(env::read()).unwrap();
+    apply(env::read()).unwrap();
 }
