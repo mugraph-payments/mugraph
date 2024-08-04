@@ -3,33 +3,27 @@ use crate::types::*;
 #[inline(always)]
 #[no_mangle]
 pub fn validate(transaction: &Transaction) {
-    let mut amounts = [0u64; 4];
+    let balances = [0u64; 4];
 
+    // Process inputs
     for i in 0..4 {
-        assert_ne!(transaction.inputs.amounts[i], 0);
+        let asset_id = transaction.inputs.asset_ids[i] as usize;
+        assert!(asset_id < transaction.assets.len(), "Invalid asset id");
 
-        let index = transaction
-            .assets
-            .iter()
-            .position(|a| a[0] == transaction.inputs.asset_ids[i])
-            .unwrap_or(0);
-
-        amounts[index] = amounts[index]
+        balances[asset_id]
             .checked_add(transaction.inputs.amounts[i])
             .unwrap();
     }
 
+    // Process outputs
     for i in 0..4 {
-        let index = transaction
-            .assets
-            .iter()
-            .position(|a| a[0] == transaction.outputs.asset_ids[i])
-            .unwrap_or(0);
+        let asset_id = transaction.inputs.asset_ids[i] as usize;
+        assert!(asset_id < transaction.assets.len(), "Invalid asset id");
 
-        amounts[index] = amounts[index]
+        balances[asset_id]
             .checked_sub(transaction.outputs.amounts[i])
             .unwrap();
     }
 
-    assert_eq!(amounts, amounts);
+    assert_eq!(balances, [0u64; 4]);
 }
