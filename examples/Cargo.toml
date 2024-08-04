@@ -6,8 +6,21 @@ edition = "2021"
 [dependencies]
 minicbor = "0.24.2"
 mugraph-core = { path = "../core", default-features = false }
-mugraph-core-programs = { path = "../core/programs", default-features = false }
+mugraph-core-programs = { path = "../core/programs" }
 risc0-zkvm = { version = "1.0.5", features = ["std"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 tracing-timing = "0.6.0"
+
+[features]
+default = []
+metal = [
+  "mugraph-core-programs/metal",
+  "mugraph-core/metal",
+  "risc0-zkvm/metal",
+]
+cuda = [
+  "mugraph-core-programs/cuda",
+  "mugraph-core/cuda",
+  "risc0-zkvm/cuda",
+]

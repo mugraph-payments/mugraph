@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 minicbor = { version = "0.24.2", features = ["std", "derive"] }
-risc0-zkvm = { version = "1.0.5", features = ["std"] }
+risc0-zkvm = { version = "1.0.5" }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_bytes = "0.11.15"
 
@@ -19,7 +19,6 @@ hex = "0.4.3"
 
 [features]
 default = ["proptest"]
-proptest = [
-  "dep:proptest",
-  "dep:test-strategy"
-]
+proptest = ["dep:proptest", "dep:test-strategy"]
+metal = ["risc0-zkvm/metal"]
+cuda = ["risc0-zkvm/cuda"]

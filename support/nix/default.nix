@@ -14,16 +14,22 @@ let
   devShells.default = mkShell {
     name = "mu-shell";
 
-    packages = [
-      lib.defaults.rust
-      checks.pre-commit.enabledPackages
+    packages =
+      [
+        lib.defaults.rust
+        checks.pre-commit.enabledPackages
 
-      final.rustup
-      final.cargo-watch
-      final.cargo-nextest
+        final.rustup
+        final.cargo-watch
+        final.cargo-nextest
 
-      dependencies.r0vm
-    ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
+        dependencies.r0vm
+      ]
+      ++ optionals isDarwin [
+        final.darwin.apple_sdk.frameworks.SystemConfiguration
+        final.darwin.apple_sdk.frameworks.Metal
+        final.darwin.apple_sdk.frameworks.CoreGraphics
+      ];
 
     inherit (lib.defaults.env) RUST_LOG RISC0_RUST_SRC RUSTFLAGS;
 
