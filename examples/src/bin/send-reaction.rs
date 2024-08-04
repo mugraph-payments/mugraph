@@ -1,10 +1,9 @@
-use minicbor::{Encode, Encoder};
 use mugraph_core::{
     error::{Error, Result},
     types::*,
 };
 use mugraph_core_programs::__build::APPLY_ELF;
-use risc0_zkvm::{default_prover, ExecutorEnv};
+use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use tracing::*;
 
 macro_rules! timed {
@@ -12,7 +11,7 @@ macro_rules! timed {
         let s = tracing::span!(Level::INFO, concat!("mugraph::task[", $name, "]"));
         let _e = s.enter();
 
-        tracing::debug!("Starting task");
+        tracing::info!("Starting task");
 
         let now = std::time::Instant::now();
         let result = { $($arg)* };
@@ -40,13 +39,10 @@ fn main() -> Result<()> {
         output: sealed_note.clone(),
     };
 
-    let mut buf = Vec::new();
-    let mut enc = Encoder::new(&mut buf);
-    enc.encode(&mint)?;
-
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .write_slice(&buf)
+            .write(&mint)
+            .map_err(|e| Error::ZKVM(e.to_string()))?
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
     });
@@ -55,10 +51,10 @@ fn main() -> Result<()> {
     let prover = timed!("create prover", default_prover());
 
     // Produce a receipt by proving the specified ELF binary.
-    let receipt = timed!(
+    let mint_receipt = timed!(
         "prove mint",
         prover
-            .prove(env, APPLY_ELF)
+            .prove_with_opts(env, APPLY_ELF, &ProverOpts::fast())
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .receipt
     );
@@ -73,25 +69,27 @@ fn main() -> Result<()> {
         },
     };
 
-    let mut buf = Vec::new();
-    let mut enc = Encoder::new(&mut buf);
-    enc.encode(&consume)?;
-
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .add_assumption(receipt)
-            .write_slice(&buf)
+            .add_assumption(mint_receipt)
+            .write(&consume)
+            .map_err(|e| Error::ZKVM(e.to_string()))?
             .build()
             .map_err(|e| Error::ZKVM(e.to_string()))?
     });
 
     // Produce a receipt by proving the specified ELF binary.
-    let receipt = timed!(
+    let consume_receipt = timed!(
         "prove consume",
         prover
-            .prove(env, APPLY_ELF)
+            .prove_with_opts(env, APPLY_ELF, &ProverOpts::fast())
             .map_err(|e| Error::ZKVM(e.to_string()))?
             .receipt
+    );
+
+    let _compressed = timed!(
+        "prove compress",
+        prover.compress(&ProverOpts::groth16(), &consume_receipt)
     );
 
     println!("Ok");
