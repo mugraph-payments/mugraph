@@ -3,32 +3,13 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use minicbor::{Decode, Encode};
 use risc0_zkvm::sha::{Digest, Impl, Sha256};
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Encode,
-    Decode,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 #[serde(transparent)]
-#[cbor(transparent)]
-pub struct Hash(
-    #[n(0)]
-    #[serde(with = "serde_bytes")]
-    [u8; 32],
-);
+pub struct Hash(#[serde(with = "serde_bytes")] [u8; 32]);
 
 impl Hash {
     pub fn zero() -> Self {

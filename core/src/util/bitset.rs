@@ -58,25 +58,6 @@ macro_rules! impl_bitset {
                     bitset.to_bytes()
                 }
             }
-
-            impl<C> minicbor::Encode<C> for [<BitSet $size>] {
-                fn encode<W: minicbor::encode::write::Write>(
-                    &self,
-                    e: &mut minicbor::Encoder<W>,
-                    _ctx: &mut C,
-                ) -> Result<(), minicbor::encode::Error<W::Error>> {
-                    e.bytes(&self.to_bytes())?;
-                    Ok(())
-                }
-            }
-
-            impl<'b, C> minicbor::Decode<'b, C> for [<BitSet $size>] {
-                fn decode(d: &mut minicbor::Decoder<'b>, _ctx: &mut C) -> Result<Self, minicbor::decode::Error> {
-                    let bytes = d.bytes()?;
-                    let array: [u8; $size / 8] = bytes.try_into().map_err(|_| minicbor::decode::Error::message("Invalid byte length"))?;
-                    Ok(Self::from(array))
-                }
-            }
         }
     };
 }

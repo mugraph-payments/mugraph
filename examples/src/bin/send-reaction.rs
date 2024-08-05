@@ -55,6 +55,7 @@ fn main() -> Result<()> {
     };
 
     let mut stdout = Vec::new();
+
     let env = timed!("create executor", {
         ExecutorEnv::builder()
             .write(&transaction)
@@ -71,7 +72,7 @@ fn main() -> Result<()> {
     let _ = timed!(
         "prove transaction",
         prover
-            .prove_with_opts(env, VALIDATE_ELF, &ProverOpts::succinct())
+            .prove_with_opts(env, VALIDATE_ELF, &ProverOpts::fast())
             .map_err(|_| Error::ZKVM)?
             .receipt
     );
