@@ -8,7 +8,6 @@ bytemuck = "1.16.3"
 hex = { version = "0.4.3", default-features = false }
 
 onlyerror = { version = "0.1.4", default-features = false }
-paste = "1.0.15"
 risc0-zkvm = { version = "1.0.5", default-features = false, features = [
     "client",
 ] }
@@ -21,6 +20,6 @@ test-strategy = { version = "0.4.0", optional = true }
 [features]
 default = []
 std = ["hex/std", "serde/std", "serde_bytes/std"]
-proptest = ["dep:proptest", "dep:test-strategy"]
+proptest = ["std", "dep:proptest", "dep:test-strategy"]
 metal = ["risc0-zkvm/metal"]
 cuda = ["risc0-zkvm/cuda"]
