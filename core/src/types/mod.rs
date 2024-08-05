@@ -1,10 +1,11 @@
-use minicbor::{Decode, Encode};
+use minicbor::{Decode, Encode, Encoder};
 use serde::{Deserialize, Serialize};
 
 mod hash;
 mod manifest;
 
 pub use self::{hash::*, manifest::*};
+use crate::error::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]

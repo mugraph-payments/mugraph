@@ -4,7 +4,7 @@ use core::{
 };
 
 use minicbor::{Decode, Encode};
-use risc0_zkvm::sha::Digest;
+use risc0_zkvm::sha::{Digest, Impl, Sha256};
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -31,6 +31,14 @@ pub struct Hash(
 );
 
 impl Hash {
+    pub fn zero() -> Self {
+        Self::default()
+    }
+
+    pub fn digest(input: &[u8]) -> Self {
+        (*Impl::hash_bytes(input)).into()
+    }
+
     pub fn as_bytes(&self) -> &[u8; 32] {
         self.as_ref()
     }
