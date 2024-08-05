@@ -58,34 +58,25 @@ fn main() -> Result<()> {
     let env = timed!("create executor", {
         ExecutorEnv::builder()
             .write(&transaction)
-            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .map_err(|_| Error::ZKVM)?
             .stdout(&mut stdout)
             .build()
-            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .map_err(|_| Error::ZKVM)?
     });
 
     // Obtain the default prover.
     let prover = timed!("create prover", default_prover());
 
     // Produce a receipt by proving the specified ELF binary.
-    let receipt = timed!(
+    let _ = timed!(
         "prove transaction",
         prover
-            .prove_with_opts(env, VALIDATE_ELF, &ProverOpts::fast())
-            .map_err(|e| Error::ZKVM(e.to_string()))?
+            .prove_with_opts(env, VALIDATE_ELF, &ProverOpts::succinct())
+            .map_err(|_| Error::ZKVM)?
             .receipt
     );
     let cycles: u64 = risc0_zkvm::serde::from_slice(&stdout)?;
-    info!("Proof took {} cycles.", cycles);
-
-    let _compressed = timed!(
-        "prove compress",
-        prover
-            .compress(&ProverOpts::groth16(), &receipt)
-            .map_err(|e| Error::ZKVM(e.to_string()))?
-    );
-
-    println!("Ok");
+    info!("Done, proof took {} cycles.", cycles);
 
     Ok(())
 }

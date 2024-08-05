@@ -1634,7 +1634,6 @@ dependencies = [
  "risc0-zkvm",
  "serde",
  "serde_bytes",
- "smallvec",
  "test-strategy",
 ]
 

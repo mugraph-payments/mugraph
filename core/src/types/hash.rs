@@ -1,4 +1,4 @@
-use std::{
+use core::{
     fmt::{Display, LowerHex, UpperHex},
     ops::{Deref, DerefMut},
 };
@@ -98,13 +98,13 @@ impl TryFrom<&[u8]> for Hash {
 }
 
 impl LowerHex for Hash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         Display::fmt(&hex::encode(self.0), f)
     }
 }
 
 impl UpperHex for Hash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         Display::fmt(&hex::encode_upper(self.0), f)
     }
 }

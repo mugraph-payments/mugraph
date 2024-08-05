@@ -5,5 +5,5 @@ use risc0_zkvm::guest::env;
 
 fn main() {
     validate(&env::read());
-    env::write(&env::cycle_count());
+    env::write_slice(&env::cycle_count().to_le_bytes());
 }
