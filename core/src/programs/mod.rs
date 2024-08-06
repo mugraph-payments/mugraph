@@ -8,7 +8,8 @@ pub fn validate(transaction: Transaction) {
     let mut balances = BTreeMap::new();
 
     for i in 0..MAX_ATOMS {
-        let asset_id = transaction.blob.asset_ids[i];
+        let asset_id_index = transaction.blob.asset_id_indexes[i] as usize;
+        let asset_id = transaction.blob.asset_ids[asset_id_index];
         let amount = transaction.blob.amounts[i];
 
         match balances.get(&asset_id) {
@@ -70,9 +71,9 @@ mod tests {
         let mut input_balances = HashMap::new();
         let mut output_balances = HashMap::new();
 
-        // Process inputs
         for i in 0..MAX_ATOMS {
-            let asset_id = transaction.blob.asset_ids[i];
+            let asset_id_index = transaction.blob.asset_id_indexes[i] as usize;
+            let asset_id = transaction.blob.asset_ids[asset_id_index];
             let amount = transaction.blob.amounts[i];
 
             if transaction.blob.parent_ids[i] == Hash::default() {
@@ -113,12 +114,9 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn test_validate_fails_if_mismatching_asset_ids(
-        new_asset_id: Hash,
         #[strategy(transaction())] mut transaction: Transaction,
     ) {
-        prop_assume!(transaction.blob.asset_ids[0] != new_asset_id);
-
-        transaction.blob.asset_ids[0] = new_asset_id;
+        transaction.blob.asset_id_indexes[0] += 1;
 
         validate(transaction)
     }
