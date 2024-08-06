@@ -4,10 +4,13 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-mugraph-core = { path = "../core", default-features = false }
+mugraph-core = { path = "../core", features = ["std"] }
 mugraph-core-programs = { path = "../core/programs" }
 
-risc0-zkvm = { version = "1.0.5", default-features = false, features = ["client", "prove"] }
+risc0-zkvm = { version = "1.0.5", default-features = false, features = [
+    "client",
+    "prove",
+] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 

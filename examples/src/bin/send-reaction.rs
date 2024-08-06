@@ -1,6 +1,6 @@
 use mugraph_core::{
     error::{Error, Result},
-    types::*,
+    types::{Hash, Manifest, Note, ProgramSet, Transaction, TransactionBuilder},
 };
 use mugraph_core_programs::__build::{VALIDATE_ELF, VALIDATE_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
@@ -22,37 +22,33 @@ macro_rules! timed {
     }}
 }
 
+fn build_transaction() -> Transaction {
+    let manifest = Manifest {
+        programs: ProgramSet {
+            validate: VALIDATE_ID.into(),
+        },
+    };
+
+    let note = Note {
+        parent_id: Hash::default(),
+        asset_id: Hash::digest(b"Sample Asset"),
+        nonce: Hash::digest(b"Sample Nonce"),
+        amount: 100,
+        program_id: None,
+        datum: None,
+    };
+
+    TransactionBuilder::new(manifest)
+        .input(&note)
+        .output(note.asset_id, 60, None, None)
+        .output(note.asset_id, 40, None, None)
+        .build()
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let transaction = Transaction {
-        manifest: Manifest {
-            programs: ProgramSet {
-                validate: VALIDATE_ID.into(),
-            },
-        },
-        inputs: Inputs {
-            parents: [[0; 32].into(); 4],
-            indexes: [0, 1, 2, 3],
-            asset_ids: [1, 2, 3, 1],
-            amounts: [100, 200, 300, 400],
-            program_id: [[0; 32].into(); 4],
-            data: [u8::MAX; 4],
-        },
-        outputs: Outputs {
-            asset_ids: [1, 2, 3, 1],
-            amounts: [150, 200, 300, 350],
-            program_id: [[0; 32].into(); 4],
-            data: [u8::MAX; 4],
-        },
-        data: [0; 256 * 8],
-        assets: [
-            [1; 32].into(),
-            [2; 32].into(),
-            [3; 32].into(),
-            [0; 32].into(),
-        ],
-    };
+    let transaction = build_transaction();
 
     let mut stdout = Vec::new();
 
