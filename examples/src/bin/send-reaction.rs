@@ -30,7 +30,7 @@ fn build_transaction() -> Transaction {
     };
 
     let note = Note {
-        parent_id: Hash::default(),
+        parent_id: Hash::digest(b"Parent Id"),
         asset_id: Hash::digest(b"Sample Asset"),
         nonce: Hash::digest(b"Sample Nonce"),
         amount: 100,

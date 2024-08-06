@@ -21,6 +21,8 @@ impl TransactionBuilder {
     }
 
     pub fn input(mut self, note: &Note) -> Self {
+        assert_ne!(note.parent_id, Hash::default());
+
         let asset_id_index = match self.asset_id_map.get(&note.asset_id) {
             Some(&index) => index,
             None => {
@@ -63,6 +65,7 @@ impl TransactionBuilder {
         self.blob.amounts[self.cursor] = amount;
         self.blob.program_ids[self.cursor] = program_id.unwrap_or_default();
         self.blob.data[self.cursor] = datum.unwrap_or_default();
+        self.blob.parent_ids[self.cursor] = Hash::default();
 
         self.cursor += 1;
         self

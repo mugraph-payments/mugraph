@@ -1,34 +1,24 @@
-use alloc::collections::BTreeMap;
-
 use crate::types::*;
 
 #[inline(always)]
 #[no_mangle]
 pub fn validate(transaction: Transaction) {
-    let mut balances = BTreeMap::new();
+    let mut inputs = [0u128; MAX_INPUTS];
+    let mut outputs = [0u128; MAX_INPUTS];
 
     for i in 0..MAX_ATOMS {
-        let asset_id_index = transaction.blob.asset_id_indexes[i] as usize;
-        let asset_id = transaction.blob.asset_ids[asset_id_index];
+        let index = transaction.blob.asset_id_indexes[i] as usize;
         let amount = transaction.blob.amounts[i];
+        let is_input = transaction.blob.parent_ids[i] != Hash::default();
 
-        match balances.get(&asset_id) {
-            Some(b) => {
-                if transaction.blob.parent_ids[i] == Hash::default() {
-                    balances.insert(asset_id, b - amount as u128);
-                } else {
-                    balances.insert(asset_id, b + amount as u128);
-                }
-            }
-            None => {
-                balances.insert(asset_id, amount as u128);
-            }
+        if is_input {
+            inputs[index] += amount as u128;
+        } else {
+            outputs[index] += amount as u128;
         }
     }
 
-    for (_, balance) in balances.iter() {
-        assert_eq!(*balance, 0);
-    }
+    assert_eq!(inputs, outputs);
 }
 
 #[cfg(all(test, feature = "proptest"))]
