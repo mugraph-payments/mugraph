@@ -1,9 +1,33 @@
-use crate::{error::Result, types::*};
+use alloc::collections::BTreeMap;
+
+use crate::types::*;
 
 #[inline(always)]
 #[no_mangle]
-pub fn validate(transaction: Transaction) -> Result<()> {
-    Ok(())
+pub fn validate(transaction: Transaction) {
+    let mut balances = BTreeMap::new();
+
+    for i in 0..MAX_ATOMS {
+        let asset_id = transaction.blob.asset_ids[i];
+        let amount = transaction.blob.amounts[i];
+
+        match balances.get(&asset_id) {
+            Some(b) => {
+                if transaction.blob.parent_ids[i] == Hash::default() {
+                    balances.insert(asset_id, b - amount as u128);
+                } else {
+                    balances.insert(asset_id, b + amount as u128);
+                }
+            }
+            None => {
+                balances.insert(asset_id, amount as u128);
+            }
+        }
+    }
+
+    for (_, balance) in balances.iter() {
+        assert_eq!(*balance, 0);
+    }
 }
 
 #[cfg(all(test, feature = "proptest"))]
@@ -22,7 +46,7 @@ mod tests {
     // - For each asset_id, the amounts in the inputs and outputs should equal.
     // - Notes could/should have programs, right now they are not implemented.
     // - Input notes should never have zero amounts
-    fn balanced_transaction() -> impl Strategy<Value = Transaction> {
+    fn transaction() -> impl Strategy<Value = Transaction> {
         let balances = hash_set(any::<Note>(), 1..4);
 
         (balances, any::<Manifest>()).prop_map(|(balances, manifest)| {
@@ -42,9 +66,7 @@ mod tests {
     }
 
     #[proptest]
-    fn test_transaction_strategy_is_balanced(
-        #[strategy(balanced_transaction())] transaction: Transaction,
-    ) {
+    fn test_transaction_strategy_is_balanced(#[strategy(transaction())] transaction: Transaction) {
         let mut input_balances = HashMap::new();
         let mut output_balances = HashMap::new();
 
@@ -74,31 +96,30 @@ mod tests {
     }
 
     #[proptest]
-    fn test_validate_balanced_transaction(
-        #[strategy(balanced_transaction())] transaction: Transaction,
-    ) {
-        prop_assert_eq!(validate(transaction), Ok(()));
+    fn test_validate_transaction(#[strategy(transaction())] transaction: Transaction) {
+        validate(transaction);
     }
 
     #[proptest]
+    #[should_panic]
     fn test_validate_fails_if_unbalanced_amounts(
-        #[strategy(balanced_transaction())] mut transaction: Transaction,
+        #[strategy(transaction())] mut transaction: Transaction,
         #[strategy(1..u64::MAX)] amount: u64,
     ) {
         transaction.blob.amounts[0] = transaction.blob.amounts[0].saturating_add(amount);
-
-        prop_assert!(validate(transaction).is_err());
+        validate(transaction)
     }
 
     #[proptest]
+    #[should_panic]
     fn test_validate_fails_if_mismatching_asset_ids(
         new_asset_id: Hash,
-        #[strategy(balanced_transaction())] mut transaction: Transaction,
+        #[strategy(transaction())] mut transaction: Transaction,
     ) {
         prop_assume!(transaction.blob.asset_ids[0] != new_asset_id);
 
         transaction.blob.asset_ids[0] = new_asset_id;
 
-        prop_assert!(validate(transaction).is_err());
+        validate(transaction)
     }
 }
