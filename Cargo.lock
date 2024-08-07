@@ -1542,6 +1542,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mugraph-client"
+version = "0.0.1"
+dependencies = [
+ "mugraph-core",
+ "mugraph-core-programs",
+ "risc0-zkvm",
+ "tracing",
+ "tracing-subscriber 0.3.18",
+]
+
+[[package]]
 name = "mugraph-core"
 version = "0.0.1"
 dependencies = [

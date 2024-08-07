@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "core/programs", "core/programs/guest", "examples"]
+members = [ "client","core", "core/programs", "core/programs/guest", "examples"]
 
 [profile.dev]
 opt-level = 3
