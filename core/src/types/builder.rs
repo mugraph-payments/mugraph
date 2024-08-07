@@ -37,21 +37,13 @@ impl TransactionBuilder {
         self.blob.amounts[self.cursor] = note.amount;
         self.blob.nonces[self.cursor] = note.nonce;
         self.blob.parent_ids[self.cursor] = note.parent_id;
-        self.blob.program_ids[self.cursor] = note.program_id.unwrap_or_default();
-        self.blob.data[self.cursor] = note.datum();
 
         self.cursor += 1;
 
         self
     }
 
-    pub fn output(
-        mut self,
-        asset_id: Hash,
-        amount: u64,
-        program_id: Option<Hash>,
-        datum: Option<Datum>,
-    ) -> Self {
+    pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
         let asset_id_index = match self.asset_id_map.get(&asset_id) {
             Some(&index) => index,
             None => {
@@ -63,8 +55,6 @@ impl TransactionBuilder {
         };
         self.blob.asset_id_indexes[self.cursor] = asset_id_index;
         self.blob.amounts[self.cursor] = amount;
-        self.blob.program_ids[self.cursor] = program_id.unwrap_or_default();
-        self.blob.data[self.cursor] = datum.unwrap_or_default();
         self.blob.parent_ids[self.cursor] = Hash::default();
 
         self.cursor += 1;

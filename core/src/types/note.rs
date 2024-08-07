@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::*;
 
-pub const COMMITMENT_INPUT_SIZE: usize = 360;
+pub const COMMITMENT_INPUT_SIZE: usize = 72;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
@@ -11,8 +11,6 @@ pub struct Note {
     pub asset_id: Hash,
     pub nonce: Hash,
     pub amount: u64,
-    pub program_id: Option<Hash>,
-    pub datum: Option<Datum>,
 }
 
 impl Note {
@@ -21,15 +19,9 @@ impl Note {
 
         output[0..32].copy_from_slice(self.asset_id.as_ref());
         output[32..40].copy_from_slice(self.amount.to_le_bytes().as_ref());
-        output[40..72].copy_from_slice(self.nonce.as_ref());
-        output[72..104].copy_from_slice(self.program_id.unwrap_or_default().as_ref());
-        output[104..COMMITMENT_INPUT_SIZE].copy_from_slice(self.datum().as_ref());
+        output[40..COMMITMENT_INPUT_SIZE].copy_from_slice(self.nonce.as_ref());
 
         Hash::digest(&output)
-    }
-
-    pub fn datum(&self) -> Datum {
-        self.datum.unwrap_or_default()
     }
 }
 
@@ -42,7 +34,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 400);
+        assert_eq!(size_of::<Note>(), 104);
         assert_eq!(align_of::<Note>(), 8);
     }
 
@@ -58,8 +50,6 @@ mod tests {
             note.asset_id.as_ref(),
             note.amount.to_le_bytes().as_ref(),
             note.nonce.as_ref(),
-            note.program_id.unwrap_or_default().as_ref(),
-            &note.datum.clone().unwrap_or_default().as_ref(),
         ]
         .concat();
 

@@ -34,14 +34,12 @@ fn build_transaction() -> Transaction {
         asset_id: Hash::digest(b"Sample Asset"),
         nonce: Hash::digest(b"Sample Nonce"),
         amount: 100,
-        program_id: None,
-        datum: None,
     };
 
     TransactionBuilder::new(manifest)
         .input(&note)
-        .output(note.asset_id, 60, None, None)
-        .output(note.asset_id, 40, None, None)
+        .output(note.asset_id, 60)
+        .output(note.asset_id, 40)
         .build()
 }
 

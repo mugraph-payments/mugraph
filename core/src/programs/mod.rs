@@ -35,7 +35,6 @@ mod tests {
     // - It should generate 1..4 inputs, and 1..4 outputs
     // - For the inputs and outputs, the asset ids must fully intersect
     // - For each asset_id, the amounts in the inputs and outputs should equal.
-    // - Notes could/should have programs, right now they are not implemented.
     // - Input notes should never have zero amounts
     fn transaction() -> impl Strategy<Value = Transaction> {
         let balances = hash_set(any::<Note>(), 1..4);
@@ -43,13 +42,8 @@ mod tests {
         (balances, any::<Manifest>()).prop_map(|(balances, manifest)| {
             let mut builder = TransactionBuilder::new(manifest);
 
-            for mut note in balances {
-                note.program_id = None;
-                note.datum = None;
-
-                builder = builder
-                    .input(&note)
-                    .output(note.asset_id, note.amount, None, None);
+            for note in balances {
+                builder = builder.input(&note).output(note.asset_id, note.amount);
             }
 
             builder.build()
