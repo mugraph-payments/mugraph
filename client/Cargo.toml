@@ -6,14 +6,20 @@ edition = "2021"
 [dependencies]
 mugraph-core = { path = "../core" }
 mugraph-core-programs = { path = "../core/programs" }
+
 risc0-zkvm = { version = "1.0.5", default-features = false, features = [
     "client",
     "prove",
 ] }
+serde = { version = "1.0.204", features = ["derive"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 
+proptest = { version = "1.5.0", optional = true }
+test-strategy = { version = "0.4.0", optional = true }
+
 [features]
 default = []
+proptest = ["dep:proptest", "dep:test-strategy"]
 metal = ["risc0-zkvm/metal"]
 cuda = ["risc0-zkvm/cuda"]

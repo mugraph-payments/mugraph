@@ -7,6 +7,6 @@ pub enum Error {
     #[error("ZKVM error")]
     ZKVM,
 
-    #[error("Serializaition/Deserialization error: {0}")]
+    #[error("Serialization/Deserialization error: {0}")]
     Serde(#[from] risc0_zkvm::serde::Error),
 }

@@ -1,6 +1,6 @@
-use alloc::collections::BTreeMap;
+use std::collections::BTreeMap;
 
-use crate::types::*;
+use crate::prelude::{Blob, Hash, Manifest, Note, Transaction};
 
 #[derive(Debug)]
 pub struct TransactionBuilder {

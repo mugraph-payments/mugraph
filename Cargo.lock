@@ -1547,7 +1547,10 @@ version = "0.0.1"
 dependencies = [
  "mugraph-core",
  "mugraph-core-programs",
+ "proptest",
  "risc0-zkvm",
+ "serde",
+ "test-strategy",
  "tracing",
  "tracing-subscriber 0.3.18",
 ]
@@ -1585,8 +1588,7 @@ dependencies = [
 name = "mugraph-examples"
 version = "0.0.1"
 dependencies = [
- "mugraph-core",
- "mugraph-core-programs",
+ "mugraph-client",
  "risc0-zkvm",
  "tracing",
  "tracing-subscriber 0.3.18",

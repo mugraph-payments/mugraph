@@ -4,8 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-mugraph-core = { path = "../core", features = ["std"] }
-mugraph-core-programs = { path = "../core/programs" }
+mugraph-client = { path = "../client" }
 
 risc0-zkvm = { version = "1.0.5", default-features = false, features = [
     "client",
@@ -16,5 +15,5 @@ tracing-subscriber = "0.3.18"
 
 [features]
 default = []
-metal = ["risc0-zkvm/metal"]
-cuda = ["risc0-zkvm/cuda"]
+metal = ["mugraph-client/metal"]
+cuda = ["mugraph-client/cuda"]
