@@ -7,7 +7,7 @@ mod builder;
 pub mod prelude {
     pub use mugraph_core::{
         error::{Error, Result},
-        types::{Blob, Hash, Manifest, Note, ProgramSet, Transaction, MAX_ATOMS, MAX_INPUTS},
+        types::{Hash, Note, Transaction, MAX_ATOMS, MAX_INPUTS},
     };
     pub use mugraph_core_programs::__build::{VALIDATE_ELF, VALIDATE_ID};
 

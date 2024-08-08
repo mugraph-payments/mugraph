@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "client","core", "core/programs", "core/programs/guest", "examples"]
+members = ["client", "core", "core/programs", "core/programs/guest", "examples"]
 
 [profile.dev]
 opt-level = 3
@@ -8,7 +8,7 @@ opt-level = 3
 [profile.release]
 opt-level = 3
 debug = true
-lto = true
+lto = "fat"
 panic = "abort"
 
 [patch.crates-io]

@@ -1,23 +1,17 @@
 use std::collections::BTreeMap;
 
-use crate::prelude::{Blob, Hash, Manifest, Note, Transaction};
+use crate::prelude::{Hash, Note, Transaction};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TransactionBuilder {
-    pub manifest: Manifest,
     pub cursor: u8,
-    pub blob: Blob,
+    pub transaction: Transaction,
     pub asset_id_map: BTreeMap<Hash, u8>,
 }
 
 impl TransactionBuilder {
-    pub fn new(manifest: Manifest) -> Self {
-        Self {
-            manifest,
-            cursor: 0,
-            blob: Blob::default(),
-            asset_id_map: BTreeMap::default(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn input(mut self, note: &Note) -> Self {
@@ -26,15 +20,15 @@ impl TransactionBuilder {
             None => {
                 let index = self.asset_id_map.len() as u8;
                 self.asset_id_map.insert(note.asset_id, index);
-                self.blob.asset_ids[index as usize] = note.asset_id;
+                self.transaction.asset_ids[index as usize] = note.asset_id;
                 index
             }
         };
 
-        self.blob.input_mask.insert(self.cursor);
-        self.blob.asset_id_indexes[self.cursor as usize] = asset_id_index;
-        self.blob.amounts[self.cursor as usize] = note.amount;
-        self.blob.nonces[self.cursor as usize] = note.nonce;
+        self.transaction.input_mask.insert(self.cursor);
+        self.transaction.asset_id_indexes[self.cursor as usize] = asset_id_index;
+        self.transaction.amounts[self.cursor as usize] = note.amount;
+        self.transaction.nonces[self.cursor as usize] = note.nonce;
 
         self.cursor += 1;
 
@@ -47,21 +41,18 @@ impl TransactionBuilder {
             None => {
                 let index = self.asset_id_map.len() as u8;
                 self.asset_id_map.insert(asset_id, index);
-                self.blob.asset_ids[index as usize] = asset_id;
+                self.transaction.asset_ids[index as usize] = asset_id;
                 index
             }
         };
-        self.blob.asset_id_indexes[self.cursor as usize] = asset_id_index;
-        self.blob.amounts[self.cursor as usize] = amount;
+        self.transaction.asset_id_indexes[self.cursor as usize] = asset_id_index;
+        self.transaction.amounts[self.cursor as usize] = amount;
 
         self.cursor += 1;
         self
     }
 
     pub fn build(self) -> Transaction {
-        Transaction {
-            manifest: self.manifest,
-            blob: self.blob,
-        }
+        self.transaction
     }
 }

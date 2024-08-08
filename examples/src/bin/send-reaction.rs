@@ -19,12 +19,6 @@ macro_rules! timed {
 }
 
 fn build_transaction() -> Transaction {
-    let manifest = Manifest {
-        programs: ProgramSet {
-            validate: VALIDATE_ID.into(),
-        },
-    };
-
     let note = Note {
         parent_id: Hash::digest(b"Parent Id"),
         asset_id: Hash::digest(b"Sample Asset"),
@@ -32,7 +26,7 @@ fn build_transaction() -> Transaction {
         amount: 100,
     };
 
-    TransactionBuilder::new(manifest)
+    TransactionBuilder::new()
         .input(&note)
         .output(note.asset_id, 60)
         .output(note.asset_id, 40)
