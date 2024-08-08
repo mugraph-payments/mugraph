@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::types::{Hash, Manifest};
+use crate::{
+    types::{Hash, Manifest},
+    util::BitSet8,
+};
 
 pub const MAX_ATOMS: usize = 8;
 pub const MAX_INPUTS: usize = 4;
@@ -9,11 +12,11 @@ pub const DATA_SIZE: usize = 256 * MAX_ATOMS;
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub struct Blob {
+    pub input_mask: BitSet8,
     pub asset_id_indexes: [u8; MAX_ATOMS],
     pub amounts: [u64; MAX_ATOMS],
     pub asset_ids: [Hash; MAX_INPUTS],
     pub nonces: [Hash; MAX_ATOMS],
-    pub parent_ids: [Hash; MAX_ATOMS],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,8 +35,8 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Blob>(), 712);
-        assert_eq!(align_of::<Blob>(), 8);
+        assert_eq!(464, size_of::<Blob>());
+        assert_eq!(8, align_of::<Blob>());
     }
 
     #[proptest]

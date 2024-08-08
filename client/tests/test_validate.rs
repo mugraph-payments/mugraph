@@ -35,13 +35,13 @@ fn test_transaction_strategy_is_balanced(#[strategy(transaction())] transaction:
         let asset_id = transaction.blob.asset_ids[asset_id_index];
         let amount = transaction.blob.amounts[i];
 
-        if transaction.blob.parent_ids[i] == Hash::default() {
-            output_balances
+        if transaction.blob.input_mask.contains(i as u8) {
+            input_balances
                 .entry(asset_id)
                 .and_modify(|x| *x += amount as u128)
                 .or_insert(amount as u128);
         } else {
-            input_balances
+            output_balances
                 .entry(asset_id)
                 .and_modify(|x| *x += amount as u128)
                 .or_insert(amount as u128);
@@ -57,7 +57,7 @@ fn test_transaction_strategy_is_balanced(#[strategy(transaction())] transaction:
 
 #[proptest]
 fn test_validate_transaction(#[strategy(transaction())] transaction: Transaction) {
-    validate(transaction);
+    validate(&transaction);
 }
 
 #[proptest]
@@ -67,7 +67,7 @@ fn test_validate_fails_if_unbalanced_amounts(
     #[strategy(1..u64::MAX)] amount: u64,
 ) {
     transaction.blob.amounts[0] = transaction.blob.amounts[0].saturating_add(amount);
-    validate(transaction)
+    validate(&transaction)
 }
 
 #[proptest]
@@ -77,5 +77,5 @@ fn test_validate_fails_if_mismatching_asset_ids(
 ) {
     transaction.blob.asset_id_indexes[0] += 1;
 
-    validate(transaction)
+    validate(&transaction)
 }

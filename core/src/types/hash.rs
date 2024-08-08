@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(#[serde(with = "serde_bytes")] [u8; 32]);
+pub struct Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 #[cfg(feature = "proptest")]
 impl proptest::arbitrary::Arbitrary for Hash {
@@ -28,18 +28,13 @@ impl proptest::arbitrary::Arbitrary for Hash {
 
 impl Hash {
     #[inline]
-    pub fn zero() -> Self {
-        Self::default()
+    pub const fn zero() -> Self {
+        Self([0u8; 32])
     }
 
     #[inline]
     pub fn digest(input: &[u8]) -> Self {
         (*Impl::hash_bytes(input)).into()
-    }
-
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        self.as_ref()
     }
 }
 
@@ -76,12 +71,7 @@ impl From<[u8; 32]> for Hash {
 impl From<risc0_zkvm::sha::Digest> for Hash {
     #[inline]
     fn from(value: Digest) -> Self {
-        let bytes = value.as_bytes();
-        assert_eq!(bytes.len(), 32);
-
-        let mut result = Hash::default();
-        result.0.copy_from_slice(bytes);
-        result
+        Hash(bytemuck::cast(value))
     }
 }
 
@@ -95,7 +85,7 @@ impl From<Hash> for risc0_zkvm::sha::Digest {
 impl From<[u32; 8]> for Hash {
     #[inline]
     fn from(data: [u32; 8]) -> Self {
-        Hash(*bytemuck::cast_ref(&data))
+        Hash(bytemuck::cast(data))
     }
 }
 
@@ -105,8 +95,6 @@ impl TryFrom<Vec<u8>> for Hash {
 
     #[inline]
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        assert_eq!(value.len(), 32);
-
         let mut result = Hash::default();
         result.0.copy_from_slice(&value[..]);
 
@@ -119,8 +107,6 @@ impl TryFrom<&[u8]> for Hash {
 
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        assert_eq!(value.len(), 32);
-
         let mut result = Hash::default();
         result.0.copy_from_slice(value);
 

@@ -20,6 +20,11 @@ test-strategy = { version = "0.4.0", optional = true }
 
 [features]
 default = []
-proptest = ["dep:proptest", "dep:test-strategy"]
+proptest = [
+    "dep:proptest",
+    "dep:test-strategy",
+    "mugraph-core/proptest",
+    "mugraph-core/std",
+]
 metal = ["risc0-zkvm/metal"]
 cuda = ["risc0-zkvm/cuda"]

@@ -5,7 +5,7 @@ use crate::prelude::{Blob, Hash, Manifest, Note, Transaction};
 #[derive(Debug)]
 pub struct TransactionBuilder {
     pub manifest: Manifest,
-    pub cursor: usize,
+    pub cursor: u8,
     pub blob: Blob,
     pub asset_id_map: BTreeMap<Hash, u8>,
 }
@@ -21,8 +21,6 @@ impl TransactionBuilder {
     }
 
     pub fn input(mut self, note: &Note) -> Self {
-        assert_ne!(note.parent_id, Hash::default());
-
         let asset_id_index = match self.asset_id_map.get(&note.asset_id) {
             Some(&index) => index,
             None => {
@@ -33,10 +31,10 @@ impl TransactionBuilder {
             }
         };
 
-        self.blob.asset_id_indexes[self.cursor] = asset_id_index;
-        self.blob.amounts[self.cursor] = note.amount;
-        self.blob.nonces[self.cursor] = note.nonce;
-        self.blob.parent_ids[self.cursor] = note.parent_id;
+        self.blob.input_mask.insert(self.cursor);
+        self.blob.asset_id_indexes[self.cursor as usize] = asset_id_index;
+        self.blob.amounts[self.cursor as usize] = note.amount;
+        self.blob.nonces[self.cursor as usize] = note.nonce;
 
         self.cursor += 1;
 
@@ -53,9 +51,8 @@ impl TransactionBuilder {
                 index
             }
         };
-        self.blob.asset_id_indexes[self.cursor] = asset_id_index;
-        self.blob.amounts[self.cursor] = amount;
-        self.blob.parent_ids[self.cursor] = Hash::default();
+        self.blob.asset_id_indexes[self.cursor as usize] = asset_id_index;
+        self.blob.amounts[self.cursor as usize] = amount;
 
         self.cursor += 1;
         self
