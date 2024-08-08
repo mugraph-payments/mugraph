@@ -4,47 +4,52 @@ macro_rules! impl_bitset {
             #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
             #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
             #[serde(transparent)]
+            #[repr(transparent)]
             pub struct [<BitSet $size>](
                 [<u $size>]
             );
 
             impl [<BitSet $size>] {
-                pub fn new() -> Self {
+                pub const fn new() -> Self {
                     Self(0)
                 }
 
-                pub fn insert(&mut self, index: u8) {
-                    assert!(index <= $size);
-
-                    self.0 |= 1 << index;
-                }
-
-                pub fn contains(&self, index: u8) -> bool {
-                    assert!(index <= $size);
-
+                #[inline]
+                pub const fn contains(&self, index: [<u $size>]) -> bool {
+                    debug_assert!(index <= $size);
                     self.0 & (1 << index) != 0
                 }
 
-                pub fn remove(&mut self, index: u8) {
-                    assert!(index <= $size);
-
-                    self.0 &= !(1 << index);
-                }
-
+                #[inline]
                 pub const fn to_bytes(&self) -> [u8; $size / 8] {
                     self.0.to_le_bytes()
                 }
 
+                #[inline]
                 pub const fn count_ones(&self) -> u32 {
                     self.0.count_ones()
                 }
 
+                #[inline]
                 pub const fn count_zeros(&self) -> u32 {
                     self.0.count_zeros()
                 }
 
-                pub fn is_empty(&self) -> bool {
+                #[inline]
+                pub const fn is_empty(&self) -> bool {
                     self.0 == 0
+                }
+
+                #[inline]
+                pub fn insert(&mut self, index: [<u $size>]) {
+                    debug_assert!(index <= $size);
+                    self.0 |= 1 << index;
+                }
+
+                #[inline]
+                pub fn remove(&mut self, index: [<u $size>]) {
+                    debug_assert!(index <= $size);
+                    self.0 &= !(1 << index);
                 }
             }
 
