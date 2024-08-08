@@ -7,7 +7,6 @@ pub const COMMITMENT_INPUT_SIZE: usize = 72;
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub struct Note {
-    pub parent_id: Hash,
     pub asset_id: Hash,
     pub nonce: Hash,
     pub amount: u64,

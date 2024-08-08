@@ -12,10 +12,8 @@ use test_strategy::proptest;
 // - For each asset_id, the amounts in the inputs and outputs should equal.
 // - Input notes should never have zero amounts
 fn transaction() -> impl Strategy<Value = Transaction> {
-    let balances = hash_set(any::<Note>(), 1..4);
-
-    (balances, any::<Manifest>()).prop_map(|(balances, manifest)| {
-        let mut builder = TransactionBuilder::new(manifest);
+    hash_set(any::<Note>(), 1..4).prop_map(|balances| {
+        let mut builder = TransactionBuilder::new();
 
         for note in balances {
             builder = builder.input(&note).output(note.asset_id, note.amount);
