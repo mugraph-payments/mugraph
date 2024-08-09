@@ -30,7 +30,7 @@ mod tests {
     }
 
     #[proptest]
-    // Tests if a Blob struct has a consistent size with the actual struct size
+    // Tests if a Transaction struct has a consistent size with the actual struct size
     fn test_size_consistency(note: Transaction) {
         prop_assert_eq!(size_of::<Transaction>(), size_of_val(&note));
     }

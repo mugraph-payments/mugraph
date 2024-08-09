@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 104);
+        assert_eq!(size_of::<Note>(), 72);
         assert_eq!(align_of::<Note>(), 8);
     }
 

@@ -29,11 +29,11 @@ fn test_transaction_strategy_is_balanced(#[strategy(transaction())] transaction:
     let mut output_balances = HashMap::new();
 
     for i in 0..MAX_ATOMS {
-        let asset_id_index = transaction.blob.asset_id_indexes[i] as usize;
-        let asset_id = transaction.blob.asset_ids[asset_id_index];
-        let amount = transaction.blob.amounts[i];
+        let asset_id_index = transaction.asset_id_indexes[i] as usize;
+        let asset_id = transaction.asset_ids[asset_id_index];
+        let amount = transaction.amounts[i];
 
-        if transaction.blob.input_mask.contains(i as u8) {
+        if transaction.input_mask.contains(i as u8) {
             input_balances
                 .entry(asset_id)
                 .and_modify(|x| *x += amount as u128)
@@ -64,7 +64,7 @@ fn test_validate_fails_if_unbalanced_amounts(
     #[strategy(transaction())] mut transaction: Transaction,
     #[strategy(1..u64::MAX)] amount: u64,
 ) {
-    transaction.blob.amounts[0] = transaction.blob.amounts[0].saturating_add(amount);
+    transaction.amounts[0] = transaction.amounts[0].saturating_add(amount);
     validate(&transaction)
 }
 
@@ -73,7 +73,7 @@ fn test_validate_fails_if_unbalanced_amounts(
 fn test_validate_fails_if_mismatching_asset_ids(
     #[strategy(transaction())] mut transaction: Transaction,
 ) {
-    transaction.blob.asset_id_indexes[0] += 1;
+    transaction.asset_id_indexes[0] += 1;
 
     validate(&transaction)
 }
