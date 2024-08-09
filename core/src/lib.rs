@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+pub mod crypto;
 pub mod error;
 pub mod programs;
 pub mod types;

@@ -7,16 +7,19 @@ edition = "2021"
 bytemuck = "1.16.3"
 hex = { version = "0.4.3", default-features = false }
 
-onlyerror = { version = "0.1.4", default-features = false }
-risc0-zkvm = { version = "1.0.5", default-features = false, features = [
-    "client",
+curve25519-dalek = { version = "4.1.2", default-features = false, features = [
+    "rand_core",
 ] }
+onlyerror = { version = "0.1.4", default-features = false }
+paste = "1.0.15"
+rand_core = { version = "0.6.4", default-features = false }
+risc0-zkvm = { version = "1.0.5", features = ["client"] }
 serde = { version = "1.0.204", default-features = false, features = ["derive"] }
 serde_bytes = { version = "0.11.15" }
 
 proptest = { version = "1.5.0", optional = true }
 test-strategy = { version = "0.4.0", optional = true }
-paste = "1.0.15"
+sha2 = { version = "0.10.8", default-features = false }
 
 [features]
 default = []
