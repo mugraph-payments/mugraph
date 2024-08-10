@@ -1,0 +1,9 @@
+[package]
+name = "mugraph-simulator"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+mugraph-client = { path = "../client" }
+rand = "0.8.5"
+tokio = { version = "1.39.2", features = ["full"] }

@@ -36,6 +36,14 @@ impl Hash {
     pub fn digest(input: &[u8]) -> Self {
         (*Impl::hash_bytes(input)).into()
     }
+
+    #[cfg(feature = "std")]
+    pub fn random<R: rand_core::RngCore>(rng: &mut R) -> Self {
+        let mut output = [0u8; 32];
+        rng.fill_bytes(&mut output);
+
+        Self(output)
+    }
 }
 
 impl AsRef<[u8; 32]> for Hash {
