@@ -1,5 +1,7 @@
+use color_eyre::eyre::{ErrReport, Result};
 use mugraph_client::prelude::*;
 use rand::{prelude::IteratorRandom, rngs::StdRng, Rng};
+use tokio::task::JoinSet;
 
 use self::agents::*;
 pub use self::config::Config;
@@ -9,9 +11,9 @@ mod config;
 mod util;
 
 pub struct Simulator {
-    rng: StdRng,
-    delegate: Delegate,
-    assets: Vec<Hash>,
+    pub rng: StdRng,
+    pub delegate: Delegate,
+    pub assets: Vec<Hash>,
     users: Vec<User>,
 }
 
@@ -32,7 +34,7 @@ impl Simulator {
                 let asset_id = assets.iter().choose(&mut rng).copied().unwrap_or_default();
                 let amount = rng.gen_range(0..1_000_000_000);
 
-                let note = delegate.emit_note(&mut rng, asset_id, amount).await?;
+                let note = delegate.emit(&mut rng, asset_id, amount).await?;
                 user.notes.push(note);
             }
 
@@ -45,5 +47,15 @@ impl Simulator {
             assets,
             users,
         })
+    }
+
+    pub async fn spawn(self) -> Result<()> {
+        let mut set = JoinSet::new();
+
+        for _ in self.users {
+            set.spawn_local(async { Ok::<_, ErrReport>(()) });
+        }
+
+        Ok(())
     }
 }

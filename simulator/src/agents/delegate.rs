@@ -1,7 +1,9 @@
+use async_trait::async_trait;
 use crypto::generate_keypair;
 use mugraph_client::prelude::*;
 use rand::{CryptoRng, RngCore};
 
+use super::Agent;
 use crate::util::Location;
 
 pub struct Delegate {
@@ -21,7 +23,7 @@ impl Delegate {
         }
     }
 
-    pub async fn emit_note<R: RngCore + CryptoRng>(
+    pub fn emit<R: RngCore + CryptoRng>(
         &self,
         mut rng: R,
         asset_id: Hash,
@@ -39,5 +41,15 @@ impl Delegate {
             crypto::schnorr::sign(&mut rng, &self.secret_key, note.commitment().as_ref())?;
 
         Ok(note)
+    }
+}
+
+#[async_trait]
+impl Agent for Delegate {
+    type Input = Request;
+    type Output = Response;
+
+    async fn recv(&mut self, _message: Self::Input) -> Result<Self::Output> {
+        Ok(())
     }
 }

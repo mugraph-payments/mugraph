@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.81"
 bonsai-bt = "0.6.3"
 color-eyre = "0.6.3"
 mugraph-client = { path = "../client" }
