@@ -7,9 +7,7 @@ edition = "2021"
 bytemuck = "1.16.3"
 hex = { version = "0.4.3", default-features = false }
 
-curve25519-dalek = { version = "4.1.2", default-features = false, features = [
-    "rand_core",
-] }
+curve25519-dalek = { version = "4.1.2", default-features = false, features = ["rand_core", "serde"] }
 onlyerror = { version = "0.1.4", default-features = false }
 paste = "1.0.15"
 rand_core = { version = "0.6.4", default-features = false }

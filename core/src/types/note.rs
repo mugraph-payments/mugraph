@@ -4,12 +4,14 @@ use crate::types::*;
 
 pub const COMMITMENT_INPUT_SIZE: usize = 72;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub struct Note {
+    pub delegate: PublicKey,
     pub asset_id: Hash,
     pub nonce: Hash,
     pub amount: u64,
+    pub signature: Signature,
 }
 
 impl Note {
@@ -33,7 +35,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 72);
+        assert_eq!(size_of::<Note>(), 168);
         assert_eq!(align_of::<Note>(), 8);
     }
 

@@ -1,4 +1,4 @@
-use mugraph_client::prelude::*;
+use mugraph_client::prelude::{crypto::*, *};
 use risc0_zkvm::{default_prover, ExecutorEnv, ProverOpts};
 use tracing::*;
 
@@ -18,30 +18,40 @@ macro_rules! timed {
     }}
 }
 
-fn build_transaction() -> Transaction {
-    let note = Note {
+fn build_transaction() -> Result<Transaction> {
+    let mut rng = rand::thread_rng();
+
+    let (server_priv, server_pub) = generate_keypair(&mut rng);
+
+    let mut note = Note {
+        delegate: server_pub,
         asset_id: Hash::digest(b"Sample Asset"),
         nonce: Hash::digest(b"Sample Nonce"),
         amount: 100,
+        signature: Signature::default(),
     };
 
-    TransactionBuilder::new()
+    let (_y, _r, b_prime) = dh::blind(&mut rand::thread_rng(), note.commitment().as_ref());
+    let _signed_point = dh::sign_blinded(&server_priv, &b_prime)?;
+
+    // TODO: add unblinded signature for note
+    note.signature = Signature::default();
+
+    Ok(TransactionBuilder::new()
         .input(&note)
         .output(note.asset_id, 60)
         .output(note.asset_id, 40)
-        .build()
+        .build())
 }
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let transaction = build_transaction();
-
     let mut stdout = Vec::new();
 
     let env = timed!("create executor", {
         ExecutorEnv::builder()
-            .write(&transaction)
+            .write(&build_transaction()?)
             .map_err(|_| Error::ZKVM)?
             .stdout(&mut stdout)
             .build()

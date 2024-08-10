@@ -1,7 +1,7 @@
 use rand_core::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
 
-use crate::types::Hash;
+use crate::types::{Hash, PublicKey, SecretKey};
 
 pub mod dh;
 pub mod schnorr;
@@ -10,8 +10,6 @@ pub const HTC_SEP: &'static [u8] = b"mugraph_v0_htc";
 
 pub type Point = curve25519_dalek::ristretto::RistrettoPoint;
 pub type Scalar = curve25519_dalek::scalar::Scalar;
-pub type SecretKey = Scalar;
-pub type PublicKey = Point;
 
 pub const G: Point = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
@@ -32,7 +30,8 @@ pub fn hash_to_curve(message: &[u8]) -> Point {
 }
 
 pub fn generate_keypair<R: RngCore + CryptoRng>(rng: &mut R) -> (SecretKey, PublicKey) {
-    let privkey = Scalar::random(rng);
-    let pubkey = G * privkey;
-    (privkey, pubkey)
+    let secret_key = Scalar::random(rng);
+    let pubkey = G * secret_key;
+
+    (secret_key.into(), pubkey.into())
 }

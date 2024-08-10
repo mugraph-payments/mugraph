@@ -4,8 +4,11 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum Error {
-    #[error("Invalid signature")]
+    #[error("Invalid unblinded point")]
     InvalidUnblindedPoint,
+
+    #[error("Invalid public or secret key")]
+    InvalidKey,
 
     #[error("Invalid hash")]
     InvalidHash,

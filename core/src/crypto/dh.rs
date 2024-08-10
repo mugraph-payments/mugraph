@@ -12,8 +12,8 @@ pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> (Poi
     (y, r, b_prime)
 }
 
-pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> Point {
-    blinded_point * secret_key
+pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> Result<Point> {
+    Ok(blinded_point * secret_key.to_scalar()?)
 }
 
 pub fn unblind_signature(signed_point: &Point, blinding_factor: &Scalar) -> Point {
@@ -25,7 +25,7 @@ pub fn verify_unblinded_point(
     message: &[u8],
     unblinded_point: &Point,
 ) -> Result<()> {
-    if hash_to_curve(message) * secret_key == *unblinded_point {
+    if hash_to_curve(message) * secret_key.to_scalar()? == *unblinded_point {
         Ok(())
     } else {
         Err(Error::InvalidUnblindedPoint)
