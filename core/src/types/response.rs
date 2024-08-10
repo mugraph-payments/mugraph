@@ -1,3 +1,5 @@
+use alloc::{string::String, vec::Vec};
+
 use serde::{Deserialize, Serialize};
 
 use super::Signature;

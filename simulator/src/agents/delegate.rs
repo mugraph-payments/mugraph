@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use color_eyre::eyre::Result;
 use crypto::generate_keypair;
 use mugraph_client::prelude::*;
 use rand::{CryptoRng, RngCore};
@@ -8,8 +9,8 @@ use crate::util::Location;
 
 pub struct Delegate {
     pub location: Location,
-    pub secret_key: SecretKey,
-    pub public_key: PublicKey,
+    secret_key: SecretKey,
+    public_key: PublicKey,
 }
 
 impl Delegate {
@@ -23,7 +24,7 @@ impl Delegate {
         }
     }
 
-    pub fn emit<R: RngCore + CryptoRng>(
+    pub async fn emit<R: RngCore + CryptoRng>(
         &self,
         mut rng: R,
         asset_id: Hash,
@@ -50,6 +51,6 @@ impl Agent for Delegate {
     type Output = Response;
 
     async fn recv(&mut self, _message: Self::Input) -> Result<Self::Output> {
-        Ok(())
+        Ok(Response::Success { outputs: vec![] })
     }
 }

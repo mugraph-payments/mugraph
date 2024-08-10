@@ -6,7 +6,12 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
 
     let config = Config::default();
-    let _simulator = Simulator::setup(config);
+    let mut simulator = Simulator::new().setup(config).await?;
 
+    loop {
+        simulator.tick().await?;
+    }
+
+    #[allow(unreachable_code)]
     Ok(())
 }
