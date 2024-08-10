@@ -3,13 +3,21 @@ use std::thread::{self, JoinHandle};
 use color_eyre::eyre::{ErrReport, Result};
 use mugraph_simulator::{Config, Simulator};
 use tokio::runtime::Builder;
+use tracing::span;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    tracing_subscriber::fmt::init();
+
     let cores = core_affinity::get_core_ids().unwrap();
     let mut handles = vec![];
 
     for i in 0..num_cpus::get_physical() {
+        let span = span!(tracing::Level::INFO, "simulator");
+        span.record("core", &i);
+
+        let _ = span.enter();
+
         let core = cores[i];
         let handle: JoinHandle<Result<(), ErrReport>> = thread::spawn(move || {
             core_affinity::set_for_current(core);

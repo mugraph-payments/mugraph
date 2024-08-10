@@ -1732,6 +1732,8 @@ dependencies = [
  "num_cpus",
  "rand",
  "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.18",
 ]
 
 [[package]]
