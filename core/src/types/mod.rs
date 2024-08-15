@@ -1,4 +1,5 @@
 mod hash;
+mod keypair;
 mod note;
 mod public_key;
 mod request;
@@ -8,6 +9,6 @@ mod signature;
 mod transaction;
 
 pub use self::{
-    hash::*, note::*, public_key::*, request::*, response::*, secret_key::*, signature::*,
-    transaction::*,
+    hash::*, keypair::*, note::*, public_key::*, request::*, response::*, secret_key::*,
+    signature::*, transaction::*,
 };
