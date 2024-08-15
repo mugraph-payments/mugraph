@@ -103,7 +103,7 @@ mod tests {
     ) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
 
-        let mut signed_ = signed.clone();
+        let mut signed_ = signed;
         signed_.r[0] = signed_.r[0].wrapping_add(1);
 
         prop_assert_eq!(
