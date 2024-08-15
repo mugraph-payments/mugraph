@@ -9,8 +9,6 @@ use super::{Hash, Signature};
 pub enum Request {
     #[serde(rename = "s")]
     Simple(SimpleRequest),
-    //#[serde(rename = "z")]
-    //Zk(ZKRequest),
 }
 
 #[derive(Serialize, Deserialize)]

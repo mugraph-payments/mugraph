@@ -3,10 +3,7 @@ use crypto::generate_keypair;
 use mugraph_client::prelude::*;
 use rand::{CryptoRng, RngCore};
 
-use crate::util::Location;
-
 pub struct Delegate {
-    pub location: Location,
     secret_key: SecretKey,
     public_key: PublicKey,
 }
@@ -16,7 +13,6 @@ impl Delegate {
         let (secret_key, public_key) = generate_keypair(&mut rng);
 
         Self {
-            location: Location::random(&mut rng),
             secret_key,
             public_key,
         }
@@ -40,5 +36,9 @@ impl Delegate {
             crypto::schnorr::sign(&mut rng, &self.secret_key, note.commitment().as_ref())?;
 
         Ok(note)
+    }
+
+    pub async fn recv(&mut self, req: Request) -> Result<Response> {
+        todo!();
     }
 }
