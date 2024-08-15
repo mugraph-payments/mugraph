@@ -12,13 +12,12 @@ fn main() -> Result<()> {
     let cores = core_affinity::get_core_ids().unwrap();
     let mut handles = vec![];
 
-    for i in 0..num_cpus::get_physical() {
+    for (i, core) in cores.into_iter().enumerate().take(num_cpus::get_physical()) {
         let span = span!(tracing::Level::INFO, "simulator");
-        span.record("core", &i);
+        span.record("core", i);
 
         let _ = span.enter();
 
-        let core = cores[i];
         let handle: JoinHandle<Result<(), ErrReport>> = thread::spawn(move || {
             core_affinity::set_for_current(core);
 

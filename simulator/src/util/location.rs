@@ -29,4 +29,10 @@ impl Location {
 
         Duration::from_secs_f64(latency_secs)
     }
+
+    pub fn failure_rate_to(&self, other: &Location) -> f64 {
+        let latency = self.latency_to(other).as_secs_f64();
+
+        1.0 / (1.0 + 0.1 * latency)
+    }
 }
