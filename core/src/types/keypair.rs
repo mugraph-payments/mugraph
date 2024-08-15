@@ -1,6 +1,6 @@
 use super::{PublicKey, SecretKey};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Keypair {
     pub public_key: PublicKey,
     pub secret_key: SecretKey,

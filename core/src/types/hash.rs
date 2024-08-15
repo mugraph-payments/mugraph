@@ -3,6 +3,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+use curve25519_dalek::ristretto::CompressedRistretto;
 use risc0_zkvm::sha::{Digest, Impl, Sha256};
 use serde::{Deserialize, Serialize};
 
@@ -102,6 +103,24 @@ impl From<[u32; 8]> for Hash {
 impl From<Scalar> for Hash {
     fn from(value: Scalar) -> Self {
         value.to_bytes().into()
+    }
+}
+
+impl From<Hash> for Scalar {
+    fn from(value: Hash) -> Self {
+        Scalar::from_bytes_mod_order(value.0)
+    }
+}
+
+impl From<CompressedRistretto> for Hash {
+    fn from(value: CompressedRistretto) -> Self {
+        Self(*value.as_bytes())
+    }
+}
+
+impl From<Hash> for CompressedRistretto {
+    fn from(value: Hash) -> Self {
+        CompressedRistretto::from_slice(&value.0).unwrap()
     }
 }
 
