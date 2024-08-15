@@ -8,6 +8,7 @@ pub use self::config::Config;
 mod agents;
 mod config;
 
+#[allow(unused)]
 pub struct Simulator {
     rng: StdRng,
     delegate: Delegate,
