@@ -2,15 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::*;
 
-pub const COMMITMENT_INPUT_SIZE: usize = 72;
+pub const COMMITMENT_INPUT_SIZE: usize = 104;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 pub struct Note {
+    pub amount: u64,
     pub delegate: PublicKey,
     pub asset_id: Hash,
     pub nonce: Hash,
-    pub amount: u64,
     pub signature: Signature,
 }
 
@@ -18,9 +18,10 @@ impl Note {
     pub fn commitment(&self) -> Hash {
         let mut output = [0u8; COMMITMENT_INPUT_SIZE];
 
-        output[0..32].copy_from_slice(self.asset_id.as_ref());
-        output[32..40].copy_from_slice(self.amount.to_le_bytes().as_ref());
-        output[40..COMMITMENT_INPUT_SIZE].copy_from_slice(self.nonce.as_ref());
+        output[0..32].copy_from_slice(self.delegate.as_ref());
+        output[32..64].copy_from_slice(self.asset_id.as_ref());
+        output[64..72].copy_from_slice(&self.amount.to_le_bytes());
+        output[72..104].copy_from_slice(self.nonce.as_ref());
 
         Hash::digest(&output)
     }
@@ -35,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 168);
+        assert_eq!(size_of::<Note>(), 136);
         assert_eq!(align_of::<Note>(), 8);
     }
 
@@ -48,6 +49,7 @@ mod tests {
     #[proptest]
     fn test_commitment(note: Note) {
         let expected = [
+            note.delegate.as_ref(),
             note.asset_id.as_ref(),
             note.amount.to_le_bytes().as_ref(),
             note.nonce.as_ref(),

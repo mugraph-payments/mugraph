@@ -18,7 +18,7 @@ impl Delegate {
         mut rng: R,
         asset_id: Hash,
         amount: u64,
-    ) -> Note {
+    ) -> Result<Note> {
         let mut note = Note {
             delegate: self.keypair.public_key,
             asset_id,
@@ -27,13 +27,12 @@ impl Delegate {
             signature: Signature::default(),
         };
 
-        note.signature = crypto::schnorr::sign(
-            &mut rng,
-            &self.keypair.secret_key,
-            note.commitment().as_ref(),
-        );
+        let blind = crypto::blind_note(&mut rng, &note);
+        let signed = crypto::sign_blinded(&self.keypair.secret_key, &blind.point);
+        note.signature =
+            crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
 
-        note
+        Ok(note)
     }
 
     pub async fn recv(&mut self, _req: Request) -> Result<Response> {

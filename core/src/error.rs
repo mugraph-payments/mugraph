@@ -5,7 +5,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 #[derive(Debug, Error, PartialEq)]
 pub enum Error {
     #[error("Invalid unblinded point")]
-    InvalidUnblindedPoint,
+    InvalidPoint,
 
     #[error("Invalid public or secret key")]
     InvalidKey,
