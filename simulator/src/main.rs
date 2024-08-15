@@ -1,7 +1,4 @@
-use std::{
-    future::ready,
-    thread::{self, JoinHandle},
-};
+use std::thread::{self, JoinHandle};
 
 use color_eyre::eyre::{ErrReport, Result};
 use mugraph_simulator::{Config, Simulator};

@@ -4,9 +4,12 @@ use core::{
 };
 
 use curve25519_dalek::Scalar;
+#[cfg(feature = "std")]
+use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use crate::error::Error;
+use super::PublicKey;
+use crate::{crypto::G, error::Error};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
@@ -34,10 +37,20 @@ impl SecretKey {
         Self([0u8; 32])
     }
 
+    #[cfg(feature = "std")]
     #[inline]
-    pub fn to_scalar(&self) -> Result<Scalar, Error> {
-        let result: Option<_> = Scalar::from_canonical_bytes(self.0).into();
-        result.ok_or(Error::InvalidKey)
+    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+        Scalar::random(rng).into()
+    }
+
+    #[inline]
+    pub fn to_scalar(&self) -> Scalar {
+        Scalar::from_bytes_mod_order(self.0)
+    }
+
+    #[inline]
+    pub fn public(&self) -> PublicKey {
+        (self.to_scalar() * G).into()
     }
 }
 
@@ -85,10 +98,9 @@ impl From<Scalar> for SecretKey {
     }
 }
 
-impl TryFrom<SecretKey> for Scalar {
-    type Error = Error;
-
-    fn try_from(value: SecretKey) -> Result<Self, Self::Error> {
+impl From<SecretKey> for Scalar {
+    #[inline]
+    fn from(value: SecretKey) -> Self {
         value.to_scalar()
     }
 }

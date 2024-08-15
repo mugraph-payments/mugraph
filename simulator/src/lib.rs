@@ -7,7 +7,6 @@ pub use self::config::Config;
 
 mod agents;
 mod config;
-mod util;
 
 pub struct Simulator {
     rng: StdRng,
@@ -35,7 +34,7 @@ impl Simulator {
                 let asset_id = assets[idx];
                 let amount = rng.gen_range(1..1_000_000_000);
 
-                let note = delegate.emit(&mut rng, asset_id, amount).await?;
+                let note = delegate.emit(&mut rng, asset_id, amount).await;
 
                 user.notes.push(note);
             }

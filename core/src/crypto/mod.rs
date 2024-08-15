@@ -1,7 +1,6 @@
 use curve25519_dalek::digest::*;
 use sha2::{Digest, Sha512};
 
-pub mod dh;
 pub mod schnorr;
 
 pub const HTC_SEP: &[u8] = b"mugraph_v0_htc";
@@ -28,6 +27,7 @@ pub fn hash_to_curve(message: &[u8]) -> Point {
 
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
+    use proptest::prelude::*;
     use test_strategy::proptest;
 
     use super::*;

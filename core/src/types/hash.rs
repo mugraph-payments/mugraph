@@ -6,6 +6,8 @@ use core::{
 use risc0_zkvm::sha::{Digest, Impl, Sha256};
 use serde::{Deserialize, Serialize};
 
+use crate::crypto::Scalar;
+
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
@@ -94,6 +96,12 @@ impl From<[u32; 8]> for Hash {
     #[inline]
     fn from(data: [u32; 8]) -> Self {
         Hash(bytemuck::cast(data))
+    }
+}
+
+impl From<Scalar> for Hash {
+    fn from(value: Scalar) -> Self {
+        value.to_bytes().into()
     }
 }
 

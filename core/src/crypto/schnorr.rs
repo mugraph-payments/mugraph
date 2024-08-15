@@ -11,7 +11,7 @@ pub fn sign<R: RngCore + CryptoRng>(
     rng: &mut R,
     secret_key: &SecretKey,
     message: &[u8],
-) -> Result<Signature> {
+) -> Signature {
     let k = Scalar::random(rng);
 
     let r = G * k;
@@ -19,13 +19,13 @@ pub fn sign<R: RngCore + CryptoRng>(
 
     let e = hash_to_scalar(&[&r_, message]);
 
-    let s = k + e * secret_key.to_scalar()?;
+    let s = k + e * secret_key.to_scalar();
     let s_ = s.to_bytes();
 
-    Ok(Signature {
+    Signature {
         r: Hash(r_),
         s: Hash(s_),
-    })
+    }
 }
 
 pub fn verify(public_key: &PublicKey, signature: &Signature, message: &[u8]) -> Result<()> {

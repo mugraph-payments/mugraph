@@ -6,7 +6,7 @@ use core::{
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use serde::{Deserialize, Serialize};
 
-use crate::error::Error;
+use crate::{crypto::Scalar, error::Error};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
@@ -44,6 +44,11 @@ impl PublicKey {
         self.to_compressed_point()?
             .decompress()
             .ok_or(Error::InvalidKey)
+    }
+
+    #[inline]
+    pub fn to_scalar(&self) -> Scalar {
+        Scalar::from_bytes_mod_order(self.0)
     }
 }
 

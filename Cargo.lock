@@ -686,6 +686,7 @@ dependencies = [
  "cpufeatures",
  "crypto-bigint",
  "curve25519-dalek-derive",
+ "digest",
  "fiat-crypto",
  "hex",
  "platforms",
@@ -1702,16 +1703,19 @@ version = "0.0.1"
 dependencies = [
  "bytemuck",
  "curve25519-dalek",
+ "digest",
  "hex",
  "onlyerror",
  "paste",
  "proptest",
+ "rand",
  "rand_core",
  "risc0-zkvm",
  "serde",
  "serde_bytes",
  "sha2",
  "test-strategy",
+ "typenum",
 ]
 
 [[package]]
