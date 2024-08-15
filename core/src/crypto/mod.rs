@@ -1,7 +1,5 @@
-use rand_core::{CryptoRng, RngCore};
-use sha2::{Digest, Sha256};
-
-use crate::types::{Hash, PublicKey, SecretKey};
+use curve25519_dalek::digest::*;
+use sha2::{Digest, Sha512};
 
 pub mod dh;
 pub mod schnorr;
@@ -14,14 +12,13 @@ pub type Scalar = curve25519_dalek::scalar::Scalar;
 pub const G: Point = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
 pub fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
-    let mut hasher = Sha256::new();
+    let mut hash = Sha512::new();
 
-    for item in data {
-        hasher.update(item);
+    for d in data {
+        hash = hash.chain(d);
     }
 
-    let hash: Hash = hasher.finalize().as_slice().try_into().unwrap();
-    Scalar::from_bytes_mod_order(*hash)
+    Scalar::from_hash(hash)
 }
 
 pub fn hash_to_curve(message: &[u8]) -> Point {
@@ -29,9 +26,25 @@ pub fn hash_to_curve(message: &[u8]) -> Point {
     G * scalar
 }
 
-pub fn generate_keypair<R: RngCore + CryptoRng>(rng: &mut R) -> (SecretKey, PublicKey) {
-    let secret_key = Scalar::random(rng);
-    let pubkey = G * secret_key;
+#[cfg(all(test, feature = "proptest"))]
+mod tests {
+    use test_strategy::proptest;
 
-    (secret_key.into(), pubkey.into())
+    use super::*;
+
+    #[proptest]
+    fn test_hash_to_curve(a: Vec<u8>, b: Vec<u8>) {
+        prop_assert_eq!(
+            a == b,
+            hash_to_curve(a.as_ref()) == hash_to_curve(b.as_ref())
+        )
+    }
+
+    #[proptest]
+    fn test_hash_to_scalar(a: Vec<u8>, b: Vec<u8>) {
+        prop_assert_eq!(
+            a == b,
+            hash_to_scalar(&[a.as_ref()]) == hash_to_scalar(&[b.as_ref()])
+        )
+    }
 }
