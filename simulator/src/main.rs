@@ -35,9 +35,7 @@ fn main() -> Result<()> {
                 loop {
                     select! {
                         _ = t.cancelled() => break,
-                        _ = simulator.tick() => {
-                            info!("Processed tick...");
-                        }
+                        _ = simulator.tick() => { }
                     }
                 }
 

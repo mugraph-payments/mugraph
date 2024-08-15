@@ -11,9 +11,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             seed: None,
-            user_count: 16,
+            user_count: 1024,
             asset_count: 4,
-            max_notes_per_user: 4,
+            max_notes_per_user: 16,
         }
     }
 }

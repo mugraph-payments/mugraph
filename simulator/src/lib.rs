@@ -1,7 +1,8 @@
 use color_eyre::eyre::Result;
+use crypto::{blind, unblind_signature};
 use mugraph_client::prelude::*;
 use rand::{rngs::StdRng, Rng};
-use tracing::info;
+use tracing::{info, warn};
 
 use self::agents::*;
 pub use self::config::Config;
@@ -53,27 +54,65 @@ impl Simulator {
     }
 
     pub async fn tick(&mut self) -> Result<()> {
-        let user_idx = self.rng.gen_range(0..self.users.len());
-        let user = &mut self.users[user_idx];
-        let note = user.notes.remove(self.rng.gen_range(0..user.notes.len()));
+        let total = self.users.len();
+        let id = self.rng.gen_range(0..self.users.len());
 
-        let request = Request::Simple {
-            inputs: vec![Input {
-                asset_id: note.asset_id,
-                amount: note.amount,
-                nonce: note.nonce,
-                signature: note.signature,
-            }],
-            outputs: vec![Output {
-                asset_id: note.asset_id,
-                amount: note.amount,
-                commitment: Hash::random(&mut self.rng),
-            }],
+        let nonce = Hash::random(&mut self.rng);
+        let blinded = blind(&mut self.rng, nonce.as_ref());
+
+        let (request, sender_id, note) = {
+            let user = &mut self.users[id];
+
+            if user.notes.is_empty() {
+                warn!(sender_id = id, "User has no notes, skipping");
+                return Ok(());
+            }
+
+            let mut note = user.notes.remove(self.rng.gen_range(0..user.notes.len()));
+
+            note.nonce = nonce;
+
+            let request = Request::Simple {
+                inputs: vec![Input {
+                    asset_id: note.asset_id,
+                    amount: note.amount,
+                    nonce: note.nonce,
+                    signature: note.signature,
+                }],
+                outputs: vec![Output {
+                    asset_id: note.asset_id,
+                    amount: note.amount,
+                    commitment: blinded.point.compress().into(),
+                }],
+            };
+
+            (request, id, note)
         };
 
         let response = self.delegate.recv(request).await?;
+        let receiver = &mut self.users[self.rng.gen_range(0..total)];
 
-        info!("User {} received response: {:?}", user.id, response);
+        info!(
+            from = %sender_id,
+            to = %receiver.id,
+            asset_id = %note.asset_id,
+            amount = note.amount,
+            "Processed transaction"
+        );
+
+        for output in response.outputs {
+            receiver.notes.push(Note {
+                delegate: self.delegate.keypair.public_key,
+                asset_id: note.asset_id,
+                nonce,
+                amount: note.amount,
+                signature: unblind_signature(
+                    &output,
+                    &blinded.factor,
+                    &self.delegate.keypair.public_key,
+                )?,
+            });
+        }
 
         Ok(())
     }
