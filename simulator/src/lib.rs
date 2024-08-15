@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 use mugraph_client::prelude::*;
 use rand::{rngs::StdRng, Rng};
+use tracing::info;
 
 use self::agents::*;
 pub use self::config::Config;
@@ -26,8 +27,8 @@ impl Simulator {
             .collect::<Vec<_>>();
         let mut users = vec![];
 
-        for _ in 0..config.user_count {
-            let mut user = User::new();
+        for i in 0..config.user_count {
+            let mut user = User::new(i);
 
             for _ in 0..rng.gen_range(1..config.max_notes_per_user) {
                 let idx = rng.gen_range(0..config.asset_count);
@@ -52,6 +53,28 @@ impl Simulator {
     }
 
     pub async fn tick(&mut self) -> Result<()> {
-        todo!();
+        let user_idx = self.rng.gen_range(0..self.users.len());
+        let user = &mut self.users[user_idx];
+        let note = user.notes.remove(self.rng.gen_range(0..user.notes.len()));
+
+        let request = Request::Simple {
+            inputs: vec![Input {
+                asset_id: note.asset_id,
+                amount: note.amount,
+                nonce: note.nonce,
+                signature: note.signature,
+            }],
+            outputs: vec![Output {
+                asset_id: note.asset_id,
+                amount: note.amount,
+                commitment: Hash::random(&mut self.rng),
+            }],
+        };
+
+        let response = self.delegate.recv(request).await?;
+
+        info!("User {} received response: {:?}", user.id, response);
+
+        Ok(())
     }
 }

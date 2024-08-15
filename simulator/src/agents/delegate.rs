@@ -1,9 +1,10 @@
 use color_eyre::eyre::Result;
+use crypto::{hash_to_curve, sign_blinded, verify};
 use mugraph_client::prelude::*;
 use rand::{CryptoRng, RngCore};
 
 pub struct Delegate {
-    keypair: Keypair,
+    pub keypair: Keypair,
 }
 
 impl Delegate {
@@ -35,7 +36,37 @@ impl Delegate {
         Ok(note)
     }
 
-    pub async fn recv(&mut self, _req: Request) -> Result<Response> {
-        todo!();
+    pub async fn recv(&mut self, request: Request) -> Result<Response> {
+        let mut signed_outputs = vec![];
+        match request {
+            Request::Simple { inputs, outputs } => {
+                for input in inputs {
+                    let verification = verify(
+                        &self.keypair.public_key,
+                        input.nonce.as_ref(),
+                        input.signature,
+                    )?;
+
+                    if !verification {
+                        return Ok(Response::Error {
+                            message: "Invalid signature".to_string(),
+                        });
+                    }
+                }
+
+                for output in outputs {
+                    let sig = sign_blinded(
+                        &self.keypair.secret_key,
+                        &hash_to_curve(output.commitment.as_ref()),
+                    );
+
+                    signed_outputs.push(sig);
+                }
+            }
+        }
+
+        Ok(Response::Success {
+            outputs: signed_outputs,
+        })
     }
 }

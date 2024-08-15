@@ -16,10 +16,6 @@ pub struct BlindedPoint {
     pub point: Point,
 }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(transparent)]
-pub struct BlindedSignature(Point);
-
 pub fn blind_note<R: RngCore + CryptoRng>(rng: &mut R, note: &Note) -> BlindedPoint {
     blind(rng, note.commitment().as_ref())
 }
@@ -35,17 +31,18 @@ pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> Blin
     }
 }
 
-pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> BlindedSignature {
+pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> Blinded<Signature> {
     let res = blinded_point * secret_key.to_scalar();
-    BlindedSignature(res)
+    Blinded(res.into())
 }
 
 pub fn unblind_signature(
-    signature: &BlindedSignature,
+    signature: &Blinded<Signature>,
     blinding_factor: &Scalar,
     pubkey: &PublicKey,
 ) -> Result<Signature> {
-    let res = signature.0 - (pubkey.to_point()? * blinding_factor);
+    let inner = signature.0;
+    let res = inner.to_point()? - (pubkey.to_point()? * blinding_factor);
 
     Ok(Signature(res.compress().0))
 }
@@ -65,7 +62,7 @@ fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     Scalar::from_hash(hash)
 }
 
-fn hash_to_curve(message: &[u8]) -> Point {
+pub fn hash_to_curve(message: &[u8]) -> Point {
     let scalar = hash_to_scalar(&[HTC_SEP, message]);
     G * scalar
 }

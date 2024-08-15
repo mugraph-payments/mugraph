@@ -11,10 +11,16 @@ use crate::{
     error::{Error, Result},
 };
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(transparent)]
+#[serde(transparent)]
+pub struct Blinded<T>(pub T);
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
 #[repr(transparent)]
 #[serde(transparent)]
+#[derive(Default)]
 pub struct Signature(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl Signature {
@@ -29,12 +35,6 @@ impl Signature {
             .map_err(|_| Error::InvalidPoint)?
             .decompress()
             .ok_or(Error::InvalidPoint)
-    }
-}
-
-impl Default for Signature {
-    fn default() -> Self {
-        Self([0u8; 32])
     }
 }
 
@@ -89,5 +89,12 @@ impl From<[u8; 32]> for Signature {
     #[inline]
     fn from(value: [u8; 32]) -> Self {
         Self(value)
+    }
+}
+
+impl From<Point> for Signature {
+    #[inline]
+    fn from(value: Point) -> Self {
+        Self(value.compress().to_bytes())
     }
 }

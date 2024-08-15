@@ -2,10 +2,10 @@ use alloc::{string::String, vec::Vec};
 
 use serde::{Deserialize, Serialize};
 
-use super::Signature;
+use super::{Blinded, Signature};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
-    Success { outputs: Vec<Signature> },
+    Success { outputs: Vec<Blinded<Signature>> },
     Error { message: String },
 }
