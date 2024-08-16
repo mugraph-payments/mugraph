@@ -4,7 +4,7 @@ use color_eyre::eyre::{ErrReport, Result};
 use mugraph_simulator::{Config, Simulator};
 use tokio::{runtime::Builder, select};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, span};
+use tracing::info;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -14,11 +14,8 @@ fn main() -> Result<()> {
     let token = CancellationToken::new();
     let config = Config::default();
 
-    for (i, core) in cores.into_iter().enumerate().take(config.threads) {
-        let span = span!(tracing::Level::INFO, "simulator");
-        span.record("core", i);
-
-        let _ = span.enter();
+    for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
+        info!("Starting simulator on core {i}");
 
         let token = token.clone();
         thread::spawn(move || {

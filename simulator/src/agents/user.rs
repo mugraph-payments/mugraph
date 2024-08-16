@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use bonsai_bt::*;
 use mugraph_client::prelude::*;
-use tracing::info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserAction {
@@ -75,26 +74,11 @@ pub fn tick(dt: f64, user: &mut BTUser) -> Option<Request> {
     let e: Event = UpdateArgs { dt }.into();
 
     let (_status, _dt) = user.tick(&e, &mut |args, user| match args.action {
-        UserAction::Aggregate => {
-            info!("Aggregating user {}", user.get_db().id);
-            (Status::Success, 0.0)
-        }
-        UserAction::CheckAggregate => {
-            info!("Checking aggregate for user {}", user.get_db().id);
-            (Status::Success, 0.0)
-        }
-        UserAction::CheckRedeemable => {
-            info!("Checking redeemable for user {}", user.get_db().id);
-            (Status::Success, 0.0)
-        }
-        UserAction::Redeem => {
-            info!("Redeeming for user {}", user.get_db().id);
-            (Status::Success, 0.0)
-        }
-        UserAction::Spend => {
-            info!("Spending for user {}", user.get_db().id);
-            (Status::Success, 0.0)
-        }
+        UserAction::Aggregate => (Status::Success, 0.0),
+        UserAction::CheckAggregate => (Status::Success, 0.0),
+        UserAction::CheckRedeemable => (Status::Success, 0.0),
+        UserAction::Redeem => (Status::Success, 0.0),
+        UserAction::Spend => (Status::Success, 0.0),
     });
 
     None
