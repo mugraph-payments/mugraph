@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use color_eyre::eyre::Result;
 use crypto::{blind, unblind_signature};
 use mugraph_client::prelude::*;
@@ -23,16 +25,16 @@ impl Simulator {
         let mut rng = config.rng();
 
         let delegate = Delegate::new(&mut rng);
-        let assets = (0..config.asset_count)
+        let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
         let mut users = vec![];
 
-        for i in 0..config.user_count {
+        for i in 0..config.users {
             let mut user = User::new(i);
 
-            for _ in 0..rng.gen_range(1..config.max_notes_per_user) {
-                let idx = rng.gen_range(0..config.asset_count);
+            for _ in 0..rng.gen_range(1..config.notes) {
+                let idx = rng.gen_range(0..config.assets);
 
                 let asset_id = assets[idx];
                 let amount = rng.gen_range(1..1_000_000_000);
@@ -89,16 +91,11 @@ impl Simulator {
             (request, id, note)
         };
 
+        let start = Instant::now();
         let response = self.delegate.recv(request).await?;
-        let receiver = &mut self.users[self.rng.gen_range(0..total)];
+        let took = start.elapsed();
 
-        info!(
-            from = %sender_id,
-            to = %receiver.id,
-            asset_id = %note.asset_id,
-            amount = note.amount,
-            "Processed transaction"
-        );
+        let receiver = &mut self.users[self.rng.gen_range(0..total)];
 
         for output in response.outputs {
             receiver.notes.push(Note {
@@ -113,6 +110,15 @@ impl Simulator {
                 )?,
             });
         }
+
+        info!(
+            took = ?took,
+            from = %sender_id,
+            to = %receiver.id,
+            asset_id = %note.asset_id,
+            amount = note.amount,
+            "Processed transaction"
+        );
 
         Ok(())
     }

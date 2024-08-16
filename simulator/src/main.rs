@@ -17,7 +17,9 @@ fn main() -> Result<()> {
     let t = token.clone();
     ctrlc::set_handler(move || t.cancel()).expect("Error setting Ctrl-C handler");
 
-    for (i, core) in cores.into_iter().enumerate().take(num_cpus::get_physical()) {
+    let config = Config::default();
+
+    for (i, core) in cores.into_iter().enumerate().take(config.threads) {
         let span = span!(tracing::Level::INFO, "simulator");
         span.record("core", i);
 
@@ -29,13 +31,21 @@ fn main() -> Result<()> {
 
             let rt = Builder::new_current_thread().enable_all().build()?;
             rt.block_on(async move {
-                let config = Config::default();
                 let mut simulator = Simulator::build(config).await?;
 
                 loop {
+                    let mut i = 1;
+
                     select! {
                         _ = t.cancelled() => break,
-                        _ = simulator.tick() => { }
+                        _ = simulator.tick() => {
+                            i += 1;
+
+                            if config.steps.map(|s| i >= s).unwrap_or(false) {
+                                info!("Reached end of simulation");
+                                t.cancel();
+                            }
+                        }
                     }
                 }
 
@@ -50,21 +60,21 @@ fn main() -> Result<()> {
         handles.push(handle);
     }
 
-    for handle in handles {
+    for (i, handle) in handles.into_iter().enumerate() {
         match handle.join() {
             Ok(Ok(())) => {
-                info!("Thread finished");
+                info!("Thread {i} finished");
             }
             Ok(Err(e)) => {
-                error!("Thread failed: {:?}", e);
+                error!("Thread {i} failed: {:?}", e);
             }
             Err(e) => {
-                error!("Thread failed: {:?}", e);
+                error!("Thread {i} failed: {:?}", e);
             }
         }
 
-        info!("Cancelling all other tasks");
         token.cancel();
+        break;
     }
 
     #[allow(unreachable_code)]

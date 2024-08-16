@@ -1,20 +1,46 @@
+use clap::Parser;
 use rand::{prelude::StdRng, SeedableRng};
 
+#[derive(Debug, Clone, Copy, Parser)]
+#[command(version, author, about)]
 pub struct Config {
+    #[clap(short, long, env = "MUGRAPH_SIMULATOR_SEED")]
     pub seed: Option<u64>,
-    pub user_count: usize,
-    pub asset_count: usize,
-    pub max_notes_per_user: usize,
+    #[clap(
+        short,
+        long = "users",
+        default_value = "128",
+        env = "MUGRAPH_SIMULATOR_USERS"
+    )]
+    pub users: usize,
+    #[clap(
+        short,
+        long = "assets",
+        default_value = "16",
+        env = "MUGRAPH_SIMULATOR_ASSETS"
+    )]
+    pub assets: usize,
+    #[clap(
+        short,
+        long = "notes",
+        default_value = "16",
+        env = "MUGRAPH_SIMULATOR_NOTES_PER_USER"
+    )]
+    pub notes: usize,
+    #[clap(long = "steps", env = "MUGRAPH_SIMULATOR_STEPS")]
+    pub steps: Option<u64>,
+    #[clap(
+        short,
+        long = "threads",
+        env = "MUGRAPH_SIMULATOR_THREADS",
+        default_value_t = num_cpus::get_physical()
+    )]
+    pub threads: usize,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            seed: None,
-            user_count: 1024,
-            asset_count: 4,
-            max_notes_per_user: 16,
-        }
+        Self::parse()
     }
 }
 
