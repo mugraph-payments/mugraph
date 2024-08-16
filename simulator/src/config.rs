@@ -7,20 +7,23 @@ use tracing::info;
 #[command(version, author, about)]
 pub struct Config {
     #[clap(short, long, env = "MUGRAPH_SIMULATOR_SEED")]
+    /// The seed to use for the simulation
     pub seed: Option<u64>,
     #[clap(
         short,
         long = "users",
-        default_value = "128",
+        default_value = "16",
         env = "MUGRAPH_SIMULATOR_USERS"
     )]
+    /// The amount of users to simulate
     pub users: usize,
     #[clap(
         short,
         long = "assets",
-        default_value = "16",
+        default_value = "4",
         env = "MUGRAPH_SIMULATOR_ASSETS"
     )]
+    /// The amount of assets to simulate
     pub assets: usize,
     #[clap(
         short,
@@ -28,15 +31,18 @@ pub struct Config {
         default_value = "16",
         env = "MUGRAPH_SIMULATOR_NOTES_PER_USER"
     )]
+    /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
-    #[clap(long = "steps", env = "MUGRAPH_SIMULATOR_STEPS")]
-    pub steps: Option<u64>,
+    #[clap(short, long, env = "MUGRAPH_SIMULATOR_DURATION_SECS")]
+    /// Duration in seconds to run the simulation
+    pub duration_secs: Option<u64>,
     #[clap(
         short,
         long = "threads",
         env = "MUGRAPH_SIMULATOR_THREADS",
         default_value_t = num_cpus::get_physical()
     )]
+    /// The amount of simulated instances to run in parallel
     pub threads: usize,
 }
 

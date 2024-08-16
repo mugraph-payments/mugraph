@@ -14,7 +14,7 @@ pub struct Simulator {
     rng: ChaCha20Rng,
     delegate: Delegate,
     assets: Vec<Hash>,
-    pub users: Vec<user::BTUser>,
+    users: Vec<user::BTUser>,
 }
 
 impl Simulator {
@@ -53,12 +53,9 @@ impl Simulator {
     }
 
     pub async fn tick(&mut self) -> Result<()> {
-        for mut user in self.users.iter_mut() {
-            match user::tick(0.1, &mut user) {
-                Some(req) => {
-                    self.delegate.recv(req).await?;
-                }
-                None => {}
+        for user in self.users.iter_mut() {
+            if let Some(req) = user::tick(1.0, user) {
+                self.delegate.recv(req).await?;
             }
         }
 
