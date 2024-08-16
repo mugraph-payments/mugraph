@@ -3,7 +3,8 @@ use std::time::Instant;
 use color_eyre::eyre::Result;
 use crypto::{blind, unblind_signature};
 use mugraph_client::prelude::*;
-use rand::{rngs::StdRng, Rng};
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 use tracing::{info, warn};
 
 use self::agents::*;
@@ -14,7 +15,7 @@ mod config;
 
 #[allow(unused)]
 pub struct Simulator {
-    rng: StdRng,
+    rng: ChaCha20Rng,
     delegate: Delegate,
     assets: Vec<Hash>,
     users: Vec<User>,

@@ -1852,6 +1852,7 @@ dependencies = [
  "mugraph-client",
  "num_cpus",
  "rand",
+ "rand_chacha",
  "tokio",
  "tokio-util",
  "tracing",

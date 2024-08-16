@@ -1,5 +1,7 @@
 use clap::Parser;
-use rand::{prelude::StdRng, SeedableRng};
+use rand::{prelude::*, thread_rng, SeedableRng};
+use rand_chacha::ChaChaRng;
+use tracing::info;
 
 #[derive(Debug, Clone, Copy, Parser)]
 #[command(version, author, about)]
@@ -49,10 +51,18 @@ impl Config {
         Self::default()
     }
 
-    pub fn rng(&self) -> StdRng {
-        match self.seed {
-            Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_entropy(),
-        }
+    pub fn rng(&self) -> ChaChaRng {
+        let seed = match self.seed {
+            Some(seed) => seed,
+            None => thread_rng().gen(),
+        };
+
+        info!(
+            seed = %seed,
+            was_provided = self.seed.is_some(),
+            "Initializing RNG with seed"
+        );
+
+        ChaChaRng::seed_from_u64(seed)
     }
 }
