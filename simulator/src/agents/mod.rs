@@ -1,4 +1,2 @@
-mod delegate;
-mod user;
-
-pub use self::{delegate::Delegate, user::User};
+pub mod delegate;
+pub mod user;
