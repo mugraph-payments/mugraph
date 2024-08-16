@@ -2,6 +2,11 @@ use std::collections::HashMap;
 
 use bonsai_bt::*;
 use mugraph_client::prelude::*;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
+use tracing::*;
+
+use crate::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserAction {
@@ -15,6 +20,7 @@ pub enum UserAction {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct User {
     pub id: u32,
+    pub friends: Vec<u32>,
     pub notes: Vec<Note>,
     pub note_by_asset_id: HashMap<Hash, Vec<u32>>,
     pub notes_unredeemed: Vec<u32>,
@@ -33,7 +39,7 @@ impl User {
 
 pub type BTUser = BT<UserAction, User>;
 
-pub fn bt(id: u32, notes: Vec<Note>) -> BTUser {
+pub fn bt(rng: &mut ChaCha20Rng, id: u32, notes: Vec<Note>, config: &Config) -> BTUser {
     let send = Sequence(vec![Wait(1.0), Action(UserAction::Spend)]);
 
     let redeem = Sequence(vec![
@@ -51,6 +57,10 @@ pub fn bt(id: u32, notes: Vec<Note>) -> BTUser {
     ]);
 
     let mut user = User::new(id);
+
+    user.friends = (1..config.users)
+        .map(|_| rng.gen_range(0..config.users) as u32)
+        .collect();
 
     for note in notes.into_iter() {
         user.note_by_asset_id
@@ -70,16 +80,30 @@ pub fn bt(id: u32, notes: Vec<Note>) -> BTUser {
     )
 }
 
-pub fn tick(dt: f64, user: &mut BTUser) -> Option<Request> {
-    let e: Event = UpdateArgs { dt }.into();
+pub fn tick(dt: f64, rng: &mut ChaCha20Rng, user: &mut BTUser) -> Result<()> {
+    let e: bonsai_bt::Event = UpdateArgs { dt }.into();
 
-    let (_status, _dt) = user.tick(&e, &mut |args, user| match args.action {
-        UserAction::Aggregate => (Status::Success, 0.0),
-        UserAction::CheckAggregate => (Status::Success, 0.0),
-        UserAction::CheckRedeemable => (Status::Success, 0.0),
-        UserAction::Redeem => (Status::Success, 0.0),
-        UserAction::Spend => (Status::Success, 0.0),
+    user.tick(&e, &mut |args, bb| {
+        let user = bb.get_db();
+
+        match args.action {
+            UserAction::Aggregate => (Status::Success, 0.0),
+            UserAction::CheckAggregate => (Status::Success, 0.0),
+            UserAction::CheckRedeemable => (Status::Success, 0.0),
+            UserAction::Redeem => (Status::Success, 0.0),
+            UserAction::Spend => {
+                assert!(!user.friends.is_empty());
+
+                let to = user.friends.choose(rng).unwrap();
+                let asset_id = user.balance_cleared.keys().choose(rng).unwrap();
+                let amount = rng.gen_range(1..user.balance_cleared[asset_id]);
+
+                info!(from = user.id, to = to, asset_id = %asset_id, amount = amount , "Send");
+
+                (Status::Success, 0.0)
+            }
+        }
     });
 
-    None
+    Ok(())
 }

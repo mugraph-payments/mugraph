@@ -13,15 +13,14 @@ mod config;
 pub struct Simulator {
     rng: ChaCha20Rng,
     delegate: Delegate,
+    timescale: f64,
     assets: Vec<Hash>,
     users: Vec<user::BTUser>,
 }
 
 impl Simulator {
-    pub async fn build(config: Config) -> Result<Self> {
-        let mut rng = config.rng();
-
-        let delegate = Delegate::new(&mut rng);
+    pub async fn build(mut rng: ChaCha20Rng, config: Config) -> Result<Self> {
+        let mut delegate = Delegate::new(rng.clone());
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
@@ -36,27 +35,26 @@ impl Simulator {
                 let asset_id = assets[idx];
                 let amount = rng.gen_range(1..1_000_000_000);
 
-                let note = delegate.emit(&mut rng, asset_id, amount).await?;
+                let note = delegate.emit(asset_id, amount).await?;
 
                 notes.push(note);
             }
 
-            users.push(user::bt(i as u32, notes));
+            users.push(user::bt(&mut rng, i as u32, notes, &config));
         }
 
         Ok(Self {
-            delegate: Delegate::new(&mut rng),
+            delegate,
             rng,
             assets,
             users,
+            timescale: 1.0,
         })
     }
 
     pub async fn tick(&mut self) -> Result<()> {
         for user in self.users.iter_mut() {
-            if let Some(req) = user::tick(1.0, user) {
-                self.delegate.recv(req).await?;
-            }
+            user::tick(self.timescale, &mut self.rng, user)?;
         }
 
         Ok(())

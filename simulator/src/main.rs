@@ -2,6 +2,8 @@ use std::{thread, time::Duration};
 
 use color_eyre::eyre::{ErrReport, Result};
 use mugraph_simulator::{Config, Simulator};
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 use tokio::{runtime::Builder, select};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -23,7 +25,17 @@ fn main() -> Result<()> {
 
             let rt = Builder::new_current_thread().enable_all().build()?;
             rt.block_on(async move {
-                let mut simulator = Simulator::build(config).await?;
+                let mut rng = config.rng();
+
+                let seed = rng.gen();
+
+                info!(
+                    seed = seed,
+                    "Starting simulator on core {i} with pre-determined seed."
+                );
+                let rng = ChaCha20Rng::seed_from_u64(seed);
+
+                let mut simulator = Simulator::build(rng, config).await?;
 
                 loop {
                     select! {

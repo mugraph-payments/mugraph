@@ -66,7 +66,7 @@ impl Config {
         info!(
             seed = %seed,
             was_provided = self.seed.is_some(),
-            "Initializing RNG with seed"
+            "Initializing main RNG with seed"
         );
 
         ChaChaRng::seed_from_u64(seed)
