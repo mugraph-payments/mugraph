@@ -35,11 +35,13 @@ let
     }
     ."${platform}";
 
-  rust = pkgs.rust-bin.fromRustupToolchainFile ./../../rust-toolchain.toml;
+  root = ./../..;
+
+  rust = pkgs.rust-bin.fromRustupToolchainFile "${root}/rust-toolchain.toml";
 in
 {
   defaults = {
-    inherit rust;
+    inherit rust root;
 
     rustPlatform = pkgs.makeRustPlatform {
       rustc = rust;

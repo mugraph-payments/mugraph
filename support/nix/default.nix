@@ -8,6 +8,9 @@ let
   inherit (prev.stdenv) isDarwin;
 
   checks = buildPackageSet ./checks;
+  packages = buildPackageSet ./packages // {
+    default = packages.mugraph-simulator;
+  };
 
   devShells.default = mkShell {
     inherit (lib.defaults.env) RUST_LOG RUSTFLAGS;
@@ -29,8 +32,9 @@ in
     inherit
       checks
       devShells
-      lib
       inputs
+      lib
+      packages
       ;
   };
 }
