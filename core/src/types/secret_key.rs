@@ -36,7 +36,7 @@ impl SecretKey {
     }
 
     #[inline]
-    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+    pub fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         Scalar::random(rng).into()
     }
 

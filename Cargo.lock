@@ -798,9 +798,11 @@ name = "mugraph-node"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "clap",
  "color-eyre",
  "mugraph-core",
  "rand",
+ "rand_chacha",
  "redb",
  "serde",
  "tempfile",

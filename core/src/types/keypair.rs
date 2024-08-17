@@ -1,4 +1,5 @@
 use proptest::prelude::*;
+use rand::prelude::*;
 
 use super::{PublicKey, SecretKey};
 
@@ -9,7 +10,7 @@ pub struct Keypair {
 }
 
 impl Keypair {
-    pub fn random<R: rand::RngCore + rand::CryptoRng>(rng: &mut R) -> Self {
+    pub fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         let secret_key = SecretKey::random(rng);
         let public_key = secret_key.public();
 
@@ -22,7 +23,7 @@ impl Keypair {
 
 impl Arbitrary for Keypair {
     type Parameters = ();
-    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+    type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         any::<crate::types::SecretKey>()

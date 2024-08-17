@@ -13,7 +13,7 @@ use mugraph_core::{
         Signature,
     },
 };
-use rand::thread_rng;
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::context::Context;
@@ -25,13 +25,11 @@ pub enum Error {
     InvalidRequest,
 }
 
-pub fn router() -> Result<Router> {
-    let mut rng = thread_rng();
-
+pub fn router<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Router> {
     Ok(Router::new()
         .route("/health", get(health))
         .route("/rpc", post(rpc))
-        .with_state(Context::new(&mut rng)?))
+        .with_state(Context::new(rng)?))
 }
 
 pub async fn health() -> &'static str {
