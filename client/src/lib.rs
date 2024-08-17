@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use mugraph_core::types::{Hash, Note};
 
-mod builder;
-
 pub mod prelude {
     pub use mugraph_core::{
         crypto,
@@ -14,8 +12,6 @@ pub mod prelude {
             Hash, Keypair, Note, PublicKey, SecretKey, Signature, Transaction,
         },
     };
-
-    pub use crate::builder::TransactionBuilder;
 }
 
 pub struct Wallet {

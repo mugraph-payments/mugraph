@@ -3,6 +3,8 @@ use test_strategy::Arbitrary;
 
 pub mod v0;
 
+pub use v0::Request as V0Request;
+
 #[derive(Debug, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "n")]
 pub enum Request {
@@ -23,14 +25,11 @@ mod tests {
         ));
 
         let expected = json!({
-            "n": "v0.transaction",
+            "n": "v0",
             "m": "transaction",
             "p": {
-                "m": 0,
-                "a_": [],
-                "n": [],
                 "a": [],
-                "c": [],
+                "a_": [],
                 "s": [],
             }
         });

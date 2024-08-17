@@ -3,6 +3,8 @@ use test_strategy::Arbitrary;
 
 pub mod v0;
 
+pub use v0::Response as V0Response;
+
 #[derive(Debug, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "n")]
 pub enum Response {
