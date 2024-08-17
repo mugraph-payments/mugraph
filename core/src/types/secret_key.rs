@@ -4,7 +4,6 @@ use core::{
 };
 
 use curve25519_dalek::Scalar;
-#[cfg(feature = "std")]
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +15,6 @@ use crate::{crypto::G, error::Error};
 #[repr(transparent)]
 pub struct SecretKey(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
-#[cfg(feature = "proptest")]
 impl proptest::arbitrary::Arbitrary for SecretKey {
     type Parameters = ();
     type Strategy = proptest::strategy::BoxedStrategy<Self>;
@@ -37,7 +35,6 @@ impl SecretKey {
         Self([0u8; 32])
     }
 
-    #[cfg(feature = "std")]
     #[inline]
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         Scalar::random(rng).into()
@@ -105,7 +102,6 @@ impl From<SecretKey> for Scalar {
     }
 }
 
-#[cfg(feature = "std")]
 impl TryFrom<Vec<u8>> for SecretKey {
     type Error = Error;
 

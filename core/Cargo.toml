@@ -5,30 +5,14 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.16.3"
-hex = { version = "0.4.3", default-features = false }
-
-curve25519-dalek = { version = "4.1.2", default-features = false, features = [
-    "rand_core",
-    "serde",
-    "digest",
-] }
-onlyerror = { version = "0.1.4", default-features = false }
+curve25519-dalek = { version = "4.1.2", features = ["digest", "rand_core"] }
+digest = { version = "0.10.7" }
+hex = { version = "0.4.3" }
+onlyerror = { version = "0.1.4" }
 paste = "1.0.15"
-rand_core = { version = "0.6.4", default-features = false }
-risc0-zkvm = { version = "1.0.5", features = ["client"] }
-serde = { version = "1.0.204", default-features = false, features = ["derive"] }
+rand = { version = "0.8.5" }
+serde = { version = "1.0.204", features = ["derive"] }
 serde_bytes = { version = "0.11.15" }
-
-proptest = { version = "1.5.0", optional = true }
-test-strategy = { version = "0.4.0", optional = true }
-sha2 = { version = "0.10.8", default-features = false }
-rand = { version = "0.8.5", optional = true, default-features = false }
-digest = { version = "0.10.7", default-features = false }
-typenum = "1.17.0"
-
-[features]
-default = ["proptest"]
-std = ["hex/std", "serde/std", "serde_bytes/std", "rand/std", "rand/std_rng"]
-proptest = ["std", "dep:proptest", "dep:test-strategy", "dep:rand"]
-metal = ["risc0-zkvm/metal"]
-cuda = ["risc0-zkvm/cuda"]
+sha2 = { version = "0.10.8" }
+proptest = { version = "1.5.0" }
+test-strategy = { version = "0.4.0" }

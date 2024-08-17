@@ -1,8 +1,7 @@
 macro_rules! impl_bitset {
     ($size:tt) => {
         paste::paste! {
-            #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-            #[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+            #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, test_strategy::Arbitrary)]
             #[serde(transparent)]
             #[repr(transparent)]
             pub struct [<BitSet $size>](

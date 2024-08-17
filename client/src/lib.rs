@@ -10,7 +10,6 @@ pub mod prelude {
         error::{Error, Result},
         types::*,
     };
-    pub use mugraph_core_programs::__build::{VALIDATE_ELF, VALIDATE_ID};
 
     pub use crate::builder::TransactionBuilder;
 }

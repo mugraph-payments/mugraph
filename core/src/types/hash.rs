@@ -4,8 +4,9 @@ use core::{
 };
 
 use curve25519_dalek::ristretto::CompressedRistretto;
-use risc0_zkvm::sha::{Digest, Impl, Sha256};
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::crypto::Scalar;
 
@@ -14,14 +15,11 @@ use crate::crypto::Scalar;
 #[repr(transparent)]
 pub struct Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
-#[cfg(feature = "proptest")]
-impl proptest::arbitrary::Arbitrary for Hash {
+impl Arbitrary for Hash {
     type Parameters = ();
-    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+    type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        use proptest::prelude::*;
-
         any::<[u8; 32]>()
             .prop_filter("must not be empty", |x| *x != [0u8; 32])
             .prop_map(Self)
@@ -37,11 +35,14 @@ impl Hash {
 
     #[inline]
     pub fn digest(input: &[u8]) -> Self {
-        (*Impl::hash_bytes(input)).into()
+        let mut hasher = Sha256::new();
+        hasher.update(input);
+        let result = hasher.finalize();
+
+        Self(result.into())
     }
 
-    #[cfg(feature = "std")]
-    pub fn random<R: rand_core::RngCore>(rng: &mut R) -> Self {
+    pub fn random<R: RngCore>(rng: &mut R) -> Self {
         let mut output = [0u8; 32];
         rng.fill_bytes(&mut output);
 
@@ -79,20 +80,6 @@ impl From<[u8; 32]> for Hash {
     }
 }
 
-impl From<risc0_zkvm::sha::Digest> for Hash {
-    #[inline]
-    fn from(value: Digest) -> Self {
-        Hash(bytemuck::cast(value))
-    }
-}
-
-impl From<Hash> for risc0_zkvm::sha::Digest {
-    #[inline]
-    fn from(value: Hash) -> Self {
-        Self::from(value.0)
-    }
-}
-
 impl From<[u32; 8]> for Hash {
     #[inline]
     fn from(data: [u32; 8]) -> Self {
@@ -124,7 +111,6 @@ impl From<Hash> for CompressedRistretto {
     }
 }
 
-#[cfg(feature = "std")]
 impl TryFrom<Vec<u8>> for Hash {
     type Error = crate::error::Error;
 

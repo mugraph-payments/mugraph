@@ -1,5 +1,5 @@
 use curve25519_dalek::digest::*;
-use rand_core::{CryptoRng, RngCore};
+use rand::prelude::{CryptoRng, RngCore};
 use sha2::{Digest, Sha512};
 
 use crate::{error::Result, types::*};
@@ -67,7 +67,7 @@ pub fn hash_to_curve(message: &[u8]) -> Point {
     G * scalar
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use proptest::prelude::*;
     use rand::prelude::StdRng;

@@ -15,10 +15,4 @@ pub enum Error {
 
     #[error("Invalid signature")]
     InvalidSignature,
-
-    #[error("ZKVM error")]
-    ZKVM,
-
-    #[error("Serialization/Deserialization error: {0}")]
-    Serde(#[from] risc0_zkvm::serde::Error),
 }

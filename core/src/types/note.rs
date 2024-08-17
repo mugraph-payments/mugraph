@@ -4,8 +4,9 @@ use crate::types::*;
 
 pub const COMMITMENT_INPUT_SIZE: usize = 104;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+#[derive(
+    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+)]
 pub struct Note {
     pub amount: u64,
     pub delegate: PublicKey,
@@ -27,7 +28,7 @@ impl Note {
     }
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;

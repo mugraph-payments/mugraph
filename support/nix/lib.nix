@@ -2,14 +2,13 @@
 let
   inherit (builtins) attrNames filter readDir;
 
-  inherit (pkgs) system symlinkJoin;
+  inherit (pkgs) system;
   inherit (pkgs.lib)
     concatStringsSep
     hasSuffix
     listToAttrs
     removeSuffix
     ;
-  inherit (pkgs.mugraph.dependencies) risc0-toolchain;
 
   platform =
     {
@@ -40,21 +39,7 @@ let
 in
 {
   defaults = {
-    rust = symlinkJoin {
-      name = "mugraph-rustc";
-
-      inherit (rust) meta;
-
-      paths = [
-        rust
-        risc0-toolchain
-      ];
-    };
-
-    paths = {
-      root = ./../..;
-      cargoLock = ./../../Cargo.lock;
-    };
+    inherit rust;
 
     rustPlatform = pkgs.makeRustPlatform {
       rustc = rust;
@@ -65,7 +50,6 @@ in
       inherit RUSTFLAGS;
 
       RUST_LOG = "info";
-      RISC0_RUST_SRC = "${rust}/lib/rustlib/src/rust";
     };
   };
 

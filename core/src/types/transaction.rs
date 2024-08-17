@@ -6,8 +6,9 @@ pub const MAX_ATOMS: usize = 8;
 pub const MAX_INPUTS: usize = 4;
 pub const DATA_SIZE: usize = 256 * MAX_ATOMS;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+#[derive(
+    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+)]
 pub struct Transaction {
     pub input_mask: BitSet8,
     pub asset_id_indexes: [u8; MAX_ATOMS],
@@ -16,7 +17,7 @@ pub struct Transaction {
     pub nonces: [Hash; MAX_ATOMS],
 }
 
-#[cfg(all(test, feature = "proptest"))]
+#[cfg(test)]
 mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;

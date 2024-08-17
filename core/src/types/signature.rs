@@ -16,11 +16,11 @@ use crate::{
 #[serde(transparent)]
 pub struct Blinded<T>(pub T);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
-#[cfg_attr(feature = "proptest", derive(test_strategy::Arbitrary))]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+)]
 #[repr(transparent)]
 #[serde(transparent)]
-#[derive(Default)]
 pub struct Signature(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
 impl Signature {

@@ -4,6 +4,7 @@ use core::{
 };
 
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{crypto::Scalar, error::Error};
@@ -13,14 +14,11 @@ use crate::{crypto::Scalar, error::Error};
 #[repr(transparent)]
 pub struct PublicKey(#[serde(with = "serde_bytes")] pub [u8; 32]);
 
-#[cfg(feature = "proptest")]
-impl proptest::arbitrary::Arbitrary for PublicKey {
+impl Arbitrary for PublicKey {
     type Parameters = ();
-    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+    type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        use proptest::prelude::*;
-
         any::<[u8; 32]>()
             .prop_filter("must not be empty", |x| *x != [0u8; 32])
             .prop_map(Self)
@@ -120,7 +118,6 @@ impl TryFrom<PublicKey> for RistrettoPoint {
     }
 }
 
-#[cfg(feature = "std")]
 impl TryFrom<Vec<u8>> for PublicKey {
     type Error = Error;
 
