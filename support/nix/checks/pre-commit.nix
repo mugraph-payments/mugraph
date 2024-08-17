@@ -5,10 +5,10 @@
 }:
 let
   inherit (mugraph.inputs) pre-commit-hooks;
-  inherit (mugraph.lib.defaults) rust;
+  inherit (mugraph.lib.defaults) rust root;
 in
 pre-commit-hooks.lib.${system}.run {
-  src = ../../.;
+  src = root;
 
   hooks = {
     nixfmt = {
