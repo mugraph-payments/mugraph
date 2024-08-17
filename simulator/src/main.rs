@@ -40,7 +40,9 @@ fn main() -> Result<()> {
                 loop {
                     select! {
                         _ = token.cancelled() => break,
-                        _ = simulator.tick() => { }
+                        t = simulator.tick() => {
+                            simulator = t?;
+                        }
                     }
                 }
 

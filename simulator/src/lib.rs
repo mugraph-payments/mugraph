@@ -1,4 +1,5 @@
 use color_eyre::eyre::Result;
+use futures_util::future::try_join_all;
 use mugraph_client::prelude::*;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -40,8 +41,12 @@ impl Simulator {
                 notes.push(note);
             }
 
-            users.push(user::bt(&mut rng, i as u32, notes, &config));
+            assert_ne!(notes.len(), 0);
+
+            users.push(user::bt(rng.clone(), i as u32, notes, &config));
         }
+
+        delegate.spawn();
 
         Ok(Self {
             delegate,
@@ -52,11 +57,16 @@ impl Simulator {
         })
     }
 
-    pub async fn tick(&mut self) -> Result<()> {
-        for user in self.users.iter_mut() {
-            user::tick(self.timescale, &mut self.rng, user)?;
-        }
+    pub async fn tick(mut self) -> Result<Self> {
+        let timescale = self.timescale;
 
-        Ok(())
+        self.users = try_join_all(
+            self.users
+                .into_iter()
+                .map(|u| async { user::tick(timescale, u) }),
+        )
+        .await?;
+
+        Ok(self)
     }
 }

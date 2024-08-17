@@ -1,8 +1,9 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::Router;
 use clap::Parser;
 use color_eyre::eyre::Result;
+use mugraph_core::types::Keypair;
 use rand::prelude::*;
 use rand_chacha::{rand_core::CryptoRngCore, ChaCha20Rng};
 
@@ -12,10 +13,16 @@ mod route;
 #[derive(Debug, Clone, Parser)]
 pub struct Config {
     #[clap(short, long)]
-    seed: Option<u64>,
+    pub seed: Option<u64>,
 
     #[clap(short, long, default_value = "0.0.0.0:9999")]
-    addr: SocketAddr,
+    pub addr: SocketAddr,
+
+    #[clap(short, long)]
+    pub public_key: String,
+
+    #[clap(short, long)]
+    pub secret_key: String,
 }
 
 impl Config {
@@ -24,11 +31,21 @@ impl Config {
         Self::default()
     }
 
-    pub fn rng(&self) -> Box<dyn CryptoRngCore> {
+    pub fn rng(&self) -> ChaCha20Rng {
         match self.seed {
-            Some(s) => Box::new(ChaCha20Rng::seed_from_u64(s)),
-            None => Box::new(thread_rng()),
+            Some(s) => ChaCha20Rng::seed_from_u64(s),
+            None => ChaCha20Rng::from_entropy(),
         }
+    }
+
+    pub fn keypair(&self) -> Result<Keypair> {
+        let secret_key = serde_json::from_str(&self.secret_key)?;
+        let public_key = serde_json::from_str(&self.public_key)?;
+
+        Ok(Keypair {
+            secret_key,
+            public_key,
+        })
     }
 }
 

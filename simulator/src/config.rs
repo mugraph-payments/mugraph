@@ -12,7 +12,7 @@ pub struct Config {
     #[clap(
         short,
         long = "users",
-        default_value = "16",
+        default_value = "32",
         env = "MUGRAPH_SIMULATOR_USERS"
     )]
     /// The amount of users to simulate
@@ -28,7 +28,7 @@ pub struct Config {
     #[clap(
         short,
         long = "notes",
-        default_value = "16",
+        default_value = "32",
         env = "MUGRAPH_SIMULATOR_NOTES_PER_USER"
     )]
     /// The maximum amount of notes each user should have at simulation start

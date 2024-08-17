@@ -1,6 +1,8 @@
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{ErrReport, Result};
 use mugraph_client::prelude::*;
+use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use tokio::task;
 
 pub struct Delegate {
     pub keypair: Keypair,
@@ -32,35 +34,21 @@ impl Delegate {
         Ok(note)
     }
 
-    #[allow(unused)]
-    pub async fn recv(&mut self, _request: Request) -> Result<Response> {
-        // let mut signed_outputs = vec![];
+    pub fn spawn(&mut self) {
+        let seed = self.rng.gen();
+        let keypair = self.keypair;
 
-        // match request {
-        //     Request::Transaction { inputs, outputs } => {
-        //         for input in inputs {
-        //             verify(
-        //                 &self.keypair.public_key,
-        //                 input.nonce.as_ref(),
-        //                 input.signature,
-        //             )?;
-        //         }
+        task::spawn(async move {
+            let config = mugraph_node::Config {
+                seed: Some(seed),
+                secret_key: keypair.secret_key.to_string(),
+                public_key: keypair.public_key.to_string(),
+                ..Default::default()
+            };
 
-        //         for output in outputs {
-        //             let sig = sign_blinded(
-        //                 &self.keypair.secret_key,
-        //                 &hash_to_curve(output.commitment.0.as_ref()),
-        //             );
+            mugraph_node::start(&config).await?;
 
-        //             signed_outputs.push(sig);
-        //         }
-        //     }
-        // }
-
-        // Ok(Response {
-        //     outputs: signed_outputs,
-        // })
-
-        todo!();
+            Ok::<_, ErrReport>(())
+        });
     }
 }
