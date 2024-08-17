@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     extract::State,
@@ -9,13 +9,17 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto::{hash_to_curve, sign_blinded, verify},
-    types::*,
+    types::{
+        request::{v0::Request as V0Request, Request},
+        response::{v0::Response as V0Response, Response},
+        Keypair, Signature, Transaction, MAX_ATOMS,
+    },
 };
 use rand::prelude::*;
 use redb::{backends::InMemoryBackend, Builder, Database, TableDefinition};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Error {
     AlreadySpent,
     InvalidSignature,
@@ -33,59 +37,88 @@ pub async fn send(
     State(deps): State<Arc<Dependencies>>,
     Json(request): Json<Request>,
 ) -> axum::response::Response {
-    let mut signed_outputs = vec![];
-    let mut pre_balances = HashMap::new();
-    let mut post_balances = HashMap::new();
+    let mut outputs = vec![];
 
     match request {
-        Request::Simple { inputs, outputs } => {
-            for input in inputs {
-                pre_balances
-                    .entry(input.asset_id)
-                    .and_modify(|x| *x += input.amount as u128)
-                    .or_insert(input.amount as u128);
-                let read = deps.db.begin_read().unwrap();
-                let table = read.open_table(TABLE).unwrap();
-
-                if table.get(input.signature.0).unwrap_or(None).is_some() {
-                    return Json(Error::AlreadySpent).into_response();
-                }
-
-                if verify(
-                    &deps.keypair.public_key,
-                    input.nonce.as_ref(),
-                    input.signature,
-                )
-                .is_err()
-                {
-                    return Json(Error::InvalidSignature).into_response();
-                }
+        Request::V0(V0Request::Transaction(transaction)) => {
+            if let Err(err) = validate_balances(&transaction) {
+                return Json(err).into_response();
             }
 
-            for output in outputs {
-                post_balances
-                    .entry(output.asset_id)
-                    .and_modify(|x| *x += output.amount as u128)
-                    .or_insert(output.amount as u128);
+            for i in 0..MAX_ATOMS {
+                let is_input = transaction.input_mask.contains(i as u8);
 
-                let sig = sign_blinded(
-                    &deps.keypair.secret_key,
-                    &hash_to_curve(output.commitment.0.as_ref()),
-                );
+                if is_input {
+                    let read = deps.db.begin_read().unwrap();
+                    let table = read.open_table(TABLE).unwrap();
 
-                signed_outputs.push(sig);
+                    if transaction.signatures[i] == Signature::zero() {
+                        return Json(Error::InvalidSignature).into_response();
+                    }
+
+                    if table
+                        .get(transaction.signatures[i].0)
+                        .is_ok_and(|x| x.is_some())
+                    {
+                        return Json(Error::AlreadySpent).into_response();
+                    }
+
+                    if verify(
+                        &deps.keypair.public_key,
+                        transaction.commitments[i].as_ref(),
+                        transaction.signatures[i],
+                    )
+                    .is_err()
+                    {
+                        return Json(Error::InvalidSignature).into_response();
+                    }
+                } else {
+                    let sig = sign_blinded(
+                        &deps.keypair.secret_key,
+                        &hash_to_curve(transaction.commitments[i].as_ref()),
+                    );
+
+                    outputs.push(sig);
+                }
             }
         }
     }
 
-    if pre_balances != post_balances {
-        return Json(Error::InvalidRequest).into_response();
+    let versioned: Response = V0Response::Transaction { outputs }.into();
+    Json(versioned).into_response()
+}
+
+fn validate_balances(transaction: &Transaction) -> Result<(), Error> {
+    let mut inputs = BTreeMap::new();
+    let mut outputs = BTreeMap::new();
+
+    for i in 0..MAX_ATOMS {
+        let index = match transaction.asset_id_indexes.get(i) {
+            Some(index) => *index as usize,
+            None => continue,
+        };
+
+        let amount = transaction.amounts[i];
+        let is_input = transaction.input_mask.contains(i as u8);
+
+        if is_input {
+            inputs
+                .entry(index)
+                .and_modify(|x| *x += amount as u128)
+                .or_insert(amount as u128);
+        } else {
+            outputs
+                .entry(index)
+                .and_modify(|x| *x += amount as u128)
+                .or_insert(amount as u128);
+        }
     }
 
-    Json(Response {
-        outputs: signed_outputs,
-    })
-    .into_response()
+    if inputs != outputs {
+        return Err(Error::InvalidRequest);
+    }
+
+    Ok(())
 }
 
 pub struct Dependencies {

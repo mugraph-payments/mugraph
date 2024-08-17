@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::Signature;
 use crate::{types::Hash, util::BitSet8};
 
 pub const MAX_ATOMS: usize = 8;
@@ -10,11 +11,18 @@ pub const DATA_SIZE: usize = 256 * MAX_ATOMS;
     Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
 )]
 pub struct Transaction {
+    #[serde(rename = "m")]
     pub input_mask: BitSet8,
-    pub asset_id_indexes: [u8; MAX_ATOMS],
-    pub amounts: [u64; MAX_ATOMS],
-    pub asset_ids: [Hash; MAX_INPUTS],
-    pub nonces: [Hash; MAX_ATOMS],
+    #[serde(rename = "a_")]
+    pub asset_id_indexes: Vec<u8>,
+    #[serde(rename = "n")]
+    pub amounts: Vec<u64>,
+    #[serde(rename = "a")]
+    pub asset_ids: Vec<Hash>,
+    #[serde(rename = "c")]
+    pub commitments: Vec<Hash>,
+    #[serde(rename = "s")]
+    pub signatures: Vec<Signature>,
 }
 
 #[cfg(test)]
@@ -26,7 +34,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(464, size_of::<Transaction>());
+        assert_eq!(128, size_of::<Transaction>());
         assert_eq!(8, align_of::<Transaction>());
     }
 

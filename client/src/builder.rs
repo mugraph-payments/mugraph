@@ -28,7 +28,7 @@ impl TransactionBuilder {
         self.transaction.input_mask.insert(self.cursor);
         self.transaction.asset_id_indexes[self.cursor as usize] = asset_id_index;
         self.transaction.amounts[self.cursor as usize] = note.amount;
-        self.transaction.nonces[self.cursor as usize] = note.nonce;
+        self.transaction.commitments[self.cursor as usize] = note.nonce;
 
         self.cursor += 1;
 

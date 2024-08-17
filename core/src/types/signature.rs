@@ -5,23 +5,22 @@ use core::{
 
 use curve25519_dalek::ristretto::CompressedRistretto;
 use serde::{Deserialize, Serialize};
+use test_strategy::Arbitrary;
 
 use crate::{
     crypto::Point,
     error::{Error, Result},
 };
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Blinded<T>(pub T);
 
-#[derive(
-    Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
-)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct Signature(#[serde(with = "serde_bytes")] pub [u8; 32]);
+pub struct Signature(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 impl Signature {
     #[inline]

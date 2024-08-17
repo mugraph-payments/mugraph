@@ -13,7 +13,7 @@ use crate::crypto::Scalar;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(#[serde(with = "serde_bytes")] pub [u8; 32]);
+pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 impl Arbitrary for Hash {
     type Parameters = ();

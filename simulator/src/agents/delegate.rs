@@ -1,5 +1,4 @@
 use color_eyre::eyre::Result;
-use crypto::{hash_to_curve, sign_blinded, verify};
 use mugraph_client::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -33,32 +32,35 @@ impl Delegate {
         Ok(note)
     }
 
-    pub async fn recv(&mut self, request: Request) -> Result<Response> {
-        let mut signed_outputs = vec![];
+    #[allow(unused)]
+    pub async fn recv(&mut self, _request: Request) -> Result<Response> {
+        // let mut signed_outputs = vec![];
 
-        match request {
-            Request::Simple { inputs, outputs } => {
-                for input in inputs {
-                    verify(
-                        &self.keypair.public_key,
-                        input.nonce.as_ref(),
-                        input.signature,
-                    )?;
-                }
+        // match request {
+        //     Request::Transaction { inputs, outputs } => {
+        //         for input in inputs {
+        //             verify(
+        //                 &self.keypair.public_key,
+        //                 input.nonce.as_ref(),
+        //                 input.signature,
+        //             )?;
+        //         }
 
-                for output in outputs {
-                    let sig = sign_blinded(
-                        &self.keypair.secret_key,
-                        &hash_to_curve(output.commitment.0.as_ref()),
-                    );
+        //         for output in outputs {
+        //             let sig = sign_blinded(
+        //                 &self.keypair.secret_key,
+        //                 &hash_to_curve(output.commitment.0.as_ref()),
+        //             );
 
-                    signed_outputs.push(sig);
-                }
-            }
-        }
+        //             signed_outputs.push(sig);
+        //         }
+        //     }
+        // }
 
-        Ok(Response {
-            outputs: signed_outputs,
-        })
+        // Ok(Response {
+        //     outputs: signed_outputs,
+        // })
+
+        todo!();
     }
 }
