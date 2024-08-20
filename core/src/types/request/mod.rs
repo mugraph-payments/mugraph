@@ -20,9 +20,7 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let request = Request::V0(v0::Request::Transaction(
-            crate::types::Transaction::default(),
-        ));
+        let request = Request::V0(V0Request::Transaction(crate::types::Transaction::default()));
 
         let expected = json!({
             "n": "v0",

@@ -1,3 +1,4 @@
+pub mod builder;
 pub mod crypto;
 pub mod error;
 pub mod types;

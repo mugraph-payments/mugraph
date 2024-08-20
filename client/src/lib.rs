@@ -1,20 +1,11 @@
-use std::collections::HashMap;
-
-use mugraph_core::types::{Hash, Note};
-
 pub mod prelude {
     pub use mugraph_core::{
+        builder::{CoinSelectionStrategy, GreedyCoinSelection, TransactionBuilder},
         crypto,
         error::{Error, Result},
         types::{
-            request::{v0::Request as V0Request, Request},
-            response::{v0::Response as V0Response, Response},
-            Hash, Keypair, Note, PublicKey, SecretKey, Signature, Transaction,
+            Hash, Keypair, Note, PublicKey, Request, Response, SecretKey, Signature, Transaction,
+            V0Request, V0Response,
         },
     };
-}
-
-pub struct Wallet {
-    pub balance: HashMap<Hash, u64>,
-    pub notes: Vec<Note>,
 }

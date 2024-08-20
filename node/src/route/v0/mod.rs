@@ -7,11 +7,7 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
-    types::{
-        request::{Request, V0Request},
-        response::{Response, V0Response},
-        Signature, Transaction,
-    },
+    types::{Request, Response, Signature, Transaction, V0Request, V0Response},
 };
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
