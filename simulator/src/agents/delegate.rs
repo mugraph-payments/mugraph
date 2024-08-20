@@ -41,8 +41,8 @@ impl Delegate {
         task::spawn(async move {
             let config = mugraph_node::Config {
                 seed: Some(seed),
-                secret_key: keypair.secret_key.to_string(),
-                public_key: keypair.public_key.to_string(),
+                secret_key: Some(keypair.secret_key.to_string()),
+                public_key: Some(keypair.public_key.to_string()),
                 ..Default::default()
             };
 

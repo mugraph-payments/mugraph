@@ -23,10 +23,9 @@ pub struct User {
     pub id: u32,
     pub friends: Vec<Sender<Note>>,
     pub notes: Vec<Note>,
-    pub note_by_asset_id: HashMap<Hash, Vec<u32>>,
-    pub balance: HashMap<Hash, u64>,
-    pub rng: ChaCha20Rng,
     pub rx: Arc<RwLock<Receiver<Note>>>,
+    pub rng: ChaCha20Rng,
+    pub queue: Vec<(u32, Note)>,
 }
 
 impl User {
@@ -41,15 +40,13 @@ impl User {
 
 impl Default for User {
     fn default() -> Self {
-        let (_, rx) = tokio::sync::mpsc::channel(10);
         Self {
             id: Default::default(),
             friends: Default::default(),
             notes: Default::default(),
-            note_by_asset_id: Default::default(),
-            balance: Default::default(),
             rng: ChaCha20Rng::from_entropy(),
-            rx: Arc::new(rx.into()),
+            rx: Arc::new(tokio::sync::mpsc::channel(10).1.into()),
+            queue: Default::default(),
         }
     }
 }
@@ -74,22 +71,9 @@ pub fn bt(
     user.rx = Arc::new(rx.into());
 
     user.friends = (1..config.users)
-        .map(|_| context.senders[rng.gen_range(0..config.users)].clone())
+        .map(|_| context.senders[rng.gen_range(0..config.users) as usize].clone())
         .collect();
-
-    for note in notes.into_iter() {
-        user.note_by_asset_id
-            .entry(note.asset_id)
-            .or_default()
-            .push(user.notes.len() as u32);
-
-        user.balance
-            .entry(note.asset_id)
-            .and_modify(|e| *e += note.amount)
-            .or_insert(note.amount);
-
-        user.notes.push(note);
-    }
+    user.notes = notes;
 
     BT::new(While(Box::new(WaitForever), vec![send]), user)
 }
@@ -97,9 +81,14 @@ pub fn bt(
 pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
     let e: bonsai_bt::Event = UpdateArgs { dt }.into();
 
-    let u = user.get_blackboard().get_db();
+    let mut u = user.get_blackboard().get_db();
+
     while let Ok(note) = u.rx.write().await.try_recv() {
         u.notes.push(note);
+    }
+
+    while let Some((idx, note)) = u.queue.pop() {
+        u.friends[idx as usize].send(note).await.unwrap();
     }
 
     user.tick(&e, &mut |args, bb| {
@@ -107,7 +96,7 @@ pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
 
         match args.action {
             UserAction::CheckSpend => {
-                if user.balance.is_empty() {
+                if user.notes.is_empty() {
                     return (Status::Failure, 0.0);
                 }
 
@@ -119,10 +108,27 @@ pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
                 let to_idx = user.rng.gen_range(0..user.friends.len());
                 let to = user.friends[to_idx].clone();
 
-                let asset_id = user.balance.keys().choose(&mut user.rng).unwrap();
-                let amount = user.rng.gen_range(1..user.balance[asset_id]);
+                let mut builder = TransactionBuilder::new(GreedyCoinSelection);
 
-                info!(from = %user.id, to = to_idx, asset_id = %asset_id, amount = amount , "Send");
+                // Select a random note to spend
+                let note_idx = user.rng.gen_range(0..user.notes.len());
+                let note = user.notes.remove(note_idx);
+
+                // Decide on a random amount to spend (between 1 and the note's amount)
+                let spend_amount = user.rng.gen_range(1..=note.amount);
+
+                // Add the input note to the transaction
+                builder = builder.input(note.clone());
+
+                // Add the output for the recipient
+                builder = builder.output(note.asset_id, spend_amount);
+
+                // If there's change, add it as an output back to the sender
+                if spend_amount < note.amount {
+                    builder = builder.output(note.asset_id, note.amount - spend_amount);
+                }
+
+                info!("User {} spent {} to friend", user.id, spend_amount);
 
                 (Status::Success, 0.0)
             }

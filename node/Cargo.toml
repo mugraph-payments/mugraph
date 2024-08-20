@@ -16,3 +16,4 @@ clap = { version = "4.5.16", features = ["env", "derive"] }
 rand_chacha = { version = "0.3.1", features = ["simd"] }
 serde_json = "1.0.125"
 onlyerror = "0.1.4"
+tracing = "0.1.40"
