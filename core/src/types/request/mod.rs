@@ -3,8 +3,6 @@ use test_strategy::Arbitrary;
 
 pub mod v0;
 
-pub use v0::Request as V0Request;
-
 #[derive(Debug, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "n")]
 pub enum Request {
@@ -12,15 +10,22 @@ pub enum Request {
     V0(v0::Request),
 }
 
+impl From<v0::Request> for Request {
+    fn from(value: v0::Request) -> Self {
+        Self::V0(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::types::{Transaction, V0Request};
 
     #[test]
     fn test_serialization() {
-        let request = Request::V0(V0Request::Transaction(crate::types::Transaction::default()));
+        let request: Request = V0Request::Transaction(Transaction::default()).into();
 
         let expected = json!({
             "n": "v0",

@@ -1,11 +1,11 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
 use axum::Router;
 use clap::Parser;
 use color_eyre::eyre::Result;
 use mugraph_core::types::Keypair;
 use rand::prelude::*;
-use rand_chacha::{rand_core::CryptoRngCore, ChaCha20Rng};
+use rand_chacha::ChaCha20Rng;
 
 mod context;
 mod route;

@@ -1,6 +1,7 @@
 mod greedy;
+mod knapsack;
 
-pub use self::greedy::*;
+pub use self::{greedy::*, knapsack::*};
 use crate::types::*;
 
 pub trait CoinSelectionStrategy {

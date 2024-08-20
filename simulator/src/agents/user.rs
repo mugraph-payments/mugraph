@@ -74,7 +74,7 @@ pub fn bt(
     user.rx = Arc::new(rx.into());
 
     user.friends = (1..config.users)
-        .map(|_| context.senders[rng.gen_range(0..config.users) as usize].clone())
+        .map(|_| context.senders[rng.gen_range(0..config.users)].clone())
         .collect();
 
     for note in notes.into_iter() {
