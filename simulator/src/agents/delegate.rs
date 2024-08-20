@@ -1,18 +1,19 @@
-use color_eyre::eyre::{ErrReport, Result};
+use color_eyre::eyre::Result;
 use mugraph_client::prelude::*;
-use rand::prelude::*;
+use mugraph_node::{v0::transaction, Context};
 use rand_chacha::ChaCha20Rng;
-use tokio::task;
 
 pub struct Delegate {
     pub keypair: Keypair,
     pub rng: ChaCha20Rng,
+    pub context: Context,
 }
 
 impl Delegate {
     pub fn new(mut rng: ChaCha20Rng) -> Self {
         Self {
             keypair: Keypair::random(&mut rng),
+            context: Context::new(&mut rng).unwrap(),
             rng,
         }
     }
@@ -34,21 +35,7 @@ impl Delegate {
         Ok(note)
     }
 
-    pub fn spawn(&mut self) {
-        let seed = self.rng.gen();
-        let keypair = self.keypair;
-
-        task::spawn(async move {
-            let config = mugraph_node::Config {
-                seed: Some(seed),
-                secret_key: Some(keypair.secret_key.to_string()),
-                public_key: Some(keypair.public_key.to_string()),
-                ..Default::default()
-            };
-
-            mugraph_node::start(&config).await?;
-
-            Ok::<_, ErrReport>(())
-        });
+    pub async fn recv_transaction(&mut self, tx: Transaction) -> Result<Response> {
+        Ok(transaction(tx, &mut self.context).await?)
     }
 }

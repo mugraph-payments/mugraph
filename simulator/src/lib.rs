@@ -73,8 +73,6 @@ impl Simulator {
             ));
         }
 
-        delegate.spawn();
-
         Ok(Self {
             delegate,
             rng,

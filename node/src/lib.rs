@@ -11,6 +11,9 @@ use tracing::warn;
 mod context;
 mod route;
 
+pub use context::Context;
+pub use route::v0;
+
 #[derive(Debug, Clone, Parser)]
 pub struct Config {
     #[clap(long)]

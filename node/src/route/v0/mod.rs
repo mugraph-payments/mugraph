@@ -49,7 +49,7 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
-async fn transaction(transaction: Transaction, ctx: Context) -> Result<Response, Error> {
+pub async fn transaction(transaction: Transaction, ctx: &mut Context) -> Result<Response, Error> {
     let mut outputs = vec![];
 
     if !transaction.is_balanced() {
@@ -92,11 +92,11 @@ async fn transaction(transaction: Transaction, ctx: Context) -> Result<Response,
 }
 
 pub async fn rpc(
-    State(ctx): State<Context>,
+    State(mut ctx): State<Context>,
     Json(request): Json<Request>,
 ) -> axum::response::Response {
     match request {
-        Request::V0(V0Request::Transaction(t)) => match transaction(t, ctx).await {
+        Request::V0(V0Request::Transaction(t)) => match transaction(t, &mut ctx).await {
             Ok(response) => Json(response).into_response(),
             Err(e) => Json(e).into_response(),
         },
