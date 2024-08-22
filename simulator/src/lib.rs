@@ -1,12 +1,14 @@
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::mpsc::{self, Sender},
+};
 
 use agents::user::BTUser;
-use color_eyre::eyre::{ErrReport, Result};
+use color_eyre::eyre::{eyre, ErrReport, Result};
 use futures_util::future::try_join_all;
 use mugraph_client::prelude::*;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tokio::sync::mpsc::{self, Sender};
 
 use self::agents::{delegate::Delegate, user};
 pub use self::config::Config;
@@ -24,8 +26,19 @@ pub struct Simulator {
     context: Context,
 }
 
+#[derive(Clone)]
 pub struct Context {
     pub senders: Vec<Sender<Note>>,
+}
+
+impl Context {
+    pub fn send_to(&self, idx: usize, note: Note) -> Result<()> {
+        self.senders
+            .get(idx)
+            .ok_or(eyre!("Invalid user"))?
+            .send(note)
+            .map_err(|e| eyre!("Failed to send note: {e}"))
+    }
 }
 
 impl Simulator {
@@ -41,7 +54,7 @@ impl Simulator {
         let mut receivers = VecDeque::with_capacity(config.users);
 
         for _ in 0..config.users {
-            let (tx, rx) = mpsc::channel(10);
+            let (tx, rx) = mpsc::channel();
             context.senders.push(tx);
             receivers.push_back(rx);
         }
@@ -63,14 +76,7 @@ impl Simulator {
 
             assert_ne!(notes.len(), 0);
 
-            users.push(user::bt(
-                rng.clone(),
-                i as u32,
-                &context,
-                notes,
-                rx,
-                &config,
-            ));
+            users.push(user::bt(rng.clone(), i as u32, notes, rx, &config));
         }
 
         Ok(Self {
@@ -85,9 +91,11 @@ impl Simulator {
 
     pub async fn tick(mut self) -> Result<Self> {
         let timescale = self.timescale;
+        let delegate = self.delegate.clone();
+        let context = self.context.clone();
 
         self.users = try_join_all(self.users.into_iter().map(|u| async {
-            let user = user::tick(timescale, u).await?;
+            let user = user::tick(timescale, delegate.clone(), context.clone(), u).await?;
             Ok(user)
         }))
         .await

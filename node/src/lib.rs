@@ -54,12 +54,12 @@ impl Config {
         }
 
         let secret_key = match self.public_key.as_ref() {
-            Some(s) => serde_json::from_str(&s)?,
+            Some(s) => serde_json::from_str(s)?,
             None => pair.secret_key,
         };
 
         let public_key = match self.secret_key.as_ref() {
-            Some(p) => serde_json::from_str(&p)?,
+            Some(p) => serde_json::from_str(p)?,
             None => pair.public_key,
         };
 

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 mugraph-core = { path = "../core" }
-axum = "0.7.5"
+axum = { version = "0.7.5", features = ["macros"] }
 redb = "2.1.1"
 tempfile = "3.12.0"
 color-eyre = "0.6.3"

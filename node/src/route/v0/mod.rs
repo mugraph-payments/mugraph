@@ -49,19 +49,15 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
-pub async fn transaction(transaction: Transaction, ctx: &mut Context) -> Result<Response, Error> {
+pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
     let mut outputs = vec![];
-
-    if !transaction.is_balanced() {
-        return Err(Error::InvalidRequest);
-    }
 
     for atom in transaction.atoms.iter() {
         match atom.is_input() {
             true => {
                 let signature = atom
                     .signature
-                    .and_then(|s| transaction.signatures.get(s as usize).copied())
+                    .map(|s| transaction.signatures[s as usize])
                     .ok_or(Error::InvalidRequest)?;
 
                 let table = ctx.db_read().unwrap();
@@ -88,16 +84,17 @@ pub async fn transaction(transaction: Transaction, ctx: &mut Context) -> Result<
         }
     }
 
-    Ok(V0Response::Transaction { outputs }.into())
+    Ok(V0Response::Transaction { outputs })
 }
 
+#[axum::debug_handler]
 pub async fn rpc(
     State(mut ctx): State<Context>,
     Json(request): Json<Request>,
-) -> axum::response::Response {
+) -> impl IntoResponse {
     match request {
-        Request::V0(V0Request::Transaction(t)) => match transaction(t, &mut ctx).await {
-            Ok(response) => Json(response).into_response(),
+        Request::V0(V0Request::Transaction(t)) => match transaction_v0(t, &mut ctx) {
+            Ok(response) => Json(Response::V0(response)).into_response(),
             Err(e) => Json(e).into_response(),
         },
     }

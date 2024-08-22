@@ -1,15 +1,13 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::mpsc::{channel, Receiver};
 
 use bonsai_bt::*;
+use itertools::Itertools;
 use mugraph_client::prelude::*;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tokio::sync::{
-    mpsc::{Receiver, Sender},
-    RwLock,
-};
 use tracing::*;
 
+use super::delegate::Delegate;
 use crate::{Config, Context};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,14 +16,13 @@ pub enum UserAction {
     Spend,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct User {
     pub id: u32,
-    pub friends: Vec<Sender<Note>>,
+    pub friends: Vec<u32>,
     pub notes: Vec<Note>,
-    pub rx: Arc<RwLock<Receiver<Note>>>,
+    pub rx: Receiver<Note>,
     pub rng: ChaCha20Rng,
-    pub queue: Vec<(u32, Note)>,
 }
 
 impl User {
@@ -45,8 +42,7 @@ impl Default for User {
             friends: Default::default(),
             notes: Default::default(),
             rng: ChaCha20Rng::from_entropy(),
-            rx: Arc::new(tokio::sync::mpsc::channel(10).1.into()),
-            queue: Default::default(),
+            rx: channel().1,
         }
     }
 }
@@ -56,7 +52,6 @@ pub type BTUser = BT<UserAction, User>;
 pub fn bt(
     mut rng: ChaCha20Rng,
     id: u32,
-    context: &Context,
     notes: Vec<Note>,
     rx: Receiver<Note>,
     config: &Config,
@@ -68,27 +63,29 @@ pub fn bt(
     );
 
     let mut user = User::new(rng.clone(), id);
-    user.rx = Arc::new(rx.into());
+    user.rx = rx;
 
     user.friends = (1..config.users)
-        .map(|_| context.senders[rng.gen_range(0..config.users) as usize].clone())
-        .collect();
+        .map(|_| rng.gen_range(0..config.users) as u32)
+        .dedup()
+        .collect_vec();
     user.notes = notes;
 
     BT::new(While(Box::new(WaitForever), vec![send]), user)
 }
 
-pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
+pub async fn tick(
+    dt: f64,
+    mut delegate: Delegate,
+    context: Context,
+    mut user: BTUser,
+) -> Result<BTUser> {
     let e: bonsai_bt::Event = UpdateArgs { dt }.into();
 
-    let mut u = user.get_blackboard().get_db();
+    let u = user.get_blackboard().get_db();
 
-    while let Ok(note) = u.rx.write().await.try_recv() {
+    while let Ok(note) = u.rx.try_recv() {
         u.notes.push(note);
-    }
-
-    while let Some((idx, note)) = u.queue.pop() {
-        u.friends[idx as usize].send(note).await.unwrap();
     }
 
     user.tick(&e, &mut |args, bb| {
@@ -105,8 +102,9 @@ pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
             UserAction::Spend => {
                 assert!(!user.friends.is_empty());
 
+                // Select a random friend to send funds to
                 let to_idx = user.rng.gen_range(0..user.friends.len());
-                let to = user.friends[to_idx].clone();
+                let to = user.friends[to_idx];
 
                 let mut builder = TransactionBuilder::new(GreedyCoinSelection);
 
@@ -128,7 +126,49 @@ pub async fn tick(dt: f64, mut user: BTUser) -> Result<BTUser> {
                     builder = builder.output(note.asset_id, note.amount - spend_amount);
                 }
 
-                info!("User {} spent {} to friend", user.id, spend_amount);
+                // Build the transaction
+                let transaction = builder.build().expect("Failed to build transaction");
+
+                // Send the transaction to the delegate
+                let response = delegate
+                    .recv_transaction_v0(transaction)
+                    .expect("Failed to send transaction");
+
+                match response {
+                    V0Response::Transaction { outputs } => {
+                        // Create new notes from the outputs
+                        for (i, blinded_sig) in outputs.iter().enumerate() {
+                            let new_note = Note {
+                                amount: if i == 0 {
+                                    spend_amount
+                                } else {
+                                    note.amount - spend_amount
+                                },
+                                delegate: note.delegate,
+                                asset_id: note.asset_id,
+                                nonce: Hash::random(&mut user.rng),
+                                signature: crypto::unblind_signature(
+                                    blinded_sig,
+                                    &crypto::blind(&mut user.rng, &[]).factor,
+                                    &delegate.keypair.public_key,
+                                )
+                                .expect("Failed to unblind signature"),
+                            };
+
+                            if i == 0 {
+                                // Send the spent amount to the recipient
+                                context
+                                    .send_to(to as usize, new_note)
+                                    .expect("Failed to send note");
+                            } else {
+                                // Keep the change
+                                user.notes.push(new_note);
+                            }
+                        }
+                    }
+                }
+
+                info!("User {} spent {} to {}", user.id, spend_amount, to);
 
                 (Status::Success, 0.0)
             }

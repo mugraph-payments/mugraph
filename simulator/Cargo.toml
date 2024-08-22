@@ -11,6 +11,7 @@ color-eyre = "0.6.3"
 core_affinity = "0.8.1"
 ctrlc = "3.4.5"
 futures-util = "0.3.30"
+itertools = "0.13.0"
 mugraph-client = { path = "../client" }
 mugraph-node = { path = "../node" }
 num_cpus = "1.16.0"

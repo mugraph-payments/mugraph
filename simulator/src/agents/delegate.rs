@@ -1,8 +1,9 @@
 use color_eyre::eyre::Result;
 use mugraph_client::prelude::*;
-use mugraph_node::{v0::transaction, Context};
+use mugraph_node::{v0::transaction_v0, Context};
 use rand_chacha::ChaCha20Rng;
 
+#[derive(Debug, Clone)]
 pub struct Delegate {
     pub keypair: Keypair,
     pub rng: ChaCha20Rng,
@@ -35,7 +36,7 @@ impl Delegate {
         Ok(note)
     }
 
-    pub async fn recv_transaction(&mut self, tx: Transaction) -> Result<Response> {
-        Ok(transaction(tx, &mut self.context).await?)
+    pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response> {
+        Ok(transaction_v0(tx, &mut self.context)?)
     }
 }

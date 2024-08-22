@@ -40,10 +40,6 @@ pub struct Transaction {
 
 impl Transaction {
     pub fn is_balanced(&self) -> bool {
-        if self.atoms.len() > 8 {
-            return false;
-        }
-
         let mut pre_balances = BTreeMap::new();
         let mut post_balances = BTreeMap::new();
 
@@ -65,5 +61,38 @@ impl Transaction {
         }
 
         pre_balances == post_balances
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
+    use super::Transaction;
+
+    #[proptest]
+    fn test_transaction_balance(tx: Transaction) {
+        let mut balance_difference = BTreeMap::new();
+
+        for atom in &tx.atoms {
+            if let Some(asset_id) = tx.asset_ids.get(atom.asset_id as usize) {
+                let change = if atom.is_input() {
+                    atom.amount as i128
+                } else {
+                    -(atom.amount as i128)
+                };
+                *balance_difference.entry(asset_id).or_insert(0) += change;
+            } else {
+                // Invalid asset_id
+                prop_assert!(!tx.is_balanced());
+                return Ok(());
+            }
+        }
+
+        let is_balanced = balance_difference.values().all(|&balance| balance == 0);
+        prop_assert_eq!(tx.is_balanced(), is_balanced);
     }
 }
