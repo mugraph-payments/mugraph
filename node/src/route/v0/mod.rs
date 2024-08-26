@@ -11,6 +11,7 @@ use mugraph_core::{
 };
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::context::Context;
 
@@ -60,9 +61,11 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                     .map(|s| transaction.signatures[s as usize])
                     .ok_or(Error::InvalidRequest)?;
 
-                let table = ctx.db_read().unwrap();
+                let table = ctx.db_read().expect("Failed to read database table");
 
                 if signature == Signature::zero() {
+                    error!("Invalid signature, should not be empty");
+
                     return Err(Error::InvalidSignature);
                 }
 
@@ -70,6 +73,8 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                     .map_err(|_| Error::InvalidSignature)?;
 
                 if table.get(signature.0)?.is_some() {
+                    error!("Note has already been spent");
+
                     return Err(Error::AlreadySpent);
                 }
             }

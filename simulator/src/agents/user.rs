@@ -150,7 +150,7 @@ pub async fn tick(
                                 signature: crypto::unblind_signature(
                                     blinded_sig,
                                     &crypto::blind(&mut user.rng, &[]).factor,
-                                    &delegate.keypair.public_key,
+                                    &delegate.public_key(),
                                 )
                                 .expect("Failed to unblind signature"),
                             };
