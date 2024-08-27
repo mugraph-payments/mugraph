@@ -12,7 +12,7 @@ core_affinity = "0.8.1"
 ctrlc = "3.4.5"
 futures-util = "0.3.30"
 itertools = "0.13.0"
-mugraph-client = { path = "../client" }
+mugraph-core = { path = "../core" }
 mugraph-node = { path = "../node" }
 num_cpus = "1.16.0"
 onlyerror = "0.1.4"

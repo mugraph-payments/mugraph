@@ -2,7 +2,7 @@ use std::sync::mpsc::{channel, Receiver};
 
 use bonsai_bt::*;
 use itertools::Itertools;
-use mugraph_client::prelude::*;
+use mugraph_core::{builder::*, crypto, error::Result, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use tracing::*;

@@ -951,19 +951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mugraph-client"
-version = "0.0.1"
-dependencies = [
- "itertools",
- "mugraph-core",
- "proptest",
- "serde",
- "test-strategy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "mugraph-core"
 version = "0.0.1"
 dependencies = [
@@ -1013,7 +1000,7 @@ dependencies = [
  "ctrlc",
  "futures-util",
  "itertools",
- "mugraph-client",
+ "mugraph-core",
  "mugraph-node",
  "num_cpus",
  "onlyerror",
