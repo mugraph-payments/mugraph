@@ -94,6 +94,7 @@ impl Simulator {
         let delegate = self.delegate.clone();
         let context = self.context.clone();
 
+        self.users.shuffle(&mut self.rng);
         self.users = try_join_all(self.users.into_iter().map(|u| async {
             let user = user::tick(timescale, delegate.clone(), context.clone(), u).await?;
             Ok(user)

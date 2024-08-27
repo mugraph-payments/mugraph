@@ -56,12 +56,6 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
     for atom in transaction.atoms.iter() {
         match atom.is_input() {
             true => {
-                println!(
-                    "Processing atom {}, with signature id {:?}",
-                    atom.commitment(&transaction.asset_ids),
-                    atom.signature
-                );
-
                 let signature = atom
                     .signature
                     .map(|s| transaction.signatures[s as usize])
