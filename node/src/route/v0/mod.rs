@@ -21,8 +21,8 @@ pub enum Error {
     AlreadySpent,
     #[error("Invalid signature")]
     InvalidSignature,
-    #[error("Invalid request")]
-    InvalidRequest,
+    #[error("Invalid request: {reason}")]
+    InvalidRequest { reason: String },
     #[error("Database error: {0}")]
     Database(String),
 }
@@ -56,10 +56,18 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
     for atom in transaction.atoms.iter() {
         match atom.is_input() {
             true => {
+                println!(
+                    "Processing atom {}, with signature id {:?}",
+                    atom.commitment(&transaction.asset_ids),
+                    atom.signature
+                );
+
                 let signature = atom
                     .signature
                     .map(|s| transaction.signatures[s as usize])
-                    .ok_or(Error::InvalidRequest)?;
+                    .ok_or(Error::InvalidRequest {
+                        reason: "Atom {} is an input but it is not signed.".into(),
+                    })?;
 
                 let table = ctx.db_read().expect("Failed to read database table");
 
@@ -81,7 +89,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
             false => {
                 let sig = crypto::sign_blinded(
                     &ctx.keypair.secret_key,
-                    &crypto::hash_to_curve(atom.nonce.as_ref()),
+                    &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );
 
                 outputs.push(sig);

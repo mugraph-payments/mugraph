@@ -21,6 +21,14 @@ impl Context {
         let keypair = Keypair::random(rng);
 
         let db = Arc::new(Builder::new().create_with_backend(InMemoryBackend::new())?);
+
+        let w = db.begin_write()?;
+        {
+            let mut t = w.open_table(TABLE)?;
+            t.insert(&[0u8; 32], &[0u8; 32])?;
+        }
+        w.commit()?;
+
         let rng = ChaCha20Rng::from_rng(rng)?;
 
         Ok(Self { keypair, db, rng })

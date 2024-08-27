@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{PublicKey, Signature};
+use super::{PublicKey, Signature, COMMITMENT_INPUT_SIZE};
 use crate::types::Hash;
 
 pub const MAX_ATOMS: usize = 8;
@@ -22,7 +22,18 @@ pub struct Atom {
 
 impl Atom {
     pub fn is_input(&self) -> bool {
-        self.signature.is_none()
+        self.signature.is_some()
+    }
+
+    pub fn commitment(&self, assets: &[Hash]) -> Hash {
+        let mut output = [0u8; COMMITMENT_INPUT_SIZE];
+
+        output[0..32].copy_from_slice(self.delegate.as_ref());
+        output[32..64].copy_from_slice(assets[self.asset_id as usize].as_ref());
+        output[64..72].copy_from_slice(&self.amount.to_le_bytes());
+        output[72..104].copy_from_slice(self.nonce.as_ref());
+
+        Hash::digest(&output)
     }
 }
 
