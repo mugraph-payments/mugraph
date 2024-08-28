@@ -1,4 +1,7 @@
-use std::{thread, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 use color_eyre::eyre::{ErrReport, Result};
 use mugraph_simulator::{Config, Simulator};
@@ -58,9 +61,15 @@ fn main() -> Result<()> {
     let t = token.clone();
     ctrlc::set_handler(move || t.cancel()).expect("Error setting Ctrl-C handler");
 
-    thread::sleep(Duration::from_secs(
-        config.duration_secs.unwrap_or(u64::MAX),
-    ));
+    let start = Instant::now();
+
+    while !token.is_cancelled() {
+        if start.elapsed() > Duration::from_secs(config.duration_secs.unwrap_or(u64::MAX)) {
+            break;
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
 
     token.cancel();
     info!("Simulation reached end of duration, stopping.");
