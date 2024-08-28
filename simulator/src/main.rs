@@ -1,19 +1,29 @@
 use std::{
+    net::SocketAddr,
     thread,
     time::{Duration, Instant},
 };
 
 use color_eyre::eyre::{ErrReport, Result};
+use metrics::describe_counter;
+use metrics_exporter_tcp::TcpBuilder;
 use mugraph_simulator::{Config, Simulator};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tokio::{runtime::Builder, select};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
     tracing_subscriber::fmt::init();
+    TcpBuilder::new()
+        .listen_address("0.0.0.0:9999".parse::<SocketAddr>()?)
+        .install()?;
+
+    describe_counter!(
+        "processed_transactions",
+        "The number of processed transactions during the simulation"
+    );
 
     let cores = core_affinity::get_core_ids().unwrap();
     let token = CancellationToken::new();

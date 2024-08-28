@@ -4,8 +4,7 @@ use std::{
 };
 
 use agents::user::BTUser;
-use color_eyre::eyre::{eyre, ErrReport, Result};
-use futures_util::future::try_join_all;
+use color_eyre::eyre::{eyre, Result};
 use mugraph_core::types::*;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;

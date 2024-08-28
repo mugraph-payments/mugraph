@@ -2,6 +2,7 @@ use std::sync::mpsc::{channel, Receiver};
 
 use bonsai_bt::*;
 use itertools::Itertools;
+use metrics::counter;
 use mugraph_core::{builder::*, crypto, error::Result, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -163,7 +164,8 @@ pub fn tick(dt: f64, mut delegate: Delegate, context: Context, user: &mut BTUser
                     }
                 }
 
-                info!("User {} spent {} to {}", user.id, spend_amount, to);
+                counter!("processed_transactions").increment(1);
+                debug!("User {} spent {} to {}", user.id, spend_amount, to);
 
                 (Status::Success, 0.0)
             }

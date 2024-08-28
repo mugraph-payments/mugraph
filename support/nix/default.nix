@@ -19,11 +19,11 @@ let
     name = "mu-shell";
 
     packages = [
-      lib.defaults.rust
       checks.pre-commit.enabledPackages
-
       final.cargo-nextest
       final.cargo-watch
+      final.protobuf
+      lib.defaults.rust
     ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
   };
 in
