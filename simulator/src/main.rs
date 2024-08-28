@@ -5,7 +5,7 @@ use std::{
 };
 
 use color_eyre::eyre::{ErrReport, Result};
-use metrics::describe_counter;
+use metrics::{counter, describe_counter, describe_histogram};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_simulator::{Config, Simulator};
 use rand::prelude::*;
@@ -21,8 +21,21 @@ fn main() -> Result<()> {
         .install()?;
 
     describe_counter!(
-        "processed_transactions",
+        "mugraph.simulator.processed_transactions",
         "The number of processed transactions during the simulation"
+    );
+    describe_histogram!(
+        "mugraph.simulator.time_taken",
+        metrics::Unit::Milliseconds,
+        "The time taken to process a single transaction"
+    );
+    describe_counter!(
+        "mugraph.simulator.ticks",
+        "The number of ticks processed by the simulator"
+    );
+    describe_counter!(
+        "mugraph.simulator.user_ticks",
+        "The number of user ticks processed by the simulator"
     );
 
     let cores = core_affinity::get_core_ids().unwrap();
@@ -49,11 +62,16 @@ fn main() -> Result<()> {
             let mut simulator = Simulator::build(rng, config)?;
 
             loop {
+                let start = Instant::now();
+
                 if token.is_cancelled() {
                     break;
                 }
 
                 simulator = simulator.tick()?;
+
+                counter!("mugraph.simulator.time_elapsed_ms")
+                    .increment(start.elapsed().as_millis().try_into()?);
             }
 
             #[allow(unreachable_code)]

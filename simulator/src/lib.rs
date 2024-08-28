@@ -1,3 +1,5 @@
+#![feature(duration_millis_float)]
+
 use std::{
     collections::VecDeque,
     sync::mpsc::{self, Sender},
@@ -5,6 +7,7 @@ use std::{
 
 use agents::user::BTUser;
 use color_eyre::eyre::{eyre, Result};
+use metrics::counter;
 use mugraph_core::types::*;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -100,7 +103,10 @@ impl Simulator {
                 context.clone(),
                 &mut self.users[i],
             )?;
+            counter!("mugraph.simulator.user_ticks").increment(self.users.len() as u64);
         }
+
+        counter!("mugraph.simulator.ticks").increment(1);
 
         Ok(self)
     }

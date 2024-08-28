@@ -1,8 +1,11 @@
-use std::sync::mpsc::{channel, Receiver};
+use std::{
+    sync::mpsc::{channel, Receiver},
+    time::Instant,
+};
 
 use bonsai_bt::*;
 use itertools::Itertools;
-use metrics::counter;
+use metrics::{counter, histogram};
 use mugraph_core::{builder::*, crypto, error::Result, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -86,6 +89,7 @@ pub fn tick(dt: f64, mut delegate: Delegate, context: Context, user: &mut BTUser
 
     user.tick(&e, &mut |args, bb| {
         let user = bb.get_db();
+        let start = Instant::now();
 
         match args.action {
             UserAction::CheckSpend => {
@@ -164,7 +168,8 @@ pub fn tick(dt: f64, mut delegate: Delegate, context: Context, user: &mut BTUser
                     }
                 }
 
-                counter!("processed_transactions").increment(1);
+                counter!("mugraph.simulator.processed_transactions").increment(1);
+                histogram!("mugraph.simulator.time_taken").record(start.elapsed().as_millis_f64());
                 debug!("User {} spent {} to {}", user.id, spend_amount, to);
 
                 (Status::Success, 0.0)
