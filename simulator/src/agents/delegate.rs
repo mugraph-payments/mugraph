@@ -1,16 +1,12 @@
-use std::net::SocketAddr;
-
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, types::*};
 use mugraph_node::{v0::transaction_v0, Context};
-use reqwest::blocking::Client;
 
 use crate::Config;
 
 #[derive(Debug, Clone)]
 pub enum Target {
     Local,
-    Remote(SocketAddr),
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +20,7 @@ impl Delegate {
         Self {
             context: Context::new(&mut config.rng()).unwrap(),
             target: match config.node_url {
-                Some(h) => Target::Remote(h),
+                Some(_) => Target::Local,
                 None => Target::Local,
             },
         }
@@ -57,24 +53,6 @@ impl Delegate {
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response> {
         match self.target {
             Target::Local => Ok(transaction_v0(tx, &mut self.context)?),
-            Target::Remote(host) => self.send_remote(host, tx),
-        }
-    }
-
-    pub fn send_remote(&self, host: SocketAddr, tx: Transaction) -> Result<V0Response> {
-        let client = Client::new();
-        let url = format!("http://{}/v0/transaction", host);
-
-        let response = client.post(url).body(serde_json::to_vec(&tx)?).send()?;
-
-        if response.status().is_success() {
-            let v0_response: V0Response = response.json()?;
-            Ok(v0_response)
-        } else {
-            Err(color_eyre::eyre::eyre!(
-                "Remote server returned an error: {}",
-                response.status()
-            ))
         }
     }
 }

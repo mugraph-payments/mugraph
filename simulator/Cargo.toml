@@ -17,7 +17,6 @@ num_cpus = "1.16.0"
 onlyerror = "0.1.4"
 rand = "0.8.5"
 rand_chacha = { version = "0.3.1", features = ["simd"] }
-reqwest = { version = "0.12.5", features = ["blocking", "json"] }
 serde_json = "1.0.127"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["fmt"] }
