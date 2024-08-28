@@ -7,9 +7,7 @@ use std::{
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{counter, describe_counter, describe_histogram};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_simulator::{Config, Simulator};
-use rand::prelude::*;
-use rand_chacha::ChaCha20Rng;
+use mugraph_simulator::{Config, Simulation};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
@@ -33,10 +31,6 @@ fn main() -> Result<()> {
         "mugraph.simulator.ticks",
         "The number of ticks processed by the simulator"
     );
-    describe_counter!(
-        "mugraph.simulator.user_ticks",
-        "The number of user ticks processed by the simulator"
-    );
 
     let cores = core_affinity::get_core_ids().unwrap();
     let token = CancellationToken::new();
@@ -49,17 +43,9 @@ fn main() -> Result<()> {
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
-            let mut rng = config.rng();
+            info!("Starting simulation on core {i}.");
 
-            let seed = rng.gen();
-
-            info!(
-                seed = seed,
-                "Starting simulator on core {i} with pre-determined seed."
-            );
-            let rng = ChaCha20Rng::seed_from_u64(seed);
-
-            let mut simulator = Simulator::build(rng, config)?;
+            let mut sim = Simulation::new(config)?;
 
             loop {
                 let start = Instant::now();
@@ -68,7 +54,7 @@ fn main() -> Result<()> {
                     break;
                 }
 
-                simulator = simulator.tick()?;
+                sim.tick()?;
 
                 counter!("mugraph.simulator.time_elapsed_ms")
                     .increment(start.elapsed().as_millis().try_into()?);
