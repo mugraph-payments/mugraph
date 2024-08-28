@@ -13,54 +13,11 @@ use mugraph_core::{
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
-use self::agents::delegate::Delegate;
-pub use self::config::Config;
-
+mod action;
 mod agents;
 mod config;
 
-pub enum Action {
-    Transfer {
-        from: u32,
-        to: u32,
-        asset_id: Hash,
-        amount: u64,
-    },
-}
-
-impl Action {
-    pub fn random(rng: &mut ChaCha20Rng, config: &Config, sim: &Simulation) -> Self {
-        // We only have one type (for now)
-        match 0 {
-            0 => loop {
-                let from = rng.gen_range(0..config.users) as u32;
-
-                if sim.users[from as usize].notes.is_empty() {
-                    continue;
-                }
-
-                let to = rng.gen_range(0..config.users) as u32;
-
-                let note = sim.users[from as usize].notes.choose(rng).unwrap();
-                let asset_id = note.asset_id;
-
-                if note.amount == 1 {
-                    continue;
-                }
-
-                let amount = rng.gen_range(1..note.amount);
-
-                return Self::Transfer {
-                    from,
-                    to,
-                    asset_id,
-                    amount,
-                };
-            },
-            _ => unreachable!(),
-        }
-    }
-}
+pub use self::{action::Action, agents::delegate::Delegate, config::Config};
 
 pub struct Simulation {
     rng: ChaCha20Rng,
@@ -109,7 +66,7 @@ impl Simulation {
     pub fn tick(&mut self) -> Result<()> {
         let mut rng = self.rng.clone();
 
-        match Action::random(&mut rng, &self.config, &self) {
+        match Action::random(&mut rng, &self.config, self) {
             Action::Transfer {
                 from,
                 to,
