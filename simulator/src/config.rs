@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use clap::Parser;
 use rand::{prelude::*, thread_rng, SeedableRng};
 use rand_chacha::ChaChaRng;
@@ -6,27 +8,20 @@ use tracing::info;
 #[derive(Debug, Clone, Copy, Parser)]
 #[command(version, author, about)]
 pub struct Config {
+    #[clap(short = 'u', long, env = "MUGRAPH_SIMULATOR_NODE_URL")]
+    pub node_url: Option<SocketAddr>,
+
     #[clap(short, long, env = "MUGRAPH_SIMULATOR_SEED")]
     /// The seed to use for the simulation
     pub seed: Option<u64>,
-    #[clap(
-        short,
-        long = "users",
-        default_value = "32",
-        env = "MUGRAPH_SIMULATOR_USERS"
-    )]
+
+    #[clap(long = "users", default_value = "32", env = "MUGRAPH_SIMULATOR_USERS")]
     /// The amount of users to simulate
     pub users: usize,
-    #[clap(
-        short,
-        long = "assets",
-        default_value = "4",
-        env = "MUGRAPH_SIMULATOR_ASSETS"
-    )]
+    #[clap(long = "assets", default_value = "4", env = "MUGRAPH_SIMULATOR_ASSETS")]
     /// The amount of assets to simulate
     pub assets: usize,
     #[clap(
-        short,
         long = "notes",
         default_value = "32",
         env = "MUGRAPH_SIMULATOR_NOTES_PER_USER"

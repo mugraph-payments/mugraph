@@ -43,7 +43,7 @@ impl Context {
 
 impl Simulator {
     pub async fn build(mut rng: ChaCha20Rng, config: Config) -> Result<Self> {
-        let mut delegate = Delegate::new(rng.clone());
+        let mut delegate = Delegate::new(&config);
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
