@@ -118,9 +118,9 @@ impl Simulation {
                     }
                 }
 
-                counter!("mugraph.simulator.ticks").increment(1);
                 counter!("mugraph.simulator.processed_transactions").increment(1);
-                histogram!("mugraph.simulator.time_taken").record(start.elapsed().as_millis_f64());
+                histogram!("mugraph.simulator.time_elapsed")
+                    .record(start.elapsed().as_millis_f64());
             }
         }
 
