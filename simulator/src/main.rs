@@ -26,32 +26,25 @@ fn main() -> Result<()> {
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
-            let rt = Builder::new_current_thread().enable_all().build()?;
-            rt.block_on(async move {
-                let mut rng = config.rng();
+            let mut rng = config.rng();
 
-                let seed = rng.gen();
+            let seed = rng.gen();
 
-                info!(
-                    seed = seed,
-                    "Starting simulator on core {i} with pre-determined seed."
-                );
-                let rng = ChaCha20Rng::seed_from_u64(seed);
+            info!(
+                seed = seed,
+                "Starting simulator on core {i} with pre-determined seed."
+            );
+            let rng = ChaCha20Rng::seed_from_u64(seed);
 
-                let mut simulator = Simulator::build(rng, config).await?;
+            let mut simulator = Simulator::build(rng, config)?;
 
-                loop {
-                    select! {
-                        _ = token.cancelled() => break,
-                        t = simulator.tick() => {
-                            simulator = t?;
-                        }
-                    }
+            loop {
+                if token.is_cancelled() {
+                    break;
                 }
 
-                #[allow(unreachable_code)]
-                Ok::<_, ErrReport>(())
-            })?;
+                simulator = simulator.tick()?;
+            }
 
             #[allow(unreachable_code)]
             Ok::<_, ErrReport>(())

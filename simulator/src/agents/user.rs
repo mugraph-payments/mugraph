@@ -74,12 +74,7 @@ pub fn bt(
     BT::new(While(Box::new(WaitForever), vec![send]), user)
 }
 
-pub async fn tick(
-    dt: f64,
-    mut delegate: Delegate,
-    context: Context,
-    mut user: BTUser,
-) -> Result<BTUser> {
+pub fn tick(dt: f64, mut delegate: Delegate, context: Context, user: &mut BTUser) -> Result<()> {
     let e: bonsai_bt::Event = UpdateArgs { dt }.into();
 
     let u = user.get_blackboard().get_db();
@@ -175,5 +170,5 @@ pub async fn tick(
         }
     });
 
-    Ok(user)
+    Ok(())
 }

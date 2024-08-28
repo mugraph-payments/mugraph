@@ -38,7 +38,7 @@ impl Delegate {
         self.context.keypair.secret_key
     }
 
-    pub async fn emit(&mut self, asset_id: Hash, amount: u64) -> Result<Note> {
+    pub fn emit(&mut self, asset_id: Hash, amount: u64) -> Result<Note> {
         let mut note = Note {
             delegate: self.public_key(),
             asset_id,

@@ -42,7 +42,7 @@ impl Context {
 }
 
 impl Simulator {
-    pub async fn build(mut rng: ChaCha20Rng, config: Config) -> Result<Self> {
+    pub fn build(mut rng: ChaCha20Rng, config: Config) -> Result<Self> {
         let mut delegate = Delegate::new(&config);
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
@@ -69,7 +69,7 @@ impl Simulator {
                 let asset_id = assets[idx];
                 let amount = rng.gen_range(1..1_000_000_000);
 
-                let note = delegate.emit(asset_id, amount).await?;
+                let note = delegate.emit(asset_id, amount)?;
 
                 notes.push(note);
             }
@@ -89,19 +89,19 @@ impl Simulator {
         })
     }
 
-    pub async fn tick(mut self) -> Result<Self> {
+    pub fn tick(mut self) -> Result<Self> {
         let timescale = self.timescale;
         let delegate = self.delegate.clone();
         let context = self.context.clone();
 
-        self.users.shuffle(&mut self.rng);
-        self.users = try_join_all(self.users.into_iter().map(|u| async {
-            let user = user::tick(timescale, delegate.clone(), context.clone(), u).await?;
-            Ok(user)
-        }))
-        .await
-        // This whole error handling thing was too much for poor old rust type system
-        .map_err(|e: ErrReport| e)?;
+        for i in 0..self.users.len() {
+            user::tick(
+                timescale,
+                delegate.clone(),
+                context.clone(),
+                &mut self.users[i],
+            )?;
+        }
 
         Ok(self)
     }
