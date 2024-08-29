@@ -23,7 +23,6 @@ pub struct Config {
 }
 
 impl Config {
-    #[inline]
     pub fn new() -> Self {
         Self::default()
     }

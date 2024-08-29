@@ -6,7 +6,7 @@ use crate::types::{Hash, Signature};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Error, Clone, Serialize, Deserialize, Arbitrary)]
+#[derive(Debug, Error, Clone, Serialize, Deserialize, Arbitrary, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Error {
     #[error("Server error: {reason}")]
