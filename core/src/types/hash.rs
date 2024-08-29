@@ -3,10 +3,10 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+use blake3::{Hash as Blake3Hash, Hasher};
 use curve25519_dalek::ristretto::CompressedRistretto;
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::crypto::Scalar;
 
@@ -35,7 +35,7 @@ impl Hash {
 
     #[inline]
     pub fn digest(input: &[u8]) -> Self {
-        let mut hasher = Sha256::new();
+        let mut hasher = Hasher::new();
         hasher.update(input);
         let result = hasher.finalize();
 
@@ -84,6 +84,12 @@ impl From<[u32; 8]> for Hash {
     #[inline]
     fn from(data: [u32; 8]) -> Self {
         Hash(bytemuck::cast(data))
+    }
+}
+
+impl From<Blake3Hash> for Hash {
+    fn from(value: Blake3Hash) -> Self {
+        Hash(*value.as_bytes())
     }
 }
 

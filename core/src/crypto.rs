@@ -1,6 +1,5 @@
-use curve25519_dalek::digest::*;
+use blake3::Hasher;
 use rand::prelude::{CryptoRng, RngCore};
-use sha2::{Digest, Sha512};
 
 use crate::{error::Result, types::*};
 
@@ -53,13 +52,13 @@ pub fn verify(public_key: &PublicKey, message: &[u8], signature: Signature) -> R
 }
 
 fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
-    let mut hash = Sha512::new();
+    let mut hasher = Hasher::new();
 
     for d in data {
-        hash = hash.chain(d);
+        hasher.update(d);
     }
 
-    Scalar::from_hash(hash)
+    Hash(*hasher.finalize().as_bytes()).into()
 }
 
 pub fn hash_to_curve(message: &[u8]) -> Point {
