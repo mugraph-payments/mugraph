@@ -11,7 +11,7 @@ use rand_chacha::ChaCha20Rng;
 fn setup() -> (Transaction, Context) {
     let mut rng = ChaCha20Rng::seed_from_u64(42); // Use a fixed seed for reproducibility
     let context = Context::new(&mut rng).unwrap();
-    let delegate_keypair = context.keypair.clone();
+    let delegate_keypair = context.keypair;
 
     // Create a note
     let asset_id = Hash::random(&mut rng);
