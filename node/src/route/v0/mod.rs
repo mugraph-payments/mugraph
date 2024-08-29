@@ -52,32 +52,43 @@ pub async fn health() -> &'static str {
 
 pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
     let mut outputs = vec![];
+    let mut errors = vec![];
 
     for atom in transaction.atoms.iter() {
         match atom.is_input() {
             true => {
-                let signature = atom
-                    .signature
-                    .map(|s| transaction.signatures[s as usize])
-                    .ok_or(Error::InvalidRequest {
-                        reason: "Atom {} is an input but it is not signed.".into(),
-                    })?;
+                let signature = match atom.signature {
+                    Some(s) if transaction.signatures[s as usize] == Signature::zero() => {
+                        errors.push(Error::InvalidSignature);
+                        continue;
+                    }
+                    Some(s) => transaction.signatures[s as usize],
+                    None => {
+                        errors.push(Error::InvalidRequest {
+                            reason: "Atom {} is an input but it is not signed.".into(),
+                        });
+
+                        continue;
+                    }
+                };
 
                 let table = ctx.db_read().expect("Failed to read database table");
 
-                if signature == Signature::zero() {
-                    error!("Invalid signature, should not be empty");
-
-                    return Err(Error::InvalidSignature);
+                match crypto::verify(&ctx.keypair.public_key, atom.nonce.as_ref(), signature) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        errors.push(Error::InvalidSignature);
+                    }
                 }
 
-                crypto::verify(&ctx.keypair.public_key, atom.nonce.as_ref(), signature)
-                    .map_err(|_| Error::InvalidSignature)?;
-
-                if table.get(signature.0)?.is_some() {
-                    error!("Note has already been spent");
-
-                    return Err(Error::AlreadySpent);
+                match table.get(signature.0) {
+                    Ok(Some(_)) => {
+                        errors.push(Error::AlreadySpent);
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        errors.push(Error::Database(e.to_string()));
+                    }
                 }
             }
             false => {
@@ -90,6 +101,8 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
             }
         }
     }
+
+    if !errors.is_empty() {}
 
     Ok(V0Response::Transaction { outputs })
 }
