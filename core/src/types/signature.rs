@@ -31,9 +31,15 @@ impl Signature {
     #[inline]
     pub fn to_point(self) -> Result<Point> {
         CompressedRistretto::from_slice(&self.0)
-            .map_err(|_| Error::InvalidPoint)?
+            .map_err(|e| Error::InvalidSignature {
+                reason: e.to_string(),
+                signature: self,
+            })?
             .decompress()
-            .ok_or(Error::InvalidPoint)
+            .ok_or(Error::InvalidSignature {
+                reason: "failed to decompress ristretto point".to_string(),
+                signature: self,
+            })
     }
 }
 

@@ -7,37 +7,12 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
+    error::Error,
     types::{Request, Response, Signature, Transaction, V0Request, V0Response},
 };
 use rand::prelude::*;
-use serde::{Deserialize, Serialize};
-use tracing::error;
 
 use crate::context::Context;
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, onlyerror::Error)]
-pub enum Error {
-    #[error("Input has already been spent")]
-    AlreadySpent,
-    #[error("Invalid signature")]
-    InvalidSignature,
-    #[error("Invalid request: {reason}")]
-    InvalidRequest { reason: String },
-    #[error("Database error: {0}")]
-    Database(String),
-}
-
-impl From<redb::Error> for Error {
-    fn from(e: redb::Error) -> Self {
-        Error::Database(e.to_string())
-    }
-}
-
-impl From<redb::StorageError> for Error {
-    fn from(e: redb::StorageError) -> Self {
-        Error::Database(e.to_string())
-    }
-}
 
 pub fn router<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Router> {
     Ok(Router::new()
@@ -50,7 +25,11 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
-pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
+#[inline]
+pub fn transaction_v0(
+    transaction: Transaction,
+    ctx: &mut Context,
+) -> Result<V0Response, Vec<Error>> {
     let mut outputs = vec![];
     let mut errors = vec![];
 
@@ -59,16 +38,20 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
             true => {
                 let signature = match atom.signature {
                     Some(s) if transaction.signatures[s as usize] == Signature::zero() => {
-                        errors.push(Error::InvalidSignature);
-                        continue;
+                        errors.push(Error::InvalidSignature {
+                            reason: "Signature can not be empty".to_string(),
+                            signature: Signature::zero(),
+                        });
+
+                        Signature::zero()
                     }
                     Some(s) => transaction.signatures[s as usize],
                     None => {
-                        errors.push(Error::InvalidRequest {
+                        errors.push(Error::InvalidAtom {
                             reason: "Atom {} is an input but it is not signed.".into(),
                         });
 
-                        continue;
+                        Signature::zero()
                     }
                 };
 
@@ -76,18 +59,23 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
 
                 match crypto::verify(&ctx.keypair.public_key, atom.nonce.as_ref(), signature) {
                     Ok(_) => {}
-                    Err(_) => {
-                        errors.push(Error::InvalidSignature);
+                    Err(e) => {
+                        errors.push(Error::InvalidSignature {
+                            reason: e.to_string(),
+                            signature,
+                        });
                     }
                 }
 
                 match table.get(signature.0) {
                     Ok(Some(_)) => {
-                        errors.push(Error::AlreadySpent);
+                        errors.push(Error::AlreadySpent { signature });
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        errors.push(Error::Database(e.to_string()));
+                        errors.push(Error::ServerError {
+                            reason: e.to_string(),
+                        });
                     }
                 }
             }
@@ -102,7 +90,9 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
         }
     }
 
-    if !errors.is_empty() {}
+    if !errors.is_empty() {
+        return Err(errors);
+    }
 
     Ok(V0Response::Transaction { outputs })
 }
@@ -115,7 +105,7 @@ pub async fn rpc(
     match request {
         Request::V0(V0Request::Transaction(t)) => match transaction_v0(t, &mut ctx) {
             Ok(response) => Json(Response::V0(response)).into_response(),
-            Err(e) => Json(e).into_response(),
+            Err(errors) => Json(Response::V0(V0Response::Error { errors })).into_response(),
         },
     }
 }

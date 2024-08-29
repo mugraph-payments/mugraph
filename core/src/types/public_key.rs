@@ -34,14 +34,18 @@ impl PublicKey {
 
     #[inline]
     pub fn to_compressed_point(&self) -> Result<CompressedRistretto, Error> {
-        CompressedRistretto::from_slice(&self.0).map_err(|_| Error::InvalidKey)
+        CompressedRistretto::from_slice(&self.0).map_err(|e| Error::InvalidKey {
+            reason: e.to_string(),
+        })
     }
 
     #[inline]
     pub fn to_point(&self) -> Result<RistrettoPoint, Error> {
         self.to_compressed_point()?
             .decompress()
-            .ok_or(Error::InvalidKey)
+            .ok_or(Error::InvalidKey {
+                reason: "Failed to decompress ristretto point".to_string(),
+            })
     }
 
     #[inline]

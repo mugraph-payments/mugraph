@@ -116,6 +116,9 @@ impl Simulation {
                             }
                         }
                     }
+                    V0Response::Error { errors } => {
+                        return Err(errors[0].clone())?;
+                    }
                 }
 
                 counter!("mugraph.simulator.processed_transactions").increment(1);

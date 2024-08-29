@@ -50,7 +50,9 @@ impl Config {
         }
 
         if self.public_key.is_some() && self.secret_key.is_none() {
-            Err(Error::InvalidKey)?;
+            Err(Error::InvalidKey {
+                reason: "Keypair contains public key but no private key".to_string(),
+            })?;
         }
 
         let secret_key = match self.public_key.as_ref() {

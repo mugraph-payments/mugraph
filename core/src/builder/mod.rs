@@ -55,7 +55,11 @@ impl<S: CoinSelectionStrategy> TransactionBuilder<S> {
 
             let total_input: u64 = selected_notes.iter().map(|n| n.amount).sum();
             if total_input < amount {
-                return Err(Error::InsufficientFunds);
+                return Err(Error::InsufficientFunds {
+                    asset_id,
+                    expected: amount,
+                    got: total_input,
+                });
             }
 
             // Add input atoms

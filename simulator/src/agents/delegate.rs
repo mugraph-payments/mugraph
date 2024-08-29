@@ -52,7 +52,9 @@ impl Delegate {
 
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response> {
         match self.target {
-            Target::Local => Ok(transaction_v0(tx, &mut self.context)?),
+            Target::Local => {
+                transaction_v0(tx, &mut self.context).map_err(|errs| errs[0].clone().into())
+            }
         }
     }
 }
