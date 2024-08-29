@@ -36,4 +36,7 @@ pub enum Error {
 
     #[error("Atom is invalid: {reason}")]
     InvalidAtom { reason: String },
+
+    #[error("Other error")]
+    Other,
 }

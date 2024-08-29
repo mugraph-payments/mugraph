@@ -4,7 +4,7 @@ use mugraph_core::{
     crypto,
     types::*,
 };
-use mugraph_node::{v0::transaction_v0, Context};
+use mugraph_node::{context::Context, v0::transaction_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 

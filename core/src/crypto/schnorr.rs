@@ -1,7 +1,10 @@
 use curve25519_dalek::ristretto::CompressedRistretto;
 use rand::{CryptoRng, RngCore};
 
-use crate::{crypto::*, error::Result};
+use crate::{
+    crypto::*,
+    error::{Error, Result},
+};
 
 pub struct Signature {
     r: Hash,
@@ -18,7 +21,7 @@ pub fn sign<R: RngCore + CryptoRng>(
     let r = G * k;
     let r_ = r.compress().to_bytes();
 
-    let e = hash_to_scalar(&[&r_, message]);
+    let e = hash_to_scalar(&[&r_, message, secret_key.public().to_bytes()]);
 
     let s = k + e * secret_key.to_scalar();
     let s_ = s.to_bytes();
@@ -32,18 +35,18 @@ pub fn sign<R: RngCore + CryptoRng>(
 pub fn verify(public_key: &PublicKey, signature: &Signature, message: &[u8]) -> Result<()> {
     let s = Scalar::from_bytes_mod_order(*signature.s);
     let r = CompressedRistretto::from_slice(&*signature.r)
-        .unwrap()
+        .map_err(|_| Error::Other)?
         .decompress()
-        .unwrap();
+        .ok_or(Error::Other)?;
 
-    let e = hash_to_scalar(&[&*signature.r, message]);
+    let e = hash_to_scalar(&[&*signature.r, message, public_key.to_bytes()]);
     let lhs = G * s;
     let rhs = r + public_key.to_point()? * e;
 
     if lhs == rhs {
         Ok(())
     } else {
-        todo!();
+        Err(Error::Other)
     }
 }
 
@@ -107,9 +110,25 @@ mod tests {
         let mut signed_ = signed;
         signed_.r[0] = signed_.r[0].wrapping_add(1);
 
-        prop_assert!(matches!(
+        prop_assert_eq!(
             verify(&pair.public_key, &signed_, &message),
-            Err(_)
-        ));
+            Err(Error::Other)
+        );
+    }
+
+    #[proptest]
+    fn test_verify_rogue_key(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
+        let signed = sign(&mut rng, &pair.secret_key, &message);
+
+        // Create a rogue public key
+        let rogue_scalar = Scalar::random(&mut rng);
+        let pubkey_point: Point = pair.public_key.to_point()?;
+        let rogue_public_key = pubkey_point + G * rogue_scalar;
+
+        // The signature should not verify with the rogue key
+        prop_assert_eq!(
+            verify(&rogue_public_key.into(), &signed, &message),
+            Err(Error::Other)
+        );
     }
 }

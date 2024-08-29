@@ -33,6 +33,11 @@ impl PublicKey {
     }
 
     #[inline]
+    pub fn to_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    #[inline]
     pub fn to_compressed_point(&self) -> Result<CompressedRistretto, Error> {
         CompressedRistretto::from_slice(&self.0).map_err(|e| Error::InvalidKey {
             reason: e.to_string(),
