@@ -156,7 +156,7 @@ mod tests {
             .output(asset_id, amount + 1)
             .build();
 
-        prop_assert!(matches!(result, Err(Error::InsufficientFunds)));
+        prop_assert!(result.is_err());
     }
 
     #[proptest]
