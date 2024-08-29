@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use mugraph_node::{start, Config};
+use mugraph_node::{config::Config, start};
 
 #[tokio::main]
 async fn main() -> Result<()> {

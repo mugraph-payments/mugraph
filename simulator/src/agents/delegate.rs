@@ -1,6 +1,6 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, types::*};
-use mugraph_node::{v0::transaction_v0, Context};
+use mugraph_node::{context::Context, v0::transaction_v0};
 
 use crate::Config;
 
