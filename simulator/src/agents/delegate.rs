@@ -1,10 +1,10 @@
+use std::net::SocketAddr;
+
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
 use mugraph_node::{context::Context, v0::transaction_v0};
 use rand::prelude::*;
 use tracing::info;
-
-use crate::Config;
 
 #[derive(Debug, Clone)]
 pub enum Target {
@@ -18,9 +18,11 @@ pub struct Delegate {
 }
 
 impl Delegate {
-    pub fn new(config: &Config) -> Result<Self, Error> {
-        let mut rng = config.rng();
-        let failure_rate = rng.gen_range(0.01f64..1.0f64);
+    pub fn new<R: Rng + CryptoRng>(
+        rng: &mut R,
+        node_url: Option<SocketAddr>,
+    ) -> Result<Self, Error> {
+        let failure_rate = rng.gen_range(0.1f64..1.0f64);
 
         info!(
             "Starting delegate with failure rate {:.2}%",
@@ -28,8 +30,8 @@ impl Delegate {
         );
 
         Ok(Self {
-            context: Context::new_test(&mut rng, failure_rate)?,
-            target: match config.node_url {
+            context: Context::new_test(rng, failure_rate)?,
+            target: match node_url {
                 Some(_) => Target::Local,
                 None => Target::Local,
             },

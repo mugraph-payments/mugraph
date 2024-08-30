@@ -8,8 +8,8 @@ use redb::{backends::InMemoryBackend, Builder, Database, ReadOnlyTable, TableDef
 
 use crate::database::TestBackend;
 
-// Maps from Commitment to Signature
-pub const TABLE: TableDefinition<[u8; 32], [u8; 32]> = TableDefinition::new("notes");
+// Maps from Signature to bool
+pub const TABLE: TableDefinition<[u8; 32], bool> = TableDefinition::new("notes");
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -27,34 +27,35 @@ impl Context {
         let w = db.begin_write()?;
         {
             let mut t = w.open_table(TABLE)?;
-            t.insert(&[0u8; 32], &[0u8; 32])?;
+            t.insert(&[0u8; 32], false)?;
         }
         w.commit()?;
 
-        let rng = ChaCha20Rng::from_rng(rng)?;
+        let rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
         Ok(Self { keypair, db, rng })
     }
 
     pub fn new_test<R: CryptoRng + RngCore>(rng: &mut R, failure_rate: f64) -> Result<Self, Error> {
         let keypair = Keypair::random(rng);
-        let rng = ChaCha20Rng::from_rng(rng)?;
+        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
-        let db = Arc::new(
-            Builder::new().create_with_backend(TestBackend::new(rng.clone(), failure_rate))?,
-        );
+        let db = Arc::new(Builder::new().create_with_backend(TestBackend::new(
+            ChaCha20Rng::seed_from_u64(rng.gen()),
+            failure_rate,
+        ))?);
 
         let w = db.begin_write()?;
         {
             let mut t = w.open_table(TABLE)?;
-            t.insert(&[0u8; 32], &[0u8; 32])?;
+            t.insert(&[0u8; 32], false)?;
         }
         w.commit()?;
 
         Ok(Self { keypair, db, rng })
     }
 
-    pub fn db_read(&self) -> Result<ReadOnlyTable<[u8; 32], [u8; 32]>> {
+    pub fn db_read(&self) -> Result<ReadOnlyTable<[u8; 32], bool>> {
         let r = self.db.begin_read()?;
 
         Ok(r.open_table(TABLE)?)

@@ -84,7 +84,7 @@ pub fn transaction_v0(
         let mut t = w.open_table(TABLE).unwrap();
 
         for input in consumed_inputs.into_iter() {
-            t.insert(input.as_ref(), input.as_ref()).unwrap();
+            t.insert(input.as_ref(), true).unwrap();
         }
     }
     w.commit().unwrap();

@@ -1,6 +1,6 @@
 #![feature(duration_millis_float)]
 
-use std::time::Instant;
+use std::{net::SocketAddr, time::Instant};
 
 use agents::user::User;
 use color_eyre::eyre::Result;
@@ -31,7 +31,7 @@ pub struct Simulation {
 impl Simulation {
     pub fn new(config: Config) -> Result<Self> {
         let mut rng = config.rng();
-        let mut delegate = Self::build_delegate(&config)?;
+        let mut delegate = Self::build_delegate(&mut rng, config.node_url)?;
 
         info!("Delegate initialized");
 
@@ -68,9 +68,12 @@ impl Simulation {
         })
     }
 
-    fn build_delegate(config: &Config) -> Result<Delegate, Error> {
+    fn build_delegate(
+        rng: &mut ChaCha20Rng,
+        node_url: Option<SocketAddr>,
+    ) -> Result<Delegate, Error> {
         loop {
-            match Delegate::new(config) {
+            match Delegate::new(rng, node_url) {
                 Err(Error::StorageError { reason }) => {
                     warn!(
                         reason = reason,
