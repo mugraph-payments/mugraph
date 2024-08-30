@@ -17,8 +17,10 @@ pub struct Delegate {
 
 impl Delegate {
     pub fn new(config: &Config) -> Self {
+        let mut rng = config.rng();
+
         Self {
-            context: Context::new(&mut config.rng()).unwrap(),
+            context: Context::new_test(&mut rng, 1.0).unwrap(),
             target: match config.node_url {
                 Some(_) => Target::Local,
                 None => Target::Local,

@@ -3,6 +3,7 @@ use color_eyre::eyre::Result;
 
 pub mod config;
 pub mod context;
+pub mod database;
 pub mod route;
 
 pub use route::v0;

@@ -6,6 +6,8 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::InMemoryBackend, Builder, Database, ReadOnlyTable, TableDefinition};
 
+use crate::database::TestBackend;
+
 // Maps from Commitment to Signature
 const TABLE: TableDefinition<[u8; 32], [u8; 32]> = TableDefinition::new("notes");
 
@@ -30,6 +32,24 @@ impl Context {
         w.commit()?;
 
         let rng = ChaCha20Rng::from_rng(rng)?;
+
+        Ok(Self { keypair, db, rng })
+    }
+
+    pub fn new_test<R: CryptoRng + RngCore>(rng: &mut R, failure_ratio: f64) -> Result<Self> {
+        let keypair = Keypair::random(rng);
+        let rng = ChaCha20Rng::from_rng(rng)?;
+
+        let db = Arc::new(
+            Builder::new().create_with_backend(TestBackend::new(rng.clone(), failure_ratio))?,
+        );
+
+        let w = db.begin_write()?;
+        {
+            let mut t = w.open_table(TABLE)?;
+            t.insert(&[0u8; 32], &[0u8; 32])?;
+        }
+        w.commit()?;
 
         Ok(Self { keypair, db, rng })
     }

@@ -12,6 +12,9 @@ pub enum Error {
     #[error("Server error: {reason}")]
     ServerError { reason: String },
 
+    #[error("Storage error: {reason}")]
+    StorageError { reason: String },
+
     #[error("Insufficient funds for {asset_id}, expected {expected} but got {got}")]
     InsufficientFunds {
         asset_id: Hash,
@@ -39,4 +42,18 @@ pub enum Error {
 
     #[error("Other error")]
     Other,
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::StorageError {
+            reason: e.to_string(),
+        }
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(e: Error) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+    }
 }
