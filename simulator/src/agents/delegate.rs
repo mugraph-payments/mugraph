@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use mugraph_core::{crypto, types::*};
+use mugraph_core::{crypto, error::Error, types::*};
 use mugraph_node::{context::Context, v0::transaction_v0};
 use rand::prelude::*;
 use tracing::info;
@@ -60,7 +60,7 @@ impl Delegate {
         Ok(note)
     }
 
-    pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response> {
+    pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
         match self.target {
             Target::Local => {
                 transaction_v0(tx, &mut self.context).map_err(|errs| errs[0].clone().into())
