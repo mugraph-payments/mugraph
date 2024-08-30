@@ -13,7 +13,7 @@ use mugraph_core::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 mod action;
 mod agents;
@@ -32,6 +32,9 @@ impl Simulation {
     pub fn new(config: Config) -> Result<Self> {
         let mut rng = config.rng();
         let mut delegate = Self::build_delegate(&config)?;
+
+        info!("Delegate initialized");
+
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
@@ -68,7 +71,14 @@ impl Simulation {
     fn build_delegate(config: &Config) -> Result<Delegate, Error> {
         loop {
             match Delegate::new(config) {
-                Err(Error::StorageError { reason: _ }) => continue,
+                Err(Error::StorageError { reason }) => {
+                    warn!(
+                        reason = reason,
+                        "Got a storage error when starting delegate, trying again"
+                    );
+
+                    continue;
+                }
                 v => return Ok(v?),
             }
         }
@@ -150,26 +160,30 @@ impl Simulation {
 
                 let transaction = transaction.build()?;
 
-                loop {
-                    match self.process_transaction(transaction.clone(), &note, from, to, amount) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            warn!("Transaction failed, retrying: {e}");
-                            match self.process_transaction(
-                                transaction.clone(),
-                                &note,
-                                from,
-                                to,
-                                amount,
-                            ) {
-                                Err(e @ Error::AlreadySpent { signature }) => {
-                                    error!("Consistency error: {signature} was spent on a failed transaction");
-                                    Err(e)?;
-                                }
-                                Ok(_) => break,
-                                Err(_) => continue,
+                match self.process_transaction(transaction.clone(), &note, from, to, amount) {
+                    Ok(_) => {}
+                    Err(Error::StorageError { reason }) => {
+                        warn!("Transaction failed, retrying: {reason}");
+                        counter!("mugraph.simulator.injected_failures").increment(1);
+
+                        match self.process_transaction(transaction.clone(), &note, from, to, amount)
+                        {
+                            Err(e @ Error::AlreadySpent { signature }) => {
+                                error!("Consistency error: {signature} was spent on a failed transaction");
+                                Err(e)?;
+                            }
+                            Err(e @ Error::StorageError { reason: _ }) => {
+                                counter!("mugraph.simulator.injected_failures").increment(1);
+                                Err(e)?;
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                Err(e)?;
                             }
                         }
+                    }
+                    Err(e) => {
+                        Err(e)?;
                     }
                 }
 

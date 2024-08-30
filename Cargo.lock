@@ -903,6 +903,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "iai",
+ "metrics",
  "mugraph-core",
  "onlyerror",
  "rand",
