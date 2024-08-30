@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::Result;
-use mugraph_core::types::Keypair;
+use mugraph_core::{error::Error, types::Keypair};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::InMemoryBackend, Builder, Database, ReadOnlyTable, TableDefinition};
@@ -36,7 +36,10 @@ impl Context {
         Ok(Self { keypair, db, rng })
     }
 
-    pub fn new_test<R: CryptoRng + RngCore>(rng: &mut R, failure_ratio: f64) -> Result<Self> {
+    pub fn new_test<R: CryptoRng + RngCore>(
+        rng: &mut R,
+        failure_ratio: f64,
+    ) -> Result<Self, Error> {
         let keypair = Keypair::random(rng);
         let rng = ChaCha20Rng::from_rng(rng)?;
 

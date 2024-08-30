@@ -15,6 +15,9 @@ pub enum Error {
     #[error("Storage error: {reason}")]
     StorageError { reason: String },
 
+    #[error("Rng error: {reason}")]
+    RngError { reason: String },
+
     #[error("Insufficient funds for {asset_id}, expected {expected} but got {got}")]
     InsufficientFunds {
         asset_id: Hash,
@@ -55,5 +58,61 @@ impl From<std::io::Error> for Error {
 impl From<Error> for std::io::Error {
     fn from(e: Error) -> Self {
         std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+    }
+}
+
+impl From<rand::Error> for Error {
+    fn from(value: rand::Error) -> Self {
+        Error::RngError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::Error> for Error {
+    fn from(value: redb::Error) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::CommitError> for Error {
+    fn from(value: redb::CommitError) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::StorageError> for Error {
+    fn from(value: redb::StorageError) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::TableError> for Error {
+    fn from(value: redb::TableError) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::TransactionError> for Error {
+    fn from(value: redb::TransactionError) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<redb::DatabaseError> for Error {
+    fn from(value: redb::DatabaseError) -> Self {
+        Error::StorageError {
+            reason: value.to_string(),
+        }
     }
 }

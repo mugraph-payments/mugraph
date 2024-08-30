@@ -31,7 +31,7 @@ pub struct Simulation {
 impl Simulation {
     pub fn new(config: Config) -> Result<Self> {
         let mut rng = config.rng();
-        let mut delegate = Delegate::new(&config);
+        let mut delegate = Self::build_delegate(&config)?;
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
@@ -63,6 +63,15 @@ impl Simulation {
             delegate,
             config,
         })
+    }
+
+    fn build_delegate(config: &Config) -> Result<Delegate, Error> {
+        loop {
+            match Delegate::new(config) {
+                Err(Error::StorageError { reason: _ }) => continue,
+                v => return Ok(v?),
+            }
+        }
     }
 
     pub fn process_transaction(
