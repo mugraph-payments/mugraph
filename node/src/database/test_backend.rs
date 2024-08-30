@@ -1,5 +1,5 @@
 use mugraph_core::error::Error;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::InMemoryBackend, StorageBackend};
 
@@ -53,8 +53,8 @@ impl TestBackend {
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), Error> {
-        let mut rng = self.rng.clone();
-        let chance = rng.gen_range(0f64..1f64);
+        let mut rng = ChaCha20Rng::seed_from_u64(self.rng.clone().gen());
+        let chance = rng.gen_range(0f64..1.0f64);
 
         if chance < self.failure_ratio {
             Err(Error::StorageError {

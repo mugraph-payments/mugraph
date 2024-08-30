@@ -1,6 +1,8 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, types::*};
 use mugraph_node::{context::Context, v0::transaction_v0};
+use rand::prelude::*;
+use tracing::info;
 
 use crate::Config;
 
@@ -18,9 +20,15 @@ pub struct Delegate {
 impl Delegate {
     pub fn new(config: &Config) -> Self {
         let mut rng = config.rng();
+        let failure_rate = rng.gen_range(0.01f64..0.5f64);
+
+        info!(
+            "Starting delegate with failure rate {:.2}%",
+            failure_rate * 100.0
+        );
 
         Self {
-            context: Context::new_test(&mut rng, 1.0).unwrap(),
+            context: Context::new_test(&mut rng, failure_rate).unwrap(),
             target: match config.node_url {
                 Some(_) => Target::Local,
                 None => Target::Local,
