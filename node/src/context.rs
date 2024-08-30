@@ -9,11 +9,11 @@ use redb::{backends::InMemoryBackend, Builder, Database, ReadOnlyTable, TableDef
 use crate::database::TestBackend;
 
 // Maps from Commitment to Signature
-const TABLE: TableDefinition<[u8; 32], [u8; 32]> = TableDefinition::new("notes");
+pub const TABLE: TableDefinition<[u8; 32], [u8; 32]> = TableDefinition::new("notes");
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    db: Arc<Database>,
+    pub db: Arc<Database>,
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
 }
@@ -36,15 +36,12 @@ impl Context {
         Ok(Self { keypair, db, rng })
     }
 
-    pub fn new_test<R: CryptoRng + RngCore>(
-        rng: &mut R,
-        failure_ratio: f64,
-    ) -> Result<Self, Error> {
+    pub fn new_test<R: CryptoRng + RngCore>(rng: &mut R, failure_rate: f64) -> Result<Self, Error> {
         let keypair = Keypair::random(rng);
         let rng = ChaCha20Rng::from_rng(rng)?;
 
         let db = Arc::new(
-            Builder::new().create_with_backend(TestBackend::new(rng.clone(), failure_ratio))?,
+            Builder::new().create_with_backend(TestBackend::new(rng.clone(), failure_rate))?,
         );
 
         let w = db.begin_write()?;

@@ -30,6 +30,26 @@ fn main() -> Result<()> {
         metrics::Unit::Milliseconds,
         "The time taken to process a single transaction"
     );
+    describe_counter!(
+        "mugraph.node.database.len_calls",
+        "Number of calls to storage's #len"
+    );
+    describe_counter!(
+        "mugraph.node.database.set_len_calls",
+        "Number of calls to storage's #set_len"
+    );
+    describe_counter!(
+        "mugraph.node.database.sync_data_calls",
+        "Number of calls to storage's #sync_data"
+    );
+    describe_counter!(
+        "mugraph.node.database.write_calls",
+        "Number of calls to storage's #write"
+    );
+    describe_counter!(
+        "mugraph.node.database.injected_failures",
+        "Number of storage failures injected"
+    );
 
     let cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));

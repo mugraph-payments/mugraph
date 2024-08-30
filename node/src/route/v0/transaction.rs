@@ -5,7 +5,7 @@ use mugraph_core::{
     types::{Signature, Transaction, V0Response},
 };
 
-use crate::context::Context;
+use crate::context::{Context, TABLE};
 
 #[inline]
 pub fn transaction_v0(
@@ -14,6 +14,7 @@ pub fn transaction_v0(
 ) -> Result<V0Response, Vec<Error>> {
     let mut outputs = vec![];
     let mut errors = vec![];
+    let mut consumed_inputs = vec![];
 
     for atom in transaction.atoms.iter() {
         match atom.is_input() {
@@ -60,6 +61,8 @@ pub fn transaction_v0(
                         });
                     }
                 }
+
+                consumed_inputs.push(signature);
             }
             false => {
                 let sig = crypto::sign_blinded(
@@ -75,6 +78,16 @@ pub fn transaction_v0(
     if !errors.is_empty() {
         return Err(errors);
     }
+
+    let w = ctx.db.begin_write().unwrap();
+    {
+        let mut t = w.open_table(TABLE).unwrap();
+
+        for input in consumed_inputs.into_iter() {
+            t.insert(input.as_ref(), input.as_ref()).unwrap();
+        }
+    }
+    w.commit().unwrap();
 
     Ok(V0Response::Transaction { outputs })
 }

@@ -79,7 +79,7 @@ impl Simulation {
 
                     continue;
                 }
-                v => return Ok(v?),
+                v => return v,
             }
         }
     }

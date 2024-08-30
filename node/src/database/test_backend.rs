@@ -1,14 +1,15 @@
 use metrics::counter;
 use mugraph_core::error::Error;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_chacha::ChaCha20Rng;
-use redb::{backends::InMemoryBackend, StorageBackend};
+use redb::{backends::FileBackend, StorageBackend};
+use tracing::error;
 
 #[derive(Debug)]
 pub struct TestBackend {
     rng: ChaCha20Rng,
-    failure_ratio: f64,
-    inner: InMemoryBackend,
+    failure_rate: f64,
+    inner: FileBackend,
 }
 
 impl StorageBackend for TestBackend {
@@ -49,21 +50,22 @@ impl StorageBackend for TestBackend {
 }
 
 impl TestBackend {
-    pub fn new(rng: ChaCha20Rng, failure_ratio: f64) -> Self {
+    pub fn new(rng: ChaCha20Rng, failure_rate: f64) -> Self {
+        let file = tempfile::tempfile().unwrap();
+
         Self {
             rng,
-            failure_ratio,
-            inner: InMemoryBackend::new(),
+            failure_rate,
+            inner: FileBackend::new(file).unwrap(),
         }
     }
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(self.rng.clone().gen());
-        let chance = rng.gen_range(0f64..1.0f64);
-
-        if chance < self.failure_ratio {
+        if self.rng.clone().gen_bool(self.failure_rate) {
             counter!("mugraph.node.database.injected_failures").increment(1);
+
+            error!(failure_rate = self.failure_rate, "Storage call failed");
 
             Err(Error::StorageError {
                 reason: "Triggered failure on database backend".to_string(),

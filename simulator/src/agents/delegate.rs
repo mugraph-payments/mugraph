@@ -20,7 +20,7 @@ pub struct Delegate {
 impl Delegate {
     pub fn new(config: &Config) -> Result<Self, Error> {
         let mut rng = config.rng();
-        let failure_rate = rng.gen_range(0.01f64..0.5f64);
+        let failure_rate = rng.gen_range(0.01f64..1.0f64);
 
         info!(
             "Starting delegate with failure rate {:.2}%",
@@ -62,9 +62,7 @@ impl Delegate {
 
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
         match self.target {
-            Target::Local => {
-                transaction_v0(tx, &mut self.context).map_err(|errs| errs[0].clone().into())
-            }
+            Target::Local => transaction_v0(tx, &mut self.context).map_err(|errs| errs[0].clone()),
         }
     }
 }
