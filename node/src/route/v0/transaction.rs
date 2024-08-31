@@ -8,10 +8,7 @@ use mugraph_core::{
 use crate::context::{Context, TABLE};
 
 #[inline]
-pub fn transaction_v0(
-    transaction: Transaction,
-    ctx: &mut Context,
-) -> Result<V0Response, Vec<Error>> {
+pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
     let mut outputs = vec![];
     let mut errors = vec![];
     let mut consumed_inputs = vec![];
@@ -26,7 +23,7 @@ pub fn transaction_v0(
                             signature: Signature::zero(),
                         });
 
-                        Signature::zero()
+                        continue;
                     }
                     Some(s) => transaction.signatures[s as usize],
                     None => {
@@ -34,7 +31,7 @@ pub fn transaction_v0(
                             reason: "Atom {} is an input but it is not signed.".into(),
                         });
 
-                        Signature::zero()
+                        continue;
                     }
                 };
 
@@ -47,18 +44,24 @@ pub fn transaction_v0(
                             reason: e.to_string(),
                             signature,
                         });
+
+                        continue;
                     }
                 }
 
                 match table.get(signature.0) {
                     Ok(Some(_)) => {
                         errors.push(Error::AlreadySpent { signature });
+
+                        continue;
                     }
                     Ok(None) => {}
                     Err(e) => {
                         errors.push(Error::ServerError {
                             reason: e.to_string(),
                         });
+
+                        continue;
                     }
                 }
 
@@ -75,19 +78,21 @@ pub fn transaction_v0(
         }
     }
 
-    if !errors.is_empty() {
-        return Err(errors);
-    }
+    if errors.is_empty() {
+        let w = ctx.db.begin_write()?;
+        {
+            let mut t = w.open_table(TABLE)?;
 
-    let w = ctx.db.begin_write().unwrap();
-    {
-        let mut t = w.open_table(TABLE).unwrap();
-
-        for input in consumed_inputs.into_iter() {
-            t.insert(input.as_ref(), true).unwrap();
+            for input in consumed_inputs.into_iter() {
+                t.insert(input.as_ref(), true)?;
+            }
         }
-    }
-    w.commit().unwrap();
+        w.commit()?;
 
-    Ok(V0Response::Transaction { outputs })
+        Ok(V0Response::Transaction { outputs })
+    } else if errors.len() == 1 {
+        Err(errors[0].clone())
+    } else {
+        Err(Error::Multiple { errors })
+    }
 }

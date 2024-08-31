@@ -1,3 +1,5 @@
+use std::sync::PoisonError;
+
 use onlyerror::Error;
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
@@ -42,6 +44,9 @@ pub enum Error {
 
     #[error("Atom is invalid: {reason}")]
     InvalidAtom { reason: String },
+
+    #[error("Multiple errors happened at once: {errors:?}")]
+    Multiple { errors: Vec<Error> },
 
     #[error("Other error")]
     Other,
@@ -112,6 +117,14 @@ impl From<redb::TransactionError> for Error {
 impl From<redb::DatabaseError> for Error {
     fn from(value: redb::DatabaseError) -> Self {
         Error::StorageError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(value: PoisonError<T>) -> Self {
+        Self::ServerError {
             reason: value.to_string(),
         }
     }

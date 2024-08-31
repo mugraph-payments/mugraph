@@ -1,15 +1,21 @@
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, RwLock,
+};
+
 use metrics::counter;
 use mugraph_core::error::Error;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
-use redb::{backends::FileBackend, StorageBackend};
-use tracing::error;
+use redb::{backends::InMemoryBackend, StorageBackend};
 
 #[derive(Debug)]
 pub struct TestBackend {
-    rng: ChaCha20Rng,
+    pub enable_failures: Arc<AtomicBool>,
+
+    rng: RwLock<ChaCha20Rng>,
     failure_rate: f64,
-    inner: FileBackend,
+    inner: InMemoryBackend,
 }
 
 impl StorageBackend for TestBackend {
@@ -51,21 +57,25 @@ impl StorageBackend for TestBackend {
 
 impl TestBackend {
     pub fn new(rng: ChaCha20Rng, failure_rate: f64) -> Self {
-        let file = tempfile::tempfile().unwrap();
-
         Self {
-            rng,
+            rng: rng.into(),
             failure_rate,
-            inner: FileBackend::new(file).unwrap(),
+            enable_failures: Arc::new(AtomicBool::new(false)),
+            inner: InMemoryBackend::new(),
         }
     }
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), Error> {
-        if self.rng.clone().gen_bool(self.failure_rate) {
-            counter!("mugraph.node.database.injected_failures").increment(1);
+        let mut rng = self.rng.write()?;
+        let enable_failures = self.enable_failures.clone();
 
-            error!(failure_rate = self.failure_rate, "Storage call failed");
+        if !enable_failures.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
+        if rng.gen_range(0f64..self.failure_rate) < self.failure_rate {
+            counter!("mugraph.node.database.injected_failures").increment(1);
 
             Err(Error::StorageError {
                 reason: "Triggered failure on database backend".to_string(),

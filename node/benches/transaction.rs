@@ -35,8 +35,7 @@ fn setup() -> (Transaction, Context) {
     let transaction = TransactionBuilder::new(GreedyCoinSelection)
         .input(note)
         .output(asset_id, amount / 2)
-        .build()
-        .unwrap();
+        .build()?;
 
     (transaction, context)
 }

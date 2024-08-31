@@ -22,7 +22,7 @@ impl Delegate {
         rng: &mut R,
         node_url: Option<SocketAddr>,
     ) -> Result<Self, Error> {
-        let failure_rate = rng.gen_range(0.1f64..1.0f64);
+        let failure_rate = rng.gen_range(0.0001f64..0.0005f64);
 
         info!(
             "Starting delegate with failure rate {:.2}%",
@@ -64,7 +64,7 @@ impl Delegate {
 
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
         match self.target {
-            Target::Local => transaction_v0(tx, &mut self.context).map_err(|errs| errs[0].clone()),
+            Target::Local => transaction_v0(tx, &mut self.context),
         }
     }
 }

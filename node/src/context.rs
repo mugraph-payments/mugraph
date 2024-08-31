@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 
 use color_eyre::eyre::Result;
 use mugraph_core::{error::Error, types::Keypair};
@@ -40,10 +40,9 @@ impl Context {
         let keypair = Keypair::random(rng);
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
-        let db = Arc::new(Builder::new().create_with_backend(TestBackend::new(
-            ChaCha20Rng::seed_from_u64(rng.gen()),
-            failure_rate,
-        ))?);
+        let backend = TestBackend::new(ChaCha20Rng::seed_from_u64(rng.gen()), failure_rate);
+        let enable_failures = backend.enable_failures.clone();
+        let db = Arc::new(Builder::new().create_with_backend(backend)?);
 
         let w = db.begin_write()?;
         {
@@ -51,6 +50,8 @@ impl Context {
             t.insert(&[0u8; 32], false)?;
         }
         w.commit()?;
+
+        enable_failures.store(true, Ordering::Relaxed);
 
         Ok(Self { keypair, db, rng })
     }

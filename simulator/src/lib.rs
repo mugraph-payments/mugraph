@@ -1,6 +1,6 @@
 #![feature(duration_millis_float)]
 
-use std::{net::SocketAddr, time::Instant};
+use std::time::Instant;
 
 use agents::user::User;
 use color_eyre::eyre::Result;
@@ -13,7 +13,7 @@ use mugraph_core::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 mod action;
 mod agents;
@@ -31,7 +31,8 @@ pub struct Simulation {
 impl Simulation {
     pub fn new(config: Config) -> Result<Self> {
         let mut rng = config.rng();
-        let mut delegate = Self::build_delegate(&mut rng, config.node_url)?;
+
+        let mut delegate = Delegate::new(&mut rng, config.node_url)?;
 
         info!("Delegate initialized");
 
@@ -66,25 +67,6 @@ impl Simulation {
             delegate,
             config,
         })
-    }
-
-    fn build_delegate(
-        rng: &mut ChaCha20Rng,
-        node_url: Option<SocketAddr>,
-    ) -> Result<Delegate, Error> {
-        loop {
-            match Delegate::new(rng, node_url) {
-                Err(Error::StorageError { reason }) => {
-                    warn!(
-                        reason = reason,
-                        "Got a storage error when starting delegate, trying again"
-                    );
-
-                    continue;
-                }
-                v => return v,
-            }
-        }
     }
 
     pub fn process_transaction(
@@ -132,9 +114,9 @@ impl Simulation {
     }
 
     pub fn tick(&mut self) -> Result<()> {
-        let mut rng = self.rng.clone();
+        let action = Action::random(&self.config.clone(), self);
 
-        match Action::random(&mut rng, &self.config, self) {
+        match action {
             Action::Transfer {
                 from,
                 to,
@@ -165,8 +147,7 @@ impl Simulation {
 
                 match self.process_transaction(transaction.clone(), &note, from, to, amount) {
                     Ok(_) => {}
-                    Err(Error::StorageError { reason }) => {
-                        warn!("Transaction failed, retrying: {reason}");
+                    Err(Error::StorageError { .. }) => {
                         counter!("mugraph.simulator.injected_failures").increment(1);
 
                         match self.process_transaction(transaction.clone(), &note, from, to, amount)
