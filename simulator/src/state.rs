@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use metrics::counter;
 use mugraph_core::{
     builder::{GreedyCoinSelection, TransactionBuilder},
@@ -52,7 +54,7 @@ impl State {
 
         match self.rng.gen_range(0..=0) {
             0 => {
-                let input_count = self.rng.gen_range(1..self.notes.len());
+                let input_count = self.rng.gen_range(1..min(16, self.notes.len()));
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
                 for _ in 0..input_count {

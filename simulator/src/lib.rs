@@ -1,7 +1,7 @@
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::{error::Error, types::*};
-use tracing::info;
+use tracing::debug;
 
 mod action;
 mod config;
@@ -24,7 +24,7 @@ impl Simulation {
     }
 
     pub fn tick(&mut self, round: u64) -> Result<(), Error> {
-        info!(
+        debug!(
             core_id = self.core_id,
             round = round,
             "Starting simulation tick"
@@ -57,6 +57,8 @@ impl Simulation {
 
                             index += 1;
                         }
+
+                        counter!("mugraph.simulator.transactions_processed").increment(1);
                     }
                     V0Response::Error { errors } => panic!("{:?}", errors),
                 }
