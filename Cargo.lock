@@ -876,6 +876,7 @@ dependencies = [
  "redb",
  "serde",
  "serde_bytes",
+ "serde_json",
  "test-strategy",
 ]
 

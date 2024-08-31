@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
 use mugraph_node::{context::Context, v0::transaction_v0};

@@ -1,8 +1,10 @@
 #![feature(duration_millis_float)]
 
-use std::time::Instant;
+use std::{
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
-use agents::user::User;
 use color_eyre::eyre::Result;
 use metrics::{counter, histogram};
 use mugraph_core::{
@@ -11,7 +13,6 @@ use mugraph_core::{
     error::Error,
     types::*,
 };
-use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use state::State;
 use tracing::{error, info};
@@ -21,56 +22,29 @@ mod agents;
 mod config;
 mod state;
 
-pub use self::{action::Action, agents::delegate::Delegate, config::Config};
+pub use self::{
+    action::Action,
+    agents::{delegate::Delegate, user::User},
+    config::Config,
+};
 
 pub struct Simulation {
     rng: ChaCha20Rng,
-    users: Vec<User>,
     delegate: Delegate,
     state: State,
+    users: Arc<RwLock<Vec<User>>>,
 }
 
 impl Simulation {
-    pub fn new(core_id: u32, config: Config, mut delegate: Delegate) -> Result<Self> {
+    pub fn new(
+        core_id: u32,
+        config: Config,
+        delegate: Delegate,
+        users: Arc<RwLock<Vec<User>>>,
+    ) -> Result<Self> {
         let mut rng = config.rng();
 
-        let assets = (0..config.assets)
-            .map(|_| Hash::random(&mut rng))
-            .collect::<Vec<_>>();
-        let mut users = vec![];
-
-        for i in 0..config.users {
-            let mut notes = vec![];
-
-            for _ in 0..rng.gen_range(1..config.notes) {
-                let idx = rng.gen_range(0..config.assets);
-
-                let asset_id = assets[idx];
-                let amount = rng.gen_range(1..1_000_000_000);
-
-                let note = delegate.emit(asset_id, amount)?;
-
-                notes.push(note);
-            }
-
-            assert_ne!(notes.len(), 0);
-            let mut user = User::new();
-            user.notes = notes;
-            users.push(user);
-
-            info!(
-                simulation_id = core_id,
-                user_id = i,
-                notes = users[i].notes.len(),
-                "Created notes for user"
-            );
-        }
-
-        info!(
-            simulation_id = core_id,
-            users = users.len(),
-            "Simulation initialized"
-        );
+        info!(simulation_id = core_id, "Simulation initialized");
 
         Ok(Self {
             users,
@@ -89,6 +63,7 @@ impl Simulation {
         amount: u64,
     ) -> Result<(), Error> {
         let response = self.delegate.recv_transaction_v0(transaction)?;
+        let mut users = self.users.write()?;
 
         match response {
             V0Response::Transaction { outputs } => {
@@ -107,10 +82,10 @@ impl Simulation {
                     };
 
                     if i == 0 {
-                        self.users[to as usize].notes.push(new_note);
+                        users[to as usize].notes.push(new_note);
                     } else {
                         // Keep the change
-                        self.users[from as usize].notes.push(new_note);
+                        users[from as usize].notes.push(new_note);
                     }
                 }
             }
@@ -124,8 +99,10 @@ impl Simulation {
         Ok(())
     }
 
-    pub fn tick(&mut self) -> Result<()> {
-        let action = self.state.next(&mut self.users);
+    pub fn tick(&mut self) -> Result<(), Error> {
+        let action = self.state.next(self.users.clone())?;
+        let u = self.users.clone();
+        let mut users = u.write()?;
 
         match action {
             Action::Transfer {
@@ -135,7 +112,7 @@ impl Simulation {
                 amount,
             } => {
                 let start = Instant::now();
-                let note_idx = self.users[from as usize]
+                let note_idx = users[from as usize]
                     .notes
                     .iter()
                     .position(|note| note.asset_id == asset_id && note.amount >= amount)
@@ -144,7 +121,7 @@ impl Simulation {
                         expected: amount,
                         got: 0,
                     })?;
-                let note = self.users[from as usize].notes.remove(note_idx);
+                let note = users[from as usize].notes.remove(note_idx);
 
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection)
                     .input(note.clone())

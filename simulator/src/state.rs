@@ -1,4 +1,7 @@
+use std::sync::{Arc, RwLock};
+
 use metrics::counter;
+use mugraph_core::error::Error;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -15,8 +18,9 @@ impl State {
         }
     }
 
-    pub fn next(&mut self, users: &mut Vec<User>) -> Action {
+    pub fn next(&mut self, users: Arc<RwLock<Vec<User>>>) -> Result<Action, Error> {
         let kind = self.rng.gen_range(0..=0);
+        let users = users.read()?;
 
         match kind {
             0 => {
@@ -31,7 +35,7 @@ impl State {
                     }
                 }
 
-                let from = from.unwrap() as usize;
+                let from = from.unwrap();
                 let to = self.rng.gen_range(0..users.len());
 
                 let note = users[from].notes.choose(&mut self.rng).unwrap();
@@ -43,12 +47,12 @@ impl State {
 
                 let amount = self.rng.gen_range(1..note.amount);
 
-                return Action::Transfer {
+                Ok(Action::Transfer {
                     from: from as u32,
                     to: to as u32,
                     asset_id,
                     amount,
-                };
+                })
             }
             _ => unreachable!(),
         }

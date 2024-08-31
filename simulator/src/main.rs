@@ -2,7 +2,7 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, RwLock,
     },
     thread,
     time::{Duration, Instant},
@@ -11,8 +11,10 @@ use std::{
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{describe_counter, describe_histogram};
 use metrics_exporter_tcp::TcpBuilder;
+use mugraph_core::types::Hash;
 use mugraph_node::context::Context;
-use mugraph_simulator::{Config, Delegate, Simulation};
+use mugraph_simulator::{Config, Delegate, Simulation, User};
+use rand::Rng;
 use tracing::info;
 
 fn main() -> Result<()> {
@@ -58,20 +60,55 @@ fn main() -> Result<()> {
     let mut rng = config.rng();
 
     let context = Context::new(&mut rng)?;
-    let delegate = Delegate::new(&mut rng, context)?;
+    let mut delegate = Delegate::new(&mut rng, context)?;
+    let assets = (0..config.assets)
+        .map(|_| Hash::random(&mut rng))
+        .collect::<Vec<_>>();
+
+    let mut users = vec![];
+
+    for i in 0..config.users {
+        let mut notes = vec![];
+
+        for _ in 0..rng.gen_range(1..config.notes) {
+            let idx = rng.gen_range(0..config.assets);
+
+            let asset_id = assets[idx];
+            let amount = rng.gen_range(1..1_000_000_000);
+
+            let note = delegate.emit(asset_id, amount)?;
+
+            notes.push(note);
+        }
+
+        assert_ne!(notes.len(), 0);
+        let var_name = User::new();
+        let mut user = var_name;
+        user.notes = notes;
+        users.push(user);
+
+        info!(
+            user_id = i,
+            notes = users[i].notes.len(),
+            "Created notes for user"
+        );
+    }
+
+    let users = Arc::new(RwLock::new(users));
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         info!("Starting simulator on core {i}");
 
         let sc = should_continue.clone();
         let d = delegate.clone();
+        let u = users.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
             info!("Starting simulation on core {i}.");
 
-            let mut sim = Simulation::new(core.id as u32, config, d)?;
+            let mut sim = Simulation::new(core.id as u32, config, d, u)?;
 
             while sc.load(Ordering::Relaxed) {
                 sim.tick()?;
