@@ -58,7 +58,7 @@ fn main() -> Result<()> {
     let mut rng = config.rng();
 
     let context = Context::new(&mut rng)?;
-    let delegate = Delegate::new(&mut rng, config.node_url, context)?;
+    let delegate = Delegate::new(&mut rng, context)?;
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         info!("Starting simulator on core {i}");

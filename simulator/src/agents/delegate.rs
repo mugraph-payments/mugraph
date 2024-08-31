@@ -7,22 +7,12 @@ use rand::prelude::*;
 use tracing::info;
 
 #[derive(Debug, Clone)]
-pub enum Target {
-    Local,
-}
-
-#[derive(Debug, Clone)]
 pub struct Delegate {
     pub context: Context,
-    pub target: Target,
 }
 
 impl Delegate {
-    pub fn new<R: Rng + CryptoRng>(
-        rng: &mut R,
-        node_url: Option<SocketAddr>,
-        context: Context,
-    ) -> Result<Self, Error> {
+    pub fn new<R: Rng + CryptoRng>(rng: &mut R, context: Context) -> Result<Self, Error> {
         let failure_rate = rng.gen_range(0.01f64..0.8f64);
 
         info!(
@@ -30,13 +20,7 @@ impl Delegate {
             failure_rate * 100.0
         );
 
-        Ok(Self {
-            context,
-            target: match node_url {
-                Some(_) => Target::Local,
-                None => Target::Local,
-            },
-        })
+        Ok(Self { context })
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -63,9 +47,8 @@ impl Delegate {
         Ok(note)
     }
 
+    #[inline(always)]
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
-        match self.target {
-            Target::Local => transaction_v0(tx, &mut self.context),
-        }
+        transaction_v0(tx, &mut self.context)
     }
 }
