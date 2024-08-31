@@ -13,7 +13,7 @@ pub async fn start(config: &config::Config) -> Result<()> {
 
     axum::serve(
         listener,
-        Router::new().nest("/v0", route::v0::router(&mut config.rng())?),
+        Router::new().nest("/v0", route::v0::router(&mut config.rng(), config.clone())?),
     )
     .await?;
 

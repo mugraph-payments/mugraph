@@ -21,6 +21,7 @@ impl Delegate {
     pub fn new<R: Rng + CryptoRng>(
         rng: &mut R,
         node_url: Option<SocketAddr>,
+        context: Context,
     ) -> Result<Self, Error> {
         let failure_rate = rng.gen_range(0.01f64..0.8f64);
 
@@ -30,7 +31,7 @@ impl Delegate {
         );
 
         Ok(Self {
-            context: Context::new_test(rng, failure_rate)?,
+            context,
             target: match node_url {
                 Some(_) => Target::Local,
                 None => Target::Local,
@@ -63,8 +64,6 @@ impl Delegate {
     }
 
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
-        self.context.db.check_integrity()?;
-
         match self.target {
             Target::Local => transaction_v0(tx, &mut self.context),
         }

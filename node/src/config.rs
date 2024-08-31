@@ -20,6 +20,9 @@ pub struct Config {
 
     #[clap(short, long)]
     pub secret_key: Option<String>,
+
+    #[clap(short, long)]
+    pub under_test: Option<bool>,
 }
 
 impl Config {
@@ -67,6 +70,12 @@ impl Config {
 impl Default for Config {
     #[inline]
     fn default() -> Self {
-        Self::parse()
+        Config {
+            seed: None,
+            addr: "0.0.0.0:9999".parse().unwrap(),
+            public_key: None,
+            secret_key: None,
+            under_test: None,
+        }
     }
 }

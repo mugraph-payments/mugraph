@@ -8,10 +8,10 @@ use tracing::info;
 #[derive(Debug, Clone, Copy, Parser)]
 #[command(version, author, about)]
 pub struct Config {
-    #[clap(short = 'u', long, env = "MUGRAPH_SIMULATOR_NODE_URL")]
+    #[clap(long, env = "MUGRAPH_SIMULATOR_NODE_URL")]
     pub node_url: Option<SocketAddr>,
 
-    #[clap(short, long, env = "MUGRAPH_SIMULATOR_SEED")]
+    #[clap(long, env = "MUGRAPH_SIMULATOR_SEED")]
     /// The seed to use for the simulation
     pub seed: Option<u64>,
 
@@ -28,11 +28,10 @@ pub struct Config {
     )]
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
-    #[clap(short, long, env = "MUGRAPH_SIMULATOR_DURATION_SECS")]
+    #[clap(long, env = "MUGRAPH_SIMULATOR_DURATION_SECS")]
     /// Duration in seconds to run the simulation
     pub duration_secs: Option<u64>,
     #[clap(
-        short,
         long = "threads",
         env = "MUGRAPH_SIMULATOR_THREADS",
         default_value_t = num_cpus::get_physical()

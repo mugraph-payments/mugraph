@@ -16,7 +16,7 @@ pub const TABLE: TableDefinition<[u8; 32], bool> = TableDefinition::new("notes")
 
 #[derive(Debug, Clone)]
 pub struct DB {
-    inner: Database,
+    pub(crate) inner: Database,
 }
 
 impl DB {

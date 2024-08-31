@@ -5,7 +5,7 @@ use mugraph_core::{
     types::{Signature, Transaction, V0Response},
 };
 
-use crate::context::{Context, TABLE};
+use crate::{context::Context, database::TABLE};
 
 #[inline]
 pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
@@ -35,8 +35,6 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                     }
                 };
 
-                let table = ctx.db_read().expect("Failed to read database table");
-
                 match crypto::verify(&ctx.keypair.public_key, atom.nonce.as_ref(), signature) {
                     Ok(_) => {}
                     Err(e) => {
@@ -48,6 +46,9 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                         continue;
                     }
                 }
+
+                let r = ctx.db()?.begin_read()?;
+                let table = r.open_table(TABLE)?;
 
                 match table.get(signature.0) {
                     Ok(Some(_)) => {
@@ -79,7 +80,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
     }
 
     if errors.is_empty() {
-        let w = ctx.db.begin_write()?;
+        let w = ctx.db()?.begin_write()?;
         {
             let mut t = w.open_table(TABLE)?;
 

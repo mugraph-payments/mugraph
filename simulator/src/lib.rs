@@ -11,6 +11,7 @@ use mugraph_core::{
     error::Error,
     types::*,
 };
+use mugraph_node::context::Context;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use tracing::{error, info};
@@ -32,7 +33,9 @@ impl Simulation {
     pub fn new(config: Config) -> Result<Self> {
         let mut rng = config.rng();
 
-        let mut delegate = Delegate::new(&mut rng, config.node_url)?;
+        let context = Context::new(&mut rng)?;
+
+        let mut delegate = Delegate::new(&mut rng, config.node_url, context)?;
 
         info!("Delegate initialized");
 
