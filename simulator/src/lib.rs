@@ -1,6 +1,9 @@
 #![feature(duration_millis_float)]
 
-use std::time::Instant;
+use std::{
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use agents::user::User;
 use color_eyre::eyre::Result;
@@ -24,38 +27,44 @@ pub use self::{action::Action, agents::delegate::Delegate, config::Config};
 pub struct Simulation {
     rng: ChaCha20Rng,
     config: Config,
-    users: Vec<User>,
+    users: Arc<RwLock<Vec<User>>>,
     delegate: Delegate,
 }
 
 impl Simulation {
     #[tracing::instrument(skip(config, delegate))]
-    pub fn new(core_id: u32, config: Config, mut delegate: Delegate) -> Result<Self> {
+    pub fn new(
+        core_id: u32,
+        config: Config,
+        mut delegate: Delegate,
+        assets: Vec<Hash>,
+        users: Arc<RwLock<Vec<User>>>,
+    ) -> Result<Self, Error> {
         let mut rng = config.rng();
 
-        let assets = (0..config.assets)
-            .map(|_| Hash::random(&mut rng))
-            .collect::<Vec<_>>();
-        let mut users = vec![];
+        {
+            let mut u = users.write()?;
+            if u.is_empty() {
+                for _ in 0..config.users {
+                    let mut notes = vec![];
 
-        for _ in 0..config.users {
-            let mut notes = vec![];
+                    for _ in 0..rng.gen_range(1..config.notes) {
+                        let idx = rng.gen_range(0..config.assets);
 
-            for _ in 0..rng.gen_range(1..config.notes) {
-                let idx = rng.gen_range(0..config.assets);
+                        let asset_id = assets[idx];
+                        let amount = rng.gen_range(1..1_000_000_000);
 
-                let asset_id = assets[idx];
-                let amount = rng.gen_range(1..1_000_000_000);
+                        let note = delegate.emit(asset_id, amount)?;
 
-                let note = delegate.emit(asset_id, amount)?;
+                        notes.push(note);
+                    }
 
-                notes.push(note);
+                    assert_ne!(notes.len(), 0);
+                    let mut user = User::new();
+                    user.notes = notes;
+                    u.push(user);
+                }
             }
-
-            assert_ne!(notes.len(), 0);
-            let mut user = User::new();
-            user.notes = notes;
-            users.push(user);
         }
 
         info!("Simulation initialized");
@@ -94,11 +103,13 @@ impl Simulation {
                         )?,
                     };
 
+                    let mut users = self.users.write()?;
+
                     if i == 0 {
-                        self.users[to as usize].notes.push(new_note);
+                        users[to as usize].notes.push(new_note);
                     } else {
                         // Keep the change
-                        self.users[from as usize].notes.push(new_note);
+                        users[from as usize].notes.push(new_note);
                     }
                 }
             }
@@ -107,12 +118,11 @@ impl Simulation {
             }
         }
 
-        counter!("mugraph.simulator.processed_transactions").increment(1);
-
         Ok(())
     }
 
-    pub fn tick(&mut self) -> Result<()> {
+    #[tracing::instrument(skip(self))]
+    pub fn tick(&mut self, round: usize) -> Result<(), Error> {
         let action = Action::random(&self.config.clone(), self);
 
         match action {
@@ -122,8 +132,11 @@ impl Simulation {
                 asset_id,
                 amount,
             } => {
+                let users = self.users.clone();
+                let mut users = users.write()?;
+
                 let start = Instant::now();
-                let note_idx = self.users[from as usize]
+                let note_idx = users[from as usize]
                     .notes
                     .iter()
                     .position(|note| note.asset_id == asset_id && note.amount >= amount)
@@ -132,7 +145,7 @@ impl Simulation {
                         expected: amount,
                         got: 0,
                     })?;
-                let note = self.users[from as usize].notes.remove(note_idx);
+                let note = users[from as usize].notes.remove(note_idx);
 
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection)
                     .input(note.clone())
@@ -145,9 +158,11 @@ impl Simulation {
                 let transaction = transaction.build()?;
 
                 match self.process_transaction(transaction.clone(), &note, from, to, amount) {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        counter!("mugraph.simulator.processed_transactions").increment(1);
+                    }
                     Err(Error::StorageError { .. }) => {
-                        counter!("mugraph.simulator.injected_failures").increment(1);
+                        counter!("mugraph.simulator.perceived_failures").increment(1);
 
                         match self.process_transaction(transaction.clone(), &note, from, to, amount)
                         {
@@ -155,11 +170,12 @@ impl Simulation {
                                 error!("Consistency error: {signature} was spent on a failed transaction");
                                 Err(e)?;
                             }
-                            Err(e @ Error::StorageError { reason: _ }) => {
-                                counter!("mugraph.simulator.injected_failures").increment(1);
-                                Err(e)?;
+                            Err(Error::StorageError { reason: _ }) => {
+                                counter!("mugraph.simulator.perceived_failures").increment(1);
                             }
-                            Ok(_) => {}
+                            Ok(_) => {
+                                counter!("mugraph.simulator.recovered_failures").increment(1);
+                            }
                             Err(e) => {
                                 Err(e)?;
                             }

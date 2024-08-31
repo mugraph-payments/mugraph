@@ -1,3 +1,4 @@
+use metrics::counter;
 use mugraph_core::types::*;
 use rand::prelude::*;
 
@@ -18,21 +19,26 @@ impl Action {
         match 0 {
             0 => loop {
                 let from = sim.rng.gen_range(0..config.users) as u32;
+                let users = sim.users.write().unwrap();
 
-                if sim.users[from as usize].notes.is_empty() {
+                if users[from as usize].notes.is_empty() {
+                    counter!("mugraph.simulator.actions.skipped").increment(1);
                     continue;
                 }
 
                 let to = sim.rng.gen_range(0..config.users) as u32;
 
-                let note = sim.users[from as usize].notes.choose(&mut sim.rng).unwrap();
+                let note = users[from as usize].notes.choose(&mut sim.rng).unwrap();
                 let asset_id = note.asset_id;
 
                 if note.amount == 1 {
+                    counter!("mugraph.simulator.actions.skipped").increment(1);
                     continue;
                 }
 
                 let amount = sim.rng.gen_range(1..note.amount);
+
+                counter!("mugraph.simulator.actions.generated").increment(1);
 
                 return Self::Transfer {
                     from,
