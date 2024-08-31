@@ -1,32 +1,14 @@
-#![feature(duration_millis_float)]
-
-use std::{
-    sync::{Arc, RwLock},
-    time::Instant,
-};
-
 use color_eyre::eyre::Result;
-use metrics::{counter, histogram};
-use mugraph_core::{
-    builder::{GreedyCoinSelection, TransactionBuilder},
-    crypto,
-    error::Error,
-    types::*,
-};
-use rand_chacha::ChaCha20Rng;
-use tracing::{error, info};
+use metrics::counter;
+use mugraph_core::{error::Error, types::*};
+use tracing::info;
 
 mod action;
-mod agents;
 mod config;
+mod delegate;
 mod state;
 
-pub use self::{
-    action::Action,
-    agents::{delegate::Delegate, user::User},
-    config::Config,
-    state::State,
-};
+pub use self::{action::Action, config::Config, delegate::Delegate, state::State};
 
 pub struct Simulation {
     core_id: u32,
@@ -41,7 +23,13 @@ impl Simulation {
         })
     }
 
-    pub fn tick(&mut self) -> Result<(), Error> {
+    pub fn tick(&mut self, round: u64) -> Result<(), Error> {
+        info!(
+            core_id = self.core_id,
+            round = round,
+            "Starting simulation tick"
+        );
+
         let action = self.state.tick()?;
 
         match action {
@@ -53,13 +41,19 @@ impl Simulation {
                         let mut index = 0;
 
                         for atom in transaction.atoms {
+                            counter!("mugraph.simulator.atoms_processed").increment(1);
+
                             if atom.is_input() {
+                                counter!("mugraph.simulator.inputs_processed").increment(1);
+
                                 continue;
                             }
 
                             let asset_id = transaction.asset_ids[atom.asset_id as usize];
 
                             self.state.recv(asset_id, atom.amount, outputs[index])?;
+
+                            counter!("mugraph.simulator.outputs_received").increment(1);
 
                             index += 1;
                         }

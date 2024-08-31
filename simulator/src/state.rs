@@ -4,7 +4,6 @@ use mugraph_core::{
     error::Error,
     types::*,
 };
-use mugraph_node::context::Context;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -26,8 +25,7 @@ impl State {
             .collect::<Vec<_>>();
         let keypair = Keypair::random(&mut rng);
         let mut notes = vec![];
-        let context = Context::new(&mut rng)?;
-        let mut delegate = Delegate::new(&mut rng, context)?;
+        let mut delegate = Delegate::new(&mut rng, keypair)?;
 
         for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);

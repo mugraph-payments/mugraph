@@ -37,7 +37,7 @@ impl Config {
         }
     }
 
-    pub fn keypair(&self) -> Result<Keypair> {
+    pub fn keypair(&self) -> Result<Keypair, Error> {
         let pair = Keypair::random(&mut self.rng());
 
         if self.public_key.is_none() || self.secret_key.is_none() {

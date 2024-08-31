@@ -7,21 +7,32 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{Request, Response, V0Request, V0Response},
+    types::{Keypair, Request, Response, V0Request, V0Response},
 };
-use rand::prelude::*;
 
 mod transaction;
 
+use redb::Database;
 pub use transaction::*;
 
-use crate::context::Context;
+use crate::{config::Config, database::DB};
 
-pub fn router<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Router> {
-    Ok(Router::new()
+#[derive(Clone)]
+pub struct Context {
+    keypair: Keypair,
+    database: Database,
+}
+
+pub fn router(config: &Config) -> Result<Router, Error> {
+    let router = Router::new()
         .route("/health", get(health))
         .route("/rpc", post(rpc))
-        .with_state(Context::new(rng)?))
+        .with_state(Context {
+            database: DB::setup("./db")?,
+            keypair: config.keypair()?,
+        });
+
+    Ok(router)
 }
 
 pub async fn health() -> &'static str {
@@ -30,21 +41,19 @@ pub async fn health() -> &'static str {
 
 #[axum::debug_handler]
 pub async fn rpc(
-    State(mut ctx): State<Context>,
+    State(Context { keypair, database }): State<Context>,
     Json(request): Json<Request>,
 ) -> impl IntoResponse {
     match request {
-        Request::V0(V0Request::Transaction(t)) => {
-            match transaction_v0(&t, ctx.keypair, &ctx.db().unwrap()) {
-                Ok(response) => Json(Response::V0(response)).into_response(),
-                Err(Error::Multiple { errors }) => {
-                    Json(Response::V0(V0Response::Error { errors })).into_response()
-                }
-                Err(error) => Json(Response::V0(V0Response::Error {
-                    errors: vec![error],
-                }))
-                .into_response(),
+        Request::V0(V0Request::Transaction(t)) => match transaction_v0(&t, keypair, &database) {
+            Ok(response) => Json(Response::V0(response)).into_response(),
+            Err(Error::Multiple { errors }) => {
+                Json(Response::V0(V0Response::Error { errors })).into_response()
             }
-        }
+            Err(error) => Json(Response::V0(V0Response::Error {
+                errors: vec![error],
+            }))
+            .into_response(),
+        },
     }
 }

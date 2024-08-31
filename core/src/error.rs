@@ -45,6 +45,9 @@ pub enum Error {
     #[error("Atom is invalid: {reason}")]
     InvalidAtom { reason: String },
 
+    #[error("Error handling JSON: {reason}")]
+    JsonError { reason: String },
+
     #[error("Multiple errors happened at once: {errors:?}")]
     Multiple { errors: Vec<Error> },
 
@@ -125,6 +128,14 @@ impl From<redb::DatabaseError> for Error {
 impl<T> From<PoisonError<T>> for Error {
     fn from(value: PoisonError<T>) -> Self {
         Self::ServerError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::JsonError {
             reason: value.to_string(),
         }
     }

@@ -2,19 +2,15 @@ use std::{
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
+        Arc,
     },
     thread,
     time::{Duration, Instant},
 };
 
 use color_eyre::eyre::{ErrReport, Result};
-use metrics::{describe_counter, describe_histogram};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_core::types::Hash;
-use mugraph_node::context::Context;
-use mugraph_simulator::{Config, Delegate, Simulation, User};
-use rand::Rng;
+use mugraph_simulator::{Config, Simulation};
 use tracing::info;
 
 fn main() -> Result<()> {
@@ -29,8 +25,6 @@ fn main() -> Result<()> {
     let config = Config::default();
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
-        info!("Starting simulator on core {i}");
-
         let sc = should_continue.clone();
         let mut sim = Simulation::new(core.id as u32)?;
 
@@ -39,8 +33,11 @@ fn main() -> Result<()> {
 
             info!("Starting simulation on core {i}.");
 
+            let mut round = 0;
+
             while sc.load(Ordering::Relaxed) {
-                sim.tick()?;
+                sim.tick(round)?;
+                round += 1;
             }
 
             #[allow(unreachable_code)]

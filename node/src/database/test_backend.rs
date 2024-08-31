@@ -1,23 +1,20 @@
-use std::{
-    fs::File,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, RwLock,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, RwLock,
 };
 
 use metrics::counter;
 use mugraph_core::error::Error;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
-use redb::{backends::FileBackend, StorageBackend};
+use redb::{backends::InMemoryBackend, StorageBackend};
 
 #[derive(Debug)]
 pub struct TestBackend {
     pub enable_failures: Arc<AtomicBool>,
     rng: RwLock<ChaCha20Rng>,
     failure_rate: f64,
-    inner: FileBackend,
+    inner: InMemoryBackend,
 }
 
 impl StorageBackend for TestBackend {
@@ -63,12 +60,12 @@ impl StorageBackend for TestBackend {
 }
 
 impl TestBackend {
-    pub fn new(rng: ChaCha20Rng, failure_rate: f64, file: File) -> Self {
+    pub fn new(rng: ChaCha20Rng, failure_rate: f64) -> Self {
         Self {
             rng: rng.into(),
             failure_rate,
             enable_failures: Arc::new(AtomicBool::new(false)),
-            inner: FileBackend::new(file).unwrap(),
+            inner: InMemoryBackend::new(),
         }
     }
 

@@ -2,7 +2,6 @@ use axum::Router;
 use color_eyre::eyre::Result;
 
 pub mod config;
-pub mod context;
 pub mod database;
 pub mod route;
 
@@ -13,7 +12,7 @@ pub async fn start(config: &config::Config) -> Result<()> {
 
     axum::serve(
         listener,
-        Router::new().nest("/v0", route::v0::router(&mut config.rng())?),
+        Router::new().nest("/v0", route::v0::router(config)?),
     )
     .await?;
 
