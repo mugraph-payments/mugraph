@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mugraph-core = { path = "../core" }
-axum = { version = "0.7.5", features = ["macros"] }
-redb = { git = "https://github.com/cfcosta/redb.git", branch = "feat/make-database-clone" }
-tempfile = "3.12.0"
-color-eyre = "0.6.3"
-rand = "0.8.5"
-serde = { version = "1.0.208", features = ["derive"] }
-tokio = { version = "1.39.2", features = ["full"] }
-clap = { version = "4.5.16", features = ["env", "derive"] }
-rand_chacha = { version = "0.3.1", features = ["simd"] }
-serde_json = "1.0.125"
-onlyerror = "0.1.4"
-tracing = "0.1.40"
-metrics = "0.23.0"
+mugraph-core = { workspace = true }
+axum = { workspace = true }
+redb = { workspace = true }
+tempfile = { workspace = true }
+color-eyre = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+rand_chacha = { workspace = true }
+serde_json = { workspace = true }
+onlyerror = { workspace = true }
+tracing = { workspace = true }
+metrics = { workspace = true }

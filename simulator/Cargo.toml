@@ -4,20 +4,20 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.16", features = ["env", "derive"] }
-color-eyre = "0.6.3"
-core_affinity = "0.8.1"
-ctrlc = "3.4.5"
-itertools = "0.13.0"
-metrics = "0.23.0"
-metrics-exporter-tcp = "0.10.0"
-mugraph-core = { path = "../core" }
-mugraph-node = { path = "../node" }
-num_cpus = "1.16.0"
-onlyerror = "0.1.4"
-rand = "0.8.5"
-rand_chacha = { version = "0.3.1", features = ["simd"] }
-redb = { git = "https://github.com/cfcosta/redb.git", branch = "feat/make-database-clone" }
-serde_json = "1.0.127"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["fmt"] }
+clap = { workspace = true }
+color-eyre = { workspace = true }
+core_affinity = { workspace = true }
+ctrlc = { workspace = true }
+itertools = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-tcp = { workspace = true }
+mugraph-core = { workspace = true }
+mugraph-node = { workspace = true }
+num_cpus = { workspace = true }
+onlyerror = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+redb = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

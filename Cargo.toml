@@ -6,8 +6,42 @@ members = [
   "simulator",
 ]
 
+[workspace.dependencies]
+mugraph-core = { path = "./core" }
+mugraph-node = { path = "./node" }
+mugraph-simulator = { path = "./simulator" }
+
+axum = { version = "0.7.5", features = ["macros"] }
+blake3 = { version = "1.5.4", features = ["neon"] }
+bytemuck = { version = "1.16.3", features = ["aarch64_simd"] }
+clap = { version = "4.5.16", features = ["env", "derive"] }
+color-eyre = "0.6.3"
+core_affinity = "0.8.1"
+ctrlc = "3.4.5"
+curve25519-dalek = { version = "4.1.2", features = ["digest", "rand_core"] }
+digest = { version = "0.10.7" }
+hex = { version = "0.4.3", features = ["serde"] }
+itertools = "0.13.0"
+metrics = "0.23.0"
+metrics-exporter-tcp = "0.10.0"
+num_cpus = "1.16.0"
+onlyerror = "0.1.4"
+paste = "1.0.15"
+proptest = { version = "1.5.0" }
+rand = "0.8.5"
+rand_chacha = { version = "0.3.1", features = ["simd"] }
+redb = { git = "https://github.com/cfcosta/redb.git", branch = "feat/make-database-clone" }
+serde = { version = "1.0.208", features = ["derive"] }
+serde_bytes = { version = "0.11.15" }
+serde_json = "1.0.127"
+tempfile = "3.12.0"
+test-strategy = { version = "0.4.0" }
+tokio = { version = "1.39.2", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["fmt"] }
+
 [profile.release]
 opt-level = 3
 debug = false
-lto = "thin"
+lto = "fat"
 panic = "abort"
