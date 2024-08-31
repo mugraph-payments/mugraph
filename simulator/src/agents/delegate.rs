@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
@@ -22,7 +22,7 @@ impl Delegate {
         rng: &mut R,
         node_url: Option<SocketAddr>,
     ) -> Result<Self, Error> {
-        let failure_rate = rng.gen_range(0.0001f64..0.0005f64);
+        let failure_rate = rng.gen_range(0.01f64..0.8f64);
 
         info!(
             "Starting delegate with failure rate {:.2}%",
@@ -63,6 +63,8 @@ impl Delegate {
     }
 
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
+        self.context.db.check_integrity()?;
+
         match self.target {
             Target::Local => transaction_v0(tx, &mut self.context),
         }
