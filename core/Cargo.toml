@@ -16,5 +16,4 @@ rand = { workspace = true }
 redb = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-serde_json = { workspace = true }
 test-strategy = { workspace = true }
