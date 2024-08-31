@@ -13,23 +13,24 @@ use mugraph_core::{
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use state::State;
 use tracing::{error, info};
 
 mod action;
 mod agents;
 mod config;
+mod state;
 
 pub use self::{action::Action, agents::delegate::Delegate, config::Config};
 
 pub struct Simulation {
     rng: ChaCha20Rng,
-    config: Config,
     users: Vec<User>,
     delegate: Delegate,
+    state: State,
 }
 
 impl Simulation {
-    #[tracing::instrument(skip(config, delegate))]
     pub fn new(core_id: u32, config: Config, mut delegate: Delegate) -> Result<Self> {
         let mut rng = config.rng();
 
@@ -38,7 +39,7 @@ impl Simulation {
             .collect::<Vec<_>>();
         let mut users = vec![];
 
-        for _ in 0..config.users {
+        for i in 0..config.users {
             let mut notes = vec![];
 
             for _ in 0..rng.gen_range(1..config.notes) {
@@ -56,15 +57,26 @@ impl Simulation {
             let mut user = User::new();
             user.notes = notes;
             users.push(user);
+
+            info!(
+                simulation_id = core_id,
+                user_id = i,
+                notes = users[i].notes.len(),
+                "Created notes for user"
+            );
         }
 
-        info!("Simulation initialized");
+        info!(
+            simulation_id = core_id,
+            users = users.len(),
+            "Simulation initialized"
+        );
 
         Ok(Self {
-            rng,
             users,
             delegate,
-            config,
+            state: State::new(&mut rng),
+            rng,
         })
     }
 
@@ -113,7 +125,7 @@ impl Simulation {
     }
 
     pub fn tick(&mut self) -> Result<()> {
-        let action = Action::random(&self.config.clone(), self);
+        let action = self.state.next(&mut self.users);
 
         match action {
             Action::Transfer {
