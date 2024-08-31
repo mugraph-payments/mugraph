@@ -17,7 +17,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Self> {
+    pub fn new<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Self, Error> {
         let config = Config::new();
         let keypair = Keypair::random(rng);
         let rng = ChaCha20Rng::seed_from_u64(rng.gen());

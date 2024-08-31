@@ -29,7 +29,7 @@ impl State {
         let context = Context::new(&mut rng)?;
         let mut delegate = Delegate::new(&mut rng, context)?;
 
-        for i in 0..config.notes {
+        for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);
 
             let asset_id = assets[idx];
@@ -49,13 +49,12 @@ impl State {
     }
 
     pub fn tick(&mut self) -> Result<Action, Error> {
-        match rng.gen_range(0..=0) {
+        match self.rng.gen_range(0..=0) {
             0 => {
                 let input_count = self.rng.gen_range(1..self.notes.len());
-                let outputs = vec![];
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
-                for i in 0..input_count {
+                for _ in 0..input_count {
                     let input = self.notes.remove(self.rng.gen_range(0..self.notes.len()));
                     let mut remaining = input.amount;
 
@@ -67,7 +66,7 @@ impl State {
                         remaining -= amount;
                     }
 
-                    transaction.input(input);
+                    transaction = transaction.input(input);
                 }
 
                 Ok(Action::Transfer(transaction.build()?))

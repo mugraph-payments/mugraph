@@ -35,7 +35,7 @@ pub async fn rpc(
 ) -> impl IntoResponse {
     match request {
         Request::V0(V0Request::Transaction(t)) => {
-            match transaction_v0(t, ctx.keypair, &ctx.db().unwrap()) {
+            match transaction_v0(&t, ctx.keypair, &ctx.db().unwrap()) {
                 Ok(response) => Json(Response::V0(response)).into_response(),
                 Err(Error::Multiple { errors }) => {
                     Json(Response::V0(V0Response::Error { errors })).into_response()

@@ -10,7 +10,7 @@ use crate::database::TABLE;
 
 #[inline]
 pub fn transaction_v0(
-    transaction: Transaction,
+    transaction: &Transaction,
     keypair: Keypair,
     database: &Database,
 ) -> Result<V0Response, Error> {

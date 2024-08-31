@@ -29,12 +29,14 @@ pub use self::{
 };
 
 pub struct Simulation {
+    core_id: u32,
     state: State,
 }
 
 impl Simulation {
     pub fn new(core_id: u32) -> Result<Self, Error> {
         Ok(Self {
+            core_id,
             state: State::setup()?,
         })
     }
@@ -44,18 +46,20 @@ impl Simulation {
 
         match action {
             Action::Transfer(transaction) => {
-                let response = self.state.delegate.recv_transaction_v0(transaction)?;
+                let response = self.state.delegate.recv_transaction_v0(&transaction)?;
 
                 match response {
                     V0Response::Transaction { outputs } => {
-                        let index = 0;
+                        let mut index = 0;
 
                         for atom in transaction.atoms {
                             if atom.is_input() {
                                 continue;
                             }
 
-                            self.state.recv(atom.asset_id, atom.amount, outputs[index]);
+                            let asset_id = transaction.asset_ids[atom.asset_id as usize];
+
+                            self.state.recv(asset_id, atom.amount, outputs[index])?;
 
                             index += 1;
                         }
