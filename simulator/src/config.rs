@@ -32,7 +32,7 @@ pub struct Config {
     /// Duration in seconds to run the simulation
     pub duration_secs: Option<u64>,
     #[clap(
-        long,
+        long = "threads",
         env = "MUGRAPH_SIMULATOR_THREADS",
         default_value_t = num_cpus::get_physical()
     )]

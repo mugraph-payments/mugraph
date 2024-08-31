@@ -707,6 +707,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "iai"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71a816c97c42258aa5834d07590b718b4c9a598944cd39a52dc25b351185d678"
+
+[[package]]
 name = "indenter"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -886,6 +892,7 @@ dependencies = [
  "axum",
  "clap",
  "color-eyre",
+ "iai",
  "metrics",
  "mugraph-core",
  "onlyerror",
