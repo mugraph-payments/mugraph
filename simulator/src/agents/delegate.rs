@@ -47,6 +47,6 @@ impl Delegate {
 
     #[inline(always)]
     pub fn recv_transaction_v0(&mut self, tx: Transaction) -> Result<V0Response, Error> {
-        transaction_v0(tx, &mut self.context)
+        transaction_v0(tx, self.context.keypair, &self.context.db()?)
     }
 }

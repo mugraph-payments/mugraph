@@ -24,36 +24,6 @@ fn main() -> Result<()> {
         .listen_address("0.0.0.0:9999".parse::<SocketAddr>()?)
         .install()?;
 
-    describe_counter!(
-        "mugraph.simulator.processed_transactions",
-        "The number of processed transactions during the simulation"
-    );
-    describe_histogram!(
-        "mugraph.simulator.time_elapsed",
-        metrics::Unit::Milliseconds,
-        "The time taken to process a single transaction"
-    );
-    describe_counter!(
-        "mugraph.node.database.len_calls",
-        "Number of calls to storage's #len"
-    );
-    describe_counter!(
-        "mugraph.node.database.set_len_calls",
-        "Number of calls to storage's #set_len"
-    );
-    describe_counter!(
-        "mugraph.node.database.sync_data_calls",
-        "Number of calls to storage's #sync_data"
-    );
-    describe_counter!(
-        "mugraph.node.database.write_calls",
-        "Number of calls to storage's #write"
-    );
-    describe_counter!(
-        "mugraph.node.database.injected_failures",
-        "Number of storage failures injected"
-    );
-
     let cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
@@ -102,13 +72,12 @@ fn main() -> Result<()> {
         let sc = should_continue.clone();
         let d = delegate.clone();
         let u = users.clone();
+        let mut sim = Simulation::new(core.id as u32, config, d, u)?;
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
             info!("Starting simulation on core {i}.");
-
-            let mut sim = Simulation::new(core.id as u32, config, d, u)?;
 
             while sc.load(Ordering::Relaxed) {
                 sim.tick()?;

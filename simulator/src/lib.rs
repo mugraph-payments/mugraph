@@ -14,7 +14,6 @@ use mugraph_core::{
     types::*,
 };
 use rand_chacha::ChaCha20Rng;
-use state::State;
 use tracing::{error, info};
 
 mod action;
@@ -26,141 +25,43 @@ pub use self::{
     action::Action,
     agents::{delegate::Delegate, user::User},
     config::Config,
+    state::State,
 };
 
 pub struct Simulation {
-    rng: ChaCha20Rng,
-    delegate: Delegate,
     state: State,
-    users: Arc<RwLock<Vec<User>>>,
 }
 
 impl Simulation {
-    pub fn new(
-        core_id: u32,
-        config: Config,
-        delegate: Delegate,
-        users: Arc<RwLock<Vec<User>>>,
-    ) -> Result<Self> {
-        let mut rng = config.rng();
-
-        info!(simulation_id = core_id, "Simulation initialized");
-
+    pub fn new(core_id: u32) -> Result<Self, Error> {
         Ok(Self {
-            users,
-            delegate,
-            state: State::new(&mut rng),
-            rng,
+            state: State::setup()?,
         })
     }
 
-    pub fn process_transaction(
-        &mut self,
-        transaction: Transaction,
-        note: &Note,
-        from: u32,
-        to: u32,
-        amount: u64,
-    ) -> Result<(), Error> {
-        let response = self.delegate.recv_transaction_v0(transaction)?;
-        let mut users = self.users.write()?;
-
-        match response {
-            V0Response::Transaction { outputs } => {
-                // Create new notes from the outputs
-                for (i, blinded_sig) in outputs.iter().enumerate() {
-                    let new_note = Note {
-                        amount: if i == 0 { amount } else { note.amount - amount },
-                        delegate: note.delegate,
-                        asset_id: note.asset_id,
-                        nonce: Hash::random(&mut self.rng),
-                        signature: crypto::unblind_signature(
-                            blinded_sig,
-                            &crypto::blind(&mut self.rng, &[]).factor,
-                            &self.delegate.public_key(),
-                        )?,
-                    };
-
-                    if i == 0 {
-                        users[to as usize].notes.push(new_note);
-                    } else {
-                        // Keep the change
-                        users[from as usize].notes.push(new_note);
-                    }
-                }
-            }
-            V0Response::Error { errors } => {
-                return Err(errors[0].clone())?;
-            }
-        }
-
-        counter!("mugraph.simulator.processed_transactions").increment(1);
-
-        Ok(())
-    }
-
     pub fn tick(&mut self) -> Result<(), Error> {
-        let action = self.state.next(self.users.clone())?;
-        let u = self.users.clone();
-        let mut users = u.write()?;
+        let action = self.state.tick()?;
 
         match action {
-            Action::Transfer {
-                from,
-                to,
-                asset_id,
-                amount,
-            } => {
-                let start = Instant::now();
-                let note_idx = users[from as usize]
-                    .notes
-                    .iter()
-                    .position(|note| note.asset_id == asset_id && note.amount >= amount)
-                    .ok_or(Error::InsufficientFunds {
-                        asset_id,
-                        expected: amount,
-                        got: 0,
-                    })?;
-                let note = users[from as usize].notes.remove(note_idx);
+            Action::Transfer(transaction) => {
+                let response = self.state.delegate.recv_transaction_v0(transaction)?;
 
-                let mut transaction = TransactionBuilder::new(GreedyCoinSelection)
-                    .input(note.clone())
-                    .output(note.asset_id, amount);
+                match response {
+                    V0Response::Transaction { outputs } => {
+                        let index = 0;
 
-                if amount < note.amount {
-                    transaction = transaction.output(note.asset_id, note.amount - amount);
-                }
-
-                let transaction = transaction.build()?;
-
-                match self.process_transaction(transaction.clone(), &note, from, to, amount) {
-                    Ok(_) => {}
-                    Err(Error::StorageError { .. }) => {
-                        counter!("mugraph.simulator.injected_failures").increment(1);
-
-                        match self.process_transaction(transaction.clone(), &note, from, to, amount)
-                        {
-                            Err(e @ Error::AlreadySpent { signature }) => {
-                                error!("Consistency error: {signature} was spent on a failed transaction");
-                                Err(e)?;
+                        for atom in transaction.atoms {
+                            if atom.is_input() {
+                                continue;
                             }
-                            Err(e @ Error::StorageError { reason: _ }) => {
-                                counter!("mugraph.simulator.injected_failures").increment(1);
-                                Err(e)?;
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                Err(e)?;
-                            }
+
+                            self.state.recv(atom.asset_id, atom.amount, outputs[index]);
+
+                            index += 1;
                         }
                     }
-                    Err(e) => {
-                        Err(e)?;
-                    }
+                    V0Response::Error { errors } => panic!("{:?}", errors),
                 }
-
-                histogram!("mugraph.simulator.time_elapsed")
-                    .record(start.elapsed().as_millis_f64());
             }
         }
 

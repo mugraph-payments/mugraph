@@ -1,60 +1,101 @@
-use std::sync::{Arc, RwLock};
-
-use metrics::counter;
-use mugraph_core::error::Error;
+use mugraph_core::{
+    builder::{GreedyCoinSelection, TransactionBuilder},
+    crypto,
+    error::Error,
+    types::*,
+};
+use mugraph_node::context::Context;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
-use crate::{agents::user::User, Action};
+use crate::{Action, Config, Delegate};
 
 pub struct State {
-    rng: ChaCha20Rng,
+    pub rng: ChaCha20Rng,
+    pub keypair: Keypair,
+    pub delegate: Delegate,
+    pub notes: Vec<Note>,
 }
 
 impl State {
-    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Self {
-        Self {
-            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+    pub fn setup() -> Result<Self, Error> {
+        let config = Config::new();
+        let mut rng = config.rng();
+        let assets = (0..config.assets)
+            .map(|_| Hash::random(&mut rng))
+            .collect::<Vec<_>>();
+        let keypair = Keypair::random(&mut rng);
+        let mut notes = vec![];
+        let context = Context::new(&mut rng)?;
+        let mut delegate = Delegate::new(&mut rng, context)?;
+
+        for i in 0..config.notes {
+            let idx = rng.gen_range(0..config.assets);
+
+            let asset_id = assets[idx];
+            let amount = rng.gen_range(1..1_000_000_000);
+
+            let note = delegate.emit(asset_id, amount)?;
+
+            notes.push(note);
         }
+
+        Ok(Self {
+            rng,
+            keypair,
+            delegate,
+            notes,
+        })
     }
 
-    pub fn next(&mut self, users: Arc<RwLock<Vec<User>>>) -> Result<Action, Error> {
-        let kind = self.rng.gen_range(0..=0);
-        let users = users.read()?;
-
-        match kind {
+    pub fn tick(&mut self) -> Result<Action, Error> {
+        match rng.gen_range(0..=0) {
             0 => {
-                let mut from = None;
+                let input_count = self.rng.gen_range(1..self.notes.len());
+                let outputs = vec![];
+                let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
-                while from.is_none() {
-                    let id = self.rng.gen_range(0..users.len());
+                for i in 0..input_count {
+                    let input = self.notes.remove(self.rng.gen_range(0..self.notes.len()));
+                    let mut remaining = input.amount;
 
-                    if !users[id].notes.is_empty() {
-                        counter!("mugraph.simulator.state.transfer.skipped_sender").increment(1);
-                        from = Some(id);
+                    while remaining > 0 {
+                        let amount = self.rng.gen_range(1..=remaining);
+
+                        transaction = transaction.output(input.asset_id, amount);
+
+                        remaining -= amount;
                     }
+
+                    transaction.input(input);
                 }
 
-                let from = from.unwrap();
-                let to = self.rng.gen_range(0..users.len());
-
-                let note = users[from].notes.choose(&mut self.rng).unwrap();
-                let asset_id = note.asset_id;
-
-                if note.amount == 1 {
-                    panic!();
-                }
-
-                let amount = self.rng.gen_range(1..note.amount);
-
-                Ok(Action::Transfer {
-                    from: from as u32,
-                    to: to as u32,
-                    asset_id,
-                    amount,
-                })
+                Ok(Action::Transfer(transaction.build()?))
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn recv(
+        &mut self,
+        asset_id: Hash,
+        amount: u64,
+        signature: Blinded<Signature>,
+    ) -> Result<(), Error> {
+        let note = Note {
+            amount,
+            delegate: self.keypair.public_key,
+            asset_id,
+            nonce: Hash::random(&mut self.rng),
+            signature: crypto::unblind_signature(
+                &signature,
+                &crypto::blind(&mut self.rng, &[]).factor,
+                &self.keypair.public_key,
+            )?,
+        };
+
+        self.notes.push(note);
+
+        Ok(())
     }
 }

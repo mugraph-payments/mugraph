@@ -2,13 +2,18 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{Signature, Transaction, V0Response},
+    types::{Keypair, Signature, Transaction, V0Response},
 };
+use redb::Database;
 
-use crate::{context::Context, database::TABLE};
+use crate::database::TABLE;
 
 #[inline]
-pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0Response, Error> {
+pub fn transaction_v0(
+    transaction: Transaction,
+    keypair: Keypair,
+    database: &Database,
+) -> Result<V0Response, Error> {
     let mut outputs = vec![];
     let mut errors = vec![];
     let mut consumed_inputs = vec![];
@@ -35,7 +40,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                     }
                 };
 
-                match crypto::verify(&ctx.keypair.public_key, atom.nonce.as_ref(), signature) {
+                match crypto::verify(&keypair.public_key, atom.nonce.as_ref(), signature) {
                     Ok(_) => {}
                     Err(e) => {
                         errors.push(Error::InvalidSignature {
@@ -47,7 +52,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
                     }
                 }
 
-                let r = ctx.db()?.begin_read()?;
+                let r = database.begin_read()?;
                 let table = r.open_table(TABLE)?;
 
                 match table.get(signature.0) {
@@ -70,7 +75,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
             }
             false => {
                 let sig = crypto::sign_blinded(
-                    &ctx.keypair.secret_key,
+                    &keypair.secret_key,
                     &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );
 
@@ -80,7 +85,7 @@ pub fn transaction_v0(transaction: Transaction, ctx: &mut Context) -> Result<V0R
     }
 
     if errors.is_empty() {
-        let w = ctx.db()?.begin_write()?;
+        let w = database.begin_write()?;
         {
             let mut t = w.open_table(TABLE)?;
 
