@@ -11,7 +11,8 @@ use std::{
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{describe_counter, describe_histogram};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_simulator::{Config, Simulation};
+use mugraph_node::context::Context;
+use mugraph_simulator::{Config, Delegate, Simulation};
 use tracing::info;
 
 fn main() -> Result<()> {
@@ -54,17 +55,23 @@ fn main() -> Result<()> {
     let cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
+    let mut rng = config.rng();
+
+    let context = Context::new(&mut rng)?;
+    let delegate = Delegate::new(&mut rng, config.node_url, context)?;
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         info!("Starting simulator on core {i}");
 
         let sc = should_continue.clone();
+        let d = delegate.clone();
+
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
             info!("Starting simulation on core {i}.");
 
-            let mut sim = Simulation::new(config)?;
+            let mut sim = Simulation::new(core.id as u32, config, d)?;
 
             while sc.load(Ordering::Relaxed) {
                 sim.tick()?;

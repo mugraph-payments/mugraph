@@ -11,7 +11,6 @@ use mugraph_core::{
     error::Error,
     types::*,
 };
-use mugraph_node::context::Context;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use tracing::{error, info};
@@ -30,14 +29,9 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(config: Config) -> Result<Self> {
+    #[tracing::instrument(skip(config, delegate))]
+    pub fn new(core_id: u32, config: Config, mut delegate: Delegate) -> Result<Self> {
         let mut rng = config.rng();
-
-        let context = Context::new(&mut rng)?;
-
-        let mut delegate = Delegate::new(&mut rng, config.node_url, context)?;
-
-        info!("Delegate initialized");
 
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
@@ -63,6 +57,8 @@ impl Simulation {
             user.notes = notes;
             users.push(user);
         }
+
+        info!("Simulation initialized");
 
         Ok(Self {
             rng,

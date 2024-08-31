@@ -15,9 +15,9 @@ mod transaction;
 
 pub use transaction::*;
 
-use crate::{config::Config, context::Context};
+use crate::context::Context;
 
-pub fn router<R: CryptoRng + RngCore>(rng: &mut R, config: Config) -> Result<Router> {
+pub fn router<R: CryptoRng + RngCore>(rng: &mut R) -> Result<Router> {
     Ok(Router::new()
         .route("/health", get(health))
         .route("/rpc", post(rpc))

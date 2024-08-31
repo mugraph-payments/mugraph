@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
