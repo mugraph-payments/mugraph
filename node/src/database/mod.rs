@@ -3,12 +3,9 @@ mod test_backend;
 use std::{
     fs::{self, File},
     path::PathBuf,
-    sync::atomic::Ordering,
 };
 
 use mugraph_core::error::Error;
-use rand::{CryptoRng, Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, Builder, Database, StorageBackend, TableDefinition};
 pub use test_backend::*;
 
@@ -45,16 +42,7 @@ impl DB {
         Self::setup_with_backend(backend, !fs::exists(&path)?)
     }
 
-    pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Database, Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-        let failure_rate = rng.gen_range(0.0..1.0);
-        let backend = TestBackend::new(rng, failure_rate);
-        let enable_failures = backend.enable_failures.clone();
-
-        let db = Self::setup_with_backend(backend, true)?;
-
-        enable_failures.store(true, Ordering::SeqCst);
-
-        Ok(db)
+    pub fn setup_test() -> Result<Database, Error> {
+        Self::setup_with_backend(TestBackend::new(), true)
     }
 }

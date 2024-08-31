@@ -1,3 +1,4 @@
+use metrics::counter;
 use mugraph_core::{
     builder::{GreedyCoinSelection, TransactionBuilder},
     crypto,
@@ -47,6 +48,8 @@ impl State {
     }
 
     pub fn tick(&mut self) -> Result<Action, Error> {
+        counter!("mugraph.simulator.state.ticks").increment(1);
+
         match self.rng.gen_range(0..=0) {
             0 => {
                 let input_count = self.rng.gen_range(1..self.notes.len());
@@ -67,6 +70,8 @@ impl State {
                     transaction = transaction.input(input);
                 }
 
+                counter!("mugraph.simulator.state.transfers").increment(1);
+
                 Ok(Action::Transfer(transaction.build()?))
             }
             _ => unreachable!(),
@@ -79,6 +84,8 @@ impl State {
         amount: u64,
         signature: Blinded<Signature>,
     ) -> Result<(), Error> {
+        counter!("mugraph.simulator.state.notes_received").increment(1);
+
         let note = Note {
             amount,
             delegate: self.keypair.public_key,

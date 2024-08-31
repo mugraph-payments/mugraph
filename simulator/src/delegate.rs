@@ -15,14 +15,10 @@ pub struct Delegate {
 
 impl Delegate {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R, keypair: Keypair) -> Result<Self, Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-        let failure_rate = rng.gen_range(0.01f64..0.8f64);
+        let rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
-        info!(
-            "Starting delegate with failure rate {:.2}%",
-            failure_rate * 100.0
-        );
-        let db = DB::setup_test(&mut rng)?;
+        info!("Starting delegate",);
+        let db = DB::setup_test()?;
 
         Ok(Self { db, rng, keypair })
     }
