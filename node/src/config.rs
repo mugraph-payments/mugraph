@@ -72,7 +72,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             seed: None,
-            addr: "0.0.0.0:9999".parse().unwrap(),
+            addr: "0.0.0.0:3000".parse().unwrap(),
             public_key: None,
             secret_key: None,
             under_test: None,

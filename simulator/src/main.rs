@@ -9,6 +9,7 @@ use std::{
 };
 
 use color_eyre::eyre::{ErrReport, Result};
+use metrics::{describe_histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_simulator::{Config, Simulation};
 use tracing::info;
@@ -23,6 +24,32 @@ fn main() -> Result<()> {
     let cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
+
+    describe_histogram!(
+        "mugraph.node.database.backend_times.len",
+        Unit::Milliseconds,
+        "database time call #len"
+    );
+    describe_histogram!(
+        "mugraph.node.database.backend_times.read",
+        Unit::Milliseconds,
+        "database time call #read"
+    );
+    describe_histogram!(
+        "mugraph.node.database.backend_times.set_len",
+        Unit::Milliseconds,
+        "database time call #set_len"
+    );
+    describe_histogram!(
+        "mugraph.node.database.backend_times.sync_data",
+        Unit::Milliseconds,
+        "database time call #sync_data"
+    );
+    describe_histogram!(
+        "mugraph.node.database.backend_times.write",
+        Unit::Milliseconds,
+        "database time call #write"
+    );
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         let sc = should_continue.clone();

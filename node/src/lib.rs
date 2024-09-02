@@ -1,3 +1,5 @@
+#![feature(duration_millis_float)]
+
 use axum::Router;
 use color_eyre::eyre::Result;
 
