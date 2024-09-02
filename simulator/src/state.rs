@@ -6,7 +6,7 @@ use std::{
 use blake3::Hasher;
 use metrics::counter;
 use mugraph_core::{
-    builder::{GreedyCoinSelection, TransactionBuilder},
+    builder::{GreedyCoinSelection, KnapsackCoinSelection, TransactionBuilder},
     crypto,
     error::Error,
     timed,
@@ -60,7 +60,7 @@ impl State {
         match self.rng.gen_range(0..=1) {
             0 => timed!("mugraph.simulator.state.next.split.time_taken", {
                 let input_count = self.rng.gen_range(1..max_inputs);
-                let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
+                let mut transaction = TransactionBuilder::new(KnapsackCoinSelection);
 
                 for _ in 0..input_count {
                     let notes = self.notes.clone();
@@ -68,14 +68,20 @@ impl State {
                         Some(v) => v,
                         None => continue,
                     };
+
                     let mut remaining = input.amount;
 
                     while remaining > 0 {
-                        let amount = self.rng.gen_range(1..=remaining);
+                        let output_count = self.rng.gen_range(1..=min(4, remaining));
 
-                        transaction = transaction.output(input.asset_id, amount);
+                        for _ in 0..output_count - 1 {
+                            let amount = self.rng.gen_range(1..=remaining);
+                            transaction = transaction.output(input.asset_id, amount);
+                            remaining -= amount;
+                        }
 
-                        remaining -= amount;
+                        transaction = transaction.output(input.asset_id, remaining);
+                        remaining = 0;
                     }
 
                     self.notes.remove(input);
