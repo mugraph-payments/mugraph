@@ -1,4 +1,7 @@
-use std::{cmp::min, collections::HashMap};
+use std::{
+    cmp::min,
+    collections::{HashMap, HashSet},
+};
 
 use metrics::counter;
 use mugraph_core::{
@@ -16,7 +19,7 @@ pub struct State {
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
     pub delegate: Delegate,
-    pub notes: Vec<Note>,
+    pub notes: HashSet<Note>,
 }
 
 impl State {
@@ -27,8 +30,9 @@ impl State {
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
         let keypair = Keypair::random(&mut rng);
-        let mut notes = vec![];
+        let mut notes = HashSet::new();
         let mut delegate = Delegate::new(&mut rng, keypair)?;
+        let mut asset_groups: HashMap<Hash, Vec<u32>> = HashMap::new();
 
         for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);
@@ -38,7 +42,11 @@ impl State {
 
             let note = delegate.emit(asset_id, amount)?;
 
-            notes.push(note);
+            asset_groups
+                .entry(asset_id)
+                .and_modify(|x| x.push((notes.len() + 1) as u32))
+                .or_default();
+            notes.insert(note);
         }
 
         Ok(Self {
@@ -58,7 +66,11 @@ impl State {
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
                 for _ in 0..input_count {
-                    let input = self.notes.remove(self.rng.gen_range(0..self.notes.len()));
+                    let notes = self.notes.clone();
+                    let input = match notes.iter().choose(&mut self.rng) {
+                        Some(v) => v,
+                        None => continue,
+                    };
                     let mut remaining = input.amount;
 
                     while remaining > 0 {
@@ -69,7 +81,8 @@ impl State {
                         remaining -= amount;
                     }
 
-                    transaction = transaction.input(input);
+                    self.notes.remove(input);
+                    transaction = transaction.input(input.clone());
                 }
 
                 counter!("mugraph.simulator.state.transfers").increment(1);
@@ -78,40 +91,31 @@ impl State {
             }
             1 => {
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
-                let mut selected_notes = Vec::new();
-                let mut selected_indices = Vec::new();
+                let mut selected = vec![];
+                let mut outputs: HashMap<Hash, u64> = HashMap::new();
 
-                // Randomly select up to 16 notes
-                let num_notes = min(8, self.notes.len());
+                let notes = self.notes.clone();
 
-                while selected_notes.len() < num_notes {
-                    let idx = self.rng.gen_range(0..self.notes.len());
-                    if !selected_indices.contains(&idx) {
-                        selected_indices.push(idx);
-                        selected_notes.push(self.notes[idx].clone());
-                    }
-                }
-
-                let mut asset_groups: HashMap<_, Vec<_>> = HashMap::new();
-                for note in selected_notes {
-                    asset_groups.entry(note.asset_id).or_default().push(note);
-                }
-
-                for (asset_id, notes) in asset_groups.iter() {
-                    if notes.len() > 1 {
-                        let total_amount: u64 = notes.iter().map(|n| n.amount).sum();
-
-                        for note in notes {
-                            transaction = transaction.input(note.clone());
-                        }
-
-                        transaction = transaction.output(*asset_id, total_amount);
-
-                        self.notes.retain(|n| !notes.contains(n));
-
-                        // Break after processing one group to avoid overly complex transactions
+                for note in notes {
+                    if selected.len() >= 16 {
                         break;
                     }
+
+                    outputs
+                        .entry(note.asset_id)
+                        .and_modify(|x| *x += note.amount)
+                        .or_default();
+
+                    transaction = transaction.input(note.clone());
+                    selected.push(note);
+                }
+
+                for note in selected {
+                    self.notes.remove(&note);
+                }
+
+                for (asset_id, amount) in outputs {
+                    transaction = transaction.output(asset_id, amount);
                 }
 
                 counter!("mugraph.simulator.state.joins").increment(1);
@@ -142,7 +146,7 @@ impl State {
             )?,
         };
 
-        self.notes.push(note);
+        self.notes.insert(note);
 
         Ok(())
     }

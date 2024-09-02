@@ -8,6 +8,7 @@ clap = { workspace = true }
 color-eyre = { workspace = true }
 core_affinity = { workspace = true }
 ctrlc = { workspace = true }
+itertools = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-tcp = { workspace = true }
 mugraph-core = { workspace = true }

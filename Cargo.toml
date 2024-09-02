@@ -21,6 +21,7 @@ ctrlc = "3.4.5"
 curve25519-dalek = { version = "4.1.2", features = ["digest", "rand_core"] }
 digest = { version = "0.10.7" }
 hex = { version = "0.4.3", features = ["serde"] }
+itertools = { version = "0.13.0" }
 metrics = "0.23.0"
 metrics-exporter-tcp = "0.10.0"
 num_cpus = "1.16.0"

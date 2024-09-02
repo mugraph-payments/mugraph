@@ -29,6 +29,10 @@ impl<S: CoinSelectionStrategy> TransactionBuilder<S> {
         self
     }
 
+    pub fn input_count(&self) -> usize {
+        self.available_notes.len()
+    }
+
     pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
         self.outputs.push((asset_id, amount));
         self
