@@ -49,7 +49,7 @@ impl State {
         })
     }
 
-    pub fn tick(&mut self) -> Result<Action, Error> {
+    pub fn next(&mut self) -> Result<Action, Error> {
         counter!("mugraph.simulator.state.ticks").increment(1);
 
         match self.rng.gen_range(0..=1) {

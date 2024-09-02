@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use color_eyre::eyre::Result;
 use metrics::{counter, histogram};
-use mugraph_core::{error::Error, types::*};
+use mugraph_core::{error::Error, timed, types::*};
 use tracing::debug;
 
 mod action;
@@ -36,7 +36,9 @@ impl Simulation {
             "Starting simulation tick"
         );
 
-        let action = self.state.tick()?;
+        let action = timed!("mugraph.simulator.state.next.time_taken", {
+            self.state.next()?
+        });
 
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
@@ -71,7 +73,7 @@ impl Simulation {
             }
         }
 
-        histogram!("mugraph.simulator.tick_duration").record(start.elapsed().as_millis_f64());
+        histogram!("mugraph.simulator.tick.time_taken").record(start.elapsed().as_millis_f64());
 
         Ok(())
     }

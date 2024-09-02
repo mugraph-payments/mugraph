@@ -53,9 +53,14 @@ fn main() -> Result<()> {
         "database time call #write"
     );
     describe_histogram!(
-        "mugraph.simulator.tick_duration",
+        "mugraph.simulator.tick.time_taken",
         Unit::Milliseconds,
         "how long it took to run a simulation tick"
+    );
+    describe_histogram!(
+        "mugraph.simulator.state.next.time_taken",
+        Unit::Milliseconds,
+        "how long it took to generate the next action in the simulation"
     );
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
