@@ -1,5 +1,9 @@
+#![feature(duration_millis_float)]
+
+use std::time::Instant;
+
 use color_eyre::eyre::Result;
-use metrics::counter;
+use metrics::{counter, histogram};
 use mugraph_core::{error::Error, types::*};
 use tracing::debug;
 
@@ -24,6 +28,8 @@ impl Simulation {
     }
 
     pub fn tick(&mut self, round: u64) -> Result<(), Error> {
+        let start = Instant::now();
+
         debug!(
             core_id = self.core_id,
             round = round,
@@ -64,6 +70,8 @@ impl Simulation {
                 }
             }
         }
+
+        histogram!("mugraph.simulator.tick_duration").record(start.elapsed().as_millis_f64());
 
         Ok(())
     }

@@ -1,3 +1,5 @@
+#![feature(duration_millis_float)]
+
 use std::{
     net::SocketAddr,
     sync::{
@@ -49,6 +51,11 @@ fn main() -> Result<()> {
         "mugraph.node.database.backend_times.write",
         Unit::Milliseconds,
         "database time call #write"
+    );
+    describe_histogram!(
+        "mugraph.simulator.tick_duration",
+        Unit::Milliseconds,
+        "how long it took to run a simulation tick"
     );
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
