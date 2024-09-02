@@ -1,48 +1,45 @@
+use std::{fs::OpenOptions, path::PathBuf};
+
+use mugraph_core::{error::Error, types::Signature};
+use redb::{backends::FileBackend, Builder, Database, StorageBackend, TableDefinition};
+
 mod test_backend;
 
-use std::{
-    fs::{self, File},
-    path::PathBuf,
-};
+pub use self::test_backend::*;
 
-use mugraph_core::error::Error;
-use redb::{backends::FileBackend, Builder, Database, StorageBackend, TableDefinition};
-pub use test_backend::*;
-
-pub const TABLE: TableDefinition<[u8; 32], bool> = TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
 
 #[derive(Debug, Clone)]
 pub struct DB;
 
 impl DB {
-    pub fn setup_with_backend<B: StorageBackend>(
-        backend: B,
-        do_setup: bool,
-    ) -> Result<Database, Error> {
+    pub fn setup_with_backend<B: StorageBackend>(backend: B) -> Result<Database, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
-        if do_setup {
-            let w = db.begin_write()?;
+        let w = db.begin_write()?;
 
-            {
-                let mut t = w.open_table(TABLE)?;
-                t.insert(&[0u8; 32], false)?;
-            }
-
-            w.commit()?;
+        {
+            let mut t = w.open_table(NOTES)?;
+            t.insert(Signature::zero(), true)?;
         }
+
+        w.commit()?;
 
         Ok(db)
     }
 
     pub fn setup(path: impl Into<PathBuf>) -> Result<Database, Error> {
-        let path = path.into();
-        let backend = FileBackend::new(File::open(&path)?)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path.into())?;
+        let backend = FileBackend::new(file)?;
 
-        Self::setup_with_backend(backend, !fs::exists(&path)?)
+        Self::setup_with_backend(backend)
     }
 
     pub fn setup_test() -> Result<Database, Error> {
-        Self::setup_with_backend(TestBackend::new(), true)
+        Self::setup_with_backend(TestBackend::new())
     }
 }

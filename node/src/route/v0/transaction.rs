@@ -6,7 +6,7 @@ use mugraph_core::{
 };
 use redb::Database;
 
-use crate::database::TABLE;
+use crate::database::NOTES;
 
 #[inline]
 pub fn transaction_v0(
@@ -53,9 +53,9 @@ pub fn transaction_v0(
                 }
 
                 let r = database.begin_read()?;
-                let table = r.open_table(TABLE)?;
+                let table = r.open_table(NOTES)?;
 
-                match table.get(signature.0) {
+                match table.get(signature) {
                     Ok(Some(_)) => {
                         errors.push(Error::AlreadySpent { signature });
 
@@ -87,10 +87,10 @@ pub fn transaction_v0(
     if errors.is_empty() {
         let w = database.begin_write()?;
         {
-            let mut t = w.open_table(TABLE)?;
+            let mut t = w.open_table(NOTES)?;
 
             for input in consumed_inputs.into_iter() {
-                t.insert(input.as_ref(), true)?;
+                t.insert(input, true)?;
             }
         }
         w.commit()?;

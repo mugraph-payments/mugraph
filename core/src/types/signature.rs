@@ -103,3 +103,39 @@ impl From<Point> for Signature {
         Self(value.compress().to_bytes())
     }
 }
+
+impl redb::Key for Signature {
+    fn compare(data1: &[u8], data2: &[u8]) -> std::cmp::Ordering {
+        data1.cmp(data2)
+    }
+}
+
+impl redb::Value for Signature {
+    type SelfType<'a> = Self where Self: 'a;
+    type AsBytes<'a> = &'a [u8] where Self: 'a;
+
+    fn fixed_width() -> Option<usize> {
+        Some(32)
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(data);
+        Self(arr)
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'a,
+        Self: 'b,
+    {
+        &value.0
+    }
+
+    fn type_name() -> redb::TypeName {
+        redb::TypeName::new("signature")
+    }
+}
