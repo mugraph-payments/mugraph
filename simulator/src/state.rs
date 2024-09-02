@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::{cmp::min, collections::HashMap};
 
 use metrics::counter;
 use mugraph_core::{
@@ -52,9 +52,9 @@ impl State {
     pub fn tick(&mut self) -> Result<Action, Error> {
         counter!("mugraph.simulator.state.ticks").increment(1);
 
-        match self.rng.gen_range(0..=0) {
+        match self.rng.gen_range(0..=1) {
             0 => {
-                let input_count = self.rng.gen_range(1..min(16, self.notes.len()));
+                let input_count = self.rng.gen_range(1..min(8, self.notes.len()));
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
                 for _ in 0..input_count {
@@ -74,7 +74,49 @@ impl State {
 
                 counter!("mugraph.simulator.state.transfers").increment(1);
 
-                Ok(Action::Transfer(transaction.build()?))
+                Ok(Action::Split(transaction.build()?))
+            }
+            1 => {
+                let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
+                let mut selected_notes = Vec::new();
+                let mut selected_indices = Vec::new();
+
+                // Randomly select up to 16 notes
+                let num_notes = min(8, self.notes.len());
+
+                while selected_notes.len() < num_notes {
+                    let idx = self.rng.gen_range(0..self.notes.len());
+                    if !selected_indices.contains(&idx) {
+                        selected_indices.push(idx);
+                        selected_notes.push(self.notes[idx].clone());
+                    }
+                }
+
+                let mut asset_groups: HashMap<_, Vec<_>> = HashMap::new();
+                for note in selected_notes {
+                    asset_groups.entry(note.asset_id).or_default().push(note);
+                }
+
+                for (asset_id, notes) in asset_groups.iter() {
+                    if notes.len() > 1 {
+                        let total_amount: u64 = notes.iter().map(|n| n.amount).sum();
+
+                        for note in notes {
+                            transaction = transaction.input(note.clone());
+                        }
+
+                        transaction = transaction.output(*asset_id, total_amount);
+
+                        self.notes.retain(|n| !notes.contains(n));
+
+                        // Break after processing one group to avoid overly complex transactions
+                        break;
+                    }
+                }
+
+                counter!("mugraph.simulator.state.joins").increment(1);
+
+                Ok(Action::Join(transaction.build()?))
             }
             _ => unreachable!(),
         }

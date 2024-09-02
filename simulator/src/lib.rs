@@ -39,7 +39,7 @@ impl Simulation {
         let action = self.state.tick()?;
 
         match action {
-            Action::Transfer(transaction) => {
+            Action::Split(transaction) | Action::Join(transaction) => {
                 let response = self.state.delegate.recv_transaction_v0(&transaction)?;
 
                 match response {
