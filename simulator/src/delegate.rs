@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use mugraph_core::{crypto, error::Error, types::*};
+use mugraph_core::{crypto, error::Error, timed, types::*};
 use mugraph_node::{database::DB, v0::transaction_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -42,6 +42,8 @@ impl Delegate {
 
     #[inline(always)]
     pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
-        transaction_v0(tx, self.keypair, &self.db)
+        timed!("mugraph.simulator.delegate.transaction_v0", {
+            transaction_v0(tx, self.keypair, &self.db)
+        })
     }
 }

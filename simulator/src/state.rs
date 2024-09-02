@@ -8,6 +8,7 @@ use mugraph_core::{
     builder::{GreedyCoinSelection, TransactionBuilder},
     crypto,
     error::Error,
+    timed,
     types::*,
 };
 use rand::prelude::*;
@@ -32,7 +33,6 @@ impl State {
         let keypair = Keypair::random(&mut rng);
         let mut notes = HashSet::new();
         let mut delegate = Delegate::new(&mut rng, keypair)?;
-        let mut asset_groups: HashMap<Hash, Vec<u32>> = HashMap::new();
 
         for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);
@@ -42,10 +42,6 @@ impl State {
 
             let note = delegate.emit(asset_id, amount)?;
 
-            asset_groups
-                .entry(asset_id)
-                .and_modify(|x| x.push((notes.len() + 1) as u32))
-                .or_default();
             notes.insert(note);
         }
 
@@ -58,11 +54,11 @@ impl State {
     }
 
     pub fn next(&mut self) -> Result<Action, Error> {
-        counter!("mugraph.simulator.state.ticks").increment(1);
+        let max_inputs = min(8, self.notes.len());
 
         match self.rng.gen_range(0..=1) {
-            0 => {
-                let input_count = self.rng.gen_range(1..min(8, self.notes.len()));
+            0 => timed!("mugraph.simulator.state.next.split.time_taken", {
+                let input_count = self.rng.gen_range(1..max_inputs);
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
 
                 for _ in 0..input_count {
@@ -88,19 +84,20 @@ impl State {
                 counter!("mugraph.simulator.state.transfers").increment(1);
 
                 Ok(Action::Split(transaction.build()?))
-            }
-            1 => {
+            }),
+            1 => timed!("mugraph.simulator.state.next.join.time_taken", {
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
                 let mut selected = vec![];
                 let mut outputs: HashMap<Hash, u64> = HashMap::new();
 
-                let notes = self.notes.clone();
+                let notes = self
+                    .notes
+                    .iter()
+                    .take(max_inputs)
+                    .cloned()
+                    .collect::<Vec<_>>();
 
                 for note in notes {
-                    if selected.len() >= 16 {
-                        break;
-                    }
-
                     outputs
                         .entry(note.asset_id)
                         .and_modify(|x| *x += note.amount)
@@ -121,7 +118,7 @@ impl State {
                 counter!("mugraph.simulator.state.joins").increment(1);
 
                 Ok(Action::Join(transaction.build()?))
-            }
+            }),
             _ => unreachable!(),
         }
     }

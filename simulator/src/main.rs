@@ -28,27 +28,27 @@ fn main() -> Result<()> {
     let config = Config::default();
 
     describe_histogram!(
-        "mugraph.node.database.backend_times.len",
+        "mugraph.database.len.time_taken",
         Unit::Milliseconds,
         "database time call #len"
     );
     describe_histogram!(
-        "mugraph.node.database.backend_times.read",
+        "mugraph.database.read.time_taken",
         Unit::Milliseconds,
         "database time call #read"
     );
     describe_histogram!(
-        "mugraph.node.database.backend_times.set_len",
+        "mugraph.database.set_len.time_taken",
         Unit::Milliseconds,
         "database time call #set_len"
     );
     describe_histogram!(
-        "mugraph.node.database.backend_times.sync_data",
+        "mugraph.database.sync_data.time_taken",
         Unit::Milliseconds,
         "database time call #sync_data"
     );
     describe_histogram!(
-        "mugraph.node.database.backend_times.write",
+        "mugraph.database.write.time_taken",
         Unit::Milliseconds,
         "database time call #write"
     );
@@ -61,6 +61,21 @@ fn main() -> Result<()> {
         "mugraph.simulator.state.next.time_taken",
         Unit::Milliseconds,
         "how long it took to generate the next action in the simulation"
+    );
+    describe_histogram!(
+        "mugraph.simulator.state.next.split.time_taken",
+        Unit::Milliseconds,
+        "how long it took to generate the next split action in the simulation"
+    );
+    describe_histogram!(
+        "mugraph.simulator.state.next.join.time_taken",
+        Unit::Milliseconds,
+        "how long it took to generate the next join action in the simulation"
+    );
+    describe_histogram!(
+        "mugraph.simulator.delegate.transaction_v0",
+        Unit::Milliseconds,
+        "How long it took to get a server response"
     );
 
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
