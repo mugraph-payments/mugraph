@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
+use blake3::Hasher;
 use metrics::counter;
 use mugraph_core::{
     builder::{GreedyCoinSelection, TransactionBuilder},
@@ -130,12 +131,16 @@ impl State {
         signature: Blinded<Signature>,
     ) -> Result<(), Error> {
         counter!("mugraph.simulator.state.notes_received").increment(1);
+        let mut nonce = Hasher::new();
+        nonce.update(asset_id.as_ref());
+        nonce.update(&amount.to_be_bytes());
+        nonce.update(signature.0.as_ref());
 
         let note = Note {
             amount,
             delegate: self.keypair.public_key,
             asset_id,
-            nonce: Hash::random(&mut self.rng),
+            nonce: nonce.finalize().into(),
             signature: crypto::unblind_signature(
                 &signature,
                 &crypto::blind(&mut self.rng, &[]).factor,

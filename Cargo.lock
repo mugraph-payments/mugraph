@@ -913,6 +913,7 @@ dependencies = [
 name = "mugraph-simulator"
 version = "0.0.1"
 dependencies = [
+ "blake3",
  "clap",
  "color-eyre",
  "core_affinity",
