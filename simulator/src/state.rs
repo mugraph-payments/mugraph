@@ -6,7 +6,6 @@ use metrics::{counter, gauge};
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tracing::info;
 
 use crate::{Action, Config, Delegate};
 
@@ -87,7 +86,6 @@ impl State {
 
         transaction = transaction.input(input);
 
-        info!("Split generated");
         counter!("state.splits").increment(1);
 
         Ok(Action::Split(transaction.build()?))

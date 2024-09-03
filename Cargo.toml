@@ -46,4 +46,3 @@ tracing-subscriber = { version = "0.3.18", features = ["fmt"] }
 opt-level = 3
 debug = false
 lto = "fat"
-panic = "abort"

@@ -3,6 +3,7 @@
 use std::{
     collections::VecDeque,
     net::SocketAddr,
+    panic::{self, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -11,10 +12,10 @@ use std::{
     time::Duration,
 };
 
-use color_eyre::eyre::{ErrReport, Result};
+use color_eyre::eyre::Result;
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_core::types::Keypair;
+use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
     observer::{self, Client},
     Config, Delegate, Simulation,
@@ -123,12 +124,33 @@ fn main() -> Result<()> {
             while sc.load(Ordering::Relaxed) {
                 gauge!("current_round", "core_id" => core_id.clone()).set(round as f64);
 
-                sim.tick(round)?;
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    sim.tick(round)?;
+
+                    Ok::<_, Error>(())
+                }));
+
+                match result {
+                    Ok(_) => {}
+                    Err(err) => {
+                        observer::restore_terminal()?;
+
+                        if let Some(message) = err.downcast_ref::<&str>() {
+                            error!(message = message, "Simulation panicked!");
+                        } else if let Ok(message) = err.downcast::<String>() {
+                            error!(message = message, "Simulation panicked!");
+                        } else {
+                            error!(message = "Could not retrieve", "Simulation panicked!");
+                        }
+
+                        sc.store(false, Ordering::SeqCst);
+                    }
+                }
 
                 round += 1;
             }
 
-            Ok::<_, ErrReport>(())
+            Ok::<_, Error>(())
         });
     }
 
@@ -136,15 +158,16 @@ fn main() -> Result<()> {
 
     match observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {
+            observer::restore_terminal()?;
             info!("Observer finished.");
         }
         Err(e) => {
+            observer::restore_terminal()?;
             error!(msg = %e, "Observer failed because of error");
         }
     }
 
     should_continue.swap(false, Ordering::Relaxed);
-    observer::restore_terminal()?;
 
     Ok(())
 }

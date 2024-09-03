@@ -10,11 +10,11 @@ pub struct Config {
     /// The seed to use for the simulation
     pub seed: Option<u64>,
 
-    #[clap(long = "assets", default_value = "2", env = "MUGRAPH_SIMULATOR_ASSETS")]
+    #[clap(long = "assets", default_value = "4", env = "MUGRAPH_SIMULATOR_ASSETS")]
     /// The amount of assets to simulate
     pub assets: usize,
 
-    #[clap(long = "notes", default_value = "4", env = "MUGRAPH_SIMULATOR_NOTES")]
+    #[clap(long = "notes", default_value = "64", env = "MUGRAPH_SIMULATOR_NOTES")]
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
 
