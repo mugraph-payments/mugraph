@@ -1,0 +1,10 @@
+[workspace]
+members = [
+  "metrics",
+  "metrics-util",
+  "metrics-exporter-tcp",
+  "metrics-exporter-prometheus",
+  "metrics-tracing-context",
+  "metrics-observer",
+  "metrics-benchmark",
+]

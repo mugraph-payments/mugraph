@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package event.proto;
+
+message Metadata {
+  string name = 1;
+  enum MetricType {
+    COUNTER = 0;
+    GAUGE = 1;
+    HISTOGRAM = 2;
+  }
+  MetricType metric_type = 2;
+  oneof unit {
+    string unit_value = 3;
+  }
+  oneof description {
+    string description_value = 4;
+  }
+}
+
+message Metric {
+  string name = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  map<string, string> labels = 3;
+  oneof operation {
+    uint64 increment_counter = 4;
+    uint64 set_counter = 5;
+    double increment_gauge = 6;
+    double decrement_gauge = 7;
+    double set_gauge = 8;
+    double record_histogram = 9;
+  }
+}
+
+message Event {
+  oneof event {
+    Metadata metadata = 1;
+    Metric metric = 2;
+  }
+}
