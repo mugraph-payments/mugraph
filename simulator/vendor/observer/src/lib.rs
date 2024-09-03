@@ -37,21 +37,19 @@ use self::metrics_inner::{ClientState, MetricData};
 mod selector;
 use self::selector::Selector;
 
-pub fn main(signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+pub fn main(address: &str, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let terminal = init_terminal()?;
-    let result = run(signal, terminal);
+    let result = run(address, signal, terminal);
     restore_terminal()?;
     result
 }
 
 pub fn run(
+    address: &str,
     should_continue: Arc<AtomicBool>,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
-    let address = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "127.0.0.1:5000".to_owned());
-    let client = metrics_inner::Client::new(address);
+    let client = metrics_inner::Client::new(address.to_string());
     let mut selector = Selector::new();
     loop {
         if !should_continue.load(Ordering::SeqCst) {

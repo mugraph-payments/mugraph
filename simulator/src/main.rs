@@ -19,8 +19,9 @@ use tracing::info;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let metric_address = "0.0.0.0:9999";
     TcpBuilder::new()
-        .listen_address("0.0.0.0:9999".parse::<SocketAddr>()?)
+        .listen_address(metric_address.parse::<SocketAddr>()?)
         .install()?;
 
     let cores = core_affinity::get_core_ids().unwrap();
@@ -104,8 +105,10 @@ fn main() -> Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    metrics_observer::main(should_continue.clone()).map_err(|e| Error::ServerError {
-        reason: e.to_string(),
+    metrics_observer::main(metric_address, should_continue.clone()).map_err(|e| {
+        Error::ServerError {
+            reason: e.to_string(),
+        }
     })?;
 
     should_continue.swap(false, Ordering::Relaxed);
