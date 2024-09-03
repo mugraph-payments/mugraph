@@ -986,22 +986,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics-observer"
-version = "0.4.0"
-dependencies = [
- "bytes",
- "chrono",
- "crossbeam-channel",
- "home",
- "metrics",
- "metrics-util",
- "prost",
- "prost-build",
- "prost-types",
- "ratatui",
-]
-
-[[package]]
 name = "metrics-util"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1096,20 +1080,28 @@ name = "mugraph-simulator"
 version = "0.0.1"
 dependencies = [
  "blake3",
+ "bytes",
+ "chrono",
  "clap",
  "color-eyre",
  "core_affinity",
+ "crossbeam-channel",
  "ctrlc",
+ "home",
  "itertools 0.13.0",
  "metrics",
  "metrics-exporter-tcp",
- "metrics-observer",
+ "metrics-util",
  "mugraph-core",
  "mugraph-node",
  "num_cpus",
  "onlyerror",
+ "prost",
+ "prost-build",
+ "prost-types",
  "rand",
  "rand_chacha",
+ "ratatui",
  "redb",
  "serde_json",
  "tracing",

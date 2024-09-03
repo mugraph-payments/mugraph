@@ -3,15 +3,13 @@ resolver = "2"
 members = [
   "core",
   "node",
-  "simulator",
-  "simulator/vendor/observer"
+  "simulator"
 ]
 
 [workspace.dependencies]
 mugraph-core = { path = "./core" }
 mugraph-node = { path = "./node" }
 mugraph-simulator = { path = "./simulator" }
-metrics-observer = { path = "./simulator/vendor/observer" }
 
 axum = { version = "0.7.5", features = ["macros"] }
 blake3 = { version = "1.5.4", features = ["neon"] }

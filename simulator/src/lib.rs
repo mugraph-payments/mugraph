@@ -10,6 +10,7 @@ use tracing::debug;
 mod action;
 mod config;
 mod delegate;
+pub mod observer;
 mod state;
 
 pub use self::{action::Action, config::Config, delegate::Delegate, state::State};

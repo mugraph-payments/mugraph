@@ -14,9 +14,11 @@ use std::{
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
-use metrics_observer::Client;
 use mugraph_core::types::Keypair;
-use mugraph_simulator::{Config, Delegate, Simulation};
+use mugraph_simulator::{
+    observer::{self, Client},
+    Config, Delegate, Simulation,
+};
 use tracing::{error, info};
 
 fn main() -> Result<()> {
@@ -127,7 +129,7 @@ fn main() -> Result<()> {
 
     thread::sleep(Duration::from_millis(100));
 
-    match metrics_observer::main(observer_client, should_continue.clone()) {
+    match observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {
             info!("Observer finished.");
         }
@@ -137,7 +139,7 @@ fn main() -> Result<()> {
     }
 
     should_continue.swap(false, Ordering::Relaxed);
-    metrics_observer::restore_terminal()?;
+    observer::restore_terminal()?;
 
     Ok(())
 }
