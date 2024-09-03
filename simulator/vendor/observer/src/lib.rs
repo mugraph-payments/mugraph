@@ -11,7 +11,7 @@ use std::{
 };
 
 use chrono::Local;
-use metrics::Unit;
+use metrics::{counter, Unit};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -52,11 +52,13 @@ pub fn run(
     let client = metrics_inner::Client::new(address.to_string());
     let mut selector = Selector::new();
     loop {
-        if !should_continue.load(Ordering::SeqCst) {
+        if !should_continue.load(Ordering::Relaxed) {
             break;
         }
 
         terminal.draw(|f| {
+            counter!("metrics-observer.frame_count").increment(1);
+
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
@@ -187,7 +189,7 @@ pub fn run(
         if let Some(input) = InputEvents::next()? {
             match input.code {
                 KeyCode::Char('q') => {
-                    should_continue.store(true, Ordering::SeqCst);
+                    should_continue.store(true, Ordering::Relaxed);
                     break;
                 }
                 KeyCode::Up => selector.previous(),

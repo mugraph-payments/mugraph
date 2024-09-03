@@ -1,6 +1,6 @@
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, RwLock,
 };
 
 use metrics::counter;
@@ -13,7 +13,7 @@ use tracing::info;
 #[derive(Debug)]
 pub struct TestBackend {
     inner: InMemoryBackend,
-    rng: ChaCha20Rng,
+    rng: RwLock<ChaCha20Rng>,
     inject_failures: Arc<AtomicBool>,
     failure_rate: f64,
 }
@@ -85,7 +85,7 @@ impl TestBackend {
 
         Self {
             inner: InMemoryBackend::new(),
-            rng,
+            rng: rng.into(),
             inject_failures: AtomicBool::new(false).into(),
             failure_rate,
         }
@@ -94,9 +94,9 @@ impl TestBackend {
     #[inline]
     fn maybe_fail(&self) -> Result<(), std::io::Error> {
         counter!("mugraph.database.actions").increment(1);
-        let mut rng = self.rng.clone();
+        let mut rng = self.rng.write().expect("Failed to get rng");
 
-        if !self.inject_failures.load(Ordering::SeqCst) {
+        if !self.inject_failures.load(Ordering::Relaxed) {
             return Ok(());
         }
 

@@ -2,7 +2,6 @@
 
 use std::{
     net::SocketAddr,
-    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
