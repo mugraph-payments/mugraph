@@ -12,6 +12,7 @@ ctrlc = { workspace = true }
 itertools = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-tcp = { workspace = true }
+metrics-observer = { workspace = true }
 mugraph-core = { workspace = true }
 mugraph-node = { workspace = true }
 num_cpus = { workspace = true }

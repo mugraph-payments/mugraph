@@ -1,4 +1,14 @@
-use std::{error::Error, fmt, io, io::Stdout, num::FpCategory, time::Duration};
+use std::{
+    error::Error,
+    fmt,
+    io::{self, Stdout},
+    num::FpCategory,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use chrono::Local;
 use metrics::Unit;
@@ -27,20 +37,27 @@ use self::metrics_inner::{ClientState, MetricData};
 mod selector;
 use self::selector::Selector;
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub fn main(signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let terminal = init_terminal()?;
-    let result = run(terminal);
+    let result = run(signal, terminal);
     restore_terminal()?;
     result
 }
 
-fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
+pub fn run(
+    signal: Arc<AtomicBool>,
+    mut terminal: Terminal<CrosstermBackend<Stdout>>,
+) -> Result<(), Box<dyn Error>> {
     let address = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:5000".to_owned());
     let client = metrics_inner::Client::new(address);
     let mut selector = Selector::new();
     loop {
+        if signal.load(Ordering::SeqCst) {
+            break;
+        }
+
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -171,7 +188,10 @@ fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn E
         // so our screen is never stale by more than 1 second.
         if let Some(input) = InputEvents::next()? {
             match input.code {
-                KeyCode::Char('q') => break,
+                KeyCode::Char('q') => {
+                    signal.store(true, Ordering::SeqCst);
+                    break;
+                }
                 KeyCode::Up => selector.previous(),
                 KeyCode::Down => selector.next(),
                 KeyCode::PageUp => selector.top(),

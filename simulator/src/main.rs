@@ -13,6 +13,7 @@ use std::{
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{describe_histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
+use mugraph_core::error::Error;
 use mugraph_simulator::{Config, Simulation};
 use tracing::info;
 
@@ -78,6 +79,8 @@ fn main() -> Result<()> {
         "How long it took to get a server response"
     );
 
+    let start = Instant::now();
+
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         let sc = should_continue.clone();
         let mut sim = Simulation::new(core.id as u32)?;
@@ -90,6 +93,10 @@ fn main() -> Result<()> {
             let mut round = 0;
 
             while sc.load(Ordering::Relaxed) {
+                if start.elapsed() > Duration::from_secs(config.duration_secs.unwrap_or(u64::MAX)) {
+                    break;
+                }
+
                 sim.tick(round)?;
                 round += 1;
             }
@@ -105,17 +112,14 @@ fn main() -> Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let start = Instant::now();
-
-    while should_continue.load(Ordering::Relaxed) {
-        if start.elapsed() > Duration::from_secs(config.duration_secs.unwrap_or(u64::MAX)) {
-            break;
-        }
-
-        thread::sleep(Duration::from_millis(100));
-    }
+    metrics_observer::main(should_continue.clone()).map_err(|e| Error::ServerError {
+        reason: e.to_string(),
+    })?;
 
     should_continue.swap(false, Ordering::Relaxed);
+
+    thread::sleep(Duration::from_millis(100));
+
     info!("Simulation reached end of duration, stopping.");
 
     Ok(())
