@@ -1,6 +1,7 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
 use mugraph_core::{error::Error, types::Signature};
+use rand::prelude::*;
 use redb::{backends::FileBackend, Builder, Database, StorageBackend, TableDefinition};
 
 mod test_backend;
@@ -39,7 +40,7 @@ impl DB {
         Self::setup_with_backend(backend)
     }
 
-    pub fn setup_test() -> Result<Database, Error> {
-        Self::setup_with_backend(TestBackend::new())
+    pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Database, Error> {
+        Self::setup_with_backend(TestBackend::new(rng))
     }
 }

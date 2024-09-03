@@ -1,22 +1,36 @@
+use std::sync::{atomic::AtomicBool, Arc};
+
 use metrics::counter;
 use mugraph_core::timed;
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 use redb::{backends::InMemoryBackend, StorageBackend};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct TestBackend {
     inner: InMemoryBackend,
+    rng: ChaCha20Rng,
+    should_fail: Arc<AtomicBool>,
+    failure_rate: f64,
 }
 
 impl StorageBackend for TestBackend {
     #[inline]
     fn len(&self) -> Result<u64, std::io::Error> {
         counter!("mugraph.database.len.calls").increment(1);
+
+        self.maybe_fail()?;
+
         timed!("mugraph.database.len.time_taken", { self.inner.len() })
     }
 
     #[inline]
     fn read(&self, offset: u64, len: usize) -> Result<Vec<u8>, std::io::Error> {
         counter!("mugraph.database.read.calls").increment(1);
+
+        self.maybe_fail()?;
+
         timed!("mugraph.database.len.time_taken", {
             self.inner.read(offset, len)
         })
@@ -25,6 +39,9 @@ impl StorageBackend for TestBackend {
     #[inline]
     fn set_len(&self, len: u64) -> Result<(), std::io::Error> {
         counter!("mugraph.database.set_len.calls").increment(1);
+
+        self.maybe_fail()?;
+
         timed!("mugraph.database.set_len.time_taken", {
             self.inner.set_len(len)
         })
@@ -33,6 +50,8 @@ impl StorageBackend for TestBackend {
     #[inline]
     fn sync_data(&self, eventual: bool) -> Result<(), std::io::Error> {
         counter!("mugraph.database.sync_data.calls").increment(1);
+
+        self.maybe_fail()?;
 
         timed!("mugraph.database.sync_data.time_taken", {
             self.inner.sync_data(eventual)
@@ -43,22 +62,49 @@ impl StorageBackend for TestBackend {
     fn write(&self, offset: u64, data: &[u8]) -> Result<(), std::io::Error> {
         counter!("mugraph.database.write.calls").increment(1);
 
+        self.maybe_fail()?;
+
         timed!("mugraph.database.write.time_taken", {
             self.inner.write(offset, data)
         })
     }
 }
 
-impl Default for TestBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TestBackend {
-    pub fn new() -> Self {
+    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Self {
+        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
+        let failure_rate = rng.gen_range(0.0f64..1.0f64);
+
+        info!(
+            failure_rate = %format!("{:.2}%", failure_rate * 100.0),
+            "Starting test database backend"
+        );
+
         Self {
             inner: InMemoryBackend::new(),
+            rng,
+            should_fail: AtomicBool::new(false).into(),
+            failure_rate,
+        }
+    }
+
+    #[inline]
+    fn maybe_fail(&self) -> Result<(), std::io::Error> {
+        let mut rng = self.rng.clone();
+
+        if !self.should_fail.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok(());
+        }
+
+        if rng.gen_range(0f64..self.failure_rate) < self.failure_rate {
+            counter!("mugraph.database.injected_failures").increment(1);
+
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Simulated failure",
+            ))
+        } else {
+            Ok(())
         }
     }
 }

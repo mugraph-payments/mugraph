@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, timed, types::*};
 use mugraph_node::{database::DB, v0::transaction_v0};
@@ -9,16 +11,16 @@ use tracing::info;
 #[derive(Debug, Clone)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,
-    pub db: Database,
+    pub db: Arc<Database>,
     pub keypair: Keypair,
 }
 
 impl Delegate {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R, keypair: Keypair) -> Result<Self, Error> {
-        let rng = ChaCha20Rng::seed_from_u64(rng.gen());
+        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
-        info!("Starting delegate",);
-        let db = DB::setup_test()?;
+        info!(public_key = %keypair.public_key, "Starting delegate");
+        let db = DB::setup_test(&mut rng)?.into();
 
         Ok(Self { db, rng, keypair })
     }

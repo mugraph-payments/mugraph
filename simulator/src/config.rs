@@ -22,7 +22,7 @@ pub struct Config {
     #[clap(
         long = "threads",
         env = "MUGRAPH_SIMULATOR_THREADS",
-        default_value_t = num_cpus::get()
+        default_value_t = num_cpus::get_physical()
     )]
     /// The amount of simulated instances to run in parallel
     pub threads: usize,
