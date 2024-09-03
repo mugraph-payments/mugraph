@@ -14,6 +14,7 @@ use color_eyre::eyre::{ErrReport, Result};
 use itertools::Itertools;
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
+use metrics_observer::Client;
 use mugraph_simulator::{Config, Simulation};
 use tracing::{error, info};
 
@@ -28,7 +29,13 @@ fn main() -> Result<()> {
     let mut cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
+    let observer_client = Client::new(metric_address.to_string());
 
+    describe_histogram!(
+        "metrics-observer.frame_time",
+        Unit::Milliseconds,
+        "How long it takes to render a frame of the observer"
+    );
     describe_histogram!(
         "mugraph.database.len.time_taken",
         Unit::Milliseconds,
@@ -121,7 +128,7 @@ fn main() -> Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    match metrics_observer::main(metric_address, should_continue.clone()) {
+    match metrics_observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {
             info!("Observer finished.");
         }

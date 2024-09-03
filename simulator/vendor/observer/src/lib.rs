@@ -13,7 +13,7 @@ use std::{
 };
 
 use chrono::Local;
-use metrics::{describe_histogram, histogram, Unit};
+use metrics::{histogram, Unit};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -34,31 +34,26 @@ use self::input::InputEvents;
 // Module name/crate name collision that we have to deal with.
 #[path = "metrics.rs"]
 mod metrics_inner;
+pub use self::metrics_inner::Client;
 use self::metrics_inner::{ClientState, MetricData};
 
 mod selector;
 use self::selector::Selector;
 
-pub fn main(address: &str, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     let terminal = init_terminal()?;
-    let result = run(address, signal, terminal);
+    let result = run(signal, client, terminal);
     restore_terminal()?;
     result
 }
 
 pub fn run(
-    address: &str,
     should_continue: Arc<AtomicBool>,
+    client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
-    describe_histogram!(
-        "metrics-observer.frame_time",
-        Unit::Milliseconds,
-        "How long it takes to render a frame of the observer"
-    );
-
-    let client = metrics_inner::Client::new(address.to_string());
     let mut selector = Selector::new();
+
     loop {
         let start = Instant::now();
 

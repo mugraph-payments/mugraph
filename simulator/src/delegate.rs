@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::Result;
+use metrics::counter;
 use mugraph_core::{crypto, error::Error, timed, types::*};
 use mugraph_node::{database::DB, v0::transaction_v0};
 use rand::prelude::*;
@@ -22,6 +23,8 @@ impl Delegate {
         info!(public_key = %keypair.public_key, "Starting delegate");
         let db = DB::setup_test(&mut rng)?.into();
 
+        counter!("mugraph.simulator.delegates_spawned").increment(1);
+
         Ok(Self { db, rng, keypair })
     }
 
@@ -38,6 +41,8 @@ impl Delegate {
         let signed = crypto::sign_blinded(&self.keypair.secret_key, &blind.point);
         note.signature =
             crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
+
+        counter!("mugraph.simulator.stub_notes_emitted").increment(1);
 
         Ok(note)
     }

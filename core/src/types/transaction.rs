@@ -19,10 +19,6 @@ pub struct Atom {
 }
 
 impl Atom {
-    pub fn is_input(&self) -> bool {
-        self.signature.is_some()
-    }
-
     pub fn commitment(&self, assets: &[Hash]) -> Hash {
         let mut output = [0u8; COMMITMENT_INPUT_SIZE];
 
@@ -50,12 +46,20 @@ pub struct Transaction {
 }
 
 impl Transaction {
+    pub fn is_input(&self, id: usize) -> bool {
+        self.input_mask.contains(id as u32)
+    }
+
+    pub fn is_output(&self, id: usize) -> bool {
+        !self.input_mask.contains(id as u32)
+    }
+
     pub fn verify(&self) -> Result<(), Error> {
         let mut pre = vec![0; self.asset_ids.len()];
         let mut post = vec![0; self.asset_ids.len()];
 
         for (i, atom) in self.atoms.iter().enumerate() {
-            let target = match self.input_mask.contains(i as u32) {
+            let target = match self.is_input(i) {
                 true => &mut pre,
                 false => &mut post,
             };

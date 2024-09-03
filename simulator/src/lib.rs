@@ -51,7 +51,7 @@ impl Simulation {
                         for (i, atom) in transaction.atoms.iter().enumerate() {
                             counter!("mugraph.simulator.atoms_processed").increment(1);
 
-                            if transaction.input_mask.contains(i as u32) {
+                            if transaction.is_input(i) {
                                 counter!("mugraph.simulator.inputs_processed").increment(1);
 
                                 continue;
