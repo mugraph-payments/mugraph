@@ -11,7 +11,7 @@ use std::{
 };
 
 use chrono::Local;
-use metrics::{histogram, Unit};
+use metrics::{describe_histogram, histogram, Unit};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -22,7 +22,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Terminal,
 };
 
@@ -35,14 +35,14 @@ mod metrics_inner;
 pub use self::metrics_inner::Client;
 use self::metrics_inner::{ClientState, MetricData};
 
-mod selector;
-use self::selector::Selector;
-
 pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    let terminal = init_terminal()?;
-    let result = run(signal, client, terminal);
-    restore_terminal()?;
-    result
+    describe_histogram!(
+        "observer.frame_time",
+        Unit::Milliseconds,
+        "How long it takes to render a frame of the observer"
+    );
+
+    run(signal, client, init_terminal()?)
 }
 
 pub fn run(
@@ -50,8 +50,6 @@ pub fn run(
     client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut selector = Selector::new();
-
     loop {
         let start = Instant::now();
 
@@ -90,7 +88,7 @@ pub fn run(
             let header_block = Block::default()
                 .title(vec![
                     Span::styled(
-                        "metrics-observer",
+                        "mugraph-simulator",
                         Style::default().add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(current_dt),
@@ -167,7 +165,6 @@ pub fn run(
                 let display = format!("{}{}{}", display_name, " ".repeat(space), display_value);
                 items.push(ListItem::new(display));
             }
-            selector.set_length(items.len());
 
             let metrics_block = Block::default()
                 .title("observed metrics")
@@ -182,7 +179,8 @@ pub fn run(
                 )
                 .highlight_symbol(">> ");
 
-            f.render_stateful_widget(metrics, chunks[1], selector.state());
+            let mut state = ListState::default();
+            f.render_stateful_widget(metrics, chunks[1], &mut state);
         })?;
 
         // Poll the event queue for input events.  `next` will only block for 1 second,
@@ -193,15 +191,11 @@ pub fn run(
                     should_continue.store(true, Ordering::Relaxed);
                     break;
                 }
-                KeyCode::Up => selector.previous(),
-                KeyCode::Down => selector.next(),
-                KeyCode::PageUp => selector.top(),
-                KeyCode::PageDown => selector.bottom(),
                 _ => {}
             }
         }
 
-        histogram!("metrics-observer.frame_time").record(start.elapsed().as_millis_f64());
+        histogram!("observer.frame_time").record(start.elapsed().as_millis_f64());
     }
 
     Ok(())

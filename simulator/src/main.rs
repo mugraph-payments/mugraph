@@ -36,11 +36,6 @@ fn main() -> Result<()> {
     let mut rng = config.rng();
 
     describe_histogram!(
-        "metrics-observer.frame_time",
-        Unit::Milliseconds,
-        "How long it takes to render a frame of the observer"
-    );
-    describe_histogram!(
         "transaction.verify",
         Unit::Milliseconds,
         "How long it takes to verify a transaction"
