@@ -5,6 +5,7 @@ use metrics::{counter, gauge};
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use tracing::info;
 
 use crate::{Action, Config, Delegate};
 
@@ -45,7 +46,7 @@ impl State {
         gauge!("state.note_count").set(self.notes.len() as f64);
 
         match self.rng.gen_bool(0.5) {
-            true => timed!("state.next.split.time_taken", {
+            true => timed!("state.next.split", {
                 let input_count = self.rng.gen_range(1..4);
                 let mut transaction = TransactionBuilder::new();
 
@@ -67,11 +68,12 @@ impl State {
                     transaction = transaction.input(input);
                 }
 
-                counter!("state.transfers").increment(1);
+                info!("Split generated");
+                counter!("state.splits").increment(1);
 
                 Ok(Action::Split(transaction.build()?))
             }),
-            false => timed!("state.next.join.time_taken", {
+            false => timed!("state.next.join", {
                 let mut transaction = TransactionBuilder::new();
                 let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 

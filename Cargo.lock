@@ -1043,6 +1043,7 @@ dependencies = [
  "curve25519-dalek",
  "digest",
  "hex",
+ "indexmap",
  "metrics",
  "onlyerror",
  "paste",

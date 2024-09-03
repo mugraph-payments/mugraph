@@ -1,3 +1,5 @@
+use indexmap::{IndexMap, IndexSet};
+
 use crate::{
     error::{Error, Result},
     timed,
@@ -5,102 +7,103 @@ use crate::{
     utils::BitSet32,
 };
 
+#[derive(Default)]
 pub struct TransactionBuilder {
     inputs: Vec<Note>,
-    outputs: Vec<(Hash, u64)>, // (asset_id, amount)
-}
-
-impl Default for TransactionBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
+    pre_balances: Vec<u64>,
+    post_balances: Vec<u64>,
+    assets: IndexSet<Hash>,
+    outputs: Vec<(u32, u64)>,
 }
 
 impl TransactionBuilder {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            inputs: Vec::new(),
-            outputs: Vec::new(),
+            pre_balances: vec![0; 8],
+            post_balances: vec![0; 8],
+            ..Default::default()
         }
     }
 
     pub fn input(mut self, note: Note) -> Self {
-        self.inputs.push(note);
-        self
-    }
+        match self.assets.get_index_of(&note.asset_id) {
+            Some(i) => {
+                self.pre_balances[i] += note.amount;
+            }
+            None => {
+                self.assets.insert(note.asset_id);
+            }
+        }
 
-    pub fn input_count(&self) -> usize {
-        self.inputs.len()
+        self.inputs.push(note);
+
+        self
     }
 
     pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
-        self.outputs.push((asset_id, amount));
+        match self.assets.get_index_of(&asset_id) {
+            Some(i) => {
+                self.post_balances[i] += amount;
+                self.outputs.push((i as u32, amount));
+            }
+            None => {
+                self.post_balances[self.assets.len()] += amount;
+                self.assets.insert(asset_id);
+            }
+        }
+
         self
     }
 
-    pub fn output_count(&self) -> usize {
-        self.outputs.len()
-    }
-
     pub fn build(self) -> Result<Transaction> {
-        let mut atoms = Vec::with_capacity(self.input_count() + self.output_count());
-        let mut asset_ids = Vec::new();
-        let mut signatures = Vec::with_capacity(self.input_count());
+        let mut atoms = Vec::new();
+        let mut signatures = Vec::new();
         let mut input_mask = BitSet32::new();
-
-        assert_ne!(self.input_count(), 0);
-
         let delegate = self.inputs[0].delegate;
 
-        for (i, note) in self.inputs.iter().enumerate() {
-            input_mask.insert(i as u32);
+        // Process inputs
+        for (index, note) in self.inputs.into_iter().enumerate() {
+            input_mask.insert(index as u32);
+
+            let asset_id = match self.assets.get_index_of(&note.asset_id) {
+                Some(a) => a as u32,
+                None => {
+                    return Err(Error::InvalidTransaction {
+                        reason: "Missing asset_id for iput".to_string(),
+                    })
+                }
+            };
 
             atoms.push(Atom {
                 delegate: note.delegate,
-                asset_id: asset_ids.len() as u32,
+                asset_id,
                 amount: note.amount,
                 nonce: note.nonce,
                 signature: Some(signatures.len() as u32),
             });
 
             signatures.push(note.signature);
-
-            if !asset_ids.contains(&note.asset_id) {
-                asset_ids.push(note.asset_id);
-            }
         }
 
-        for (asset_id, amount) in self.outputs {
-            let index = match asset_ids.iter().position(|&id| id == asset_id) {
-                Some(a) => a as u32,
-                None => {
-                    return Err(Error::InvalidTransaction {
-                        reason: "Missing asset_id for output".into(),
-                    })
-                }
-            };
-
+        // Process outputs
+        for (asset_id, amount) in self.outputs.into_iter() {
             atoms.push(Atom {
-                delegate,
-                asset_id: index,
+                delegate, // Assuming all inputs have the same delegate
+                asset_id,
                 amount,
-                nonce: Hash::zero(),
+                nonce: Hash::zero(), // TODO: Generate a nonce for outputs
                 signature: None,
             });
-
-            if !asset_ids.contains(&asset_id) {
-                asset_ids.push(asset_id);
-            }
         }
 
         let transaction = Transaction {
             input_mask,
             atoms,
-            asset_ids,
+            asset_ids: self.assets.into_iter().collect(),
             signatures,
         };
 
-        timed!("transaction.verify", { transaction.verify()? });
+        transaction.verify()?;
 
         Ok(transaction)
     }

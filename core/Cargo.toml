@@ -9,6 +9,7 @@ bytemuck = { workspace = true }
 curve25519-dalek = { workspace = true }
 digest = { workspace = true }
 hex = { workspace = true }
+indexmap = { workspace = true }
 metrics = { workspace = true }
 onlyerror = { workspace = true }
 paste = { workspace = true }
