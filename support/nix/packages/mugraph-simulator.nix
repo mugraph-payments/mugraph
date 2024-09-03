@@ -7,7 +7,7 @@ buildRustPackage {
   name = "mugraph-simulator";
   src = root;
 
-  cargoBuildFlags = "--bin mugraph-simulator";
+  cargoBuildFlags = "-p mugraph-simulator";
 
   nativeBuildInputs = with pkgs; [ protobuf ];
 
