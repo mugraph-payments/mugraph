@@ -14,7 +14,7 @@ pub struct Config {
     /// The amount of assets to simulate
     pub assets: usize,
 
-    #[clap(long = "notes", default_value = "16", env = "MUGRAPH_SIMULATOR_NOTES")]
+    #[clap(long = "notes", default_value = "4", env = "MUGRAPH_SIMULATOR_NOTES")]
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
 

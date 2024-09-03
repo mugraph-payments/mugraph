@@ -1,3 +1,5 @@
+#![feature(duration_millis_float)]
+
 use std::{
     error::Error,
     fmt,
@@ -7,11 +9,11 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use chrono::Local;
-use metrics::{counter, Unit};
+use metrics::{describe_histogram, histogram, Unit};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -49,16 +51,22 @@ pub fn run(
     should_continue: Arc<AtomicBool>,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
+    describe_histogram!(
+        "metrics-observer.frame_time",
+        Unit::Milliseconds,
+        "How long it takes to render a frame of the observer"
+    );
+
     let client = metrics_inner::Client::new(address.to_string());
     let mut selector = Selector::new();
     loop {
+        let start = Instant::now();
+
         if !should_continue.load(Ordering::Relaxed) {
             break;
         }
 
         terminal.draw(|f| {
-            counter!("metrics-observer.frame_count").increment(1);
-
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .margin(1)
@@ -199,7 +207,10 @@ pub fn run(
                 _ => {}
             }
         }
+
+        histogram!("metrics-observer.frame_time").record(start.elapsed().as_millis_f64());
     }
+
     Ok(())
 }
 

@@ -7,9 +7,11 @@ use std::{
         Arc,
     },
     thread,
+    time::Duration,
 };
 
 use color_eyre::eyre::{ErrReport, Result};
+use itertools::Itertools;
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_simulator::{Config, Simulation};
@@ -21,8 +23,9 @@ fn main() -> Result<()> {
     TcpBuilder::new()
         .listen_address(metric_address.parse::<SocketAddr>()?)
         .install()?;
+    tracing_subscriber::fmt().init();
 
-    let cores = core_affinity::get_core_ids().unwrap();
+    let mut cores = core_affinity::get_core_ids().unwrap();
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
 
@@ -78,16 +81,20 @@ fn main() -> Result<()> {
     );
 
     // Force interface to run on the first possible core
-    core_affinity::set_for_current(cores[0]);
+    core_affinity::set_for_current(cores.pop().unwrap());
+    let threads = config.threads - 1;
+    info!(count = threads, "Starting simulations");
+    let simulations: Vec<Simulation> = (0..threads)
+        .map(|i| Simulation::new(i as u32))
+        .try_collect()?;
 
-    for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
+    for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
         let sc = should_continue.clone();
-        let mut sim = Simulation::new(core.id as u32)?;
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
-            info!("Starting simulation on core {i}.");
+            info!("Starting simulation on core {}.", core.id);
 
             let mut round = 0;
 
@@ -105,6 +112,8 @@ fn main() -> Result<()> {
             Ok::<_, ErrReport>(())
         });
     }
+
+    thread::sleep(Duration::from_millis(100));
 
     let sc = should_continue.clone();
     ctrlc::set_handler(move || {
