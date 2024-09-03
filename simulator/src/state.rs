@@ -5,13 +5,7 @@ use std::{
 
 use blake3::Hasher;
 use metrics::counter;
-use mugraph_core::{
-    builder::{GreedyCoinSelection, KnapsackCoinSelection, TransactionBuilder},
-    crypto,
-    error::Error,
-    timed,
-    types::*,
-};
+use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -55,38 +49,31 @@ impl State {
     }
 
     pub fn next_action(&mut self) -> Result<Action, Error> {
-        let max_inputs = min(8, self.notes.len() - 1);
+        let max_inputs = min(4, self.notes.len());
 
         match self.rng.gen_range(0..=1) {
             0 => timed!("mugraph.simulator.state.next.split.time_taken", {
                 let input_count = self.rng.gen_range(1..max_inputs);
-                let mut transaction = TransactionBuilder::new(KnapsackCoinSelection);
+                let mut transaction = TransactionBuilder::new();
 
                 for _ in 0..input_count {
                     let input = match self.notes.pop_front() {
-                        Some(n) => n,
-                        _ => {
+                        Some(input) => input,
+                        None => {
                             return Err(Error::ServerError {
                                 reason: "No notes available".to_string(),
                             })
                         }
                     };
-                    let mut remaining = input.amount;
 
-                    while remaining > 0 {
-                        let output_count = self.rng.gen_range(1..=min(4, remaining));
+                    if input.amount > 2 {
+                        let rem = input.amount % 2;
+                        let (a, b) = (input.amount / 2, input.amount / 2 + rem);
 
-                        for _ in 0..output_count - 1 {
-                            let amount = self.rng.gen_range(1..=remaining);
-                            transaction = transaction.output(input.asset_id, amount);
-                            remaining -= amount;
-                        }
-
-                        transaction = transaction.output(input.asset_id, remaining);
-                        remaining = 0;
+                        transaction = transaction
+                            .output(input.asset_id, a)
+                            .output(input.asset_id, b);
                     }
-
-                    transaction = transaction.input(input);
                 }
 
                 counter!("mugraph.simulator.state.transfers").increment(1);
@@ -94,7 +81,7 @@ impl State {
                 Ok(Action::Split(transaction.build()?))
             }),
             1 => timed!("mugraph.simulator.state.next.join.time_taken", {
-                let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
+                let mut transaction = TransactionBuilder::new();
                 let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
                 for _ in 0..max_inputs {
