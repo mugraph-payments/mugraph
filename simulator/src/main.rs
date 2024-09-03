@@ -7,15 +7,13 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 
 use color_eyre::eyre::{ErrReport, Result};
 use metrics::{describe_histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_core::error::Error;
 use mugraph_simulator::{Config, Simulation};
-use tracing::info;
+use tracing::{error, info};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -105,17 +103,17 @@ fn main() -> Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    metrics_observer::main(metric_address, should_continue.clone()).map_err(|e| {
-        Error::ServerError {
-            reason: e.to_string(),
+    match metrics_observer::main(metric_address, should_continue.clone()) {
+        Ok(_) => {
+            info!("Observer finished.");
         }
-    })?;
+        Err(e) => {
+            error!(msg = %e, "Observer failed because of error");
+        }
+    }
 
     should_continue.swap(false, Ordering::Relaxed);
-
-    thread::sleep(Duration::from_millis(100));
-
-    info!("Simulation reached end of duration, stopping.");
+    metrics_observer::restore_terminal()?;
 
     Ok(())
 }

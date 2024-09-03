@@ -9,12 +9,13 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{Keypair, Request, Response, V0Request, V0Response},
+    types::{Keypair, Request, Response, V0Request},
 };
 
 mod transaction;
 
 use redb::Database;
+use serde_json::json;
 pub use transaction::*;
 
 use crate::{config::Config, database::DB};
@@ -49,13 +50,7 @@ pub async fn rpc(
     match request {
         Request::V0(V0Request::Transaction(t)) => match transaction_v0(&t, keypair, &database) {
             Ok(response) => Json(Response::V0(response)).into_response(),
-            Err(Error::Multiple { errors }) => {
-                Json(Response::V0(V0Response::Error { errors })).into_response()
-            }
-            Err(error) => Json(Response::V0(V0Response::Error {
-                errors: vec![error],
-            }))
-            .into_response(),
+            Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
         },
     }
 }

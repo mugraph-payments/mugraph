@@ -68,7 +68,6 @@ impl Simulation {
 
                         counter!("mugraph.simulator.transactions_processed").increment(1);
                     }
-                    V0Response::Error { errors } => panic!("{:?}", errors),
                 }
             }
         }

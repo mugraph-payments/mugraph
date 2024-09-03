@@ -34,6 +34,7 @@ impl DB {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path.into())?;
         let backend = FileBackend::new(file)?;
 

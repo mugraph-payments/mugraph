@@ -207,7 +207,7 @@ fn init_terminal() -> io::Result<Terminal<CrosstermBackend<Stdout>>> {
     Terminal::new(CrosstermBackend::new(io::stdout()))
 }
 
-fn restore_terminal() -> io::Result<()> {
+pub fn restore_terminal() -> io::Result<()> {
     disable_raw_mode()?;
     execute!(io::stdout(), LeaveAlternateScreen)
 }
