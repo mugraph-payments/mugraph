@@ -1,15 +1,18 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    fs::{File, OpenOptions},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use metrics::counter;
 use mugraph_core::timed;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use redb::{backends::InMemoryBackend, StorageBackend};
+use redb::{backends::FileBackend, StorageBackend};
 use tracing::info;
 
 #[derive(Debug)]
 pub struct TestBackend {
-    inner: InMemoryBackend,
+    inner: FileBackend,
     rng: ChaCha20Rng,
     inject_failures: AtomicBool,
     failure_rate: f64,
@@ -80,8 +83,17 @@ impl TestBackend {
             "Starting test database backend"
         );
 
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp)
+            .unwrap();
+
         Self {
-            inner: InMemoryBackend::new(),
+            inner: FileBackend::new(file).unwrap(),
             rng,
             inject_failures: AtomicBool::new(false),
             failure_rate,

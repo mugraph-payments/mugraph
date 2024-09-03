@@ -1,6 +1,7 @@
 #![feature(duration_millis_float)]
 
 use std::{
+    collections::VecDeque,
     net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
         .install()?;
     tracing_subscriber::fmt().init();
 
-    let mut cores = core_affinity::get_core_ids().unwrap();
+    let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
     let observer_client = Client::new(metric_address.to_string());
@@ -88,10 +89,10 @@ fn main() -> Result<()> {
     );
 
     // Force interface to run on the first possible core
-    core_affinity::set_for_current(cores.pop().unwrap());
+    core_affinity::set_for_current(cores.pop_front().unwrap());
     let threads = config.threads - 1;
     info!(count = threads, "Starting simulations");
-    let simulations: Vec<Simulation> = (0..threads)
+    let simulations: Vec<Simulation> = (1..config.threads)
         .map(|i| Simulation::new(i as u32))
         .try_collect()?;
 
