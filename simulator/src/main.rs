@@ -2,6 +2,7 @@
 
 use std::{
     net::SocketAddr,
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -10,7 +11,7 @@ use std::{
 };
 
 use color_eyre::eyre::{ErrReport, Result};
-use metrics::{describe_histogram, Unit};
+use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_simulator::{Config, Simulation};
 use tracing::{error, info};
@@ -89,6 +90,12 @@ fn main() -> Result<()> {
             let mut round = 0;
 
             while sc.load(Ordering::Relaxed) {
+                gauge!(
+                    "mugraph.simulator.current_round",
+                    "core_id" => core.id.to_string()
+                )
+                .set(round as f64);
+
                 sim.tick(round)?;
                 round += 1;
             }

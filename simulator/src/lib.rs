@@ -48,10 +48,10 @@ impl Simulation {
                     V0Response::Transaction { outputs } => {
                         let mut index = 0;
 
-                        for atom in transaction.atoms {
+                        for (i, atom) in transaction.atoms.iter().enumerate() {
                             counter!("mugraph.simulator.atoms_processed").increment(1);
 
-                            if atom.is_input() {
+                            if transaction.input_mask.contains(i as u32) {
                                 counter!("mugraph.simulator.inputs_processed").increment(1);
 
                                 continue;

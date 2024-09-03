@@ -14,7 +14,7 @@ use tracing::info;
 pub struct TestBackend {
     inner: InMemoryBackend,
     rng: ChaCha20Rng,
-    should_fail: Arc<AtomicBool>,
+    inject_failures: Arc<AtomicBool>,
     failure_rate: f64,
 }
 
@@ -86,16 +86,17 @@ impl TestBackend {
         Self {
             inner: InMemoryBackend::new(),
             rng,
-            should_fail: AtomicBool::new(false).into(),
+            inject_failures: AtomicBool::new(false).into(),
             failure_rate,
         }
     }
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), std::io::Error> {
+        counter!("mugraph.database.actions").increment(1);
         let mut rng = self.rng.clone();
 
-        if !self.should_fail.load(Ordering::SeqCst) {
+        if !self.inject_failures.load(Ordering::SeqCst) {
             return Ok(());
         }
 
