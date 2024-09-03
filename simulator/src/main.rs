@@ -95,7 +95,6 @@ fn main() -> Result<()> {
                 round += 1;
             }
 
-            #[allow(unreachable_code)]
             Ok::<_, ErrReport>(())
         });
     }

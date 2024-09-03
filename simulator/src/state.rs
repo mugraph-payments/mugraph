@@ -1,7 +1,4 @@
-use std::{
-    cmp::min,
-    collections::{HashMap, HashSet},
-};
+use std::{cmp::min, collections::BTreeMap};
 
 use blake3::Hasher;
 use metrics::counter;
@@ -21,7 +18,7 @@ pub struct State {
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
     pub delegate: Delegate,
-    pub notes: HashSet<Note>,
+    pub notes: Vec<Note>,
 }
 
 impl State {
@@ -32,7 +29,7 @@ impl State {
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
         let keypair = Keypair::random(&mut rng);
-        let mut notes = HashSet::new();
+        let mut notes = Vec::with_capacity(config.notes);
         let mut delegate = Delegate::new(&mut rng, keypair)?;
 
         for _ in 0..config.notes {
@@ -43,7 +40,7 @@ impl State {
 
             let note = delegate.emit(asset_id, amount)?;
 
-            notes.insert(note);
+            notes.push(note);
         }
 
         Ok(Self {
@@ -55,7 +52,7 @@ impl State {
     }
 
     pub fn next(&mut self) -> Result<Action, Error> {
-        let max_inputs = min(8, self.notes.len());
+        let max_inputs = min(8, self.notes.len() - 1);
 
         match self.rng.gen_range(0..=1) {
             0 => timed!("mugraph.simulator.state.next.split.time_taken", {
@@ -63,12 +60,8 @@ impl State {
                 let mut transaction = TransactionBuilder::new(KnapsackCoinSelection);
 
                 for _ in 0..input_count {
-                    let notes = self.notes.clone();
-                    let input = match notes.iter().choose(&mut self.rng) {
-                        Some(v) => v,
-                        None => continue,
-                    };
-
+                    let input_index = self.rng.gen_range(0..self.notes.len());
+                    let input = self.notes.remove(input_index);
                     let mut remaining = input.amount;
 
                     while remaining > 0 {
@@ -84,7 +77,6 @@ impl State {
                         remaining = 0;
                     }
 
-                    self.notes.remove(input);
                     transaction = transaction.input(input.clone());
                 }
 
@@ -94,28 +86,17 @@ impl State {
             }),
             1 => timed!("mugraph.simulator.state.next.join.time_taken", {
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
-                let mut selected = vec![];
-                let mut outputs: HashMap<Hash, u64> = HashMap::new();
+                let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
-                let notes = self
-                    .notes
-                    .iter()
-                    .take(max_inputs)
-                    .cloned()
-                    .collect::<Vec<_>>();
+                for i in 0..max_inputs {
+                    let note = self.notes.remove(i);
 
-                for note in notes {
                     outputs
                         .entry(note.asset_id)
                         .and_modify(|x| *x += note.amount)
                         .or_default();
 
-                    transaction = transaction.input(note.clone());
-                    selected.push(note);
-                }
-
-                for note in selected {
-                    self.notes.remove(&note);
+                    transaction = transaction.input(note);
                 }
 
                 for (asset_id, amount) in outputs {
@@ -154,7 +135,7 @@ impl State {
             )?,
         };
 
-        self.notes.insert(note);
+        self.notes.push(note);
 
         Ok(())
     }
