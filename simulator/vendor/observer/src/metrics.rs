@@ -142,7 +142,7 @@ impl Runner {
                         Some(stream) => RunnerState::Connected(stream),
                         None => RunnerState::ErrorBackoff(
                             "error while connecting",
-                            Duration::from_secs(3),
+                            Duration::from_millis(500),
                         ),
                     }
                 }

@@ -40,6 +40,9 @@ impl TransactionBuilder {
         let mut atoms = Vec::new();
         let mut asset_ids = Vec::new();
         let mut signatures = Vec::new();
+
+        assert_ne!(self.input_count(), 0);
+
         let delegate = self.available_notes[0].delegate;
 
         for note in self.available_notes {

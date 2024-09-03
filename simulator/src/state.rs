@@ -1,10 +1,10 @@
 use std::{
-    cmp::min,
+    cmp::max,
     collections::{BTreeMap, VecDeque},
 };
 
 use blake3::Hasher;
-use metrics::counter;
+use metrics::{counter, gauge};
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -49,21 +49,17 @@ impl State {
     }
 
     pub fn next_action(&mut self) -> Result<Action, Error> {
-        let max_inputs = min(4, self.notes.len());
+        gauge!("mugraph.simulator.state.note_count").set(self.notes.len() as f64);
 
         match self.rng.gen_range(0..=1) {
             0 => timed!("mugraph.simulator.state.next.split.time_taken", {
-                let input_count = self.rng.gen_range(1..max_inputs);
+                let input_count = self.rng.gen_range(1..4);
                 let mut transaction = TransactionBuilder::new();
 
                 for _ in 0..input_count {
                     let input = match self.notes.pop_front() {
                         Some(input) => input,
-                        None => {
-                            return Err(Error::ServerError {
-                                reason: "No notes available".to_string(),
-                            })
-                        }
+                        None => break,
                     };
 
                     if input.amount > 2 {
@@ -74,6 +70,8 @@ impl State {
                             .output(input.asset_id, a)
                             .output(input.asset_id, b);
                     }
+
+                    transaction = transaction.input(input);
                 }
 
                 counter!("mugraph.simulator.state.transfers").increment(1);
@@ -84,7 +82,7 @@ impl State {
                 let mut transaction = TransactionBuilder::new();
                 let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
-                for _ in 0..max_inputs {
+                for _ in 0..4 {
                     let note = match self.notes.pop_front() {
                         Some(n) => n,
                         _ => {
