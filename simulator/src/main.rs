@@ -19,7 +19,6 @@ use tracing::info;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    tracing_subscriber::fmt::init();
     TcpBuilder::new()
         .listen_address("0.0.0.0:9999".parse::<SocketAddr>()?)
         .install()?;

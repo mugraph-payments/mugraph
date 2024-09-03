@@ -1,4 +1,7 @@
-use std::{cmp::min, collections::BTreeMap};
+use std::{
+    cmp::min,
+    collections::{BTreeMap, VecDeque},
+};
 
 use blake3::Hasher;
 use metrics::counter;
@@ -18,7 +21,7 @@ pub struct State {
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
     pub delegate: Delegate,
-    pub notes: Vec<Note>,
+    pub notes: VecDeque<Note>,
 }
 
 impl State {
@@ -29,7 +32,7 @@ impl State {
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
         let keypair = Keypair::random(&mut rng);
-        let mut notes = Vec::with_capacity(config.notes);
+        let mut notes = VecDeque::with_capacity(config.notes);
         let mut delegate = Delegate::new(&mut rng, keypair)?;
 
         for _ in 0..config.notes {
@@ -40,7 +43,7 @@ impl State {
 
             let note = delegate.emit(asset_id, amount)?;
 
-            notes.push(note);
+            notes.push_back(note);
         }
 
         Ok(Self {
@@ -51,7 +54,7 @@ impl State {
         })
     }
 
-    pub fn next(&mut self) -> Result<Action, Error> {
+    pub fn next_action(&mut self) -> Result<Action, Error> {
         let max_inputs = min(8, self.notes.len() - 1);
 
         match self.rng.gen_range(0..=1) {
@@ -60,8 +63,14 @@ impl State {
                 let mut transaction = TransactionBuilder::new(KnapsackCoinSelection);
 
                 for _ in 0..input_count {
-                    let input_index = self.rng.gen_range(0..self.notes.len());
-                    let input = self.notes.remove(input_index);
+                    let input = match self.notes.pop_front() {
+                        Some(n) => n,
+                        _ => {
+                            return Err(Error::ServerError {
+                                reason: "No notes available".to_string(),
+                            })
+                        }
+                    };
                     let mut remaining = input.amount;
 
                     while remaining > 0 {
@@ -77,7 +86,7 @@ impl State {
                         remaining = 0;
                     }
 
-                    transaction = transaction.input(input.clone());
+                    transaction = transaction.input(input);
                 }
 
                 counter!("mugraph.simulator.state.transfers").increment(1);
@@ -88,8 +97,15 @@ impl State {
                 let mut transaction = TransactionBuilder::new(GreedyCoinSelection);
                 let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
-                for i in 0..max_inputs {
-                    let note = self.notes.remove(i);
+                for _ in 0..max_inputs {
+                    let note = match self.notes.pop_front() {
+                        Some(n) => n,
+                        _ => {
+                            return Err(Error::ServerError {
+                                reason: "No notes available".to_string(),
+                            })
+                        }
+                    };
 
                     outputs
                         .entry(note.asset_id)
@@ -135,7 +151,7 @@ impl State {
             )?,
         };
 
-        self.notes.push(note);
+        self.notes.push_back(note);
 
         Ok(())
     }

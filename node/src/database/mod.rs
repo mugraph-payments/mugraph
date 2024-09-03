@@ -34,7 +34,7 @@ impl DB {
             .read(true)
             .write(true)
             .create(true)
-            .open(&path.into())?;
+            .open(path.into())?;
         let backend = FileBackend::new(file)?;
 
         Self::setup_with_backend(backend)

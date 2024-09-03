@@ -45,7 +45,7 @@ pub fn main(signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn run(
-    signal: Arc<AtomicBool>,
+    should_continue: Arc<AtomicBool>,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
     let address = std::env::args()
@@ -54,7 +54,7 @@ pub fn run(
     let client = metrics_inner::Client::new(address);
     let mut selector = Selector::new();
     loop {
-        if signal.load(Ordering::SeqCst) {
+        if !should_continue.load(Ordering::SeqCst) {
             break;
         }
 
@@ -189,7 +189,7 @@ pub fn run(
         if let Some(input) = InputEvents::next()? {
             match input.code {
                 KeyCode::Char('q') => {
-                    signal.store(true, Ordering::SeqCst);
+                    should_continue.store(true, Ordering::SeqCst);
                     break;
                 }
                 KeyCode::Up => selector.previous(),

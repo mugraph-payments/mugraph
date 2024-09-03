@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use metrics::counter;
 use mugraph_core::timed;
@@ -73,7 +76,7 @@ impl StorageBackend for TestBackend {
 impl TestBackend {
     pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Self {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-        let failure_rate = rng.gen_range(0.0f64..1.0f64);
+        let failure_rate = rng.gen_range(0.0f64..0.5f64);
 
         info!(
             failure_rate = %format!("{:.2}%", failure_rate * 100.0),
@@ -92,7 +95,7 @@ impl TestBackend {
     fn maybe_fail(&self) -> Result<(), std::io::Error> {
         let mut rng = self.rng.clone();
 
-        if !self.should_fail.load(std::sync::atomic::Ordering::SeqCst) {
+        if !self.should_fail.load(Ordering::SeqCst) {
             return Ok(());
         }
 

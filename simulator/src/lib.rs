@@ -37,7 +37,7 @@ impl Simulation {
         );
 
         let action = timed!("mugraph.simulator.state.next.time_taken", {
-            self.state.next()?
+            self.state.next_action()?
         });
 
         match action {
