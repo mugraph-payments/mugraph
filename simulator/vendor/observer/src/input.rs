@@ -1,5 +1,4 @@
-use std::io;
-use std::time::Duration;
+use std::{io, time::Duration};
 
 use ratatui::crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 

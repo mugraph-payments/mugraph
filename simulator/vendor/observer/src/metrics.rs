@@ -1,19 +1,17 @@
-use std::io::Read;
-use std::net::TcpStream;
-use std::net::ToSocketAddrs;
-use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
-use std::time::Duration;
 use std::{
     collections::{BTreeMap, HashMap},
     convert::TryFrom as _,
+    io::Read,
+    net::{TcpStream, ToSocketAddrs},
+    sync::{Arc, Mutex, RwLock},
+    thread,
+    time::Duration,
 };
 
 use bytes::{BufMut, BytesMut};
-use prost::Message;
-
 use metrics::{Key, Label, Unit};
 use metrics_util::{CompositeKey, MetricKind, Summary};
+use prost::Message;
 
 mod proto {
     include!(concat!(env!("OUT_DIR"), "/event.proto.rs"));
@@ -58,7 +56,11 @@ impl Client {
             })
         };
 
-        Client { state, metrics, metadata }
+        Client {
+            state,
+            metrics,
+            metadata,
+        }
     }
 
     pub fn state(&self) -> ClientState {
@@ -105,7 +107,13 @@ impl Runner {
         metrics: Arc<RwLock<BTreeMap<CompositeKey, MetricData>>>,
         metadata: Arc<RwLock<HashMap<MetadataKey, MetadataValue>>>,
     ) -> Runner {
-        Runner { state: RunnerState::Disconnected, addr, client_state: state, metrics, metadata }
+        Runner {
+            state: RunnerState::Disconnected,
+            addr,
+            client_state: state,
+            metrics,
+            metadata,
+        }
     }
 
     pub fn run(&mut self) {

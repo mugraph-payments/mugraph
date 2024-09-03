@@ -4,12 +4,14 @@ members = [
   "core",
   "node",
   "simulator",
+  "simulator/vendor/observer"
 ]
 
 [workspace.dependencies]
 mugraph-core = { path = "./core" }
 mugraph-node = { path = "./node" }
 mugraph-simulator = { path = "./simulator" }
+metrics-observer = { path = "./simulator/vendor/observer" }
 
 axum = { version = "0.7.5", features = ["macros"] }
 blake3 = { version = "1.5.4", features = ["neon"] }
@@ -30,7 +32,7 @@ paste = "1.0.15"
 proptest = { version = "1.5.0" }
 rand = "0.8.5"
 rand_chacha = { version = "0.3.1", features = ["simd"] }
-redb = { git = "https://github.com/cfcosta/redb.git", branch = "feat/make-database-clone" }
+redb = { git = "https://github.com/cberner/redb.git" }
 serde = { version = "1.0.208", features = ["derive"] }
 serde_bytes = { version = "0.11.15" }
 serde_json = "1.0.127"

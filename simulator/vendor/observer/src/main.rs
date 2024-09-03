@@ -1,7 +1,4 @@
-use std::num::FpCategory;
-use std::time::Duration;
-use std::{error::Error, io};
-use std::{fmt, io::Stdout};
+use std::{error::Error, fmt, io, io::Stdout, num::FpCategory, time::Duration};
 
 use chrono::Local;
 use metrics::Unit;
@@ -38,7 +35,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn Error>> {
-    let address = std::env::args().nth(1).unwrap_or_else(|| "127.0.0.1:5000".to_owned());
+    let address = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "127.0.0.1:5000".to_owned());
     let client = metrics_inner::Client::new(address);
     let mut selector = Selector::new();
     loop {
@@ -72,7 +71,10 @@ fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn E
 
             let header_block = Block::default()
                 .title(vec![
-                    Span::styled("metrics-observer", Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "metrics-observer",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw(current_dt),
                 ])
                 .borders(Borders::ALL);
@@ -84,7 +86,9 @@ fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn E
                     Span::raw("up/down = scroll, q = quit"),
                 ]),
             ];
-            let header = Paragraph::new(text).block(header_block).wrap(Wrap { trim: true });
+            let header = Paragraph::new(text)
+                .block(header_block)
+                .wrap(Wrap { trim: true });
 
             f.render_widget(header, chunks[0]);
 
@@ -115,11 +119,15 @@ fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn E
                     MetricData::Histogram(value) => {
                         let min = value.min();
                         let max = value.max();
-                        let p50 = value.quantile(0.5).expect("sketch shouldn't exist if no values");
-                        let p99 =
-                            value.quantile(0.99).expect("sketch shouldn't exist if no values");
-                        let p999 =
-                            value.quantile(0.999).expect("sketch shouldn't exist if no values");
+                        let p50 = value
+                            .quantile(0.5)
+                            .expect("sketch shouldn't exist if no values");
+                        let p99 = value
+                            .quantile(0.99)
+                            .expect("sketch shouldn't exist if no values");
+                        let p999 = value
+                            .quantile(0.999)
+                            .expect("sketch shouldn't exist if no values");
 
                         format!(
                             "min: {} p50: {} p99: {} p999: {} max: {}",
@@ -134,18 +142,26 @@ fn run(mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn E
 
                 let name_length = display_name.chars().count();
                 let value_length = display_value.chars().count();
-                let space = line_width.saturating_sub(name_length).saturating_sub(value_length);
+                let space = line_width
+                    .saturating_sub(name_length)
+                    .saturating_sub(value_length);
 
                 let display = format!("{}{}{}", display_name, " ".repeat(space), display_value);
                 items.push(ListItem::new(display));
             }
             selector.set_length(items.len());
 
-            let metrics_block = Block::default().title("observed metrics").borders(Borders::ALL);
+            let metrics_block = Block::default()
+                .title("observed metrics")
+                .borders(Borders::ALL);
 
             let metrics = List::new(items)
                 .block(metrics_block)
-                .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::LightCyan))
+                .highlight_style(
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(Color::LightCyan),
+                )
                 .highlight_symbol(">> ");
 
             f.render_stateful_widget(metrics, chunks[1], selector.state());
@@ -389,7 +405,13 @@ impl fmt::Debug for TruncatedDuration {
             fmt_decimal(f, secs, sub_nanos, 100_000_000, 3)?;
             f.write_str("s")
         } else if nanos >= 1_000_000 {
-            fmt_decimal(f, nanos as u64 / 1_000_000, (nanos % 1_000_000) as u32, 100_000, 2)?;
+            fmt_decimal(
+                f,
+                nanos as u64 / 1_000_000,
+                (nanos % 1_000_000) as u32,
+                100_000,
+                2,
+            )?;
             f.write_str("ms")
         } else if nanos >= 1_000 {
             fmt_decimal(f, nanos as u64 / 1_000, (nanos % 1_000) as u32, 100, 1)?;

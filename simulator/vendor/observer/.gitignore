@@ -2,6 +2,3 @@
 **/*.rs.bk
 Cargo.lock
 /.vscode
-perf.data*
-flamegraph.svg
-massif.*

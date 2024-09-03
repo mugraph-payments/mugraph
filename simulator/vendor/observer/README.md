@@ -1,102 +1,61 @@
-![Metrics - High-performance, protocol-agnostic instrumentation][splash]
+# metrics-observer
 
-[splash]: https://raw.githubusercontent.com/metrics-rs/metrics/main/assets/splash.png
+A text-based UI for observing metrics exported by [`metrics-exporter-tcp`](../metrics-exporter-tcp).
 
-[![Code of Conduct][conduct-badge]][conduct]
-[![MIT licensed][license-badge]](#license)
-[![Documentation][docs-badge]][docs]
-[![Discord chat][discord-badge]][discord_invite]
-![last-commit-badge][]
-![contributors-badge][]
+## quick start
 
-[conduct-badge]: https://img.shields.io/badge/%E2%9D%A4-code%20of%20conduct-blue.svg
-[conduct]: https://github.com/metrics-rs/metrics/blob/master/CODE_OF_CONDUCT.md
-[license-badge]: https://img.shields.io/badge/license-MIT-blue
-[docs-badge]: https://docs.rs/metrics/badge.svg
-[docs]: https://docs.rs/metrics
-[discord-badge]: https://img.shields.io/discord/500028886025895936
-[last-commit-badge]: https://img.shields.io/github/last-commit/metrics-rs/metrics
-[contributors-badge]: https://img.shields.io/github/contributors/metrics-rs/metrics
+    # Install it:
+    cargo install metrics-observer
 
+    # Connect to an application using the defaults of metrics-exporter-tcp
+    # which is 127.0.0.1:5000:
+    metrics-observer
 
-## code of conduct
+    # Specify a custom address to connect to:
+    metrics-observer 192.168.1.1:5000
 
-**NOTE**: All conversations and contributions to this project shall adhere to the [Code of Conduct][conduct].
+## understanding the output
 
-# what's it all about?
+### status bar
+The status bar at the top will track the connection status, as well as list as the possible
+controls that can be used.  Here's a shot where the observer is disconnected from the target process
+and is waiting to retry its connection:
 
-Running applications in production can be hard when you don't have insight into what the application is doing.  We're lucky to have so many good system monitoring programs and services to show us how our servers are performing, but we still have to do the work of instrumenting our applications to gain deep insight into their behavior and performance.
+![observer disconnected](assets/disconnected.png)
 
-`metrics` makes it easy to instrument your application to provide real-time insight into what's happening.  It provides a number of practical features that make it easy for library and application authors to start collecting and exporting metrics from their codebase.
+### basic data display
+As metrics are emitted by the process, they'll be shipped to the observer and displayed.  As
+[`metrics-exporter-tcp`] doesn't store any metrics itself, when reconnecting, all of the previous
+values will be gone, and the observer will start collecting from scratch.
 
-# why would I collect metrics?
+For counters, you'll see values in the form of `total: <value>`, where `<value>` is the counter
+total since we connected to the endpoint.  For gauges, instead of `total:`, you'll see `current:` as
+the prefix.  For histograms, a pre-defined set of percentiles will be calculated: minimum, p50, p99,
+p999, and
+maximum.
 
-Some of the most common scenarios for collecting metrics from an application:
-- see how many times a codepath was hit
-- track the time it takes for a piece of code to execute
-- expose internal counters and values in a standardized way
+Labels are shown in square brackets after the metric name.  In this example, you can see a metrics
+where the `system` label is set to the value `foo`.
 
-Importantly, this works for both library authors and application authors.  If the libraries you use are instrumented, you unlock the power of being able to collect those metrics in your application for free, without any extra configuration.  Everyone wins, and learns more about their application performance at the end of the day.
+Here's a simple example:
 
-# project layout
+![observer connected, histogram with same timebase for each percentile](assets/connected-same-timebase.png)
 
-The Metrics project provides a number of crates for both library and application authors.
+### unit support
+If a given metric has its [units](https://docs.rs/metrics/*/metrics/enum.Unit.html) defined, then
+`metrics-observer` will display them accordingly.  We use the [canonical label
+value](https://docs.rs/metrics/*/metrics/enum.Unit.html#method.as_canonical_label) for the given
+unit, which is based on the official abbreviation for a unit or the most commonplace label.  For
+example, a data rate-based unit such as _terabits per second_ will show as `Tbps` while a data-based
+unit such as _mebibytes_ will show as `MiB`.  However, in the case of the _count per second_ unit,
+which is not an official unit, we use the commonplace label of `/s`.
 
-If you're a library author, you'll only care about using [`metrics`][metrics] to instrument your library.  If you're an application author, you'll likely also want to instrument your application, but you'll care about "exporters" as a means to take those metrics and ship them somewhere for analysis.
+Beyond the way that metrics with units will be labeled, we also specifically scale time-based units
+in a more human-friendly way. For example, if a value is defined as being nanoseconds, but the value
+itself is actually representative of 1.5 milliseconds, we would display it as `1.5ms` instead of the
+full value in nanoseconds only.  This also applies for histograms using time-based units, where each percentile will be displayed in the most appropriate timebase.
 
-Overall, this repository is home to the following crates:
+Here's an example where some metrics have a unit, and we have a histogram where percentiles have
+values across different timebases:
 
-* [`metrics`][metrics]: A lightweight metrics facade, similar to [`log`][log].
-* [`metrics-tracing-context`][metrics-tracing-context]: Allow capturing [`tracing`][tracing] span
-  fields as metric labels.
-* [`metrics-exporter-tcp`][metrics-exporter-tcp]: A `metrics`-compatible exporter for serving metrics over TCP.
-* [`metrics-exporter-prometheus`][metrics-exporter-prometheus]: A `metrics`-compatible exporter for
-  serving a Prometheus scrape endpoint.
-* [`metrics-util`][metrics-util]: Helper types/functions used by the `metrics` ecosystem.
-
-# community integrations and learning resources
-
-As well, there are also some community-maintained exporters and other integrations:
-
-* [`metrics-exporter-statsd`][metrics-exporter-statsd]: A `metrics`-compatible exporter for sending metrics via StatsD.
-* [`metrics-exporter-newrelic`][metrics-exporter-newrelic]: A `metrics`-compatible exporter for sending metrics to New Relic.
-* [`metrics-exporter-sentry`][metrics-exporter-sentry]: A `metrics`-compatible exporter for sending metrics to Sentry.
-* [`opinionated_metrics`][opinionated-metrics]: Opinionated interface to emitting metrics for CLI/server applications, based on `metrics`.
-* [`metrics-dashboard`][metrics-dashboard]: A dashboard for visualizing metrics from `metrics`.
-
-Additionally, here are some learning resource(s) to help you get started:
-
-* [Rust Telemetry Workshop][rust-telemetry-workshop] from [MainMatter](https://mainmatter.com/) (includes more than just `metrics`, as well).
-
-## MSRV and MSRV policy
-
-Minimum supported Rust version (MSRV) is currently **1.70.0**, enforced by CI.
-
-`metrics` will always support _at least_ the latest four versions of stable Rust, based on minor
-version releases, and excluding patch versions. Overall, we strive to support older versions where
-possible, which means that we generally try to avoid staying up-to-date with every single dependency
-(except for security/correctness reasons) and avoid bumping the MSRV just to get access to new
-helper methods in the standard library, and so on.
-
-# contributing
-
-To those of you who have already contributed to `metrics` in some way, shape, or form: **a big, and continued, "thank you!"** ❤️
-
-To everyone else that we haven't had the pleasure of interacting with: we're always looking for thoughts on how to make `metrics` better, or users with interesting use cases.  Of course, we're also happy to accept code contributions for outstanding feature requests directly. 😀
-
-We'd love to chat about any of the above, or anything else related to metrics. Don't hesitate to file an issue on the repository, or come and chat with us over on [Discord][discord_invite].
-
-[metrics]: https://github.com/metrics-rs/metrics/tree/main/metrics
-[metrics-tracing-context]: https://github.com/metrics-rs/metrics/tree/main/metrics-tracing-context
-[metrics-exporter-tcp]: https://github.com/metrics-rs/metrics/tree/main/metrics-exporter-tcp
-[metrics-exporter-prometheus]: https://github.com/metrics-rs/metrics/tree/main/metrics-exporter-prometheus
-[metrics-util]: https://github.com/metrics-rs/metrics/tree/main/metrics-util
-[log]: https://docs.rs/log
-[tracing]: https://tracing.rs
-[metrics-exporter-statsd]: https://docs.rs/metrics-exporter-statsd
-[metrics-exporter-newrelic]: https://docs.rs/metrics-exporter-newrelic
-[metrics-exporter-sentry]: https://docs.rs/metrics-exporter-sentry
-[opinionated-metrics]: https://docs.rs/opinionated_metrics
-[metrics-dashboard]: https://docs.rs/metrics-dashboard
-[rust-telemetry-workshop]: https://github.com/mainmatter/rust-telemetry-workshop
-[discord_invite]: https://discord.gg/tokio
+![observer connected, histogram with percentiles in different timebases](assets/connected-different-timebase.png)
