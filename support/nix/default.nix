@@ -23,6 +23,7 @@ let
       final.cargo-nextest
       final.cargo-watch
       final.protobuf
+      final.samply
       lib.defaults.rust
     ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
   };
