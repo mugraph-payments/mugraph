@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 
 use blake3::Hasher;
+use indexmap::{IndexMap, IndexSet};
 use metrics::{counter, gauge};
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
 use rand::prelude::*;
@@ -13,6 +14,7 @@ pub struct State {
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
     pub notes: VecDeque<Note>,
+    pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
 }
 
 impl State {
@@ -23,6 +25,7 @@ impl State {
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
         let mut notes = VecDeque::with_capacity(config.notes);
+        let mut by_asset_id = IndexMap::new();
 
         for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);
@@ -32,6 +35,13 @@ impl State {
 
             let note = delegate.emit(asset_id, amount)?;
 
+            by_asset_id
+                .entry(note.asset_id)
+                .and_modify(|x: &mut IndexSet<u32>| {
+                    x.insert(notes.len() as u32);
+                })
+                .or_insert(vec![notes.len() as u32].into_iter().collect());
+
             notes.push_back(note);
         }
 
@@ -39,6 +49,7 @@ impl State {
             rng,
             keypair: delegate.keypair,
             notes,
+            by_asset_id,
         })
     }
 
@@ -52,26 +63,29 @@ impl State {
     }
 
     fn generate_split(&mut self) -> Result<Action, Error> {
-        let input_count = self.rng.gen_range(1..4);
         let mut transaction = TransactionBuilder::new();
 
-        for _ in 0..input_count {
-            let input = match self.notes.pop_front() {
-                Some(input) => input,
-                None => break,
-            };
-
-            if input.amount > 2 {
-                let rem = input.amount % 2;
-                let (a, b) = (input.amount / 2, input.amount / 2 + rem);
-
-                transaction = transaction
-                    .output(input.asset_id, a)
-                    .output(input.asset_id, b);
+        let input = match self.notes.pop_front() {
+            Some(input) => input,
+            None => {
+                return Err(Error::ServerError {
+                    reason: "no notes".into(),
+                })
             }
+        };
 
-            transaction = transaction.input(input);
+        if input.amount > 2 {
+            let rem = input.amount % 2;
+            let (a, b) = (input.amount / 2, input.amount / 2 + rem);
+
+            transaction = transaction
+                .output(input.asset_id, a)
+                .output(input.asset_id, b);
+        } else {
+            transaction = transaction.output(input.asset_id, input.amount);
         }
+
+        transaction = transaction.input(input);
 
         info!("Split generated");
         counter!("state.splits").increment(1);
@@ -81,33 +95,36 @@ impl State {
 
     fn generate_join(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
-        let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
-        for _ in 0..4 {
-            let note = match self.notes.pop_front() {
-                Some(n) => n,
-                _ => {
-                    return Err(Error::ServerError {
-                        reason: "No notes available".to_string(),
-                    })
-                }
-            };
+        for (_, notes) in self.by_asset_id.iter_mut() {
+            if notes.len() < 2 {
+                continue;
+            }
 
-            outputs
-                .entry(note.asset_id)
-                .and_modify(|x| *x += note.amount)
-                .or_default();
+            let a = self
+                .notes
+                .remove(self.rng.gen_range(0..self.notes.len()))
+                .unwrap();
+            let b = self
+                .notes
+                .remove(self.rng.gen_range(0..self.notes.len()))
+                .unwrap();
 
-            transaction = transaction.input(note);
+            transaction = transaction
+                .output(a.asset_id, a.amount + b.amount)
+                .input(a)
+                .input(b);
+
+            break;
         }
 
-        for (asset_id, amount) in outputs {
-            transaction = transaction.output(asset_id, amount);
+        if transaction.inputs.is_empty() {
+            self.generate_split()
+        } else {
+            counter!("state.joins").increment(1);
+
+            Ok(Action::Join(transaction.build()?))
         }
-
-        counter!("state.joins").increment(1);
-
-        Ok(Action::Join(transaction.build()?))
     }
 
     pub fn recv(

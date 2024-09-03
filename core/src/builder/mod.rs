@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct TransactionBuilder {
-    inputs: Vec<Note>,
+    pub inputs: Vec<Note>,
     pre_balances: Vec<u64>,
     post_balances: Vec<u64>,
     assets: IndexSet<Hash>,

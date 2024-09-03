@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+indexmap = { workspace = true }
 blake3 = { workspace = true }
 bytes = { version = "1", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

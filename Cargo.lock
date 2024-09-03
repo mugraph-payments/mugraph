@@ -1089,6 +1089,7 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "home",
+ "indexmap",
  "itertools 0.13.0",
  "metrics",
  "metrics-exporter-tcp",
