@@ -1,8 +1,7 @@
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 
 use crate::{
     error::{Error, Result},
-    timed,
     types::{Atom, Hash, Note, Transaction},
     utils::BitSet32,
 };

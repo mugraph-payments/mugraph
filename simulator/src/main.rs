@@ -29,12 +29,6 @@ fn main() -> Result<()> {
         .install()?;
     tracing_subscriber::fmt().init();
 
-    let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
-    let should_continue = Arc::new(AtomicBool::new(true));
-    let config = Config::default();
-    let observer_client = Client::new(metric_address.to_string());
-    let mut rng = config.rng();
-
     describe_histogram!(
         "transaction.verify",
         Unit::Milliseconds,
@@ -90,13 +84,26 @@ fn main() -> Result<()> {
         Unit::Milliseconds,
         "How long it took to get a server response"
     );
+    describe_histogram!(
+        "observer.frame_time",
+        Unit::Milliseconds,
+        "How long it takes to render a frame of the observer"
+    );
+
+    let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
+    let should_continue = Arc::new(AtomicBool::new(true));
+    let config = Config::default();
+    let mut rng = config.rng();
+    let threads = config.threads - 1;
+
+    let keypair = Keypair::random(&mut rng);
+    let delegate = Delegate::new(&mut rng, keypair)?;
+    let observer_client = Client::new(metric_address.to_string());
 
     // Force interface to run on the first possible core
     core_affinity::set_for_current(cores.pop_front().unwrap());
-    let threads = config.threads - 1;
+
     info!(count = threads, "Starting simulations");
-    let keypair = Keypair::random(&mut rng);
-    let delegate = Delegate::new(&mut rng, keypair)?;
     let simulations = (1..=threads)
         .map(|i| Simulation::new(i as u32, delegate.clone()))
         .filter_map(|x| x.ok());
@@ -111,10 +118,13 @@ fn main() -> Result<()> {
 
             let mut round = 0;
 
+            let core_id = core.id.to_string();
+
             while sc.load(Ordering::Relaxed) {
-                gauge!("current_round", "core_id" => core.id.to_string()).set(round as f64);
+                gauge!("current_round", "core_id" => core_id.clone()).set(round as f64);
 
                 sim.tick(round)?;
+
                 round += 1;
             }
 

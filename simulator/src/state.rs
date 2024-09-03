@@ -46,64 +46,68 @@ impl State {
         gauge!("state.note_count").set(self.notes.len() as f64);
 
         match self.rng.gen_bool(0.5) {
-            true => timed!("state.next.split", {
-                let input_count = self.rng.gen_range(1..4);
-                let mut transaction = TransactionBuilder::new();
-
-                for _ in 0..input_count {
-                    let input = match self.notes.pop_front() {
-                        Some(input) => input,
-                        None => break,
-                    };
-
-                    if input.amount > 2 {
-                        let rem = input.amount % 2;
-                        let (a, b) = (input.amount / 2, input.amount / 2 + rem);
-
-                        transaction = transaction
-                            .output(input.asset_id, a)
-                            .output(input.asset_id, b);
-                    }
-
-                    transaction = transaction.input(input);
-                }
-
-                info!("Split generated");
-                counter!("state.splits").increment(1);
-
-                Ok(Action::Split(transaction.build()?))
-            }),
-            false => timed!("state.next.join", {
-                let mut transaction = TransactionBuilder::new();
-                let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
-
-                for _ in 0..4 {
-                    let note = match self.notes.pop_front() {
-                        Some(n) => n,
-                        _ => {
-                            return Err(Error::ServerError {
-                                reason: "No notes available".to_string(),
-                            })
-                        }
-                    };
-
-                    outputs
-                        .entry(note.asset_id)
-                        .and_modify(|x| *x += note.amount)
-                        .or_default();
-
-                    transaction = transaction.input(note);
-                }
-
-                for (asset_id, amount) in outputs {
-                    transaction = transaction.output(asset_id, amount);
-                }
-
-                counter!("state.joins").increment(1);
-
-                Ok(Action::Join(transaction.build()?))
-            }),
+            true => timed!("state.next.split", { self.generate_split() }),
+            false => timed!("state.next.join", { self.generate_join() }),
         }
+    }
+
+    fn generate_split(&mut self) -> Result<Action, Error> {
+        let input_count = self.rng.gen_range(1..4);
+        let mut transaction = TransactionBuilder::new();
+
+        for _ in 0..input_count {
+            let input = match self.notes.pop_front() {
+                Some(input) => input,
+                None => break,
+            };
+
+            if input.amount > 2 {
+                let rem = input.amount % 2;
+                let (a, b) = (input.amount / 2, input.amount / 2 + rem);
+
+                transaction = transaction
+                    .output(input.asset_id, a)
+                    .output(input.asset_id, b);
+            }
+
+            transaction = transaction.input(input);
+        }
+
+        info!("Split generated");
+        counter!("state.splits").increment(1);
+
+        Ok(Action::Split(transaction.build()?))
+    }
+
+    fn generate_join(&mut self) -> Result<Action, Error> {
+        let mut transaction = TransactionBuilder::new();
+        let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
+
+        for _ in 0..4 {
+            let note = match self.notes.pop_front() {
+                Some(n) => n,
+                _ => {
+                    return Err(Error::ServerError {
+                        reason: "No notes available".to_string(),
+                    })
+                }
+            };
+
+            outputs
+                .entry(note.asset_id)
+                .and_modify(|x| *x += note.amount)
+                .or_default();
+
+            transaction = transaction.input(note);
+        }
+
+        for (asset_id, amount) in outputs {
+            transaction = transaction.output(asset_id, amount);
+        }
+
+        counter!("state.joins").increment(1);
+
+        Ok(Action::Join(transaction.build()?))
     }
 
     pub fn recv(

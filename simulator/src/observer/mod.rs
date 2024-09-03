@@ -11,7 +11,7 @@ use std::{
 };
 
 use chrono::Local;
-use metrics::{describe_histogram, histogram, Unit};
+use metrics::{histogram, Unit};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -36,12 +36,6 @@ pub use self::metrics_inner::Client;
 use self::metrics_inner::{ClientState, MetricData};
 
 pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    describe_histogram!(
-        "observer.frame_time",
-        Unit::Milliseconds,
-        "How long it takes to render a frame of the observer"
-    );
-
     run(signal, client, init_terminal()?)
 }
 
@@ -186,12 +180,9 @@ pub fn run(
         // Poll the event queue for input events.  `next` will only block for 1 second,
         // so our screen is never stale by more than 1 second.
         if let Some(input) = InputEvents::next()? {
-            match input.code {
-                KeyCode::Char('q') => {
-                    should_continue.store(true, Ordering::Relaxed);
-                    break;
-                }
-                _ => {}
+            if let KeyCode::Char('q') = input.code {
+                should_continue.store(true, Ordering::Relaxed);
+                break;
             }
         }
 

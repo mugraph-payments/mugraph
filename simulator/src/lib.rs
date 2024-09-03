@@ -1,9 +1,7 @@
 #![feature(duration_millis_float)]
 
-use std::time::Instant;
-
 use color_eyre::eyre::Result;
-use metrics::{counter, histogram};
+use metrics::counter;
 use mugraph_core::{error::Error, timed, types::*};
 use tracing::debug;
 
@@ -30,9 +28,8 @@ impl Simulation {
         })
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn tick(&mut self, round: u64) -> Result<(), Error> {
-        let start = Instant::now();
-
         debug!(
             core_id = self.core_id,
             round = round,
@@ -40,7 +37,12 @@ impl Simulation {
         );
 
         let action = timed!("state.next", { self.state.next_action()? });
+        timed!("tick_time", { self.handle_action(action)? });
 
+        Ok(())
+    }
+
+    fn handle_action(&mut self, action: Action) -> Result<(), Error> {
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
                 let response = self.delegate.recv_transaction_v0(&transaction)?;
@@ -72,8 +74,6 @@ impl Simulation {
                 }
             }
         }
-
-        histogram!("tick_time").record(start.elapsed().as_millis_f64());
 
         Ok(())
     }
