@@ -78,6 +78,9 @@ fn main() -> Result<()> {
         "How long it took to get a server response"
     );
 
+    // Force interface to run on the first possible core
+    core_affinity::set_for_current(cores[0]);
+
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         let sc = should_continue.clone();
         let mut sim = Simulation::new(core.id as u32)?;
