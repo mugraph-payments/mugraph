@@ -1,6 +1,9 @@
 use std::{
-    fs::{File, OpenOptions},
-    sync::atomic::{AtomicBool, Ordering},
+    fs::OpenOptions,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use metrics::counter;
@@ -14,7 +17,7 @@ use tracing::info;
 pub struct TestBackend {
     inner: FileBackend,
     rng: ChaCha20Rng,
-    inject_failures: AtomicBool,
+    pub inject_failures: Arc<AtomicBool>,
     failure_rate: f64,
 }
 
@@ -95,7 +98,7 @@ impl TestBackend {
         Self {
             inner: FileBackend::new(file).unwrap(),
             rng,
-            inject_failures: AtomicBool::new(false),
+            inject_failures: AtomicBool::new(false).into(),
             failure_rate,
         }
     }

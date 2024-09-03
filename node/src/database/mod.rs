@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{fs::OpenOptions, path::PathBuf, sync::atomic::Ordering};
 
 use mugraph_core::{error::Error, types::Signature};
 use rand::prelude::*;
@@ -42,6 +42,11 @@ impl DB {
     }
 
     pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Database, Error> {
-        Self::setup_with_backend(TestBackend::new(rng))
+        let backend = TestBackend::new(rng);
+        let inject_failures = backend.inject_failures.clone();
+        let result = Self::setup_with_backend(backend);
+        inject_failures.store(true, Ordering::SeqCst);
+
+        result
     }
 }
