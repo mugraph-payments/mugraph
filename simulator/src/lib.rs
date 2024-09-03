@@ -17,13 +17,15 @@ pub use self::{action::Action, config::Config, delegate::Delegate, state::State}
 pub struct Simulation {
     core_id: u32,
     state: State,
+    delegate: Delegate,
 }
 
 impl Simulation {
-    pub fn new(core_id: u32) -> Result<Self, Error> {
+    pub fn new(core_id: u32, delegate: Delegate) -> Result<Self, Error> {
         Ok(Self {
             core_id,
-            state: State::setup()?,
+            state: State::setup(delegate.clone())?,
+            delegate,
         })
     }
 
@@ -42,7 +44,7 @@ impl Simulation {
 
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
-                let response = self.state.delegate.recv_transaction_v0(&transaction)?;
+                let response = self.delegate.recv_transaction_v0(&transaction)?;
 
                 match response {
                     V0Response::Transaction { outputs } => {

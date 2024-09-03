@@ -16,7 +16,8 @@ use itertools::Itertools;
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use metrics_observer::Client;
-use mugraph_simulator::{Config, Simulation};
+use mugraph_core::types::Keypair;
+use mugraph_simulator::{Config, Delegate, Simulation};
 use tracing::{error, info};
 
 fn main() -> Result<()> {
@@ -31,11 +32,17 @@ fn main() -> Result<()> {
     let should_continue = Arc::new(AtomicBool::new(true));
     let config = Config::default();
     let observer_client = Client::new(metric_address.to_string());
+    let mut rng = config.rng();
 
     describe_histogram!(
         "metrics-observer.frame_time",
         Unit::Milliseconds,
         "How long it takes to render a frame of the observer"
+    );
+    describe_histogram!(
+        "mugraph.core.transaction.verify",
+        Unit::Milliseconds,
+        "How long it takes to verify a transaction"
     );
     describe_histogram!(
         "mugraph.database.len.time_taken",
@@ -92,8 +99,10 @@ fn main() -> Result<()> {
     core_affinity::set_for_current(cores.pop_front().unwrap());
     let threads = config.threads - 1;
     info!(count = threads, "Starting simulations");
+    let keypair = Keypair::random(&mut rng);
+    let delegate = Delegate::new(&mut rng, keypair)?;
     let simulations: Vec<Simulation> = (1..config.threads)
-        .map(|i| Simulation::new(i as u32))
+        .map(|i| Simulation::new(i as u32, delegate.clone()))
         .try_collect()?;
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {

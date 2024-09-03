@@ -1,5 +1,6 @@
 use crate::{
-    error::Result,
+    error::{Error, Result},
+    timed,
     types::{Atom, Hash, Note, Transaction},
     utils::BitSet32,
 };
@@ -70,13 +71,23 @@ impl TransactionBuilder {
         }
 
         for (asset_id, amount) in self.outputs {
+            let index = match asset_ids.iter().position(|&id| id == asset_id) {
+                Some(a) => a as u32,
+                None => {
+                    return Err(Error::InvalidTransaction {
+                        reason: "Missing asset_id for output".into(),
+                    })
+                }
+            };
+
             atoms.push(Atom {
                 delegate,
-                asset_id: asset_ids.iter().position(|&id| id == asset_id).unwrap() as u32,
+                asset_id: index,
                 amount,
                 nonce: Hash::zero(),
                 signature: None,
             });
+
             if !asset_ids.contains(&asset_id) {
                 asset_ids.push(asset_id);
             }
@@ -89,7 +100,7 @@ impl TransactionBuilder {
             signatures,
         };
 
-        transaction.verify()?;
+        timed!("mugraph.core.transaction.verify", { transaction.verify()? });
 
         Ok(transaction)
     }

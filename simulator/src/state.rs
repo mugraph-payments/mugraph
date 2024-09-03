@@ -11,20 +11,17 @@ use crate::{Action, Config, Delegate};
 pub struct State {
     pub rng: ChaCha20Rng,
     pub keypair: Keypair,
-    pub delegate: Delegate,
     pub notes: VecDeque<Note>,
 }
 
 impl State {
-    pub fn setup() -> Result<Self, Error> {
+    pub fn setup(mut delegate: Delegate) -> Result<Self, Error> {
         let config = Config::new();
         let mut rng = config.rng();
         let assets = (0..config.assets)
             .map(|_| Hash::random(&mut rng))
             .collect::<Vec<_>>();
-        let keypair = Keypair::random(&mut rng);
         let mut notes = VecDeque::with_capacity(config.notes);
-        let mut delegate = Delegate::new(&mut rng, keypair)?;
 
         for _ in 0..config.notes {
             let idx = rng.gen_range(0..config.assets);
@@ -39,8 +36,7 @@ impl State {
 
         Ok(Self {
             rng,
-            keypair,
-            delegate,
+            keypair: delegate.keypair,
             notes,
         })
     }

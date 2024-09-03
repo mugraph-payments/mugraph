@@ -1,3 +1,5 @@
+#![feature(duration_millis_float)]
+
 pub mod builder;
 pub mod crypto;
 pub mod error;

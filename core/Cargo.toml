@@ -9,6 +9,7 @@ bytemuck = { workspace = true }
 curve25519-dalek = { workspace = true }
 digest = { workspace = true }
 hex = { workspace = true }
+metrics = { workspace = true }
 onlyerror = { workspace = true }
 paste = { workspace = true }
 proptest = { workspace = true }
@@ -16,5 +17,5 @@ rand = { workspace = true }
 redb = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-test-strategy = { workspace = true }
 serde_json = { workspace = true }
+test-strategy = { workspace = true }
