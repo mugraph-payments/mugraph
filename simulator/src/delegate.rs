@@ -23,7 +23,7 @@ impl Delegate {
         info!(public_key = %keypair.public_key, "Starting delegate");
         let db = DB::setup_test(&mut rng)?.into();
 
-        counter!("mugraph.simulator.delegates_spawned").increment(1);
+        counter!("delegates_spawned").increment(1);
 
         Ok(Self { db, rng, keypair })
     }
@@ -42,14 +42,14 @@ impl Delegate {
         note.signature =
             crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
 
-        counter!("mugraph.simulator.stub_notes_emitted").increment(1);
+        counter!("stub_notes_emitted").increment(1);
 
         Ok(note)
     }
 
     #[inline(always)]
     pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
-        timed!("mugraph.simulator.delegate.transaction_v0", {
+        timed!("delegate.transaction_v0", {
             transaction_v0(tx, self.keypair, &self.db)
         })
     }

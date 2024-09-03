@@ -38,9 +38,7 @@ impl Simulation {
             "Starting simulation tick"
         );
 
-        let action = timed!("mugraph.simulator.state.next.time_taken", {
-            self.state.next_action()?
-        });
+        let action = timed!("state.next", { self.state.next_action()? });
 
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
@@ -51,10 +49,10 @@ impl Simulation {
                         let mut index = 0;
 
                         for (i, atom) in transaction.atoms.iter().enumerate() {
-                            counter!("mugraph.simulator.atoms_processed").increment(1);
+                            counter!("atoms_processed").increment(1);
 
                             if transaction.is_input(i) {
-                                counter!("mugraph.simulator.inputs_processed").increment(1);
+                                counter!("inputs_processed").increment(1);
 
                                 continue;
                             }
@@ -63,18 +61,18 @@ impl Simulation {
 
                             self.state.recv(asset_id, atom.amount, outputs[index])?;
 
-                            counter!("mugraph.simulator.outputs_received").increment(1);
+                            counter!("outputs_received").increment(1);
 
                             index += 1;
                         }
 
-                        counter!("mugraph.simulator.transactions_processed").increment(1);
+                        counter!("transactions_processed").increment(1);
                     }
                 }
             }
         }
 
-        histogram!("mugraph.simulator.tick.time_taken").record(start.elapsed().as_millis_f64());
+        histogram!("tick_time").record(start.elapsed().as_millis_f64());
 
         Ok(())
     }

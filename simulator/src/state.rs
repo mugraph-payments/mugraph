@@ -42,10 +42,10 @@ impl State {
     }
 
     pub fn next_action(&mut self) -> Result<Action, Error> {
-        gauge!("mugraph.simulator.state.note_count").set(self.notes.len() as f64);
+        gauge!("state.note_count").set(self.notes.len() as f64);
 
-        match self.rng.gen_range(0..=1) {
-            0 => timed!("mugraph.simulator.state.next.split.time_taken", {
+        match self.rng.gen_bool(0.5) {
+            true => timed!("state.next.split.time_taken", {
                 let input_count = self.rng.gen_range(1..4);
                 let mut transaction = TransactionBuilder::new();
 
@@ -67,11 +67,11 @@ impl State {
                     transaction = transaction.input(input);
                 }
 
-                counter!("mugraph.simulator.state.transfers").increment(1);
+                counter!("state.transfers").increment(1);
 
                 Ok(Action::Split(transaction.build()?))
             }),
-            1 => timed!("mugraph.simulator.state.next.join.time_taken", {
+            false => timed!("state.next.join.time_taken", {
                 let mut transaction = TransactionBuilder::new();
                 let mut outputs: BTreeMap<Hash, u64> = BTreeMap::new();
 
@@ -97,11 +97,10 @@ impl State {
                     transaction = transaction.output(asset_id, amount);
                 }
 
-                counter!("mugraph.simulator.state.joins").increment(1);
+                counter!("state.joins").increment(1);
 
                 Ok(Action::Join(transaction.build()?))
             }),
-            _ => unreachable!(),
         }
     }
 
@@ -111,7 +110,7 @@ impl State {
         amount: u64,
         signature: Blinded<Signature>,
     ) -> Result<(), Error> {
-        counter!("mugraph.simulator.state.notes_received").increment(1);
+        counter!("state.notes_received").increment(1);
         let mut nonce = Hasher::new();
         nonce.update(asset_id.as_ref());
         nonce.update(&amount.to_be_bytes());

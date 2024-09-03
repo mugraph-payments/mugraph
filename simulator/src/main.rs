@@ -12,7 +12,6 @@ use std::{
 };
 
 use color_eyre::eyre::{ErrReport, Result};
-use itertools::Itertools;
 use metrics::{describe_histogram, gauge, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use metrics_observer::Client;
@@ -40,57 +39,57 @@ fn main() -> Result<()> {
         "How long it takes to render a frame of the observer"
     );
     describe_histogram!(
-        "mugraph.core.transaction.verify",
+        "transaction.verify",
         Unit::Milliseconds,
         "How long it takes to verify a transaction"
     );
     describe_histogram!(
-        "mugraph.database.len.time_taken",
+        "database.len",
         Unit::Milliseconds,
         "database time call #len"
     );
     describe_histogram!(
-        "mugraph.database.read.time_taken",
+        "database.read",
         Unit::Milliseconds,
         "database time call #read"
     );
     describe_histogram!(
-        "mugraph.database.set_len.time_taken",
+        "database.set_len",
         Unit::Milliseconds,
         "database time call #set_len"
     );
     describe_histogram!(
-        "mugraph.database.sync_data.time_taken",
+        "database.sync_data",
         Unit::Milliseconds,
         "database time call #sync_data"
     );
     describe_histogram!(
-        "mugraph.database.write.time_taken",
+        "database.write",
         Unit::Milliseconds,
         "database time call #write"
     );
     describe_histogram!(
-        "mugraph.simulator.tick.time_taken",
+        "tick_time",
         Unit::Milliseconds,
         "how long it took to run a simulation tick"
     );
     describe_histogram!(
-        "mugraph.simulator.state.next.time_taken",
+        "state.next",
         Unit::Milliseconds,
         "how long it took to generate the next action in the simulation"
     );
     describe_histogram!(
-        "mugraph.simulator.state.next.split.time_taken",
+        "state.next.split",
         Unit::Milliseconds,
         "how long it took to generate the next split action in the simulation"
     );
     describe_histogram!(
-        "mugraph.simulator.state.next.join.time_taken",
+        "state.next.join",
         Unit::Milliseconds,
         "how long it took to generate the next join action in the simulation"
     );
     describe_histogram!(
-        "mugraph.simulator.delegate.transaction_v0",
+        "delegate.transaction_v0",
         Unit::Milliseconds,
         "How long it took to get a server response"
     );
@@ -101,9 +100,9 @@ fn main() -> Result<()> {
     info!(count = threads, "Starting simulations");
     let keypair = Keypair::random(&mut rng);
     let delegate = Delegate::new(&mut rng, keypair)?;
-    let simulations: Vec<Simulation> = (1..config.threads)
+    let simulations = (1..=threads)
         .map(|i| Simulation::new(i as u32, delegate.clone()))
-        .try_collect()?;
+        .filter_map(|x| x.ok());
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
         let sc = should_continue.clone();
@@ -116,11 +115,7 @@ fn main() -> Result<()> {
             let mut round = 0;
 
             while sc.load(Ordering::Relaxed) {
-                gauge!(
-                    "mugraph.simulator.current_round",
-                    "core_id" => core.id.to_string()
-                )
-                .set(round as f64);
+                gauge!("current_round", "core_id" => core.id.to_string()).set(round as f64);
 
                 sim.tick(round)?;
                 round += 1;
@@ -131,12 +126,6 @@ fn main() -> Result<()> {
     }
 
     thread::sleep(Duration::from_millis(100));
-
-    let sc = should_continue.clone();
-    ctrlc::set_handler(move || {
-        sc.swap(false, Ordering::Relaxed);
-    })
-    .expect("Error setting Ctrl-C handler");
 
     match metrics_observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {

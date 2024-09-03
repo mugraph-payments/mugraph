@@ -100,7 +100,7 @@ impl TransactionBuilder {
             signatures,
         };
 
-        timed!("mugraph.core.transaction.verify", { transaction.verify()? });
+        timed!("transaction.verify", { transaction.verify()? });
 
         Ok(transaction)
     }
