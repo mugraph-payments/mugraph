@@ -82,11 +82,15 @@ impl TransactionBuilder {
             }
         }
 
-        Ok(Transaction {
+        let transaction = Transaction {
             input_mask,
             atoms,
             asset_ids,
             signatures,
-        })
+        };
+
+        transaction.verify()?;
+
+        Ok(transaction)
     }
 }

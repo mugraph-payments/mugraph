@@ -48,6 +48,12 @@ pub enum Error {
     #[error("Error handling JSON: {reason}")]
     JsonError { reason: String },
 
+    #[error("Unbalanced transaction, expected {pre:?}, got {post:?}")]
+    UnbalancedTransaction { pre: Vec<u128>, post: Vec<u128> },
+
+    #[error("Invalid Transaction: {reason}")]
+    InvalidTransaction { reason: String },
+
     #[error("Multiple errors happened at once: {errors:?}")]
     Multiple { errors: Vec<Error> },
 

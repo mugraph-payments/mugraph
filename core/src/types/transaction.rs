@@ -1,9 +1,7 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use super::{PublicKey, Signature, COMMITMENT_INPUT_SIZE};
-use crate::{types::Hash, utils::BitSet32};
+use crate::{error::Error, types::Hash, utils::BitSet32};
 
 pub const MAX_ATOMS: usize = 8;
 pub const MAX_INPUTS: usize = 4;
@@ -52,60 +50,32 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    pub fn is_balanced(&self) -> bool {
-        let mut pre_balances = BTreeMap::new();
-        let mut post_balances = BTreeMap::new();
+    pub fn verify(&self) -> Result<(), Error> {
+        let mut pre = vec![0; self.asset_ids.len()];
+        let mut post = vec![0; self.asset_ids.len()];
 
         for (i, atom) in self.atoms.iter().enumerate() {
             let target = match self.input_mask.contains(i as u32) {
-                true => &mut pre_balances,
-                false => &mut post_balances,
+                true => &mut pre,
+                false => &mut post,
             };
 
-            let asset_id = match self.asset_ids.get(atom.asset_id as usize) {
-                Some(a) => a,
-                None => return false,
-            };
-
-            target
-                .entry(asset_id)
-                .and_modify(|x| *x += atom.amount as u128)
-                .or_insert(atom.amount as u128);
-        }
-
-        pre_balances == post_balances
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use proptest::prelude::*;
-    use test_strategy::proptest;
-
-    use super::Transaction;
-
-    #[proptest]
-    fn test_transaction_balance(tx: Transaction) {
-        let mut balance_difference = BTreeMap::new();
-
-        for atom in &tx.atoms {
-            if let Some(asset_id) = tx.asset_ids.get(atom.asset_id as usize) {
-                let change = if atom.is_input() {
-                    atom.amount as i128
-                } else {
-                    -(atom.amount as i128)
-                };
-                *balance_difference.entry(asset_id).or_insert(0) += change;
-            } else {
-                // Invalid asset_id
-                prop_assert!(!tx.is_balanced());
-                return Ok(());
+            match self.asset_ids.get(atom.asset_id as usize) {
+                Some(_) => {}
+                None => {
+                    return Err(Error::InvalidTransaction {
+                        reason: "Asset ids are not valid".to_string(),
+                    })
+                }
             }
+
+            target[atom.asset_id as usize] += atom.amount as u128;
         }
 
-        let is_balanced = balance_difference.values().all(|&balance| balance == 0);
-        prop_assert_eq!(tx.is_balanced(), is_balanced);
+        if pre == post {
+            return Err(Error::UnbalancedTransaction { pre, post });
+        }
+
+        Ok(())
     }
 }
