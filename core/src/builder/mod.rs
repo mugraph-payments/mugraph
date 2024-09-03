@@ -1,10 +1,11 @@
 use crate::{
     error::Result,
     types::{Atom, Hash, Note, Transaction},
+    utils::BitSet32,
 };
 
 pub struct TransactionBuilder {
-    available_notes: Vec<Note>,
+    inputs: Vec<Note>,
     outputs: Vec<(Hash, u64)>, // (asset_id, amount)
 }
 
@@ -15,20 +16,20 @@ impl Default for TransactionBuilder {
 }
 
 impl TransactionBuilder {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            available_notes: Vec::new(),
+            inputs: Vec::new(),
             outputs: Vec::new(),
         }
     }
 
     pub fn input(mut self, note: Note) -> Self {
-        self.available_notes.push(note);
+        self.inputs.push(note);
         self
     }
 
     pub fn input_count(&self) -> usize {
-        self.available_notes.len()
+        self.inputs.len()
     }
 
     pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
@@ -36,16 +37,23 @@ impl TransactionBuilder {
         self
     }
 
+    pub fn output_count(&self) -> usize {
+        self.outputs.len()
+    }
+
     pub fn build(self) -> Result<Transaction> {
-        let mut atoms = Vec::new();
+        let mut atoms = Vec::with_capacity(self.input_count() + self.output_count());
         let mut asset_ids = Vec::new();
-        let mut signatures = Vec::new();
+        let mut signatures = Vec::with_capacity(self.input_count());
+        let mut input_mask = BitSet32::new();
 
         assert_ne!(self.input_count(), 0);
 
-        let delegate = self.available_notes[0].delegate;
+        let delegate = self.inputs[0].delegate;
 
-        for note in self.available_notes {
+        for (i, note) in self.inputs.iter().enumerate() {
+            input_mask.insert(i as u32);
+
             atoms.push(Atom {
                 delegate: note.delegate,
                 asset_id: asset_ids.len() as u32,
@@ -53,7 +61,9 @@ impl TransactionBuilder {
                 nonce: note.nonce,
                 signature: Some(signatures.len() as u32),
             });
+
             signatures.push(note.signature);
+
             if !asset_ids.contains(&note.asset_id) {
                 asset_ids.push(note.asset_id);
             }
@@ -73,6 +83,7 @@ impl TransactionBuilder {
         }
 
         Ok(Transaction {
+            input_mask,
             atoms,
             asset_ids,
             signatures,

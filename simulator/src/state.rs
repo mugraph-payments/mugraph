@@ -1,7 +1,4 @@
-use std::{
-    cmp::max,
-    collections::{BTreeMap, VecDeque},
-};
+use std::collections::{BTreeMap, VecDeque};
 
 use blake3::Hasher;
 use metrics::{counter, gauge};

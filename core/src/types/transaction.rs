@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::{PublicKey, Signature, COMMITMENT_INPUT_SIZE};
-use crate::types::Hash;
+use crate::{types::Hash, utils::BitSet32};
 
 pub const MAX_ATOMS: usize = 8;
 pub const MAX_INPUTS: usize = 4;
@@ -41,6 +41,8 @@ impl Atom {
     Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
 )]
 pub struct Transaction {
+    #[serde(rename = "m")]
+    pub input_mask: BitSet32,
     #[serde(rename = "a")]
     pub atoms: Vec<Atom>,
     #[serde(rename = "a_")]
@@ -54,8 +56,8 @@ impl Transaction {
         let mut pre_balances = BTreeMap::new();
         let mut post_balances = BTreeMap::new();
 
-        for atom in self.atoms.iter() {
-            let target = match atom.is_input() {
+        for (i, atom) in self.atoms.iter().enumerate() {
+            let target = match self.input_mask.contains(i as u32) {
                 true => &mut pre_balances,
                 false => &mut post_balances,
             };

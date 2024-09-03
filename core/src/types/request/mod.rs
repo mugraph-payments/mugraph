@@ -31,6 +31,7 @@ mod tests {
             "n": "v0",
             "m": "transaction",
             "p": {
+                "m": 0,
                 "a": [],
                 "a_": [],
                 "s": [],
