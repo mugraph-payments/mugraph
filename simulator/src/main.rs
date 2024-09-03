@@ -7,7 +7,7 @@ use std::{
         Arc,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use color_eyre::eyre::{ErrReport, Result};
@@ -79,8 +79,6 @@ fn main() -> Result<()> {
         "How long it took to get a server response"
     );
 
-    let start = Instant::now();
-
     for (i, core) in cores.into_iter().enumerate().skip(1).take(config.threads) {
         let sc = should_continue.clone();
         let mut sim = Simulation::new(core.id as u32)?;
@@ -93,10 +91,6 @@ fn main() -> Result<()> {
             let mut round = 0;
 
             while sc.load(Ordering::Relaxed) {
-                if start.elapsed() > Duration::from_secs(config.duration_secs.unwrap_or(u64::MAX)) {
-                    break;
-                }
-
                 sim.tick(round)?;
                 round += 1;
             }

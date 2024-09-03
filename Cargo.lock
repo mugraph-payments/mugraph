@@ -969,15 +969,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics"
-version = "0.23.0"
-source = "git+https://github.com/metrics-rs/metrics#55273f04cb8647f30f4e603ccfbfd081da6939cd"
-dependencies = [
- "ahash",
- "portable-atomic",
-]
-
-[[package]]
 name = "metrics-exporter-tcp"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -986,7 +977,7 @@ dependencies = [
  "bytes",
  "crossbeam-channel",
  "home",
- "metrics 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metrics",
  "mio 0.8.11",
  "prost",
  "prost-build",
@@ -1002,7 +993,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "home",
- "metrics 0.23.0 (git+https://github.com/metrics-rs/metrics)",
+ "metrics",
  "metrics-util",
  "prost",
  "prost-build",
@@ -1013,9 +1004,10 @@ dependencies = [
 [[package]]
 name = "metrics-util"
 version = "0.17.0"
-source = "git+https://github.com/metrics-rs/metrics#55273f04cb8647f30f4e603ccfbfd081da6939cd"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4259040465c955f9f2f1a4a8a16dc46726169bca0f88e8fb2dbeced487c3e828"
 dependencies = [
- "metrics 0.23.0 (git+https://github.com/metrics-rs/metrics)",
+ "metrics",
  "sketches-ddsketch",
 ]
 
@@ -1085,7 +1077,7 @@ dependencies = [
  "axum",
  "clap",
  "color-eyre",
- "metrics 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metrics",
  "mugraph-core",
  "onlyerror",
  "rand",
@@ -1108,7 +1100,7 @@ dependencies = [
  "core_affinity",
  "ctrlc",
  "itertools 0.13.0",
- "metrics 0.23.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metrics",
  "metrics-exporter-tcp",
  "metrics-observer",
  "mugraph-core",
