@@ -39,7 +39,7 @@ impl Simulation {
         let action = timed!("state.next", { self.state.next_action()? });
 
         loop {
-            match timed!("tick_time", { self.handle_action(&action) }) {
+            match timed!("handle_action", { self.handle_action(&action) }) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
                     counter!("user_retries", "reason" => reason).increment(1);

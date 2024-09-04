@@ -10,11 +10,11 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use color_eyre::eyre::Result;
-use metrics::{describe_histogram, gauge, Unit};
+use metrics::{describe_histogram, histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
@@ -31,6 +31,11 @@ fn main() -> Result<()> {
         .install()?;
     tracing_subscriber::fmt().init();
 
+    describe_histogram!(
+        "tick_time",
+        Unit::Milliseconds,
+        "How long it takes to run a tick of the simulation"
+    );
     describe_histogram!(
         "transaction.verify",
         Unit::Milliseconds,
@@ -123,7 +128,7 @@ fn main() -> Result<()> {
             let core_id = core.id.to_string();
 
             while sc.load(Ordering::Relaxed) {
-                gauge!("current_round", "core_id" => core_id.clone()).set(round as f64);
+                let start = Instant::now();
 
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
                     sim.tick(round)?;
@@ -137,7 +142,7 @@ fn main() -> Result<()> {
                         let bt = Backtrace::capture().to_string();
 
                         observer::restore_terminal()?;
-                        error!(reason = %e, backtrace = %bt, "Simulation errored.");
+                        error!(core_id = &core_id, reason = %e, backtrace = %bt, "Simulation errored.");
 
                         sc.store(false, Ordering::SeqCst);
                     }
@@ -147,11 +152,11 @@ fn main() -> Result<()> {
                         let bt = Backtrace::capture().to_string();
 
                         if let Some(message) = err.downcast_ref::<&str>() {
-                            error!(reason = message, backtrace = %bt, "Simulation panicked!");
+                            error!(core_id = &core_id, reason = message, backtrace = %bt, "Simulation panicked!");
                         } else if let Ok(message) = err.downcast::<String>() {
-                            error!(reason = message, backtrace = %bt, "Simulation panicked!");
+                            error!(core_id = &core_id, reason = message, backtrace = %bt, "Simulation panicked!");
                         } else {
-                            error!(reason = "Could not retrieve", backtrace = %bt, "Simulation panicked!");
+                            error!(core_id = &core_id, reason = "Could not retrieve", backtrace = %bt, "Simulation panicked!");
                         }
 
                         sc.store(false, Ordering::SeqCst);
@@ -159,6 +164,9 @@ fn main() -> Result<()> {
                 }
 
                 round += 1;
+
+                histogram!("tick_time", "core_id" => core_id.clone())
+                    .record(start.elapsed().as_millis_f64());
             }
 
             Ok::<_, Error>(())
