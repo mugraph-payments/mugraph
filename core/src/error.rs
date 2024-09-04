@@ -17,8 +17,8 @@ pub enum Error {
     #[error("Simulated error: {reason}")]
     SimulatedError { reason: String },
 
-    #[error("Storage error: {reason}")]
-    StorageError { reason: String },
+    #[error("Storage error ({kind}): {reason}")]
+    StorageError { kind: String, reason: String },
 
     #[error("Rng error: {reason}")]
     RngError { reason: String },
@@ -68,10 +68,11 @@ impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         let reason = e.to_string();
         match e.kind() {
-            ErrorKind::Other if reason.contains("mugraph.simulation.storage_error") => {
+            ErrorKind::Other if reason.contains("injected_error") => {
                 Self::SimulatedError { reason }
             }
-            _ => Self::StorageError {
+            k => Self::StorageError {
+                kind: k.to_string(),
                 reason: e.to_string(),
             },
         }
@@ -92,59 +93,52 @@ impl From<rand::Error> for Error {
     }
 }
 
+#[inline]
+fn to_simulated_or_storage_error<T: std::error::Error + ToString>(value: T, kind: &str) -> Error {
+    let reason = value.to_string();
+
+    match reason.contains("injected_error") {
+        true => Error::SimulatedError { reason },
+        false => Error::StorageError {
+            kind: kind.to_string(),
+            reason,
+        },
+    }
+}
+
 impl From<redb::Error> for Error {
     fn from(value: redb::Error) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::Error")
     }
 }
 
 impl From<redb::CommitError> for Error {
     fn from(value: redb::CommitError) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::CommitError")
     }
 }
 
 impl From<redb::StorageError> for Error {
     fn from(value: redb::StorageError) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::StorageError")
     }
 }
 
 impl From<redb::TableError> for Error {
     fn from(value: redb::TableError) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::TableError")
     }
 }
 
 impl From<redb::TransactionError> for Error {
     fn from(value: redb::TransactionError) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::TransactionError")
     }
 }
 
 impl From<redb::DatabaseError> for Error {
     fn from(value: redb::DatabaseError) -> Self {
-        Error::StorageError {
-            reason: value.to_string(),
-        }
-    }
-}
-
-impl<T> From<PoisonError<T>> for Error {
-    fn from(value: PoisonError<T>) -> Self {
-        Self::ServerError {
-            reason: value.to_string(),
-        }
+        to_simulated_or_storage_error(value, "redb::DatabaseError")
     }
 }
 

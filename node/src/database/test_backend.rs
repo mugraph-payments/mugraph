@@ -99,7 +99,7 @@ impl TestBackend {
 
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "mugraph.simulation.storage_error",
+                "injected_error",
             ))
         } else {
             Ok(())
