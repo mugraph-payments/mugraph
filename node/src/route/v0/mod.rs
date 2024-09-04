@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     extract::State,
     response::IntoResponse,
@@ -22,7 +20,7 @@ use crate::{config::Config, database::Database};
 #[derive(Clone)]
 pub struct Context {
     keypair: Keypair,
-    database: Arc<Database>,
+    database: Database,
 }
 
 pub fn router(config: &Config) -> Result<Router, Error> {
@@ -30,7 +28,7 @@ pub fn router(config: &Config) -> Result<Router, Error> {
         .route("/health", get(health))
         .route("/rpc", post(rpc))
         .with_state(Context {
-            database: Database::setup("./db")?.into(),
+            database: Database::setup(&mut config.rng(), "./db")?,
             keypair: config.keypair()?,
         });
 

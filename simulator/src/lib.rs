@@ -56,7 +56,7 @@ impl Simulation {
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
-                let response = self.delegate.recv_transaction_v0(&transaction)?;
+                let response = self.delegate.recv_transaction_v0(transaction)?;
 
                 match response {
                     V0Response::Transaction { outputs } => {

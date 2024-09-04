@@ -20,7 +20,7 @@ impl Delegate {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
         info!(public_key = %keypair.public_key, "Starting delegate");
-        let db = Database::setup_test(&mut rng)?.into();
+        let db = Database::setup_test(&mut rng, None)?.into();
 
         counter!("delegates_spawned").increment(1);
 

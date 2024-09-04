@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
@@ -13,11 +11,12 @@ use crate::database::{Database, NOTES};
 pub fn transaction_v0(
     transaction: &Transaction,
     keypair: Keypair,
-    database: &Arc<Database>,
+    database: &Database,
 ) -> Result<V0Response, Error> {
     let mut outputs = vec![];
     let mut errors = vec![];
     let mut consumed_inputs = vec![];
+    let mut db = database.clone();
 
     for (i, atom) in transaction.atoms.iter().enumerate() {
         if transaction.is_output(i) {
@@ -62,22 +61,24 @@ pub fn transaction_v0(
             }
         }
 
-        let r = database.read()?;
-        let table = r.open_table(NOTES)?;
+        {
+            let r = db.read()?;
+            let table = r.open_table(NOTES)?;
 
-        match table.get(signature) {
-            Ok(Some(_)) => {
-                errors.push(Error::AlreadySpent { signature });
+            match table.get(signature) {
+                Ok(Some(_)) => {
+                    errors.push(Error::AlreadySpent { signature });
 
-                continue;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                errors.push(Error::ServerError {
-                    reason: e.to_string(),
-                });
+                    continue;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    errors.push(Error::ServerError {
+                        reason: e.to_string(),
+                    });
 
-                continue;
+                    continue;
+                }
             }
         }
 
@@ -85,7 +86,8 @@ pub fn transaction_v0(
     }
 
     if errors.is_empty() {
-        let w = database.write()?;
+        let w = db.write()?;
+
         {
             let mut t = w.open_table(NOTES)?;
 

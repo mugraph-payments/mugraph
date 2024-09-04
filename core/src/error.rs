@@ -1,4 +1,4 @@
-use std::io::ErrorKind;
+use std::{io::ErrorKind, sync::PoisonError};
 
 use onlyerror::Error;
 use serde::{Deserialize, Serialize};
@@ -145,6 +145,14 @@ impl From<redb::DatabaseError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::JsonError {
+            reason: value.to_string(),
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(value: PoisonError<T>) -> Self {
+        Self::ServerError {
             reason: value.to_string(),
         }
     }

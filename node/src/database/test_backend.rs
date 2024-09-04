@@ -1,5 +1,6 @@
 use std::{
     fs::OpenOptions,
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -19,6 +20,7 @@ pub struct TestBackend {
     inner: FileBackend,
     rng: ChaCha20Rng,
     pub inject_failures: Arc<AtomicBool>,
+    pub path: PathBuf,
     failure_rate: f64,
 }
 
@@ -55,22 +57,25 @@ impl StorageBackend for TestBackend {
 }
 
 impl TestBackend {
-    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Result<(Arc<AtomicBool>, Self), Error> {
+    pub fn new<R: CryptoRng + Rng>(
+        rng: &mut R,
+        path: Option<PathBuf>,
+    ) -> Result<(Arc<AtomicBool>, Self), Error> {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-        let failure_rate = rng.gen_range(0.0f64..1.0f64);
+        let failure_rate = rng.gen_range(0.2f64..0.99f64);
 
         info!(
             failure_rate = %format!("{:.2}%", failure_rate * 100.0),
             "Starting test database backend"
         );
 
-        let tmp = NamedTempFile::new()?;
+        let tmp = path.unwrap_or(NamedTempFile::new()?.path().into());
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(true)
-            .open(tmp)?;
+            .open(tmp.clone())?;
 
         let inject_failures: Arc<_> = AtomicBool::new(false).into();
 
@@ -81,13 +86,13 @@ impl TestBackend {
                 rng,
                 inject_failures,
                 failure_rate,
+                path: tmp,
             },
         ))
     }
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), std::io::Error> {
-        counter!("actions").increment(1);
         let mut rng = self.rng.clone();
 
         if !self.inject_failures.load(Ordering::Relaxed) {
