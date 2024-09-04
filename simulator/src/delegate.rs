@@ -44,7 +44,7 @@ impl Delegate {
     #[inline(always)]
     pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
         timed!("delegate.transaction_v0", {
-            transaction_v0(tx, self.keypair, &self.db)
+            transaction_v0(tx, self.keypair, &mut self.db)
         })
     }
 }

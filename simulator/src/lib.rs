@@ -40,7 +40,7 @@ impl Simulation {
         let action = timed!("state.next", { self.state.next_action(round)? });
 
         loop {
-            match timed!("handle_action", { self.handle_action(&action) }) {
+            match timed!("handle_action", { self.handle_action(round, &action) }) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
                     counter!("mugraph.resources", "name" => "user_retries", "reason" => reason)
@@ -55,9 +55,9 @@ impl Simulation {
         Ok(())
     }
 
-    fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
+    fn handle_action(&mut self, round: u64, action: &Action) -> Result<(), Error> {
         match action {
-            Action::Split(transaction) | Action::Join(transaction) => {
+            Action::Transaction(transaction) => {
                 let response = self.delegate.recv_transaction_v0(transaction)?;
 
                 match response {
@@ -79,6 +79,28 @@ impl Simulation {
                         inc!("transactions");
                     }
                 }
+            }
+            Action::RedeemFail(transaction) => {
+                match self.handle_action(round, &Action::Transaction(transaction.clone())) {
+                    Ok(_) => {
+                        return Err(Error::SimulationError {
+                            reason: "Expected redemption to block double spend, but it didn't"
+                                .to_string(),
+                        })
+                    }
+                    Err(Error::AlreadySpent { .. }) => {
+                        inc!("blocked_double_spent");
+                    }
+                    e => e?,
+                }
+            }
+            Action::DoubleSpend(a) => {
+                self.state
+                    .schedule(round + 1, Action::Transaction(a.clone()));
+                self.state
+                    .schedule(round + 2, Action::RedeemFail(a.clone()));
+
+                inc!("double_spends");
             }
         }
 

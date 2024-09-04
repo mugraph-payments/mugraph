@@ -55,22 +55,54 @@ impl State {
         })
     }
 
+    pub fn schedule(&mut self, round: u64, action: Action) {
+        self.scheduled_actions.push(round, action);
+    }
+
     pub fn next_action(&mut self, round: u64) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
-        match self.scheduled_actions.peek() {
-            Some((action_round, _)) if *action_round <= round => {
-                let (_, action) = self.scheduled_actions.pop().unwrap();
+        if self.notes.len() == 0 {
+            return timed!("state.next_action.split", { self.generate_split() });
+        }
 
+        match self.scheduled_actions.pop() {
+            Some((action_round, action)) if action_round <= round => {
                 return Ok(action);
+            }
+            Some((round, action)) => {
+                self.scheduled_actions.push(round, action);
             }
             _ => {}
         }
 
-        match self.rng.gen_range(0..10u32) {
-            0..6 => timed!("state.next_action.split", { self.generate_split() }),
-            6.. => timed!("state.next_action.join", { self.generate_join() }),
+        match self.rng.gen_range(0..100u32) {
+            0..45 => timed!("state.next_action.split", { self.generate_split() }),
+            45..90 => timed!("state.next_action.join", { self.generate_join() }),
+            90.. => timed!("state.next_action.double_spend", {
+                self.generate_double_spend()
+            }),
         }
+    }
+
+    fn generate_double_spend(&mut self) -> Result<Action, Error> {
+        let mut transaction = TransactionBuilder::new();
+
+        match self.notes.pop_front() {
+            Some(input) => {
+                transaction = transaction
+                    .output(input.asset_id, input.amount)
+                    .input(input);
+            }
+            None => {
+                return Err(Error::ServerError {
+                    reason: "no notes".into(),
+                });
+            }
+        }
+
+        inc!("state.double_spends");
+        Ok(Action::DoubleSpend(transaction.build()?))
     }
 
     fn generate_split(&mut self) -> Result<Action, Error> {
@@ -106,7 +138,7 @@ impl State {
             });
         }
 
-        Ok(Action::Split(transaction.build()?))
+        Ok(Action::Transaction(transaction.build()?))
     }
 
     fn generate_join(&mut self) -> Result<Action, Error> {
@@ -146,7 +178,7 @@ impl State {
 
         inc!("state.joins");
 
-        Ok(Action::Join(transaction.build()?))
+        Ok(Action::Transaction(transaction.build()?))
     }
 
     pub fn recv(

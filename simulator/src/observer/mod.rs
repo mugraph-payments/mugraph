@@ -37,8 +37,8 @@ mod metrics_inner;
 pub use self::metrics_inner::Client;
 use self::metrics_inner::MetricData;
 
-pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    run(signal, client, init_terminal()?)
+pub fn main(client: Client, should_continue: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+    run(should_continue, client, init_terminal()?)
 }
 
 fn c(input: catppuccin::Color) -> Color {
@@ -213,10 +213,7 @@ pub fn run(
         }
 
         timed!("observer.render", {
-            if !render(&client, &mut terminal)? {
-                should_continue.store(false, Ordering::SeqCst);
-                break;
-            }
+            should_continue.store(render(&client, &mut terminal)?, Ordering::Relaxed);
         });
     }
 

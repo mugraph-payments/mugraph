@@ -33,6 +33,7 @@ fn main() -> Result<()> {
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let should_continue = Arc::new(AtomicBool::new(true));
+    let should_start = Arc::new(AtomicBool::new(false));
     let config = Config::default();
     let mut rng = config.rng();
     let threads = config.threads - 1;
@@ -51,23 +52,28 @@ fn main() -> Result<()> {
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
         let sc = should_continue.clone();
+        let ss = should_start.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
             info!("Starting simulation on core {}.", core.id);
 
-            let mut round = 0;
+            while !ss.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(5));
+            }
 
-            while sc.load(Ordering::Relaxed) {
+            for round in 0u64.. {
+                if !sc.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 match tick(core.id, &mut sim, round) {
-                    Ok(_) => {
-                        round += 1;
-                    }
-                    e => {
+                    Err(e) => {
                         sc.store(false, Ordering::SeqCst);
-                        e?;
+                        Err(e)?;
                     }
+                    _ => {}
                 }
             }
 
@@ -75,7 +81,7 @@ fn main() -> Result<()> {
         });
     }
 
-    thread::sleep(Duration::from_millis(100));
+    should_start.store(true, Ordering::SeqCst);
 
     match observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {
