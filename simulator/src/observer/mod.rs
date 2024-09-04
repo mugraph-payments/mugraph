@@ -21,9 +21,10 @@ use ratatui::{
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
     layout::{Constraint, Direction, Layout},
+    prelude::Line,
     style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    text::Span,
+    widgets::{Block, Borders, List, ListItem, ListState},
     Terminal,
 };
 
@@ -34,82 +35,120 @@ use self::input::InputEvents;
 #[path = "metrics.rs"]
 mod metrics_inner;
 pub use self::metrics_inner::Client;
-use self::metrics_inner::{ClientState, MetricData};
+use self::metrics_inner::MetricData;
 
 pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     run(signal, client, init_terminal()?)
+}
+
+fn c(input: catppuccin::Color) -> Color {
+    Color::Rgb(input.rgb.r, input.rgb.g, input.rgb.b)
 }
 
 pub fn render(
     client: &Client,
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<bool, Box<dyn Error>> {
+    let colors = catppuccin::PALETTE.mocha.colors;
+
     terminal.draw(|f| {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .margin(1)
-            .constraints([Constraint::Length(4), Constraint::Percentage(90)].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Percentage(100)].as_ref())
             .split(f.area());
 
-        let current_dt = Local::now().format(" (%Y/%m/%d %I:%M:%S %p)").to_string();
-        let client_state = match client.state() {
-            ClientState::Disconnected(s) => {
-                let mut spans = vec![
-                    Span::raw("state: "),
-                    Span::styled("disconnected", Style::default().fg(Color::Red)),
-                ];
+        let current_dt = Local::now().format("(%Y/%m/%d %I:%M:%S %p)").to_string();
+        let line_width = chunks[1].width as usize;
 
-                if let Some(s) = s {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::raw(s));
-                }
-
-                Line::from(spans)
-            }
-            ClientState::Connected => Line::from(vec![
-                Span::raw("state: "),
-                Span::styled("connected", Style::default().fg(Color::Green)),
-            ]),
-        };
-
-        let header_block = Block::default()
-            .title(vec![
-                Span::styled(
-                    "mugraph-simulator",
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(current_dt),
-            ])
-            .borders(Borders::ALL);
-
-        let text = vec![
-            client_state,
-            Line::from(vec![
-                Span::styled("controls: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw("up/down = scroll, q = quit"),
-            ]),
-        ];
-        let header = Paragraph::new(text)
-            .block(header_block)
-            .wrap(Wrap { trim: true });
+        let space = line_width
+            .saturating_sub("mugraph-simulator".len())
+            .saturating_sub(current_dt.len());
+        let header = Line::from(vec![
+            Span::styled(
+                "mugraph-simulator",
+                Style::default()
+                    .fg(c(colors.green))
+                    .bg(c(colors.crust))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" ".repeat(space)),
+            Span::styled(
+                current_dt,
+                Style::default().fg(c(colors.overlay1)).bg(c(colors.crust)),
+            ),
+        ])
+        .style(Style::default().bg(c(colors.crust)));
 
         f.render_widget(header, chunks[0]);
 
-        // Knock 5 off the line width to account for 3-character highlight symbol + borders.
-        let line_width = chunks[1].width.saturating_sub(6) as usize;
         let mut items = Vec::new();
         let metrics = client.get_metrics();
+
+        let pallete = vec![
+            colors.rosewater,
+            colors.flamingo,
+            colors.pink,
+            colors.mauve,
+            colors.red,
+            colors.maroon,
+            colors.peach,
+            colors.yellow,
+            colors.green,
+            colors.teal,
+            colors.sky,
+            colors.sapphire,
+            colors.blue,
+            colors.lavender,
+        ];
+
         for (key, value, unit, _desc) in metrics {
             let inner_key = key.key();
             let name = inner_key.name();
-            let labels = inner_key
+            let label_text = inner_key
+                .clone()
                 .labels()
-                .map(|label| format!("{} = {}", label.key(), label.value()))
+                .map(|label| format!("[{} = {}]", label.key(), label.value()))
                 .collect::<Vec<_>>();
-            let display_name = if labels.is_empty() {
-                name.to_string()
+            let labels = inner_key.labels().flat_map(|label| {
+                vec![
+                    Span::styled(
+                        label.key().to_string(),
+                        Style::default().fg(c(colors.overlay0)),
+                    ),
+                    Span::styled("=", Style::default().fg(c(colors.overlay0))),
+                    Span::styled(
+                        label.value().to_string(),
+                        Style::default().fg(c(colors.overlay1)),
+                    ),
+                ]
+            });
+
+            let (name_length, display_name) = if label_text.is_empty() {
+                (
+                    name.chars().count(),
+                    vec![Span::styled(
+                        name.to_string(),
+                        Style::default().fg(c(colors.text)),
+                    )],
+                )
             } else {
-                format!("{} [{}]", name, labels.join(", "))
+                let mut items = vec![
+                    Span::styled(name.to_string(), Style::default().fg(c(colors.text))),
+                    Span::raw(" "),
+                ];
+
+                let count = labels.clone().count() - 1;
+
+                for (i, item) in labels.enumerate() {
+                    items.push(item);
+
+                    if i != count {
+                        items.push(Span::raw(" "))
+                    }
+                }
+
+                let text = format!("{} [{}]", name, label_text.join(", "));
+                (text.chars().count(), items)
             };
 
             let display_value = match value {
@@ -143,28 +182,29 @@ pub fn render(
                 }
             };
 
-            let name_length = display_name.chars().count();
             let value_length = display_value.chars().count();
             let space = line_width
                 .saturating_sub(name_length)
-                .saturating_sub(value_length);
+                .saturating_sub(value_length)
+                .saturating_add(4);
 
-            let display = format!("{}{}{}", display_name, " ".repeat(space), display_value);
-            items.push(ListItem::new(display));
+            let value = format!("{}{display_value}", " ".repeat(space));
+            let line = Line::from(
+                [
+                    display_name,
+                    vec![Span::styled(value, Style::default().fg(c(colors.subtext0)))],
+                ]
+                .concat(),
+            )
+            .style(Style::default().bg(c(colors.base)));
+            items.push(ListItem::new(line));
         }
 
         let metrics_block = Block::default()
-            .title("observed metrics")
-            .borders(Borders::ALL);
+            .style(Style::default().bg(c(colors.base)))
+            .borders(Borders::NONE);
 
-        let metrics = List::new(items)
-            .block(metrics_block)
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::LightCyan),
-            )
-            .highlight_symbol(">> ");
+        let metrics = List::new(items).block(metrics_block);
 
         let mut state = ListState::default();
         f.render_stateful_widget(metrics, chunks[1], &mut state);

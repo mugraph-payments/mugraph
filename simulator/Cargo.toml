@@ -30,6 +30,7 @@ redb = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+catppuccin = { version = "2.4.0" }
 
 [build-dependencies]
 prost-build = "0.12"

@@ -66,26 +66,6 @@ impl Write {
 }
 
 impl Database {
-    fn setup_with_backend<B: StorageBackend>(
-        backend: B,
-        should_setup: bool,
-    ) -> Result<Redb, Error> {
-        let db = Builder::new().create_with_backend(backend)?;
-
-        if should_setup {
-            let w = db.begin_write()?;
-
-            {
-                let mut t = w.open_table(NOTES)?;
-                t.insert(Signature::zero(), true)?;
-            }
-
-            w.commit()?;
-        }
-
-        Ok(db)
-    }
-
     pub fn setup<R: CryptoRng + Rng>(rng: &mut R, path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
         let exists = fs::exists(&path).unwrap_or(false);
@@ -122,7 +102,7 @@ impl Database {
         })
     }
 
-    pub fn check_integrity(&self) -> Result<(), Error> {
+    pub fn reopen(&self) -> Result<(), Error> {
         match self.mode {
             Mode::File { ref path } => {
                 let file = OpenOptions::new()
@@ -151,14 +131,32 @@ impl Database {
             }
         }
 
-        inc!("database.reconnections");
+        inc!("redb.reopen");
 
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<Read, Error> {
-        inc!("database.read");
+    fn setup_with_backend<B: StorageBackend>(
+        backend: B,
+        should_setup: bool,
+    ) -> Result<Redb, Error> {
+        let db = Builder::new().create_with_backend(backend)?;
 
+        if should_setup {
+            let w = db.begin_write()?;
+
+            {
+                let mut t = w.open_table(NOTES)?;
+                t.insert(Signature::zero(), true)?;
+            }
+
+            w.commit()?;
+        }
+
+        Ok(db)
+    }
+
+    pub fn read(&mut self) -> Result<Read, Error> {
         let result = {
             let db = self.db.read()?;
 
@@ -169,16 +167,17 @@ impl Database {
             Err(Error::StorageError { reason, .. })
                 if reason.to_lowercase().contains("previous i/o error") =>
             {
-                self.check_integrity()?;
+                self.reopen()?;
                 self.read()
             }
-            v => v,
+            v => {
+                inc!("redb.read");
+                v
+            }
         }
     }
 
     pub fn write(&mut self) -> Result<Write, Error> {
-        inc!("database.write");
-
         let result = {
             let db = self.db.read()?;
 
@@ -189,10 +188,13 @@ impl Database {
             Err(Error::StorageError { reason, .. })
                 if reason.to_lowercase().contains("previous i/o error") =>
             {
-                self.check_integrity()?;
+                self.reopen()?;
                 self.write()
             }
-            v => v,
+            v => {
+                inc!("redb.write");
+                v
+            }
         }
     }
 }

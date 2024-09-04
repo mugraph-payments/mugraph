@@ -27,31 +27,31 @@ impl StorageBackend for TestBackend {
     #[inline]
     fn len(&self) -> Result<u64, std::io::Error> {
         self.maybe_fail()?;
-        timed!("database.len", { self.inner.len() })
+        timed!("redb.backend.len", { self.inner.len() })
     }
 
     #[inline]
     fn read(&self, offset: u64, len: usize) -> Result<Vec<u8>, std::io::Error> {
         self.maybe_fail()?;
-        timed!("database.len", { self.inner.read(offset, len) })
+        timed!("redb.backend.len", { self.inner.read(offset, len) })
     }
 
     #[inline]
     fn set_len(&self, len: u64) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("database.set_len", { self.inner.set_len(len) })
+        timed!("redb.backend.set_len", { self.inner.set_len(len) })
     }
 
     #[inline]
     fn sync_data(&self, eventual: bool) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("database.sync_data", { self.inner.sync_data(eventual) })
+        timed!("redb.backend.sync_data", { self.inner.sync_data(eventual) })
     }
 
     #[inline]
     fn write(&self, offset: u64, data: &[u8]) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("database.write", { self.inner.write(offset, data) })
+        timed!("redb.backend.write", { self.inner.write(offset, data) })
     }
 }
 
@@ -73,7 +73,7 @@ impl TestBackend {
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(tmp.clone())?;
 
         let inject_failures: Arc<_> = AtomicBool::new(false).into();

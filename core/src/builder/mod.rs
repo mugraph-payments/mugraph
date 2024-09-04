@@ -9,8 +9,8 @@ use crate::{
 #[derive(Default)]
 pub struct TransactionBuilder {
     pub inputs: Vec<Note>,
-    pre_balances: Vec<u64>,
-    post_balances: Vec<u64>,
+    pre_balances: Vec<u128>,
+    post_balances: Vec<u128>,
     assets: IndexSet<Hash>,
     outputs: Vec<(u32, u64)>,
 }
@@ -27,9 +27,10 @@ impl TransactionBuilder {
     pub fn input(mut self, note: Note) -> Self {
         match self.assets.get_index_of(&note.asset_id) {
             Some(i) => {
-                self.pre_balances[i] += note.amount;
+                self.pre_balances[i] += note.amount as u128;
             }
             None => {
+                self.pre_balances[self.assets.len()] += note.amount as u128;
                 self.assets.insert(note.asset_id);
             }
         }
@@ -46,11 +47,11 @@ impl TransactionBuilder {
     pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
         match self.assets.get_index_of(&asset_id) {
             Some(i) => {
-                self.post_balances[i] += amount;
+                self.post_balances[i] += amount as u128;
                 self.outputs.push((i as u32, amount));
             }
             None => {
-                self.post_balances[self.assets.len()] += amount;
+                self.post_balances[self.assets.len()] += amount as u128;
                 self.assets.insert(asset_id);
             }
         }
