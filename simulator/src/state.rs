@@ -56,8 +56,8 @@ impl State {
         gauge!("state.note_count").set(self.notes.len() as f64);
 
         match self.rng.gen_range(0..10u32) {
-            0..7 => timed!("state.next.split", { self.generate_split() }),
-            7.. => timed!("state.next.join", { self.generate_join() }),
+            0..5 => timed!("state.next.split", { self.generate_split() }),
+            5.. => timed!("state.next.join", { self.generate_join() }),
         }
     }
 
@@ -126,13 +126,15 @@ impl State {
             break;
         }
 
-        if transaction.inputs.is_empty() {
-            self.generate_split()
-        } else {
-            counter!("state.joins").increment(1);
-
-            Ok(Action::Join(transaction.build()?))
+        if transaction.input_count() == 0 {
+            return Err(Error::ServerError {
+                reason: "no notes".into(),
+            });
         }
+
+        counter!("state.joins").increment(1);
+
+        Ok(Action::Join(transaction.build()?))
     }
 
     pub fn recv(
