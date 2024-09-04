@@ -4,5 +4,4 @@ use mugraph_core::types::*;
 pub enum Action {
     Transaction(Transaction),
     DoubleSpend(Transaction),
-    RedeemFail(Transaction),
 }

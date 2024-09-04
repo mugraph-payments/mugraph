@@ -40,10 +40,10 @@ impl Simulation {
         let action = timed!("state.next", { self.state.next_action(round)? });
 
         loop {
-            match timed!("handle_action", { self.handle_action(round, &action) }) {
+            match timed!("handle_action", { self.handle_action(&action) }) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
-                    counter!("mugraph.resources", "name" => "user_retries", "reason" => reason)
+                    counter!("mugraph.resources", "name" => "retries", "reason" => reason)
                         .increment(1);
                 }
                 Err(e) => {
@@ -55,7 +55,7 @@ impl Simulation {
         Ok(())
     }
 
-    fn handle_action(&mut self, round: u64, action: &Action) -> Result<(), Error> {
+    fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Transaction(transaction) => {
                 let response = self.delegate.recv_transaction_v0(transaction)?;
@@ -80,25 +80,20 @@ impl Simulation {
                     }
                 }
             }
-            Action::RedeemFail(transaction) => {
-                match self.handle_action(round, &Action::Transaction(transaction.clone())) {
+            Action::DoubleSpend(transaction) => {
+                self.delegate.recv_transaction_v0(transaction)?;
+
+                match self.delegate.recv_transaction_v0(transaction) {
                     Ok(_) => {
                         return Err(Error::SimulationError {
-                            reason: "Expected redemption to block double spend, but it didn't"
-                                .to_string(),
+                            reason: "Expected redemption to block double spend".to_string(),
                         })
                     }
                     Err(Error::AlreadySpent { .. }) => {
                         inc!("blocked_double_spent");
                     }
-                    e => e?,
+                    Err(e) => return Err(e),
                 }
-            }
-            Action::DoubleSpend(a) => {
-                self.state
-                    .schedule(round + 1, Action::Transaction(a.clone()));
-                self.state
-                    .schedule(round + 2, Action::RedeemFail(a.clone()));
 
                 inc!("double_spends");
             }

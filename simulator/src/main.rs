@@ -8,7 +8,6 @@ use std::{
         Arc,
     },
     thread,
-    time::Duration,
 };
 
 use color_eyre::eyre::Result;
@@ -33,7 +32,6 @@ fn main() -> Result<()> {
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let should_continue = Arc::new(AtomicBool::new(true));
-    let should_start = Arc::new(AtomicBool::new(false));
     let config = Config::default();
     let mut rng = config.rng();
     let threads = config.threads - 1;
@@ -42,26 +40,21 @@ fn main() -> Result<()> {
     let delegate = Delegate::new(&mut rng, keypair)?;
     let observer_client = Client::new(metric_address.to_string());
 
-    // Force interface to run on the first possible core
-    core_affinity::set_for_current(cores.pop_front().unwrap());
+    // Force interface to run on the last possible core
+    core_affinity::set_for_current(cores.pop_back().unwrap());
 
     info!(count = threads, "Starting simulations");
-    let simulations = (1..=threads)
+    let simulations = (0..threads)
         .map(|i| Simulation::new(i as u32, delegate.clone()))
         .filter_map(|x| x.ok());
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
         let sc = should_continue.clone();
-        let ss = should_start.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
             info!("Starting simulation on core {}.", core.id);
-
-            while !ss.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(5));
-            }
 
             for round in 0u64.. {
                 if !sc.load(Ordering::Relaxed) {
@@ -80,8 +73,6 @@ fn main() -> Result<()> {
             Ok::<_, Error>(())
         });
     }
-
-    should_start.store(true, Ordering::SeqCst);
 
     match observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {
