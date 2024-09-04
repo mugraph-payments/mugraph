@@ -42,8 +42,7 @@ impl DB {
     }
 
     pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Database, Error> {
-        let backend = TestBackend::new(rng);
-        let inject_failures = backend.inject_failures.clone();
+        let (inject_failures, backend) = TestBackend::new(rng)?;
         let result = Self::setup_with_backend(backend);
         inject_failures.store(true, Ordering::SeqCst);
 

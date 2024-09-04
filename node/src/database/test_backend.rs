@@ -7,10 +7,11 @@ use std::{
 };
 
 use metrics::counter;
-use mugraph_core::timed;
+use mugraph_core::{error::Error, timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, StorageBackend};
+use tempfile::NamedTempFile;
 use tracing::info;
 
 #[derive(Debug)]
@@ -54,7 +55,7 @@ impl StorageBackend for TestBackend {
 }
 
 impl TestBackend {
-    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Self {
+    pub fn new<R: CryptoRng + Rng>(rng: &mut R) -> Result<(Arc<AtomicBool>, Self), Error> {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
         let failure_rate = rng.gen_range(0.0f64..1.0f64);
 
@@ -63,21 +64,25 @@ impl TestBackend {
             "Starting test database backend"
         );
 
-        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let tmp = NamedTempFile::new()?;
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(true)
-            .open(tmp)
-            .unwrap();
+            .open(tmp)?;
 
-        Self {
-            inner: FileBackend::new(file).unwrap(),
-            rng,
-            inject_failures: AtomicBool::new(false).into(),
-            failure_rate,
-        }
+        let inject_failures: Arc<_> = AtomicBool::new(false).into();
+
+        Ok((
+            inject_failures.clone(),
+            Self {
+                inner: FileBackend::new(file)?,
+                rng,
+                inject_failures,
+                failure_rate,
+            },
+        ))
     }
 
     #[inline]
@@ -94,7 +99,7 @@ impl TestBackend {
 
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Simulated failure",
+                "mugraph.simulation.storage_error",
             ))
         } else {
             Ok(())

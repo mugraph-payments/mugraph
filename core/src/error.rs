@@ -1,4 +1,4 @@
-use std::sync::PoisonError;
+use std::{io::ErrorKind, sync::PoisonError};
 
 use onlyerror::Error;
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,9 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     #[error("Server error: {reason}")]
     ServerError { reason: String },
+
+    #[error("Simulated error: {reason}")]
+    SimulatedError { reason: String },
 
     #[error("Storage error: {reason}")]
     StorageError { reason: String },
@@ -63,8 +66,14 @@ pub enum Error {
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Self::StorageError {
-            reason: e.to_string(),
+        let reason = e.to_string();
+        match e.kind() {
+            ErrorKind::Other if reason.contains("mugraph.simulation.storage_error") => {
+                Self::SimulatedError { reason }
+            }
+            _ => Self::StorageError {
+                reason: e.to_string(),
+            },
         }
     }
 }

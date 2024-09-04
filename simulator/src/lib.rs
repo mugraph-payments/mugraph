@@ -3,7 +3,7 @@
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::{error::Error, timed, types::*};
-use tracing::debug;
+use tracing::{debug, warn};
 
 mod action;
 mod config;
@@ -37,12 +37,23 @@ impl Simulation {
         );
 
         let action = timed!("state.next", { self.state.next_action()? });
-        timed!("tick_time", { self.handle_action(action)? });
+
+        loop {
+            match timed!("tick_time", { self.handle_action(&action) }) {
+                Ok(_) => break,
+                Err(Error::SimulatedError { reason }) => {
+                    counter!("user_retries", "reason" => reason).increment(1);
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
 
         Ok(())
     }
 
-    fn handle_action(&mut self, action: Action) -> Result<(), Error> {
+    fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Split(transaction) | Action::Join(transaction) => {
                 let response = self.delegate.recv_transaction_v0(&transaction)?;
@@ -52,11 +63,7 @@ impl Simulation {
                         let mut index = 0;
 
                         for (i, atom) in transaction.atoms.iter().enumerate() {
-                            counter!("atoms_processed").increment(1);
-
                             if transaction.is_input(i) {
-                                counter!("inputs_processed").increment(1);
-
                                 continue;
                             }
 
