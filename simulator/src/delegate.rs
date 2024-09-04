@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
 use color_eyre::eyre::Result;
-use metrics::counter;
-use mugraph_core::{crypto, error::Error, timed, types::*};
+use mugraph_core::{crypto, error::Error, inc, timed, types::*};
 use mugraph_node::{database::Database, v0::transaction_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -11,7 +8,7 @@ use tracing::info;
 #[derive(Debug, Clone)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,
-    pub db: Arc<Database>,
+    pub db: Database,
     pub keypair: Keypair,
 }
 
@@ -20,9 +17,7 @@ impl Delegate {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
         info!(public_key = %keypair.public_key, "Starting delegate");
-        let db = Database::setup_test(&mut rng, None)?.into();
-
-        counter!("delegates_spawned").increment(1);
+        let db = Database::setup_test(&mut rng, None)?;
 
         Ok(Self { db, rng, keypair })
     }
@@ -41,7 +36,7 @@ impl Delegate {
         note.signature =
             crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
 
-        counter!("stub_notes_emitted").increment(1);
+        inc!("stub_notes");
 
         Ok(note)
     }

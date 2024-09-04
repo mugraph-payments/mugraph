@@ -7,11 +7,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use chrono::Local;
-use metrics::{histogram, Unit};
+use metrics::Unit;
+use mugraph_core::timed;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -39,154 +40,161 @@ pub fn main(client: Client, signal: Arc<AtomicBool>) -> Result<(), Box<dyn Error
     run(signal, client, init_terminal()?)
 }
 
+pub fn render(
+    client: &Client,
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+) -> Result<bool, Box<dyn Error>> {
+    terminal.draw(|f| {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([Constraint::Length(4), Constraint::Percentage(90)].as_ref())
+            .split(f.area());
+
+        let current_dt = Local::now().format(" (%Y/%m/%d %I:%M:%S %p)").to_string();
+        let client_state = match client.state() {
+            ClientState::Disconnected(s) => {
+                let mut spans = vec![
+                    Span::raw("state: "),
+                    Span::styled("disconnected", Style::default().fg(Color::Red)),
+                ];
+
+                if let Some(s) = s {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::raw(s));
+                }
+
+                Line::from(spans)
+            }
+            ClientState::Connected => Line::from(vec![
+                Span::raw("state: "),
+                Span::styled("connected", Style::default().fg(Color::Green)),
+            ]),
+        };
+
+        let header_block = Block::default()
+            .title(vec![
+                Span::styled(
+                    "mugraph-simulator",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(current_dt),
+            ])
+            .borders(Borders::ALL);
+
+        let text = vec![
+            client_state,
+            Line::from(vec![
+                Span::styled("controls: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("up/down = scroll, q = quit"),
+            ]),
+        ];
+        let header = Paragraph::new(text)
+            .block(header_block)
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(header, chunks[0]);
+
+        // Knock 5 off the line width to account for 3-character highlight symbol + borders.
+        let line_width = chunks[1].width.saturating_sub(6) as usize;
+        let mut items = Vec::new();
+        let metrics = client.get_metrics();
+        for (key, value, unit, _desc) in metrics {
+            let inner_key = key.key();
+            let name = inner_key.name();
+            let labels = inner_key
+                .labels()
+                .map(|label| format!("{} = {}", label.key(), label.value()))
+                .collect::<Vec<_>>();
+            let display_name = if labels.is_empty() {
+                name.to_string()
+            } else {
+                format!("{} [{}]", name, labels.join(", "))
+            };
+
+            let display_value = match value {
+                MetricData::Counter(value) => {
+                    format!("total: {}", u64_to_displayable(value, unit))
+                }
+                MetricData::Gauge(value) => {
+                    format!("current: {}", f64_to_displayable(value, unit))
+                }
+                MetricData::Histogram(value) => {
+                    let min = value.min();
+                    let max = value.max();
+                    let p50 = value
+                        .quantile(0.5)
+                        .expect("sketch shouldn't exist if no values");
+                    let p99 = value
+                        .quantile(0.99)
+                        .expect("sketch shouldn't exist if no values");
+                    let p999 = value
+                        .quantile(0.999)
+                        .expect("sketch shouldn't exist if no values");
+
+                    format!(
+                        "min: {} p50: {} p99: {} p999: {} max: {}",
+                        f64_to_displayable(min, unit),
+                        f64_to_displayable(p50, unit),
+                        f64_to_displayable(p99, unit),
+                        f64_to_displayable(p999, unit),
+                        f64_to_displayable(max, unit),
+                    )
+                }
+            };
+
+            let name_length = display_name.chars().count();
+            let value_length = display_value.chars().count();
+            let space = line_width
+                .saturating_sub(name_length)
+                .saturating_sub(value_length);
+
+            let display = format!("{}{}{}", display_name, " ".repeat(space), display_value);
+            items.push(ListItem::new(display));
+        }
+
+        let metrics_block = Block::default()
+            .title("observed metrics")
+            .borders(Borders::ALL);
+
+        let metrics = List::new(items)
+            .block(metrics_block)
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::LightCyan),
+            )
+            .highlight_symbol(">> ");
+
+        let mut state = ListState::default();
+        f.render_stateful_widget(metrics, chunks[1], &mut state);
+    })?;
+
+    if let Some(input) = InputEvents::next()? {
+        if let KeyCode::Char('q') = input.code {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 pub fn run(
     should_continue: Arc<AtomicBool>,
     client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        let start = Instant::now();
-
         if !should_continue.load(Ordering::Relaxed) {
             break;
         }
 
-        terminal.draw(|f| {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .margin(1)
-                .constraints([Constraint::Length(4), Constraint::Percentage(90)].as_ref())
-                .split(f.area());
-
-            let current_dt = Local::now().format(" (%Y/%m/%d %I:%M:%S %p)").to_string();
-            let client_state = match client.state() {
-                ClientState::Disconnected(s) => {
-                    let mut spans = vec![
-                        Span::raw("state: "),
-                        Span::styled("disconnected", Style::default().fg(Color::Red)),
-                    ];
-
-                    if let Some(s) = s {
-                        spans.push(Span::raw(" "));
-                        spans.push(Span::raw(s));
-                    }
-
-                    Line::from(spans)
-                }
-                ClientState::Connected => Line::from(vec![
-                    Span::raw("state: "),
-                    Span::styled("connected", Style::default().fg(Color::Green)),
-                ]),
-            };
-
-            let header_block = Block::default()
-                .title(vec![
-                    Span::styled(
-                        "mugraph-simulator",
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw(current_dt),
-                ])
-                .borders(Borders::ALL);
-
-            let text = vec![
-                client_state,
-                Line::from(vec![
-                    Span::styled("controls: ", Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw("up/down = scroll, q = quit"),
-                ]),
-            ];
-            let header = Paragraph::new(text)
-                .block(header_block)
-                .wrap(Wrap { trim: true });
-
-            f.render_widget(header, chunks[0]);
-
-            // Knock 5 off the line width to account for 3-character highlight symbol + borders.
-            let line_width = chunks[1].width.saturating_sub(6) as usize;
-            let mut items = Vec::new();
-            let metrics = client.get_metrics();
-            for (key, value, unit, _desc) in metrics {
-                let inner_key = key.key();
-                let name = inner_key.name();
-                let labels = inner_key
-                    .labels()
-                    .map(|label| format!("{} = {}", label.key(), label.value()))
-                    .collect::<Vec<_>>();
-                let display_name = if labels.is_empty() {
-                    name.to_string()
-                } else {
-                    format!("{} [{}]", name, labels.join(", "))
-                };
-
-                let display_value = match value {
-                    MetricData::Counter(value) => {
-                        format!("total: {}", u64_to_displayable(value, unit))
-                    }
-                    MetricData::Gauge(value) => {
-                        format!("current: {}", f64_to_displayable(value, unit))
-                    }
-                    MetricData::Histogram(value) => {
-                        let min = value.min();
-                        let max = value.max();
-                        let p50 = value
-                            .quantile(0.5)
-                            .expect("sketch shouldn't exist if no values");
-                        let p99 = value
-                            .quantile(0.99)
-                            .expect("sketch shouldn't exist if no values");
-                        let p999 = value
-                            .quantile(0.999)
-                            .expect("sketch shouldn't exist if no values");
-
-                        format!(
-                            "min: {} p50: {} p99: {} p999: {} max: {}",
-                            f64_to_displayable(min, unit),
-                            f64_to_displayable(p50, unit),
-                            f64_to_displayable(p99, unit),
-                            f64_to_displayable(p999, unit),
-                            f64_to_displayable(max, unit),
-                        )
-                    }
-                };
-
-                let name_length = display_name.chars().count();
-                let value_length = display_value.chars().count();
-                let space = line_width
-                    .saturating_sub(name_length)
-                    .saturating_sub(value_length);
-
-                let display = format!("{}{}{}", display_name, " ".repeat(space), display_value);
-                items.push(ListItem::new(display));
-            }
-
-            let metrics_block = Block::default()
-                .title("observed metrics")
-                .borders(Borders::ALL);
-
-            let metrics = List::new(items)
-                .block(metrics_block)
-                .highlight_style(
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                        .fg(Color::LightCyan),
-                )
-                .highlight_symbol(">> ");
-
-            let mut state = ListState::default();
-            f.render_stateful_widget(metrics, chunks[1], &mut state);
-        })?;
-
-        // Poll the event queue for input events.  `next` will only block for 1 second,
-        // so our screen is never stale by more than 1 second.
-        if let Some(input) = InputEvents::next()? {
-            if let KeyCode::Char('q') = input.code {
-                should_continue.store(true, Ordering::Relaxed);
+        timed!("observer.render", {
+            if !render(&client, &mut terminal)? {
+                should_continue.store(false, Ordering::SeqCst);
                 break;
             }
-        }
-
-        histogram!("observer.frame_time").record(start.elapsed().as_millis_f64());
+        });
     }
 
     Ok(())

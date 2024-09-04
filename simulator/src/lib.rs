@@ -2,7 +2,7 @@
 
 use color_eyre::eyre::Result;
 use metrics::counter;
-use mugraph_core::{error::Error, timed, types::*};
+use mugraph_core::{error::Error, inc, timed, types::*};
 use tracing::{debug, warn};
 
 mod action;
@@ -10,8 +10,9 @@ mod config;
 mod delegate;
 pub mod observer;
 mod state;
+mod tick;
 
-pub use self::{action::Action, config::Config, delegate::Delegate, state::State};
+pub use self::{action::Action, config::Config, delegate::Delegate, state::State, tick::tick};
 
 pub struct Simulation {
     core_id: u32,
@@ -42,7 +43,8 @@ impl Simulation {
             match timed!("handle_action", { self.handle_action(&action) }) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
-                    counter!("user_retries", "reason" => reason).increment(1);
+                    counter!("mugraph.resources", "name" => "user_retries", "reason" => reason)
+                        .increment(1);
                 }
                 Err(e) => {
                     return Err(e);
@@ -71,12 +73,10 @@ impl Simulation {
 
                             self.state.recv(asset_id, atom.amount, outputs[index])?;
 
-                            counter!("outputs_received").increment(1);
-
                             index += 1;
                         }
 
-                        counter!("transactions_processed").increment(1);
+                        inc!("transactions");
                     }
                 }
             }

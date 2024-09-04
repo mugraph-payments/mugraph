@@ -1,25 +1,23 @@
 #![feature(duration_millis_float)]
 
 use std::{
-    backtrace::Backtrace,
     collections::VecDeque,
     net::SocketAddr,
-    panic::{self, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use color_eyre::eyre::Result;
-use metrics::{describe_histogram, histogram, Unit};
+use metrics::{describe_histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
     observer::{self, Client},
-    Config, Delegate, Simulation,
+    tick, Config, Delegate, Simulation,
 };
 use tracing::{error, info};
 
@@ -31,71 +29,7 @@ fn main() -> Result<()> {
         .install()?;
     tracing_subscriber::fmt().init();
 
-    describe_histogram!(
-        "tick_time",
-        Unit::Milliseconds,
-        "How long it takes to run a tick of the simulation"
-    );
-    describe_histogram!(
-        "transaction.verify",
-        Unit::Milliseconds,
-        "How long it takes to verify a transaction"
-    );
-    describe_histogram!(
-        "database.len",
-        Unit::Milliseconds,
-        "database time call #len"
-    );
-    describe_histogram!(
-        "database.read",
-        Unit::Milliseconds,
-        "database time call #read"
-    );
-    describe_histogram!(
-        "database.set_len",
-        Unit::Milliseconds,
-        "database time call #set_len"
-    );
-    describe_histogram!(
-        "database.sync_data",
-        Unit::Milliseconds,
-        "database time call #sync_data"
-    );
-    describe_histogram!(
-        "database.write",
-        Unit::Milliseconds,
-        "database time call #write"
-    );
-    describe_histogram!(
-        "tick_time",
-        Unit::Milliseconds,
-        "how long it took to run a simulation tick"
-    );
-    describe_histogram!(
-        "state.next",
-        Unit::Milliseconds,
-        "how long it took to generate the next action in the simulation"
-    );
-    describe_histogram!(
-        "state.next.split",
-        Unit::Milliseconds,
-        "how long it took to generate the next split action in the simulation"
-    );
-    describe_histogram!(
-        "state.next.join",
-        Unit::Milliseconds,
-        "how long it took to generate the next join action in the simulation"
-    );
-    describe_histogram!(
-        "delegate.transaction_v0",
-        Unit::Milliseconds,
-        "How long it took to get a server response"
-    );
-    describe_histogram!(
-        "observer.frame_time",
-        Unit::Milliseconds,
-        "How long it takes to render a frame of the observer"
-    );
+    describe_histogram!("mugraph.task", Unit::Milliseconds, "Duration of a task");
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let should_continue = Arc::new(AtomicBool::new(true));
@@ -125,48 +59,16 @@ fn main() -> Result<()> {
 
             let mut round = 0;
 
-            let core_id = core.id.to_string();
-
             while sc.load(Ordering::Relaxed) {
-                let start = Instant::now();
-
-                let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    sim.tick(round)?;
-
-                    Ok::<_, Error>(())
-                }));
-
-                match result {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(e)) => {
-                        let bt = Backtrace::capture().to_string();
-
-                        observer::restore_terminal()?;
-                        error!(core_id = &core_id, reason = %e, backtrace = %bt, "Simulation errored.");
-
-                        sc.store(false, Ordering::SeqCst);
+                match tick(core.id, &mut sim, round) {
+                    Ok(_) => {
+                        round += 1;
                     }
-                    Err(err) => {
-                        observer::restore_terminal()?;
-
-                        let bt = Backtrace::capture().to_string();
-
-                        if let Some(message) = err.downcast_ref::<&str>() {
-                            error!(core_id = &core_id, reason = message, backtrace = %bt, "Simulation panicked!");
-                        } else if let Ok(message) = err.downcast::<String>() {
-                            error!(core_id = &core_id, reason = message, backtrace = %bt, "Simulation panicked!");
-                        } else {
-                            error!(core_id = &core_id, reason = "Could not retrieve", backtrace = %bt, "Simulation panicked!");
-                        }
-
+                    e => {
                         sc.store(false, Ordering::SeqCst);
+                        e?;
                     }
                 }
-
-                round += 1;
-
-                histogram!("tick_time", "core_id" => core_id.clone())
-                    .record(start.elapsed().as_millis_f64());
             }
 
             Ok::<_, Error>(())

@@ -2,8 +2,8 @@ use std::collections::VecDeque;
 
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
-use metrics::{counter, gauge};
-use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, timed, types::*};
+use metrics::gauge;
+use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, inc, timed, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -53,11 +53,11 @@ impl State {
     }
 
     pub fn next_action(&mut self) -> Result<Action, Error> {
-        gauge!("state.note_count").set(self.notes.len() as f64);
+        gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
         match self.rng.gen_range(0..10u32) {
-            0..5 => timed!("state.next.split", { self.generate_split() }),
-            5.. => timed!("state.next.join", { self.generate_join() }),
+            0..6 => timed!("state.next_action.split", { self.generate_split() }),
+            6.. => timed!("state.next_action.join", { self.generate_join() }),
         }
     }
 
@@ -85,7 +85,7 @@ impl State {
 
             transaction = transaction.input(input);
 
-            counter!("state.splits").increment(1);
+            inc!("state.splits");
         }
 
         if transaction.input_count() == 0 {
@@ -132,7 +132,7 @@ impl State {
             });
         }
 
-        counter!("state.joins").increment(1);
+        inc!("state.joins");
 
         Ok(Action::Join(transaction.build()?))
     }
@@ -143,7 +143,7 @@ impl State {
         amount: u64,
         signature: Blinded<Signature>,
     ) -> Result<(), Error> {
-        counter!("state.notes_received").increment(1);
+        inc!("state.notes_received");
 
         let mut nonce = Hasher::new();
         nonce.update(asset_id.as_ref());

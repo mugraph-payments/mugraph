@@ -7,8 +7,7 @@ use std::{
     },
 };
 
-use metrics::counter;
-use mugraph_core::{error::Error, timed};
+use mugraph_core::{error::Error, inc, timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, StorageBackend};
@@ -62,7 +61,7 @@ impl TestBackend {
         path: Option<PathBuf>,
     ) -> Result<(Arc<AtomicBool>, Self), Error> {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-        let failure_rate = rng.gen_range(0.2f64..0.99f64);
+        let failure_rate = rng.gen_range(0.0f64..0.5f64);
 
         info!(
             failure_rate = %format!("{:.2}%", failure_rate * 100.0),
@@ -99,8 +98,8 @@ impl TestBackend {
             return Ok(());
         }
 
-        if rng.gen_range(0.0..1.0) < self.failure_rate {
-            counter!("injected_failures").increment(1);
+        if rng.gen_bool(self.failure_rate) {
+            inc!("injected_failures");
 
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,

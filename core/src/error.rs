@@ -17,6 +17,9 @@ pub enum Error {
     #[error("Simulated error: {reason}")]
     SimulatedError { reason: String },
 
+    #[error("Simulation error: {reason}")]
+    SimulationError { reason: String },
+
     #[error("Storage error ({kind}): {reason}")]
     StorageError { kind: String, reason: String },
 
