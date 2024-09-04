@@ -1,8 +1,15 @@
-use std::{fs::OpenOptions, path::PathBuf, sync::atomic::Ordering};
+use std::{
+    fs::OpenOptions,
+    path::PathBuf,
+    sync::{atomic::Ordering, Arc},
+};
 
 use mugraph_core::{error::Error, types::Signature};
 use rand::prelude::*;
-use redb::{backends::FileBackend, Builder, Database, StorageBackend, TableDefinition};
+use redb::{
+    backends::FileBackend, Builder, Database as Redb, Key, ReadOnlyTable, ReadTransaction,
+    StorageBackend, Table, TableDefinition, Value, WriteTransaction,
+};
 
 mod test_backend;
 
@@ -11,10 +18,40 @@ pub use self::test_backend::*;
 pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
 
 #[derive(Debug, Clone)]
-pub struct DB;
+pub struct Database {
+    db: Arc<Redb>,
+}
 
-impl DB {
-    pub fn setup_with_backend<B: StorageBackend>(backend: B) -> Result<Database, Error> {
+#[repr(transparent)]
+pub struct Read(ReadTransaction);
+
+impl Read {
+    pub fn open_table<K: Key, V: Value>(
+        &self,
+        table: TableDefinition<K, V>,
+    ) -> Result<ReadOnlyTable<K, V>, Error> {
+        Ok(self.0.open_table(table)?)
+    }
+}
+
+#[repr(transparent)]
+pub struct Write(WriteTransaction);
+
+impl Write {
+    pub fn open_table<K: Key, V: Value>(
+        &self,
+        table: TableDefinition<K, V>,
+    ) -> Result<Table<K, V>, Error> {
+        Ok(self.0.open_table(table)?)
+    }
+
+    pub fn commit(self) -> Result<(), Error> {
+        Ok(self.0.commit()?)
+    }
+}
+
+impl Database {
+    pub fn setup_with_backend<B: StorageBackend>(backend: B) -> Result<Self, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         let w = db.begin_write()?;
@@ -26,10 +63,10 @@ impl DB {
 
         w.commit()?;
 
-        Ok(db)
+        Ok(Self { db: db.into() })
     }
 
-    pub fn setup(path: impl Into<PathBuf>) -> Result<Database, Error> {
+    pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -41,11 +78,19 @@ impl DB {
         Self::setup_with_backend(backend)
     }
 
-    pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Database, Error> {
+    pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R) -> Result<Self, Error> {
         let (inject_failures, backend) = TestBackend::new(rng)?;
         let result = Self::setup_with_backend(backend);
         inject_failures.store(true, Ordering::SeqCst);
 
         result
+    }
+
+    pub fn read(&self) -> Result<Read, Error> {
+        Ok(Read(self.db.begin_read()?))
+    }
+
+    pub fn write(&self) -> Result<Write, Error> {
+        Ok(Write(self.db.begin_write()?))
     }
 }

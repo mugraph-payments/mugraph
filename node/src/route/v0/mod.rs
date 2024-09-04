@@ -14,11 +14,10 @@ use mugraph_core::{
 
 mod transaction;
 
-use redb::Database;
 use serde_json::json;
 pub use transaction::*;
 
-use crate::{config::Config, database::DB};
+use crate::{config::Config, database::Database};
 
 #[derive(Clone)]
 pub struct Context {
@@ -31,7 +30,7 @@ pub fn router(config: &Config) -> Result<Router, Error> {
         .route("/health", get(health))
         .route("/rpc", post(rpc))
         .with_state(Context {
-            database: DB::setup("./db")?.into(),
+            database: Database::setup("./db")?.into(),
             keypair: config.keypair()?,
         });
 

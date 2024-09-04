@@ -3,10 +3,9 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::{crypto, error::Error, timed, types::*};
-use mugraph_node::{database::DB, v0::transaction_v0};
+use mugraph_node::{database::Database, v0::transaction_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use redb::Database;
 use tracing::info;
 
 #[derive(Debug, Clone)]
@@ -21,7 +20,7 @@ impl Delegate {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
         info!(public_key = %keypair.public_key, "Starting delegate");
-        let db = DB::setup_test(&mut rng)?.into();
+        let db = Database::setup_test(&mut rng)?.into();
 
         counter!("delegates_spawned").increment(1);
 

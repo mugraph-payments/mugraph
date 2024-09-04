@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, sync::PoisonError};
+use std::io::ErrorKind;
 
 use onlyerror::Error;
 use serde::{Deserialize, Serialize};

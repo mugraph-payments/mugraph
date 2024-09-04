@@ -1,18 +1,19 @@
+use std::sync::Arc;
+
 use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
     types::{Keypair, Signature, Transaction, V0Response},
 };
-use redb::Database;
 
-use crate::database::NOTES;
+use crate::database::{Database, NOTES};
 
 #[inline]
 pub fn transaction_v0(
     transaction: &Transaction,
     keypair: Keypair,
-    database: &Database,
+    database: &Arc<Database>,
 ) -> Result<V0Response, Error> {
     let mut outputs = vec![];
     let mut errors = vec![];
@@ -61,7 +62,7 @@ pub fn transaction_v0(
             }
         }
 
-        let r = database.begin_read()?;
+        let r = database.read()?;
         let table = r.open_table(NOTES)?;
 
         match table.get(signature) {
@@ -84,7 +85,7 @@ pub fn transaction_v0(
     }
 
     if errors.is_empty() {
-        let w = database.begin_write()?;
+        let w = database.write()?;
         {
             let mut t = w.open_table(NOTES)?;
 
