@@ -39,6 +39,10 @@ impl TransactionBuilder {
         self
     }
 
+    pub fn input_count(&self) -> usize {
+        self.inputs.len()
+    }
+
     pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
         match self.assets.get_index_of(&asset_id) {
             Some(i) => {
@@ -54,13 +58,16 @@ impl TransactionBuilder {
         self
     }
 
+    pub fn output_count(&self) -> usize {
+        self.outputs.len()
+    }
+
     pub fn build(self) -> Result<Transaction> {
         let mut atoms = Vec::new();
         let mut signatures = Vec::new();
         let mut input_mask = BitSet32::new();
         let delegate = self.inputs[0].delegate;
 
-        // Process inputs
         for (index, note) in self.inputs.into_iter().enumerate() {
             input_mask.insert(index as u32);
 
@@ -84,10 +91,9 @@ impl TransactionBuilder {
             signatures.push(note.signature);
         }
 
-        // Process outputs
         for (asset_id, amount) in self.outputs.into_iter() {
             atoms.push(Atom {
-                delegate, // Assuming all inputs have the same delegate
+                delegate,
                 asset_id,
                 amount,
                 nonce: Hash::zero(), // TODO: Generate a nonce for outputs

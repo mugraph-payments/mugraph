@@ -1,6 +1,7 @@
 #![feature(duration_millis_float)]
 
 use std::{
+    backtrace::Backtrace,
     collections::VecDeque,
     net::SocketAddr,
     panic::{self, AssertUnwindSafe},
@@ -131,16 +132,26 @@ fn main() -> Result<()> {
                 }));
 
                 match result {
-                    Ok(_) => {}
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        let bt = Backtrace::capture().to_string();
+
+                        observer::restore_terminal()?;
+                        error!(reason = %e, backtrace = %bt, "Simulation errored.");
+
+                        sc.store(false, Ordering::SeqCst);
+                    }
                     Err(err) => {
                         observer::restore_terminal()?;
 
+                        let bt = Backtrace::capture().to_string();
+
                         if let Some(message) = err.downcast_ref::<&str>() {
-                            error!(message = message, "Simulation panicked!");
+                            error!(reason = message, backtrace = %bt, "Simulation panicked!");
                         } else if let Ok(message) = err.downcast::<String>() {
-                            error!(message = message, "Simulation panicked!");
+                            error!(reason = message, backtrace = %bt, "Simulation panicked!");
                         } else {
-                            error!(message = "Could not retrieve", "Simulation panicked!");
+                            error!(reason = "Could not retrieve", backtrace = %bt, "Simulation panicked!");
                         }
 
                         sc.store(false, Ordering::SeqCst);

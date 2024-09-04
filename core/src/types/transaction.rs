@@ -4,7 +4,8 @@ use super::{PublicKey, Signature, COMMITMENT_INPUT_SIZE};
 use crate::{error::Error, types::Hash, utils::BitSet32};
 
 pub const MAX_ATOMS: usize = 8;
-pub const MAX_INPUTS: usize = 4;
+pub const MAX_INPUTS: usize = 8;
+pub const MAX_OUTPUTS: usize = 16;
 pub const DATA_SIZE: usize = 256 * MAX_ATOMS;
 
 #[derive(
