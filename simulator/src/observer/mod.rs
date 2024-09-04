@@ -84,23 +84,6 @@ pub fn render(
         let mut items = Vec::new();
         let metrics = client.get_metrics();
 
-        let pallete = vec![
-            colors.rosewater,
-            colors.flamingo,
-            colors.pink,
-            colors.mauve,
-            colors.red,
-            colors.maroon,
-            colors.peach,
-            colors.yellow,
-            colors.green,
-            colors.teal,
-            colors.sky,
-            colors.sapphire,
-            colors.blue,
-            colors.lavender,
-        ];
-
         for (key, value, unit, _desc) in metrics {
             let inner_key = key.key();
             let name = inner_key.name();
