@@ -17,7 +17,9 @@ use crate::{
 #[serde(transparent)]
 pub struct Blinded<T>(pub T);
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Arbitrary)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Arbitrary, PartialOrd, Ord,
+)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Signature(#[serde(with = "hex::serde")] pub [u8; 32]);

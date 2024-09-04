@@ -1110,6 +1110,7 @@ dependencies = [
  "mugraph-node",
  "num_cpus",
  "onlyerror",
+ "priority-queue",
  "prost",
  "prost-build",
  "prost-types",
@@ -1312,6 +1313,17 @@ checksum = "479cf940fbbb3426c32c5d5176f62ad57549a0bb84773423ba8be9d089f5faba"
 dependencies = [
  "proc-macro2",
  "syn",
+]
+
+[[package]]
+name = "priority-queue"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "560bcab673ff7f6ca9e270c17bf3affd8a05e3bd9207f123b0d45076fd8197e8"
+dependencies = [
+ "autocfg",
+ "equivalent",
+ "indexmap",
 ]
 
 [[package]]

@@ -37,7 +37,7 @@ impl Simulation {
             "Starting simulation tick"
         );
 
-        let action = timed!("state.next", { self.state.next_action()? });
+        let action = timed!("state.next", { self.state.next_action(round)? });
 
         loop {
             match timed!("handle_action", { self.handle_action(&action) }) {

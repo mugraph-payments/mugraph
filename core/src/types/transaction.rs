@@ -9,7 +9,17 @@ pub const MAX_OUTPUTS: usize = 8;
 pub const DATA_SIZE: usize = 256 * MAX_ATOMS;
 
 #[derive(
-    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Hash,
+    test_strategy::Arbitrary,
+    PartialOrd,
+    Ord,
 )]
 pub struct Atom {
     pub delegate: PublicKey,
@@ -33,7 +43,17 @@ impl Atom {
 }
 
 #[derive(
-    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Hash,
+    test_strategy::Arbitrary,
+    PartialOrd,
+    Ord,
 )]
 pub struct Transaction {
     #[serde(rename = "m")]

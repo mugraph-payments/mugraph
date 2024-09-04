@@ -4,6 +4,7 @@ use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, inc, timed, types::*};
+use priority_queue::PriorityQueue;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -14,6 +15,7 @@ pub struct State {
     pub keypair: Keypair,
     pub notes: VecDeque<Note>,
     pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
+    pub scheduled_actions: PriorityQueue<u64, Action>,
 }
 
 impl State {
@@ -49,11 +51,21 @@ impl State {
             keypair: delegate.keypair,
             notes,
             by_asset_id,
+            scheduled_actions: PriorityQueue::new(),
         })
     }
 
-    pub fn next_action(&mut self) -> Result<Action, Error> {
+    pub fn next_action(&mut self, round: u64) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
+
+        match self.scheduled_actions.peek() {
+            Some((action_round, _)) if *action_round <= round => {
+                let (_, action) = self.scheduled_actions.pop().unwrap();
+
+                return Ok(action);
+            }
+            _ => {}
+        }
 
         match self.rng.gen_range(0..10u32) {
             0..6 => timed!("state.next_action.split", { self.generate_split() }),
