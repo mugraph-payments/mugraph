@@ -1,3 +1,4 @@
+inputs:
 { pkgs }:
 let
   inherit (builtins) attrNames filter readDir;
@@ -40,6 +41,8 @@ let
   rust = pkgs.rust-bin.fromRustupToolchainFile "${root}/rust-toolchain.toml";
 in
 {
+  inherit inputs;
+
   defaults = {
     inherit rust root;
 

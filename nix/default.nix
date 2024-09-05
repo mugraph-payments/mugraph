@@ -1,6 +1,6 @@
 inputs: final: prev:
 let
-  lib = import ./lib.nix { pkgs = final; };
+  lib = import ./lib.nix inputs { pkgs = final; };
 
   inherit (lib) buildPackageSet;
   inherit (prev) mkShell;
