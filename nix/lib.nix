@@ -41,7 +41,7 @@ let
     }
     ."${platform}";
 
-  root = ./../..;
+  root = ./..;
 
   rust = pkgs.rust-bin.fromRustupToolchainFile "${root}/rust-toolchain.toml";
 in
@@ -62,21 +62,14 @@ in
       RUST_LOG = "info";
     };
 
-    outputHashes = {
-      "redb-2.1.2" = "sha256-I4aDw0o0fYuU2ObDHZxSEG6tY1ad1IoyqhqAcfPMFzQ=";
+    cargoLock = {
+      lockFile = ../Cargo.lock;
+
+      outputHashes = {
+        "redb-2.1.2" = "sha256-I4aDw0o0fYuU2ObDHZxSEG6tY1ad1IoyqhqAcfPMFzQ=";
+      };
     };
   };
-
-  buildApplicationSet =
-    dir:
-    let
-      files = filter (n: n == "package.nix") (attrNames (readDir dir));
-      toAttr = n: {
-        name = "mugraph-${baseNameOf dir}";
-        value = pkgs.callPackage "${dir}/${n}" { };
-      };
-    in
-    listToAttrs (map toAttr files);
 
   buildPackageSet =
     dir:
