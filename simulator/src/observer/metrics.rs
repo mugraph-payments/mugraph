@@ -1,5 +1,4 @@
 use std::{
-    collections::{BTreeMap, HashMap},
     convert::TryFrom as _,
     io::Read,
     net::{TcpStream, ToSocketAddrs},
@@ -9,6 +8,8 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
+use core_affinity::CoreId;
+use indexmap::IndexMap;
 use metrics::{Key, Label, Unit};
 use metrics_util::{CompositeKey, MetricKind, Summary};
 use prost::Message;
@@ -37,20 +38,24 @@ pub enum MetricData {
 
 pub struct Client {
     state: Arc<Mutex<ClientState>>,
-    metrics: Arc<RwLock<BTreeMap<CompositeKey, MetricData>>>,
-    metadata: Arc<RwLock<HashMap<MetadataKey, MetadataValue>>>,
+    metrics: Arc<RwLock<IndexMap<CompositeKey, MetricData>>>,
+    metadata: Arc<RwLock<IndexMap<MetadataKey, MetadataValue>>>,
 }
 
 impl Client {
-    pub fn new(addr: String) -> Client {
+    pub fn new(core_id: CoreId, addr: String) -> Client {
         let state = Arc::new(Mutex::new(ClientState::Disconnected(None)));
-        let metrics = Arc::new(RwLock::new(BTreeMap::new()));
-        let metadata = Arc::new(RwLock::new(HashMap::new()));
+        let metrics = Arc::new(RwLock::new(IndexMap::new()));
+        let metadata = Arc::new(RwLock::new(IndexMap::new()));
+
         {
             let state = state.clone();
             let metrics = metrics.clone();
             let metadata = metadata.clone();
+
             thread::spawn(move || {
+                core_affinity::set_for_current(core_id);
+
                 let mut runner = Runner::new(addr, state, metrics, metadata);
                 runner.run();
             })
@@ -96,16 +101,16 @@ struct Runner {
     state: RunnerState,
     addr: String,
     client_state: Arc<Mutex<ClientState>>,
-    metrics: Arc<RwLock<BTreeMap<CompositeKey, MetricData>>>,
-    metadata: Arc<RwLock<HashMap<MetadataKey, MetadataValue>>>,
+    metrics: Arc<RwLock<IndexMap<CompositeKey, MetricData>>>,
+    metadata: Arc<RwLock<IndexMap<MetadataKey, MetadataValue>>>,
 }
 
 impl Runner {
     pub fn new(
         addr: String,
         state: Arc<Mutex<ClientState>>,
-        metrics: Arc<RwLock<BTreeMap<CompositeKey, MetricData>>>,
-        metadata: Arc<RwLock<HashMap<MetadataKey, MetadataValue>>>,
+        metrics: Arc<RwLock<IndexMap<CompositeKey, MetricData>>>,
+        metadata: Arc<RwLock<IndexMap<MetadataKey, MetadataValue>>>,
     ) -> Runner {
         Runner {
             state: RunnerState::Disconnected,

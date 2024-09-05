@@ -38,10 +38,11 @@ fn main() -> Result<()> {
 
     let keypair = Keypair::random(&mut rng);
     let delegate = Delegate::new(&mut rng, keypair)?;
-    let observer_client = Client::new(metric_address.to_string());
+    let last_core = cores.pop_back().unwrap();
+    let observer_client = Client::new(last_core, metric_address.to_string());
 
     // Force interface to run on the last possible core
-    core_affinity::set_for_current(cores.pop_back().unwrap());
+    core_affinity::set_for_current(last_core);
 
     info!(count = threads, "Starting simulations");
     let simulations = (0..threads)
