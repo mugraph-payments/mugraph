@@ -2,13 +2,14 @@ inputs: final: prev:
 let
   lib = import ./lib.nix inputs { pkgs = final; };
 
-  inherit (lib) buildPackageSet;
+  inherit (lib) buildApplicationSet buildPackageSet;
   inherit (prev) mkShell;
   inherit (prev.lib) optionals;
   inherit (prev.stdenv) isDarwin;
 
   checks = buildPackageSet ./checks;
-  packages = buildPackageSet ./packages // {
+
+  packages = buildApplicationSet ./. // {
     default = packages.mugraph-simulator;
   };
 

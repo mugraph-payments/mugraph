@@ -21,8 +21,8 @@
       };
     };
 
-    risc0 = {
-      url = "github:risc0/risc0/v1.0.5";
+    jolt = {
+      url = "github:a16z/jolt";
       flake = false;
     };
   };
@@ -41,7 +41,7 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default
-            (import ./support/nix inputs)
+            (import ./nix inputs)
           ];
         };
       in
