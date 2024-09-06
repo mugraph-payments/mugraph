@@ -5,7 +5,6 @@ let
     attrNames
     filter
     readDir
-    baseNameOf
     ;
 
   inherit (pkgs) system;
@@ -44,17 +43,20 @@ let
   root = ./..;
 
   rust = pkgs.rust-bin.fromRustupToolchainFile "${root}/rust-toolchain.toml";
+  rustPlatform = pkgs.makeRustPlatform {
+    rustc = rust;
+    cargo = rust;
+  };
 in
 {
   inherit inputs;
 
   defaults = {
-    inherit rust root;
-
-    rustPlatform = pkgs.makeRustPlatform {
-      rustc = rust;
-      cargo = rust;
-    };
+    inherit
+      root
+      rust
+      rustPlatform
+      ;
 
     env = {
       inherit RUSTFLAGS;

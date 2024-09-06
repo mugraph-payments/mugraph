@@ -10,6 +10,7 @@ let
   checks = buildPackageSet ./checks;
 
   packages = {
+    jolt = callPackage ./jolt { };
     mugraph-node = callPackage ../node/package.nix { };
     mugraph-simulator = callPackage ../simulator/package.nix { };
     default = packages.mugraph-simulator;
@@ -28,6 +29,7 @@ let
       final.protobuf
       final.samply
       lib.defaults.rust
+      packages.jolt
     ] ++ optionals isDarwin [ final.darwin.apple_sdk.frameworks.SystemConfiguration ];
   };
 in
