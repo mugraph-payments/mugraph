@@ -37,7 +37,7 @@ mod metrics_inner;
 pub use self::metrics_inner::Client;
 use self::metrics_inner::MetricData;
 
-pub fn main(client: Client, should_continue: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+pub fn main(client: Client, should_continue: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     run(should_continue, client, init_terminal()?)
 }
 
@@ -89,23 +89,9 @@ pub fn render(
             let inner_key = key.key();
             let name = inner_key.name();
             let label_text = inner_key
-                .clone()
                 .labels()
                 .map(|label| format!("[{} = {}]", label.key(), label.value()))
                 .collect::<Vec<_>>();
-            let labels = inner_key.labels().flat_map(|label| {
-                vec![
-                    Span::styled(
-                        label.key().to_string(),
-                        Style::default().fg(c(colors.overlay0)),
-                    ),
-                    Span::styled("=", Style::default().fg(c(colors.overlay0))),
-                    Span::styled(
-                        label.value().to_string(),
-                        Style::default().fg(c(colors.overlay1)),
-                    ),
-                ]
-            });
 
             let (name_length, display_name) = if label_text.is_empty() {
                 (
@@ -116,12 +102,25 @@ pub fn render(
                     )],
                 )
             } else {
+                let count = inner_key.labels().count() - 1;
+                let labels = inner_key.labels().flat_map(|label| {
+                    vec![
+                        Span::styled(
+                            label.key().to_string(),
+                            Style::default().fg(c(colors.overlay0)),
+                        ),
+                        Span::styled("=", Style::default().fg(c(colors.overlay0))),
+                        Span::styled(
+                            label.value().to_string(),
+                            Style::default().fg(c(colors.overlay1)),
+                        ),
+                    ]
+                });
+
                 let mut items = vec![
                     Span::styled(name.to_string(), Style::default().fg(c(colors.text))),
                     Span::raw(" "),
                 ];
-
-                let count = labels.clone().count() - 1;
 
                 for (i, item) in labels.enumerate() {
                     items.push(item);
@@ -204,7 +203,7 @@ pub fn render(
 }
 
 pub fn run(
-    should_continue: Arc<AtomicBool>,
+    should_continue: &Arc<AtomicBool>,
     client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {

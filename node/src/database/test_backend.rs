@@ -79,7 +79,7 @@ impl TestBackend {
             .write(true)
             .create(true)
             .truncate(false)
-            .open(tmp.clone())?;
+            .open(&tmp)?;
 
         let inject_failures: Arc<_> = AtomicBool::new(false).into();
 

@@ -74,7 +74,7 @@ fn main() -> Result<()> {
 
     thread::sleep(Duration::from_millis(100));
 
-    match observer::main(observer_client, should_continue.clone()) {
+    match observer::main(observer_client, &should_continue) {
         Ok(_) => {
             observer::restore_terminal()?;
             info!("Observer finished.");

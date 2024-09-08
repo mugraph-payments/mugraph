@@ -102,7 +102,7 @@ impl Database {
     }
 
     #[timed]
-    pub fn reopen(&self) -> Result<(), Error> {
+    pub fn reopen(&mut self) -> Result<(), Error> {
         match self.mode {
             Mode::File { ref path } => {
                 let file = OpenOptions::new()
@@ -119,9 +119,8 @@ impl Database {
                 *w = result;
             }
             Mode::Test { ref path } => {
-                let mut rng = self.rng.clone();
-
-                let (inject_failures, backend) = TestBackend::new(&mut rng, Some(path.clone()))?;
+                let (inject_failures, backend) =
+                    TestBackend::new(&mut self.rng, Some(path.clone()))?;
                 let result = Self::setup_with_backend(backend, false)?;
 
                 let mut w = self.db.write()?;
