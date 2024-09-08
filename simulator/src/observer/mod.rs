@@ -37,8 +37,8 @@ mod metrics_inner;
 pub use self::metrics_inner::Client;
 use self::metrics_inner::MetricData;
 
-pub fn main(client: Client, should_continue: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    run(should_continue, client, init_terminal()?)
+pub fn main(client: Client, is_running: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+    run(is_running, client, init_terminal()?)
 }
 
 fn c(input: catppuccin::Color) -> Color {
@@ -203,16 +203,16 @@ pub fn render(
 }
 
 pub fn run(
-    should_continue: &Arc<AtomicBool>,
+    is_running: &Arc<AtomicBool>,
     client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        if !should_continue.load(Ordering::Relaxed) {
+        if !is_running.load(Ordering::Relaxed) {
             break;
         }
 
-        should_continue.store(render(&client, &mut terminal)?, Ordering::Relaxed);
+        is_running.store(render(&client, &mut terminal)?, Ordering::Relaxed);
     }
 
     Ok(())

@@ -1,11 +1,4 @@
-use std::{
-    fs::OpenOptions,
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::{fs::OpenOptions, path::PathBuf};
 
 use mugraph_core::{error::Error, inc, utils::timed};
 use rand::prelude::*;
@@ -18,7 +11,6 @@ use tracing::info;
 pub struct TestBackend {
     inner: FileBackend,
     rng: ChaCha20Rng,
-    pub inject_failures: Arc<AtomicBool>,
     pub path: PathBuf,
     failure_rate: f64,
 }
@@ -61,10 +53,7 @@ impl StorageBackend for TestBackend {
 }
 
 impl TestBackend {
-    pub fn new<R: CryptoRng + Rng>(
-        rng: &mut R,
-        path: Option<PathBuf>,
-    ) -> Result<(Arc<AtomicBool>, Self), Error> {
+    pub fn new<R: CryptoRng + Rng>(rng: &mut R, path: Option<PathBuf>) -> Result<Self, Error> {
         let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
         let failure_rate = rng.gen_range(0.0f64..0.5f64);
 
@@ -81,27 +70,17 @@ impl TestBackend {
             .truncate(false)
             .open(&tmp)?;
 
-        let inject_failures: Arc<_> = AtomicBool::new(false).into();
-
-        Ok((
-            inject_failures.clone(),
-            Self {
-                inner: FileBackend::new(file)?,
-                rng,
-                inject_failures,
-                failure_rate,
-                path: tmp,
-            },
-        ))
+        Ok(Self {
+            inner: FileBackend::new(file)?,
+            rng,
+            failure_rate,
+            path: tmp,
+        })
     }
 
     #[inline]
     fn maybe_fail(&self) -> Result<(), std::io::Error> {
         let mut rng = self.rng.clone();
-
-        if !self.inject_failures.load(Ordering::Relaxed) {
-            return Ok(());
-        }
 
         if rng.gen_bool(self.failure_rate) {
             inc!("injected_failures");

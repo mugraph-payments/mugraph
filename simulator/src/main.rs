@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     describe_metrics();
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
-    let should_continue = Arc::new(AtomicBool::new(true));
+    let is_running = Arc::new(AtomicBool::new(true));
     let config = Config::default();
     let mut rng = config.rng();
     let threads = config.threads - 1;
@@ -50,20 +50,22 @@ fn main() -> Result<()> {
         .filter_map(|x| x.ok());
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
-        let sc = should_continue.clone();
+        let is_running = is_running.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
-            info!("Starting simulation on core {}.", core.id);
+            info!(core_id = core.id, "Starting simulation");
+
+            // Wait for signal to start the simulation
+            info!(core_id = core.id, "Waiting for signal to start simulation");
+            if !is_running.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(50));
+            }
 
             for round in 0u64.. {
-                if !sc.load(Ordering::Relaxed) {
-                    break;
-                }
-
                 if let Err(e) = tick(core.id, &mut sim, round) {
-                    sc.store(false, Ordering::SeqCst);
+                    is_running.store(false, Ordering::SeqCst);
                     Err(e)?;
                 }
             }
@@ -73,8 +75,9 @@ fn main() -> Result<()> {
     }
 
     thread::sleep(Duration::from_millis(100));
+    is_running.store(true, Ordering::SeqCst);
 
-    match observer::main(observer_client, &should_continue) {
+    match observer::main(observer_client, &is_running) {
         Ok(_) => {
             observer::restore_terminal()?;
             info!("Observer finished.");
@@ -85,7 +88,7 @@ fn main() -> Result<()> {
         }
     }
 
-    should_continue.swap(false, Ordering::Relaxed);
+    is_running.swap(true, Ordering::Relaxed);
 
     Ok(())
 }

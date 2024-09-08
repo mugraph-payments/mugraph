@@ -88,7 +88,7 @@ impl Client {
 
                 (k.clone(), v.clone(), unit, desc)
             })
-            .sorted_by(|(ka, _, _, _), (kb, _, _, _)| ka.cmp(&kb))
+            .sorted_by(|(ka, _, _, _), (kb, _, _, _)| ka.cmp(kb))
             .collect()
     }
 }

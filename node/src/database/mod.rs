@@ -1,7 +1,7 @@
 use std::{
     fs::{self, OpenOptions},
     path::PathBuf,
-    sync::{atomic::Ordering, Arc, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
@@ -88,10 +88,9 @@ impl Database {
         path: Option<PathBuf>,
     ) -> Result<Self, Error> {
         let exists = path.is_some();
-        let (inject_failures, backend) = TestBackend::new(rng, path)?;
+        let backend = TestBackend::new(rng, path)?;
         let path = backend.path.clone();
 
-        inject_failures.store(true, Ordering::SeqCst);
         let db = Self::setup_with_backend(backend, !exists)?;
 
         Ok(Self {
@@ -119,14 +118,11 @@ impl Database {
                 *w = result;
             }
             Mode::Test { ref path } => {
-                let (inject_failures, backend) =
-                    TestBackend::new(&mut self.rng, Some(path.clone()))?;
+                let backend = TestBackend::new(&mut self.rng, Some(path.clone()))?;
                 let result = Self::setup_with_backend(backend, false)?;
 
                 let mut w = self.db.write()?;
                 *w = result;
-
-                inject_failures.store(true, Ordering::SeqCst);
             }
         }
 

@@ -4,7 +4,6 @@ use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
 use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*, utils::timed};
-use priority_queue::PriorityQueue;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -60,7 +59,7 @@ impl State {
             return self.generate_split();
         }
 
-        if self.notes.len() == 0 {
+        if self.notes.is_empty() {
             return self.generate_split();
         }
 
@@ -128,34 +127,34 @@ impl State {
     fn generate_join(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
-        for (_, notes) in self.by_asset_id.iter_mut() {
-            if self.notes.is_empty() {
-                break;
+        'outer: while transaction.input_count() < MAX_INPUTS {
+            for (_, notes) in self.by_asset_id.iter_mut() {
+                if self.notes.is_empty() {
+                    break 'outer;
+                }
+
+                if notes.len() < 2 {
+                    continue;
+                }
+
+                let a = self
+                    .notes
+                    .remove(self.rng.gen_range(0..self.notes.len()))
+                    .unwrap();
+                let b = self
+                    .notes
+                    .remove(self.rng.gen_range(0..self.notes.len()))
+                    .unwrap();
+
+                transaction = transaction
+                    .output(a.asset_id, a.amount + b.amount)
+                    .input(a)
+                    .input(b);
             }
-
-            if notes.len() < 2 {
-                continue;
-            }
-
-            let a = self
-                .notes
-                .remove(self.rng.gen_range(0..self.notes.len()))
-                .unwrap();
-            let b = self
-                .notes
-                .remove(self.rng.gen_range(0..self.notes.len()))
-                .unwrap();
-
-            transaction = transaction
-                .output(a.asset_id, a.amount + b.amount)
-                .input(a)
-                .input(b);
-
-            break;
         }
 
         if transaction.input_count() == 0 {
-            return timed!("state.next_action.split", { self.generate_split() });
+            return self.generate_split();
         }
 
         Ok(Action::Transaction(transaction.build()?))
