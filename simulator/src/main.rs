@@ -8,6 +8,7 @@ use std::{
         Arc,
     },
     thread,
+    time::Duration,
 };
 
 use color_eyre::eyre::Result;
@@ -70,6 +71,8 @@ fn main() -> Result<()> {
             Ok::<_, Error>(())
         });
     }
+
+    thread::sleep(Duration::from_millis(100));
 
     match observer::main(observer_client, should_continue.clone()) {
         Ok(_) => {

@@ -16,40 +16,40 @@ pub fn transaction_v0(
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let mut consumed_inputs = Vec::with_capacity(transaction.input_mask.count_ones() as usize);
 
-    for (i, atom) in transaction.atoms.iter().enumerate() {
-        if transaction.is_output(i) {
-            let sig = crypto::sign_blinded(
-                &keypair.secret_key,
-                &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
-            );
+    let w = database.write()?;
+    let read = database.read()?.open_table(NOTES)?;
 
-            outputs.push(sig);
+    {
+        for (i, atom) in transaction.atoms.iter().enumerate() {
+            if transaction.is_output(i) {
+                let sig = crypto::sign_blinded(
+                    &keypair.secret_key,
+                    &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
+                );
 
-            continue;
-        }
+                outputs.push(sig);
 
-        let signature = match atom.signature {
-            Some(s) if transaction.signatures[s as usize] == Signature::zero() => {
-                return Err(Error::InvalidSignature {
-                    reason: "Signature can not be empty".to_string(),
-                    signature: Signature::zero(),
-                });
+                continue;
             }
-            Some(s) => transaction.signatures[s as usize],
-            None => {
-                return Err(Error::InvalidAtom {
-                    reason: "Atom {} is an input but it is not signed.".into(),
-                });
-            }
-        };
 
-        crypto::verify(&keypair.public_key, atom.nonce.as_ref(), signature)?;
+            let signature = match atom.signature {
+                Some(s) if transaction.signatures[s as usize] == Signature::zero() => {
+                    return Err(Error::InvalidSignature {
+                        reason: "Signature can not be empty".to_string(),
+                        signature: Signature::zero(),
+                    });
+                }
+                Some(s) => transaction.signatures[s as usize],
+                None => {
+                    return Err(Error::InvalidAtom {
+                        reason: "Atom {} is an input but it is not signed.".into(),
+                    });
+                }
+            };
 
-        {
-            let r = database.read()?;
-            let table = r.open_table(NOTES)?;
+            crypto::verify(&keypair.public_key, atom.nonce.as_ref(), signature)?;
 
-            match table.get(signature) {
+            match read.get(signature) {
                 Ok(Some(_)) => {
                     return Err(Error::AlreadySpent { signature });
                 }
@@ -63,17 +63,14 @@ pub fn transaction_v0(
                 }
             }
         }
-    }
 
-    let w = database.write()?;
-
-    {
-        let mut t = w.open_table(NOTES)?;
+        let mut table = w.open_table(NOTES)?;
 
         for input in consumed_inputs.into_iter() {
-            t.insert(input, true)?;
+            table.insert(input, true)?;
         }
     }
+
     w.commit()?;
 
     Ok(V0Response::Transaction { outputs })
