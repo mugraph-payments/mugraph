@@ -46,7 +46,7 @@ fn main() -> Result<()> {
 
     info!(count = threads, "Starting simulations");
     let simulations = (0..threads)
-        .map(|i| Simulation::new(i as u32, delegate.clone()))
+        .map(|i| Simulation::new(&mut rng, i as u32, delegate.clone()))
         .filter_map(|x| x.ok());
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {

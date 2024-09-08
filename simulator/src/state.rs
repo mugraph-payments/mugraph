@@ -15,15 +15,13 @@ pub struct State {
     pub keypair: Keypair,
     pub notes: VecDeque<Note>,
     pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
-    pub scheduled_actions: PriorityQueue<u64, Action>,
 }
 
 impl State {
-    pub fn setup(mut delegate: Delegate) -> Result<Self, Error> {
+    pub fn setup<R: CryptoRng + Rng>(rng: &mut R, mut delegate: Delegate) -> Result<Self, Error> {
         let config = Config::new();
-        let mut rng = config.rng();
         let assets = (0..config.assets)
-            .map(|_| Hash::random(&mut rng))
+            .map(|_| Hash::random(rng))
             .collect::<Vec<_>>();
         let mut notes = VecDeque::with_capacity(config.notes);
         let mut by_asset_id = IndexMap::new();
@@ -47,37 +45,26 @@ impl State {
         }
 
         Ok(Self {
-            rng,
+            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
             keypair: delegate.keypair,
             notes,
             by_asset_id,
-            scheduled_actions: PriorityQueue::new(),
         })
     }
 
-    pub fn schedule(&mut self, round: u64, action: Action) {
-        self.scheduled_actions.push(round, action);
-    }
-
     #[timed]
-    pub fn next_action(&mut self, round: u64) -> Result<Action, Error> {
+    pub fn next_action(&mut self) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
         if self.notes.is_empty() {
             return self.generate_split();
         }
 
-        match self.scheduled_actions.pop() {
-            Some((action_round, action)) if action_round <= round => {
-                return Ok(action);
-            }
-            Some((round, action)) => {
-                self.scheduled_actions.push(round, action);
-            }
-            _ => {}
+        if self.notes.len() == 0 {
+            return self.generate_split();
         }
 
-        match self.rng.gen_range(0..100u32) {
+        match self.rng.gen_range(0u32..100) {
             0..45 => self.generate_split(),
             45..90 => self.generate_join(),
             90.. => self.generate_double_spend(),
@@ -95,9 +82,7 @@ impl State {
                     .input(input);
             }
             None => {
-                return Err(Error::ServerError {
-                    reason: "no notes".into(),
-                });
+                return self.generate_split();
             }
         }
 
@@ -170,9 +155,7 @@ impl State {
         }
 
         if transaction.input_count() == 0 {
-            return Err(Error::ServerError {
-                reason: "no notes".into(),
-            });
+            return timed!("state.next_action.split", { self.generate_split() });
         }
 
         Ok(Action::Transaction(transaction.build()?))

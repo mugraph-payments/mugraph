@@ -3,6 +3,7 @@
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::{error::Error, inc, types::*, utils::timed};
+use rand::prelude::*;
 use tracing::{debug, warn};
 
 mod action;
@@ -21,10 +22,14 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(core_id: u32, delegate: Delegate) -> Result<Self, Error> {
+    pub fn new<R: CryptoRng + Rng>(
+        rng: &mut R,
+        core_id: u32,
+        delegate: Delegate,
+    ) -> Result<Self, Error> {
         Ok(Self {
             core_id,
-            state: State::setup(delegate.clone())?,
+            state: State::setup(rng, delegate.clone())?,
             delegate,
         })
     }
@@ -38,7 +43,7 @@ impl Simulation {
             "Starting simulation tick"
         );
 
-        let action = self.state.next_action(round)?;
+        let action = self.state.next_action()?;
 
         loop {
             match self.handle_action(&action) {
