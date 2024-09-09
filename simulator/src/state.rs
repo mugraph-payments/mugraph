@@ -184,7 +184,16 @@ impl State {
             )?,
         };
 
+        let note_index = self.notes.len() as u32;
         self.notes.push_back(note);
+
+        // Update by_asset_id
+        self.by_asset_id
+            .entry(asset_id)
+            .and_modify(|x: &mut IndexSet<u32>| {
+                x.insert(note_index);
+            })
+            .or_insert(vec![note_index].into_iter().collect());
 
         Ok(())
     }
