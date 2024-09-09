@@ -14,10 +14,7 @@ use std::{
 use color_eyre::eyre::Result;
 use metrics_exporter_tcp::TcpBuilder;
 use mugraph_core::{error::Error, types::Keypair, utils::describe_metrics};
-use mugraph_simulator::{
-    observer::{self, Client},
-    tick, Config, Delegate, Simulation,
-};
+use mugraph_simulator::{observer, tick, Config, Delegate, Simulation};
 use tracing::{error, info};
 
 fn main() -> Result<()> {
@@ -39,15 +36,15 @@ fn main() -> Result<()> {
     let keypair = Keypair::random(&mut rng);
     let delegate = Delegate::new(&mut rng, keypair)?;
     let last_core = cores.pop_back().unwrap();
-    let observer_client = Client::new(last_core, metric_address.to_string());
 
     // Force interface to run on the last possible core
     core_affinity::set_for_current(last_core);
 
     info!(count = threads, "Starting simulations");
-    let simulations = (0..threads)
-        .map(|i| Simulation::new(&mut rng, i as u32, delegate.clone()))
-        .filter_map(|x| x.ok());
+    let mut simulations = vec![];
+    for i in 0..threads {
+        simulations.push(Simulation::new(&mut rng, i as u32, delegate.clone())?);
+    }
 
     for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
         let is_running = is_running.clone();
@@ -77,7 +74,7 @@ fn main() -> Result<()> {
     thread::sleep(Duration::from_millis(100));
     is_running.store(true, Ordering::SeqCst);
 
-    match observer::main(observer_client, &is_running) {
+    match observer::main(&is_running) {
         Ok(_) => {
             observer::restore_terminal()?;
             info!("Observer finished.");

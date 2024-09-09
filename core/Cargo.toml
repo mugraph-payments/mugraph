@@ -21,3 +21,4 @@ serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 test-strategy = { workspace = true }
+once_cell = "1.19.0"

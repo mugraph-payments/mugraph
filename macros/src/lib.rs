@@ -15,17 +15,17 @@ pub fn timed(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let output = quote! {
         #(#attrs)*
-        #vis #sig {
+        #vis #sig {{
+            use std::time::Instant;
+            use mugraph_core::metrics::Metric;
+
             let start = ::std::time::Instant::now();
             let result = #body;
-            let duration = start.elapsed().as_nanos() as f64;
-            let full_path = concat!(#module_path, "::", stringify!(#name));
 
-            ::metrics::histogram!("mugraph.task.durations", "name" => full_path).record(duration);
-            ::metrics::counter!("mugraph.task.calls", "name" => full_path).increment(1);
+            Metric::increment(concat!(#module_path, "::", stringify!(#name)), start.elapsed());
 
             result
-        }
+        }}
     };
 
     output.into()

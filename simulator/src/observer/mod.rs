@@ -12,7 +12,7 @@ use std::{
 
 use chrono::Local;
 use metrics::Unit;
-use mugraph_core::utils::timed;
+use mugraph_core::{metrics::METRICS, utils::timed};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -31,14 +31,8 @@ use ratatui::{
 mod input;
 use self::input::InputEvents;
 
-// Module name/crate name collision that we have to deal with.
-#[path = "metrics.rs"]
-mod metrics_inner;
-pub use self::metrics_inner::Client;
-use self::metrics_inner::MetricData;
-
-pub fn main(client: Client, is_running: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    run(is_running, client, init_terminal()?)
+pub fn main(is_running: &Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+    run(is_running, init_terminal()?)
 }
 
 fn c(input: catppuccin::Color) -> Color {
@@ -46,23 +40,13 @@ fn c(input: catppuccin::Color) -> Color {
 }
 
 #[timed]
-pub fn render(
-    client: &Client,
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-) -> Result<bool, Box<dyn Error>> {
+pub fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool, Box<dyn Error>> {
     let colors = catppuccin::PALETTE.mocha.colors;
 
     terminal.draw(|f| {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Percentage(100),
-                ]
-                .as_ref(),
-            )
+            .constraints([Constraint::Length(1), Constraint::Percentage(100)].as_ref())
             .split(f.area());
 
         let current_dt = Local::now().format("(%Y/%m/%d %I:%M:%S %p)").to_string();
@@ -86,112 +70,33 @@ pub fn render(
             ),
         ])
         .style(Style::default().bg(c(colors.crust)));
-        let subheader = Line::from(vec![
-            Span::styled(
-                "TPS: ",
-                Style::default()
-                    .fg(c(colors.overlay1))
-                    .bg(c(colors.crust))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                client.tps().unwrap().to_string(),
-                Style::default().fg(c(colors.blue)).bg(c(colors.crust)),
-            ),
-        ])
-        .style(Style::default().bg(c(colors.crust)));
-
         f.render_widget(header, chunks[0]);
-        f.render_widget(subheader, chunks[1]);
 
         let mut items = Vec::new();
-        let metrics = client.get_metrics();
 
-        for (key, value, unit, _desc) in metrics {
-            let inner_key = key.key();
-            let name = inner_key.name();
-            let label_text = inner_key
-                .labels()
-                .map(|label| format!("[{} = {}]", label.key(), label.value()))
-                .collect::<Vec<_>>();
+        let lock = METRICS.lock().unwrap();
+        for (name, metric) in lock.iter() {
+            let (name_length, display_name) = (
+                name.chars().count(),
+                vec![Span::styled(
+                    name.to_string(),
+                    Style::default().fg(c(colors.text)),
+                )],
+            );
 
-            let (name_length, display_name) = if label_text.is_empty() {
-                (
-                    name.chars().count(),
-                    vec![Span::styled(
-                        name.to_string(),
-                        Style::default().fg(c(colors.text)),
-                    )],
-                )
-            } else {
-                let count = inner_key.labels().count() - 1;
-                let labels = inner_key.labels().flat_map(|label| {
-                    vec![
-                        Span::styled(
-                            label.key().to_string(),
-                            Style::default().fg(c(colors.overlay0)),
-                        ),
-                        Span::styled("=", Style::default().fg(c(colors.overlay0))),
-                        Span::styled(
-                            label.value().to_string(),
-                            Style::default().fg(c(colors.overlay1)),
-                        ),
-                    ]
-                });
+            let display_value = format!(
+                "count: {} tps: {:.2} p50: {} p99: {} max {}",
+                metric.count,
+                metric.tps,
+                f64_to_displayable(metric.p50.as_secs_f64(), Some(Unit::Seconds)),
+                f64_to_displayable(metric.p99.as_secs_f64(), Some(Unit::Seconds)),
+                f64_to_displayable(metric.max.as_secs_f64(), Some(Unit::Seconds)),
+            );
 
-                let mut items = vec![
-                    Span::styled(name.to_string(), Style::default().fg(c(colors.text))),
-                    Span::raw(" "),
-                ];
-
-                for (i, item) in labels.enumerate() {
-                    items.push(item);
-
-                    if i != count {
-                        items.push(Span::raw(" "))
-                    }
-                }
-
-                let text = format!("{} [{}]", name, label_text.join(", "));
-                (text.chars().count(), items)
-            };
-
-            let display_value = match value {
-                MetricData::Counter(value) => {
-                    format!("total: {}", u64_to_displayable(value, unit))
-                }
-                MetricData::Gauge(value) => {
-                    format!("current: {}", f64_to_displayable(value, unit))
-                }
-                MetricData::Histogram(value) => {
-                    let min = value.min();
-                    let max = value.max();
-                    let p50 = value
-                        .quantile(0.5)
-                        .expect("sketch shouldn't exist if no values");
-                    let p99 = value
-                        .quantile(0.99)
-                        .expect("sketch shouldn't exist if no values");
-                    let p999 = value
-                        .quantile(0.999)
-                        .expect("sketch shouldn't exist if no values");
-
-                    format!(
-                        "min: {} p50: {} p99: {} p999: {} max: {}",
-                        f64_to_displayable(min, unit),
-                        f64_to_displayable(p50, unit),
-                        f64_to_displayable(p99, unit),
-                        f64_to_displayable(p999, unit),
-                        f64_to_displayable(max, unit),
-                    )
-                }
-            };
-
-            let value_length = display_value.chars().count();
+            let value_length = display_value.len();
             let space = line_width
                 .saturating_sub(name_length)
-                .saturating_sub(value_length)
-                .saturating_add(4);
+                .saturating_sub(value_length);
 
             let value = format!("{}{display_value}", " ".repeat(space));
             let line = Line::from(
@@ -212,7 +117,7 @@ pub fn render(
         let metrics = List::new(items).block(metrics_block);
 
         let mut state = ListState::default();
-        f.render_stateful_widget(metrics, chunks[2], &mut state);
+        f.render_stateful_widget(metrics, chunks[1], &mut state);
     })?;
 
     if let Some(input) = InputEvents::next()? {
@@ -226,7 +131,6 @@ pub fn render(
 
 pub fn run(
     is_running: &Arc<AtomicBool>,
-    client: Client,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), Box<dyn Error>> {
     loop {
@@ -234,7 +138,7 @@ pub fn run(
             break;
         }
 
-        is_running.store(render(&client, &mut terminal)?, Ordering::Relaxed);
+        is_running.store(render(&mut terminal)?, Ordering::Relaxed);
     }
 
     Ok(())
