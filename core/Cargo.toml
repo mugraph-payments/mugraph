@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+mugraph-macros = { workspace = true }
 blake3 = { workspace = true }
 bytemuck = { workspace = true }
 curve25519-dalek = { workspace = true }

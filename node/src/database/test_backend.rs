@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use mugraph_core::{error::Error, inc, timed};
+use mugraph_core::{error::Error, inc, utils::timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, StorageBackend};
@@ -25,33 +25,38 @@ pub struct TestBackend {
 
 impl StorageBackend for TestBackend {
     #[inline]
+    #[timed]
     fn len(&self) -> Result<u64, std::io::Error> {
         self.maybe_fail()?;
-        timed!("redb.backend.len", { self.inner.len() })
+        self.inner.len()
     }
 
     #[inline]
+    #[timed]
     fn read(&self, offset: u64, len: usize) -> Result<Vec<u8>, std::io::Error> {
         self.maybe_fail()?;
-        timed!("redb.backend.len", { self.inner.read(offset, len) })
+        self.inner.read(offset, len)
     }
 
     #[inline]
+    #[timed]
     fn set_len(&self, len: u64) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("redb.backend.set_len", { self.inner.set_len(len) })
+        self.inner.set_len(len)
     }
 
     #[inline]
+    #[timed]
     fn sync_data(&self, eventual: bool) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("redb.backend.sync_data", { self.inner.sync_data(eventual) })
+        self.inner.sync_data(eventual)
     }
 
     #[inline]
+    #[timed]
     fn write(&self, offset: u64, data: &[u8]) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
-        timed!("redb.backend.write", { self.inner.write(offset, data) })
+        self.inner.write(offset, data)
     }
 }
 

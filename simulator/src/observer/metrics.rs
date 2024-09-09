@@ -10,6 +10,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use core_affinity::CoreId;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use metrics::{Key, Label, Unit};
 use metrics_util::{CompositeKey, MetricKind, Summary};
 use prost::Message;
@@ -87,6 +88,7 @@ impl Client {
 
                 (k.clone(), v.clone(), unit, desc)
             })
+            .sorted_by(|(ka, _, _, _), (kb, _, _, _)| ka.cmp(&kb))
             .collect()
     }
 }

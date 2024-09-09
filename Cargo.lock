@@ -1056,6 +1056,7 @@ dependencies = [
  "hex",
  "indexmap",
  "metrics",
+ "mugraph-macros",
  "onlyerror",
  "paste",
  "proptest",
@@ -1065,6 +1066,15 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "test-strategy",
+]
+
+[[package]]
+name = "mugraph-macros"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

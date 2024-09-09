@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
-use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, inc, timed, types::*};
+use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*, utils::timed};
 use priority_queue::PriorityQueue;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -59,11 +59,12 @@ impl State {
         self.scheduled_actions.push(round, action);
     }
 
+    #[timed]
     pub fn next_action(&mut self, round: u64) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
         if self.notes.is_empty() {
-            return timed!("state.next_action.split", { self.generate_split() });
+            return self.generate_split();
         }
 
         match self.scheduled_actions.pop() {
@@ -77,14 +78,13 @@ impl State {
         }
 
         match self.rng.gen_range(0..100u32) {
-            0..45 => timed!("state.next_action.split", { self.generate_split() }),
-            45..90 => timed!("state.next_action.join", { self.generate_join() }),
-            90.. => timed!("state.next_action.double_spend", {
-                self.generate_double_spend()
-            }),
+            0..45 => self.generate_split(),
+            45..90 => self.generate_join(),
+            90.. => self.generate_double_spend(),
         }
     }
 
+    #[timed]
     fn generate_double_spend(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -101,10 +101,10 @@ impl State {
             }
         }
 
-        inc!("state.double_spends");
         Ok(Action::DoubleSpend(transaction.build()?))
     }
 
+    #[timed]
     fn generate_split(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -128,8 +128,6 @@ impl State {
             }
 
             transaction = transaction.input(input);
-
-            inc!("state.splits");
         }
 
         if transaction.input_count() == 0 {
@@ -141,6 +139,7 @@ impl State {
         Ok(Action::Transaction(transaction.build()?))
     }
 
+    #[timed]
     fn generate_join(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -176,19 +175,16 @@ impl State {
             });
         }
 
-        inc!("state.joins");
-
         Ok(Action::Transaction(transaction.build()?))
     }
 
+    #[timed]
     pub fn recv(
         &mut self,
         asset_id: Hash,
         amount: u64,
         signature: Blinded<Signature>,
     ) -> Result<(), Error> {
-        inc!("state.notes_received");
-
         let mut nonce = Hasher::new();
         nonce.update(asset_id.as_ref());
         nonce.update(&amount.to_be_bytes());

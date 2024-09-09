@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use mugraph_core::{crypto, error::Error, inc, timed, types::*};
+use mugraph_core::{crypto, error::Error, types::*, utils::timed};
 use mugraph_node::{database::Database, v0::transaction_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -22,6 +22,7 @@ impl Delegate {
         Ok(Self { db, rng, keypair })
     }
 
+    #[timed]
     pub fn emit(&mut self, asset_id: Hash, amount: u64) -> Result<Note, Error> {
         let mut note = Note {
             delegate: self.keypair.public_key,
@@ -36,15 +37,12 @@ impl Delegate {
         note.signature =
             crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
 
-        inc!("stub_notes");
-
         Ok(note)
     }
 
     #[inline(always)]
+    #[timed("delegate.transaction_v0")]
     pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
-        timed!("delegate.transaction_v0", {
-            transaction_v0(tx, self.keypair, &mut self.db)
-        })
+        transaction_v0(tx, self.keypair, &mut self.db)
     }
 }

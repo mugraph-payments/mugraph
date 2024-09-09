@@ -4,7 +4,7 @@ use std::{
     sync::{atomic::Ordering, Arc, RwLock},
 };
 
-use mugraph_core::{error::Error, inc, types::Signature};
+use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{
@@ -35,12 +35,11 @@ pub enum Mode {
 pub struct Read(ReadTransaction);
 
 impl Read {
-    #[inline(always)]
+    #[timed]
     pub fn open_table<K: Key, V: Value>(
         &self,
         table: TableDefinition<K, V>,
     ) -> Result<ReadOnlyTable<K, V>, Error> {
-        inc!("redb.read.open_table");
         Ok(self.0.open_table(table)?)
     }
 }
@@ -49,7 +48,7 @@ impl Read {
 pub struct Write(WriteTransaction);
 
 impl Write {
-    #[inline(always)]
+    #[timed]
     pub fn open_table<K: Key, V: Value>(
         &self,
         table: TableDefinition<K, V>,
@@ -58,9 +57,9 @@ impl Write {
         Ok(self.0.open_table(table)?)
     }
 
-    #[inline(always)]
+    #[timed]
     pub fn commit(self) -> Result<(), Error> {
-        inc!("redb.write.commit");
+        inc!("database.write.commit");
         Ok(self.0.commit()?)
     }
 }
@@ -102,6 +101,7 @@ impl Database {
         })
     }
 
+    #[timed]
     pub fn reopen(&self) -> Result<(), Error> {
         match self.mode {
             Mode::File { ref path } => {
@@ -131,7 +131,7 @@ impl Database {
             }
         }
 
-        inc!("redb.reopen");
+        inc!("database.reopen");
 
         Ok(())
     }
@@ -156,6 +156,7 @@ impl Database {
         Ok(db)
     }
 
+    #[timed]
     pub fn read(&mut self) -> Result<Read, Error> {
         let result = {
             let db = self.db.read()?;
@@ -171,12 +172,13 @@ impl Database {
                 self.read()
             }
             v => {
-                inc!("redb.read");
+                inc!("database.read");
                 v
             }
         }
     }
 
+    #[timed]
     pub fn write(&mut self) -> Result<Write, Error> {
         let result = {
             let db = self.db.read()?;
@@ -191,10 +193,7 @@ impl Database {
                 self.reopen()?;
                 self.write()
             }
-            v => {
-                inc!("redb.write");
-                v
-            }
+            v => v,
         }
     }
 }

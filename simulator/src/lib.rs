@@ -2,7 +2,7 @@
 
 use color_eyre::eyre::Result;
 use metrics::counter;
-use mugraph_core::{error::Error, inc, timed, types::*};
+use mugraph_core::{error::Error, inc, types::*, utils::timed};
 use tracing::{debug, warn};
 
 mod action;
@@ -30,6 +30,7 @@ impl Simulation {
     }
 
     #[tracing::instrument(skip(self))]
+    #[timed]
     pub fn tick(&mut self, round: u64) -> Result<(), Error> {
         debug!(
             core_id = self.core_id,
@@ -37,10 +38,10 @@ impl Simulation {
             "Starting simulation tick"
         );
 
-        let action = timed!("state.next", { self.state.next_action(round)? });
+        let action = self.state.next_action(round)?;
 
         loop {
-            match timed!("handle_action", { self.handle_action(&action) }) {
+            match self.handle_action(&action) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
                     counter!("mugraph.resources", "name" => "retries", "reason" => reason)
@@ -55,6 +56,7 @@ impl Simulation {
         Ok(())
     }
 
+    #[timed]
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Transaction(transaction) => {

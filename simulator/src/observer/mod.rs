@@ -12,7 +12,7 @@ use std::{
 
 use chrono::Local;
 use metrics::Unit;
-use mugraph_core::timed;
+use mugraph_core::utils::timed;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -45,6 +45,7 @@ fn c(input: catppuccin::Color) -> Color {
     Color::Rgb(input.rgb.r, input.rgb.g, input.rgb.b)
 }
 
+#[timed]
 pub fn render(
     client: &Client,
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -212,9 +213,7 @@ pub fn run(
             break;
         }
 
-        timed!("observer.render", {
-            should_continue.store(render(&client, &mut terminal)?, Ordering::Relaxed);
-        });
+        should_continue.store(render(&client, &mut terminal)?, Ordering::Relaxed);
     }
 
     Ok(())

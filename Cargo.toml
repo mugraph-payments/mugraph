@@ -1,15 +1,12 @@
 [workspace]
 resolver = "2"
-members = [
-  "core",
-  "node",
-  "simulator"
-]
+members = ["core", "macros", "node", "simulator"]
 
 [workspace.dependencies]
 mugraph-core = { path = "./core" }
 mugraph-node = { path = "./node" }
 mugraph-simulator = { path = "./simulator" }
+mugraph-macros = { path = "./macros" }
 
 axum = { version = "0.7.5", features = ["macros"] }
 blake3 = { version = "1.5.4", features = ["neon"] }
@@ -25,7 +22,9 @@ indexmap = "2.5.0"
 itertools = { version = "0.13.0" }
 metrics = "0.23.0"
 metrics-exporter-tcp = "0.10.0"
-metrics-util = { version = "0.17", default-features = false, features = ["summary"] }
+metrics-util = { version = "0.17", default-features = false, features = [
+    "summary",
+] }
 num_cpus = "1.16.0"
 onlyerror = "0.1.4"
 paste = "1.0.15"

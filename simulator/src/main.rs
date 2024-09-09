@@ -11,9 +11,8 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use metrics::{describe_histogram, Unit};
 use metrics_exporter_tcp::TcpBuilder;
-use mugraph_core::{error::Error, types::Keypair};
+use mugraph_core::{error::Error, types::Keypair, utils::describe_metrics};
 use mugraph_simulator::{
     observer::{self, Client},
     tick, Config, Delegate, Simulation,
@@ -28,7 +27,7 @@ fn main() -> Result<()> {
         .install()?;
     tracing_subscriber::fmt().init();
 
-    describe_histogram!("mugraph.task", Unit::Milliseconds, "Duration of a task");
+    describe_metrics();
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let should_continue = Arc::new(AtomicBool::new(true));
