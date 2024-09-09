@@ -5,7 +5,7 @@
 }:
 let
   inherit (mugraph.inputs) pre-commit-hooks;
-  inherit (mugraph.lib.defaults) rust root;
+  inherit (mugraph.lib) rust root;
 in
 pre-commit-hooks.lib.${system}.run {
   src = root;

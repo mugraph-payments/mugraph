@@ -41,12 +41,14 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default
-            (import ./nix inputs)
+            (import ./overlay.nix inputs)
           ];
         };
+
+        inherit (pkgs) mugraph;
       in
       {
-        inherit (pkgs.mugraph) devShells checks packages;
+        inherit (mugraph) devShells checks packages;
       }
     );
 }

@@ -1,20 +1,8 @@
 inputs:
 { pkgs }:
 let
-  inherit (builtins)
-    attrNames
-    filter
-    readDir
-    baseNameOf
-    ;
-
   inherit (pkgs) system;
-  inherit (pkgs.lib)
-    concatStringsSep
-    hasSuffix
-    listToAttrs
-    removeSuffix
-    ;
+  inherit (pkgs.lib) concatStringsSep;
 
   platform =
     {
@@ -47,39 +35,24 @@ let
 in
 {
   inherit inputs;
+  inherit rust root;
 
-  defaults = {
-    inherit rust root;
-
-    rustPlatform = pkgs.makeRustPlatform {
-      rustc = rust;
-      cargo = rust;
-    };
-
-    env = {
-      inherit RUSTFLAGS;
-
-      RUST_LOG = "info";
-    };
-
-    cargoLock = {
-      lockFile = ../Cargo.lock;
-
-      outputHashes = {
-        "redb-2.1.2" = "sha256-I4aDw0o0fYuU2ObDHZxSEG6tY1ad1IoyqhqAcfPMFzQ=";
-      };
-    };
+  rustPlatform = pkgs.makeRustPlatform {
+    rustc = rust;
+    cargo = rust;
   };
 
-  buildPackageSet =
-    dir:
-    let
-      files = filter (hasSuffix ".nix") (attrNames (readDir dir));
+  env = {
+    inherit RUSTFLAGS;
 
-      toAttr = n: {
-        name = removeSuffix ".nix" n;
-        value = pkgs.callPackage "${dir}/${n}" { };
-      };
-    in
-    listToAttrs (map toAttr files);
+    RUST_LOG = "info";
+  };
+
+  cargoLock = {
+    lockFile = ../Cargo.lock;
+
+    outputHashes = {
+      "redb-2.1.2" = "sha256-I4aDw0o0fYuU2ObDHZxSEG6tY1ad1IoyqhqAcfPMFzQ=";
+    };
+  };
 }
