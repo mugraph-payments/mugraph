@@ -1,6 +1,5 @@
 {
   mugraph,
-  nixfmt-rfc-style,
   system,
 }:
 let
@@ -11,10 +10,7 @@ pre-commit-hooks.lib.${system}.run {
   src = root;
 
   hooks = {
-    nixfmt = {
-      enable = true;
-      package = nixfmt-rfc-style;
-    };
+    nixfmt-rfc-style.enable = true;
 
     rustfmt = {
       enable = true;
