@@ -1,9 +1,10 @@
 use std::{
     fs::{self, OpenOptions},
     path::PathBuf,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
+use crossbeam_utils::sync::ShardedLock;
 use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -22,7 +23,7 @@ pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes"
 pub struct Database {
     mode: Mode,
     rng: ChaCha20Rng,
-    db: Arc<RwLock<Redb>>,
+    db: Arc<ShardedLock<Redb>>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +79,9 @@ impl Database {
 
         Ok(Self {
             mode: Mode::File { path },
-            db: Arc::new(RwLock::new(Self::setup_with_backend(backend, !exists)?)),
+            db: Arc::new(ShardedLock::new(Self::setup_with_backend(
+                backend, !exists,
+            )?)),
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
         })
     }
@@ -95,7 +98,7 @@ impl Database {
 
         Ok(Self {
             mode: Mode::Test { path },
-            db: Arc::new(RwLock::new(db)),
+            db: Arc::new(ShardedLock::new(db)),
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
         })
     }

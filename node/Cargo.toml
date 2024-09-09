@@ -18,3 +18,4 @@ serde_json = { workspace = true }
 onlyerror = { workspace = true }
 tracing = { workspace = true }
 metrics = { workspace = true }
+crossbeam-utils = "0.8.20"
