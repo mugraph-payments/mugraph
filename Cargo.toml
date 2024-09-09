@@ -5,7 +5,6 @@ members = ["core", "macros", "node", "simulator"]
 [workspace.dependencies]
 mugraph-core = { path = "./core" }
 mugraph-node = { path = "./node" }
-mugraph-simulator = { path = "./simulator" }
 mugraph-macros = { path = "./macros" }
 
 axum = { version = "0.7.5", features = ["macros"] }

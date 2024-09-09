@@ -55,14 +55,6 @@ impl State {
     pub fn next_action(&mut self) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
-        if self.notes.is_empty() {
-            return self.generate_split();
-        }
-
-        if self.notes.is_empty() {
-            return self.generate_split();
-        }
-
         match self.rng.gen_range(0u32..100) {
             0..45 => self.generate_split(),
             45..90 => self.generate_join(),
@@ -129,25 +121,22 @@ impl State {
 
         'outer: while transaction.input_count() < MAX_INPUTS {
             for (_, notes) in self.by_asset_id.iter_mut() {
-                if self.notes.is_empty() {
+                if self.notes.len() < 2 {
                     break 'outer;
                 }
 
-                if notes.len() < 2 {
-                    continue;
-                }
+                let a = match notes.pop().and_then(|x| self.notes.remove(x as usize)) {
+                    Some(a) => a,
+                    None => continue,
+                };
 
-                let a = self
-                    .notes
-                    .remove(self.rng.gen_range(0..self.notes.len()))
-                    .unwrap();
-                let b = self
-                    .notes
-                    .remove(self.rng.gen_range(0..self.notes.len()))
-                    .unwrap();
+                let b = match notes.pop().and_then(|x| self.notes.remove(x as usize)) {
+                    Some(b) => b,
+                    None => continue,
+                };
 
                 transaction = transaction
-                    .output(a.asset_id, a.amount + b.amount)
+                    .output(b.asset_id, b.amount + b.amount)
                     .input(a)
                     .input(b);
             }

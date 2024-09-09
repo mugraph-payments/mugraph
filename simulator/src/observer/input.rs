@@ -6,7 +6,7 @@ pub struct InputEvents;
 
 impl InputEvents {
     pub fn next() -> io::Result<Option<KeyEvent>> {
-        if event::poll(Duration::from_millis(16))? {
+        if event::poll(Duration::from_millis(100))? {
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => return Ok(Some(key)),
                 _ => {}

@@ -55,14 +55,12 @@ fn main() -> Result<()> {
             info!(core_id = core.id, "Starting simulation");
 
             // Wait for signal to start the simulation
-            info!(core_id = core.id, "Waiting for signal to start simulation");
-            if !is_running.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(50));
-            }
-
             for round in 0u64.. {
                 if let Err(e) = tick(core.id, &mut sim, round) {
                     is_running.store(false, Ordering::SeqCst);
+
+                    thread::sleep(Duration::from_millis(500));
+
                     Err(e)?;
                 }
             }
@@ -84,8 +82,6 @@ fn main() -> Result<()> {
             error!(msg = %e, "Observer failed because of error");
         }
     }
-
-    is_running.swap(true, Ordering::Relaxed);
 
     Ok(())
 }

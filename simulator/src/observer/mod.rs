@@ -12,7 +12,10 @@ use std::{
 
 use chrono::Local;
 use metrics::Unit;
-use mugraph_core::{metrics::METRICS, utils::timed};
+use mugraph_core::{
+    metrics::{METRICS, REGISTERED_METRICS},
+    utils::timed,
+};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -74,10 +77,13 @@ pub fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool,
 
         let mut items = Vec::new();
 
-        let lock = METRICS.lock().unwrap();
-        for (name, metric) in lock.iter() {
+        let lock = REGISTERED_METRICS.read().unwrap();
+        for (name, i) in lock.iter() {
+            let m = METRICS.read().unwrap();
+            let metric = m[*i as usize];
+
             let (name_length, display_name) = (
-                name.chars().count(),
+                name.len(),
                 vec![Span::styled(
                     name.to_string(),
                     Style::default().fg(c(colors.text)),
@@ -85,9 +91,9 @@ pub fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool,
             );
 
             let display_value = format!(
-                "count: {} tps: {:.2} p50: {} p99: {} max {}",
-                metric.count,
+                "tps: {:.0} count: {}  p50: {} p99: {} max: {}",
                 metric.tps,
+                metric.count,
                 f64_to_displayable(metric.p50.as_secs_f64(), Some(Unit::Seconds)),
                 f64_to_displayable(metric.p99.as_secs_f64(), Some(Unit::Seconds)),
                 f64_to_displayable(metric.max.as_secs_f64(), Some(Unit::Seconds)),
@@ -155,24 +161,6 @@ pub fn restore_terminal() -> io::Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen)
 }
 
-fn u64_to_displayable(value: u64, unit: Option<Unit>) -> String {
-    let unit = match unit {
-        None => return value.to_string(),
-        Some(inner) => inner,
-    };
-
-    if unit.is_data_based() {
-        return u64_data_to_displayable(value, unit);
-    }
-
-    if unit.is_time_based() {
-        return u64_time_to_displayable(value, unit);
-    }
-
-    let label = unit.as_canonical_label();
-    format!("{}{}", value, label)
-}
-
 fn f64_to_displayable(value: f64, unit: Option<Unit>) -> String {
     let unit = match unit {
         None => return value.to_string(),
@@ -189,10 +177,6 @@ fn f64_to_displayable(value: f64, unit: Option<Unit>) -> String {
 
     let label = unit.as_canonical_label();
     format!("{:.2}{}", value, label)
-}
-
-fn u64_data_to_displayable(value: u64, unit: Unit) -> String {
-    f64_data_to_displayable(value as f64, unit)
 }
 
 fn f64_data_to_displayable(value: f64, unit: Unit) -> String {
@@ -217,19 +201,6 @@ fn f64_data_to_displayable(value: f64, unit: Unit) -> String {
 
     let unit = units[unit_idx as usize];
     format!("{:.2} {}", scaled, unit)
-}
-
-fn u64_time_to_displayable(value: u64, unit: Unit) -> String {
-    let dur = match unit {
-        Unit::Nanoseconds => Duration::from_nanos(value),
-        Unit::Microseconds => Duration::from_micros(value),
-        Unit::Milliseconds => Duration::from_millis(value),
-        Unit::Seconds => Duration::from_secs(value),
-        // If it's not a time-based unit, then just format the value plainly.
-        _ => return value.to_string(),
-    };
-
-    format!("{:?}", TruncatedDuration(dur))
 }
 
 fn f64_time_to_displayable(value: f64, unit: Unit) -> String {

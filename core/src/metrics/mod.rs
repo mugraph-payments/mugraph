@@ -1,5 +1,5 @@
 use std::{
-    sync::Mutex,
+    sync::RwLock,
     time::{Duration, Instant},
 };
 
@@ -8,16 +8,16 @@ use once_cell::sync::Lazy;
 
 use crate::error::Error;
 
-pub static METRICS: Lazy<Mutex<IndexMap<&'static str, Metric>>> =
-    Lazy::new(|| Mutex::new(IndexMap::new()));
+pub static REGISTERED_METRICS: Lazy<RwLock<IndexMap<&'static str, u32>>> =
+    Lazy::new(|| RwLock::new(IndexMap::new()));
+pub static METRICS: Lazy<RwLock<Vec<Metric>>> = Lazy::new(|| RwLock::new(vec![]));
 
+#[derive(Clone, Copy)]
 pub struct Metric {
     start: Instant,
     pub count: u128,
     pub tps: f64,
-    pub p25: Duration,
     pub p50: Duration,
-    pub p75: Duration,
     pub p99: Duration,
     pub max: Duration,
 }
@@ -28,9 +28,7 @@ impl Default for Metric {
             start: Instant::now(),
             count: 0,
             tps: 0.0,
-            p25: Duration::default(),
             p50: Duration::default(),
-            p75: Duration::default(),
             p99: Duration::default(),
             max: Duration::default(),
         }
@@ -39,35 +37,45 @@ impl Default for Metric {
 
 impl Metric {
     pub fn register(name: &'static str) -> Result<(), Error> {
-        METRICS.lock()?.insert(name, Metric::default());
+        let mut m = METRICS.write()?;
+        let mut rm = REGISTERED_METRICS.write()?;
+
+        rm.insert(name, m.len() as u32);
+        m.push(Metric::default());
 
         Ok(())
     }
 
     pub fn increment(name: &'static str, duration: Duration) {
-        let mut metrics = METRICS.lock().unwrap();
-
-        let this = match metrics.get_mut(name) {
-            Some(v) => v,
-            None => {
-                metrics.insert(name, Metric::default());
-                metrics.get_mut(name).unwrap()
-            }
+        let i = {
+            let rm = REGISTERED_METRICS.read().unwrap();
+            rm.get(name).copied()
         };
 
-        this.count += 1;
-        this.tps = this.count as f64 / this.start.elapsed().as_secs_f64();
+        match i {
+            Some(i) => {
+                let mut metrics = METRICS.write().unwrap();
+                let metric = &mut metrics[i as usize];
 
-        // Update max
-        if duration > this.max {
-            this.max = duration;
+                metric.count += 1;
+                metric.tps = metric.count as f64 / metric.start.elapsed().as_secs_f64();
+
+                // Update max
+                if duration > metric.max {
+                    metric.max = duration;
+                }
+
+                // Update percentiles using P-square algorithm
+                let count = metric.count;
+
+                Self::update_percentile(&mut metric.p50, 0.5, duration, count);
+                Self::update_percentile(&mut metric.p99, 0.99, duration, count);
+            }
+            None => {
+                Self::register(name).unwrap();
+                Self::increment(name, duration);
+            }
         }
-
-        // Update percentiles using P-square algorithm
-        Self::update_percentile(&mut this.p25, 0.25, duration, this.count);
-        Self::update_percentile(&mut this.p50, 0.5, duration, this.count);
-        Self::update_percentile(&mut this.p75, 0.75, duration, this.count);
-        Self::update_percentile(&mut this.p99, 0.99, duration, this.count);
     }
 
     fn update_percentile(
@@ -84,29 +92,5 @@ impl Metric {
             let new_estimate = (*estimate).as_nanos() as f64 + delta / percentile;
             *estimate = Duration::from_nanos(new_estimate as u64);
         }
-    }
-
-    pub fn count(&self) -> u128 {
-        self.count
-    }
-
-    pub fn p25(&self) -> Duration {
-        self.p25
-    }
-
-    pub fn p50(&self) -> Duration {
-        self.p50
-    }
-
-    pub fn p75(&self) -> Duration {
-        self.p75
-    }
-
-    pub fn p99(&self) -> Duration {
-        self.p99
-    }
-
-    pub fn max(&self) -> Duration {
-        self.max
     }
 }
