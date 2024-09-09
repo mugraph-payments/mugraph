@@ -62,7 +62,7 @@ impl State {
     pub fn next_action(&mut self, round: u64) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
-        if self.notes.len() == 0 {
+        if self.notes.is_empty() {
             return timed!("state.next_action.split", { self.generate_split() });
         }
 

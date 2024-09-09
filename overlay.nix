@@ -8,6 +8,7 @@ let
   inherit (prev.darwin.apple_sdk.frameworks) SystemConfiguration;
 
   checks.pre-commit = callPackage ./nix/pre-commit-hook.nix { };
+  scripts = callPackage ./nix/scripts.nix { };
 
   packages = {
     mugraph-node = callPackage ./node/package.nix { };
@@ -28,6 +29,7 @@ let
       prev.protobuf
       prev.samply
       lib.rust
+      scripts
     ] ++ optionals isDarwin [ SystemConfiguration ];
   };
 in

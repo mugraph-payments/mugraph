@@ -54,22 +54,6 @@
         "type": "github"
       }
     },
-    "jolt": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1724853304,
-        "narHash": "sha256-A8E3HyzVvCOlyOfzU9wkaOhmM8iiZaodKs/mtapWRHc=",
-        "owner": "a16z",
-        "repo": "jolt",
-        "rev": "5eb488381d383034ea1dd558011da0055c5b0c55",
-        "type": "github"
-      },
-      "original": {
-        "owner": "a16z",
-        "repo": "jolt",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1725368342,
@@ -130,7 +114,6 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "gitignore": "gitignore",
-        "jolt": "jolt",
         "nixpkgs": "nixpkgs",
         "pre-commit-hooks": "pre-commit-hooks",
         "rust-overlay": "rust-overlay"

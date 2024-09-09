@@ -62,12 +62,9 @@ fn main() -> Result<()> {
                     break;
                 }
 
-                match tick(core.id, &mut sim, round) {
-                    Err(e) => {
-                        sc.store(false, Ordering::SeqCst);
-                        Err(e)?;
-                    }
-                    _ => {}
+                if let Err(e) = tick(core.id, &mut sim, round) {
+                    sc.store(false, Ordering::SeqCst);
+                    Err(e)?;
                 }
             }
 

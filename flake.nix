@@ -20,11 +20,6 @@
         gitignore.follows = "gitignore";
       };
     };
-
-    jolt = {
-      url = "github:a16z/jolt";
-      flake = false;
-    };
   };
 
   outputs =
