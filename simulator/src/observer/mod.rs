@@ -55,7 +55,14 @@ pub fn render(
     terminal.draw(|f| {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Percentage(100)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Percentage(100),
+                ]
+                .as_ref(),
+            )
             .split(f.area());
 
         let current_dt = Local::now().format("(%Y/%m/%d %I:%M:%S %p)").to_string();
@@ -79,8 +86,23 @@ pub fn render(
             ),
         ])
         .style(Style::default().bg(c(colors.crust)));
+        let subheader = Line::from(vec![
+            Span::styled(
+                "TPS: ",
+                Style::default()
+                    .fg(c(colors.overlay1))
+                    .bg(c(colors.crust))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                client.tps().unwrap().to_string(),
+                Style::default().fg(c(colors.blue)).bg(c(colors.crust)),
+            ),
+        ])
+        .style(Style::default().bg(c(colors.crust)));
 
         f.render_widget(header, chunks[0]);
+        f.render_widget(subheader, chunks[1]);
 
         let mut items = Vec::new();
         let metrics = client.get_metrics();
@@ -190,7 +212,7 @@ pub fn render(
         let metrics = List::new(items).block(metrics_block);
 
         let mut state = ListState::default();
-        f.render_stateful_widget(metrics, chunks[1], &mut state);
+        f.render_stateful_widget(metrics, chunks[2], &mut state);
     })?;
 
     if let Some(input) = InputEvents::next()? {

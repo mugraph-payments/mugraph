@@ -83,7 +83,7 @@ impl Simulation {
                             index += 1;
                         }
 
-                        inc!("transactions");
+                        counter!("transactions").increment(1);
                     }
                 }
             }

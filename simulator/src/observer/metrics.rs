@@ -1,10 +1,11 @@
 use std::{
+    cmp::max,
     convert::TryFrom as _,
     io::Read,
     net::{TcpStream, ToSocketAddrs},
     sync::{Arc, Mutex, RwLock},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use bytes::{BufMut, BytesMut};
@@ -13,6 +14,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use metrics::{Key, Label, Unit};
 use metrics_util::{CompositeKey, MetricKind, Summary};
+use mugraph_core::error::Error;
 use prost::Message;
 
 mod proto {
@@ -41,6 +43,7 @@ pub struct Client {
     state: Arc<Mutex<ClientState>>,
     metrics: Arc<RwLock<IndexMap<CompositeKey, MetricData>>>,
     metadata: Arc<RwLock<IndexMap<MetadataKey, MetadataValue>>>,
+    start: Instant,
 }
 
 impl Client {
@@ -66,11 +69,27 @@ impl Client {
             state,
             metrics,
             metadata,
+            start: Instant::now(),
         }
     }
 
     pub fn state(&self) -> ClientState {
         self.state.lock().unwrap().clone()
+    }
+
+    pub fn tps(&self) -> Result<u64, Error> {
+        let metrics = self.metrics.read()?;
+        let tx_count = metrics
+            .iter()
+            .find_map(|(k, v)| Some(v.clone()).filter(|_| k.key().name() == "transactions"))
+            .and_then(|v| match v {
+                MetricData::Counter(v) => Some(v),
+                MetricData::Gauge(v) => Some(v as u64),
+                MetricData::Histogram(_) => None,
+            })
+            .unwrap_or(0u64);
+
+        Ok(tx_count / max(1, self.start.elapsed().as_secs()))
     }
 
     pub fn get_metrics(&self) -> Vec<(CompositeKey, MetricData, Option<Unit>, Option<String>)> {
@@ -227,6 +246,7 @@ impl Runner {
                                     .into_iter()
                                     .map(|(k, v)| Label::new(k, v))
                                     .collect::<Vec<_>>();
+
                                 let key_data: Key = (metric.name, labels).into();
 
                                 match metric.operation.expect("no metric operation") {
@@ -301,6 +321,7 @@ impl Runner {
                     RunnerState::ErrorBackoff("error while observing", Duration::from_secs(3))
                 }
             };
+
             self.state = next;
         }
     }
