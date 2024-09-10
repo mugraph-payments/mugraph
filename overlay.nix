@@ -24,11 +24,12 @@ let
 
     packages = [
       checks.pre-commit.enabledPackages
+      lib.rust
       prev.cargo-nextest
+      prev.cargo-pgo
       prev.cargo-watch
       prev.protobuf
       prev.samply
-      lib.rust
       scripts
     ] ++ optionals isDarwin [ SystemConfiguration ];
   };

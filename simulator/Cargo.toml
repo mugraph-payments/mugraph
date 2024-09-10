@@ -33,6 +33,7 @@ tracing-subscriber = { workspace = true }
 catppuccin = { version = "2.4.0" }
 priority-queue = "2.1.0"
 crossbeam-utils = "0.8.20"
+tikv-jemallocator = "0.6.0"
 
 [build-dependencies]
 prost-build = "0.12"

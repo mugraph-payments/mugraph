@@ -1,10 +1,8 @@
 use std::{
     fs::{self, OpenOptions},
     path::PathBuf,
-    sync::Arc,
 };
 
-use crossbeam_utils::sync::ShardedLock;
 use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -19,11 +17,11 @@ pub use self::test_backend::*;
 
 pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Database {
     mode: Mode,
     rng: ChaCha20Rng,
-    db: Arc<ShardedLock<Redb>>,
+    db: Redb,
 }
 
 #[derive(Debug, Clone)]
@@ -79,9 +77,7 @@ impl Database {
 
         Ok(Self {
             mode: Mode::File { path },
-            db: Arc::new(ShardedLock::new(Self::setup_with_backend(
-                backend, !exists,
-            )?)),
+            db: Self::setup_with_backend(backend, !exists)?,
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
         })
     }
@@ -98,13 +94,13 @@ impl Database {
 
         Ok(Self {
             mode: Mode::Test { path },
-            db: Arc::new(ShardedLock::new(db)),
+            db,
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
         })
     }
 
     #[timed]
-    pub fn reopen(&self) -> Result<(), Error> {
+    pub fn reopen(&mut self) -> Result<(), Error> {
         match self.mode {
             Mode::File { ref path } => {
                 let file = OpenOptions::new()
@@ -115,17 +111,11 @@ impl Database {
                     .open(path)?;
                 let backend = FileBackend::new(file)?;
 
-                let result = Self::setup_with_backend(backend, false)?;
-
-                let mut w = self.db.write()?;
-                *w = result;
+                self.db = Self::setup_with_backend(backend, false)?;
             }
             Mode::Test { ref path } => {
                 let backend = TestBackend::new(&mut self.rng.clone(), Some(path.clone()))?;
-                let result = Self::setup_with_backend(backend, false)?;
-
-                let mut w = self.db.write()?;
-                *w = result;
+                self.db = Self::setup_with_backend(backend, false)?;
             }
         }
 
@@ -155,12 +145,8 @@ impl Database {
     }
 
     #[timed]
-    pub fn read(&self) -> Result<Read, Error> {
-        let result = {
-            let db = self.db.read()?;
-
-            db.begin_read().map(Read).map_err(Error::from)
-        };
+    pub fn read(&mut self) -> Result<Read, Error> {
+        let result = { self.db.begin_read().map(Read).map_err(Error::from) };
 
         match result {
             Err(Error::StorageError { reason, .. })
@@ -177,12 +163,8 @@ impl Database {
     }
 
     #[timed]
-    pub fn write(&self) -> Result<Write, Error> {
-        let result = {
-            let db = self.db.read()?;
-
-            db.begin_write().map(Write).map_err(Error::from)
-        };
+    pub fn write(&mut self) -> Result<Write, Error> {
+        let result = { self.db.begin_write().map(Write).map_err(Error::from) };
 
         match result {
             Err(Error::StorageError { reason, .. })

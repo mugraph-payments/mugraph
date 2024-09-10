@@ -1,4 +1,5 @@
 #![feature(duration_millis_float)]
+#![feature(integer_atomics)]
 
 use color_eyre::eyre::Result;
 use metrics::counter;
@@ -25,11 +26,11 @@ impl Simulation {
     pub fn new<R: CryptoRng + Rng>(
         rng: &mut R,
         core_id: u32,
-        delegate: Delegate,
+        mut delegate: Delegate,
     ) -> Result<Self, Error> {
         Ok(Self {
             core_id,
-            state: State::setup(rng, delegate.clone())?,
+            state: State::setup(rng, &mut delegate)?,
             delegate,
         })
     }

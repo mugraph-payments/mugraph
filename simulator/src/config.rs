@@ -17,14 +17,6 @@ pub struct Config {
     #[clap(long = "notes", default_value = "256", env = "MUGRAPH_SIMULATOR_NOTES")]
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
-
-    #[clap(
-        long = "threads",
-        env = "MUGRAPH_SIMULATOR_THREADS",
-        default_value_t = num_cpus::get()
-    )]
-    /// The amount of simulated instances to run in parallel
-    pub threads: usize,
 }
 
 impl Default for Config {

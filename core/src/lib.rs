@@ -1,4 +1,5 @@
 #![feature(duration_millis_float)]
+#![feature(integer_atomics)]
 
 use std::sync::{atomic::AtomicBool, Arc};
 

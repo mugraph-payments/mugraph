@@ -17,7 +17,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn setup<R: CryptoRng + Rng>(rng: &mut R, mut delegate: Delegate) -> Result<Self, Error> {
+    pub fn setup<R: CryptoRng + Rng>(rng: &mut R, delegate: &mut Delegate) -> Result<Self, Error> {
         let config = Config::new();
         let assets = (0..config.assets)
             .map(|_| Hash::random(rng))
@@ -38,7 +38,7 @@ impl State {
                 .and_modify(|x: &mut IndexSet<u32>| {
                     x.insert(notes.len() as u32);
                 })
-                .or_insert(vec![notes.len() as u32].into_iter().collect());
+                .or_insert(IndexSet::from_iter([notes.len() as u32]));
 
             notes.push_back(note);
         }
@@ -120,6 +120,8 @@ impl State {
         let mut transaction = TransactionBuilder::new();
 
         'outer: while transaction.input_count() < MAX_INPUTS {
+            let mut found_pair = false;
+
             for (_, notes) in self.by_asset_id.iter_mut() {
                 if self.notes.len() < 2 {
                     break 'outer;
@@ -132,13 +134,25 @@ impl State {
 
                 let b = match notes.pop().and_then(|x| self.notes.remove(x as usize)) {
                     Some(b) => b,
-                    None => continue,
+                    None => {
+                        // Put 'a' back if we couldn't find a pair
+                        notes.insert(self.notes.len() as u32);
+                        self.notes.push_back(a);
+                        continue;
+                    }
                 };
 
                 transaction = transaction
-                    .output(b.asset_id, b.amount + b.amount)
+                    .output(b.asset_id, b.amount + a.amount)
                     .input(a)
                     .input(b);
+
+                found_pair = true;
+                break;
+            }
+
+            if !found_pair {
+                break;
             }
         }
 
@@ -182,7 +196,7 @@ impl State {
             .and_modify(|x: &mut IndexSet<u32>| {
                 x.insert(note_index);
             })
-            .or_insert(vec![note_index].into_iter().collect());
+            .or_insert_with(|| IndexSet::from_iter([note_index]));
 
         Ok(())
     }

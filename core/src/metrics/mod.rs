@@ -1,16 +1,14 @@
 use std::{
+    collections::BTreeMap,
     sync::RwLock,
     time::{Duration, Instant},
 };
 
-use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 
 use crate::error::Error;
 
-pub static REGISTERED_METRICS: Lazy<RwLock<IndexMap<&'static str, u32>>> =
-    Lazy::new(|| RwLock::new(IndexMap::new()));
-pub static METRICS: Lazy<RwLock<Vec<Metric>>> = Lazy::new(|| RwLock::new(vec![]));
+pub static METRICS: Lazy<RwLock<BTreeMap<&'static str, Metric>>> = Lazy::new(Default::default);
 
 #[derive(Clone, Copy)]
 pub struct Metric {
@@ -37,45 +35,33 @@ impl Default for Metric {
 
 impl Metric {
     pub fn register(name: &'static str) -> Result<(), Error> {
-        let mut m = METRICS.write()?;
-        let mut rm = REGISTERED_METRICS.write()?;
-
-        rm.insert(name, m.len() as u32);
-        m.push(Metric::default());
-
+        METRICS.write()?.insert(name, Metric::default());
         Ok(())
     }
 
     pub fn increment(name: &'static str, duration: Duration) {
-        let i = {
-            let rm = REGISTERED_METRICS.read().unwrap();
-            rm.get(name).copied()
-        };
+        let mut metric = METRICS
+            .write()
+            .unwrap()
+            .get(name)
+            .copied()
+            .unwrap_or_default();
 
-        match i {
-            Some(i) => {
-                let mut metrics = METRICS.write().unwrap();
-                let metric = &mut metrics[i as usize];
+        metric.count += 1;
+        metric.tps = metric.count as f64 / metric.start.elapsed().as_secs_f64();
 
-                metric.count += 1;
-                metric.tps = metric.count as f64 / metric.start.elapsed().as_secs_f64();
-
-                // Update max
-                if duration > metric.max {
-                    metric.max = duration;
-                }
-
-                // Update percentiles using P-square algorithm
-                let count = metric.count;
-
-                Self::update_percentile(&mut metric.p50, 0.5, duration, count);
-                Self::update_percentile(&mut metric.p99, 0.99, duration, count);
-            }
-            None => {
-                Self::register(name).unwrap();
-                Self::increment(name, duration);
-            }
+        // Update max
+        if duration > metric.max {
+            metric.max = duration;
         }
+
+        // Update percentiles using P-square algorithm
+        let count = metric.count;
+
+        Self::update_percentile(&mut metric.p50, 0.5, duration, count);
+        Self::update_percentile(&mut metric.p99, 0.99, duration, count);
+
+        METRICS.write().unwrap().insert(name, metric);
     }
 
     fn update_percentile(

@@ -5,7 +5,7 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use tracing::info;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,
     pub db: Database,

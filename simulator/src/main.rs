@@ -1,5 +1,8 @@
 #![feature(duration_millis_float)]
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use std::{
     collections::VecDeque,
     net::SocketAddr,
@@ -28,48 +31,45 @@ fn main() -> Result<()> {
     describe_metrics();
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
-    let is_running = Arc::new(AtomicBool::new(true));
+    let is_running = Arc::new(AtomicBool::new(false));
     let config = Config::default();
-    let mut rng = config.rng();
-    let threads = config.threads - 1;
-
-    let keypair = Keypair::random(&mut rng);
-    let delegate = Delegate::new(&mut rng, keypair)?;
     let last_core = cores.pop_back().unwrap();
 
     // Force interface to run on the last possible core
     core_affinity::set_for_current(last_core);
 
-    info!(count = threads, "Starting simulations");
-    let mut simulations = vec![];
-    for i in 0..threads {
-        simulations.push(Simulation::new(&mut rng, i as u32, delegate.clone())?);
-    }
+    info!("Starting simulation");
 
-    for (core, mut sim) in cores.into_iter().zip(simulations).take(threads) {
-        let is_running = is_running.clone();
+    let core = cores.pop_front().unwrap();
 
-        thread::spawn(move || {
-            core_affinity::set_for_current(core);
+    let ir = is_running.clone();
+    thread::spawn(move || {
+        info!(core_id = core.id, "Starting simulation");
 
-            info!(core_id = core.id, "Starting simulation");
+        while !ir.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(50));
+        }
 
-            // Wait for signal to start the simulation
-            for round in 0u64.. {
-                if let Err(e) = tick(core.id, &mut sim, round) {
-                    is_running.store(false, Ordering::SeqCst);
+        core_affinity::set_for_current(core);
 
-                    thread::sleep(Duration::from_millis(500));
+        let mut rng = config.rng();
+        let keypair = Keypair::random(&mut rng);
+        let delegate = Delegate::new(&mut rng, keypair)?;
+        let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
 
-                    Err(e)?;
-                }
+        // Wait for signal to start the simulation
+        for round in 0u64.. {
+            if let Err(e) = tick(core.id, &mut sim, round) {
+                ir.store(false, Ordering::SeqCst);
+                thread::sleep(Duration::from_millis(50));
+
+                Err(e)?;
             }
+        }
 
-            Ok::<_, Error>(())
-        });
-    }
+        Ok::<_, Error>(())
+    });
 
-    thread::sleep(Duration::from_millis(100));
     is_running.store(true, Ordering::SeqCst);
 
     match observer::main(&is_running) {

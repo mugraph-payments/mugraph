@@ -12,10 +12,7 @@ use std::{
 
 use chrono::Local;
 use metrics::Unit;
-use mugraph_core::{
-    metrics::{METRICS, REGISTERED_METRICS},
-    utils::timed,
-};
+use mugraph_core::{metrics::METRICS, utils::timed};
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -77,11 +74,7 @@ pub fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool,
 
         let mut items = Vec::new();
 
-        let lock = REGISTERED_METRICS.read().unwrap();
-        for (name, i) in lock.iter() {
-            let m = METRICS.read().unwrap();
-            let metric = m[*i as usize];
-
+        for (name, metric) in METRICS.read().unwrap().iter() {
             let (name_length, display_name) = (
                 name.len(),
                 vec![Span::styled(
@@ -99,7 +92,7 @@ pub fn render(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool,
                 f64_to_displayable(metric.max.as_secs_f64(), Some(Unit::Seconds)),
             );
 
-            let value_length = display_value.len();
+            let value_length = display_value.chars().count();
             let space = line_width
                 .saturating_sub(name_length)
                 .saturating_sub(value_length);
