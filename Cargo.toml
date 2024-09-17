@@ -20,7 +20,6 @@ hex = { version = "0.4.3", features = ["serde"] }
 indexmap = "2.5.0"
 itertools = { version = "0.13.0" }
 metrics = "0.23.0"
-metrics-exporter-tcp = "0.10.0"
 metrics-util = { version = "0.17", default-features = false, features = [
     "summary",
 ] }
