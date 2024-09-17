@@ -1,5 +1,5 @@
 [toolchain]
-channel = "nightly"
+channel = "stable"
 components = [
   "clippy",
   "llvm-tools-preview",

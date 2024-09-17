@@ -66,7 +66,6 @@ impl Write {
 impl Database {
     pub fn setup<R: CryptoRng + Rng>(rng: &mut R, path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
-        let exists = fs::exists(&path).unwrap_or(false);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -76,8 +75,8 @@ impl Database {
         let backend = FileBackend::new(file)?;
 
         Ok(Self {
+            db: Self::setup_with_backend(backend, !path.exists())?,
             mode: Mode::File { path },
-            db: Self::setup_with_backend(backend, !exists)?,
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
         })
     }

@@ -48,7 +48,7 @@ impl Metric {
             .unwrap_or_default();
 
         metric.count += 1;
-        metric.tps = metric.count as f64 / metric.start.elapsed().as_secs_f64();
+        metric.tps = metric.count as f64 / metric.start.elapsed().as_secs() as f64;
 
         // Update max
         if duration > metric.max {

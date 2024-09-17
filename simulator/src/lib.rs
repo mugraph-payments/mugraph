@@ -1,6 +1,3 @@
-#![feature(duration_millis_float)]
-#![feature(integer_atomics)]
-
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::{error::Error, inc, types::*, utils::timed};
