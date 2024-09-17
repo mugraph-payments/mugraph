@@ -10,7 +10,7 @@ use crate::error::Error;
 
 pub static METRICS: Lazy<RwLock<BTreeMap<&'static str, Metric>>> = Lazy::new(Default::default);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Metric {
     start: Instant,
     pub count: u128,

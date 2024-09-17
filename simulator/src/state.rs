@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
-use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*, utils::timed};
+use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -51,7 +51,7 @@ impl State {
         })
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn next_action(&mut self) -> Result<Action, Error> {
         gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
 
@@ -62,7 +62,7 @@ impl State {
         }
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn generate_double_spend(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -80,7 +80,7 @@ impl State {
         Ok(Action::DoubleSpend(transaction.build()?))
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn generate_split(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -115,7 +115,7 @@ impl State {
         Ok(Action::Transaction(transaction.build()?))
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn generate_join(&mut self) -> Result<Action, Error> {
         let mut transaction = TransactionBuilder::new();
 
@@ -163,7 +163,7 @@ impl State {
         Ok(Action::Transaction(transaction.build()?))
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn recv(
         &mut self,
         asset_id: Hash,

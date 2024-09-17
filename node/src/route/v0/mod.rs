@@ -17,7 +17,7 @@ mod transaction;
 use serde_json::json;
 pub use transaction::*;
 
-use crate::{config::Config, database::Database};
+use crate::database::Database;
 
 #[derive(Clone)]
 pub struct Context {
@@ -25,13 +25,13 @@ pub struct Context {
     database: Arc<Mutex<Database>>,
 }
 
-pub fn router(config: &Config) -> Result<Router, Error> {
+pub fn router(keypair: Keypair) -> Result<Router, Error> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/rpc", post(rpc))
         .with_state(Context {
-            database: Arc::new(Mutex::new(Database::setup(&mut config.rng(), "./db")?)),
-            keypair: config.keypair()?,
+            database: Arc::new(Mutex::new(Database::setup("./db")?)),
+            keypair,
         });
 
     Ok(router)
@@ -41,7 +41,7 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
-#[axum::debug_handler]
+#[tracing::instrument(skip_all)]
 pub async fn rpc(
     State(Context { keypair, database }): State<Context>,
     Json(request): Json<Request>,

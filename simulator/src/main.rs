@@ -3,7 +3,6 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use std::{
     collections::VecDeque,
-    net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -13,72 +12,85 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use metrics_exporter_tcp::TcpBuilder;
-use mugraph_core::{error::Error, types::Keypair, utils::describe_metrics};
-use mugraph_simulator::{observer, tick, Config, Delegate, Simulation};
-use tracing::{error, info};
+use itertools::Itertools;
+use mugraph_core::{error::Error, metrics::METRICS, types::Keypair};
+use mugraph_simulator::{tick, Config, Delegate, Simulation};
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
+use tracing::info;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-    let metric_address = "0.0.0.0:9999";
-    TcpBuilder::new()
-        .listen_address(metric_address.parse::<SocketAddr>()?)
-        .install()?;
     tracing_subscriber::fmt().init();
 
-    describe_metrics();
+    let config = Config::default();
+    let mut rng = match config.seed {
+        Some(s) => ChaCha20Rng::seed_from_u64(s),
+        None => ChaCha20Rng::from_entropy(),
+    };
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let is_running = Arc::new(AtomicBool::new(false));
-    let config = Config::default();
-    let last_core = cores.pop_back().unwrap();
+    let is_preparing = Arc::new(AtomicBool::new(true));
+    let keypair = Keypair::random(&mut rng);
 
     // Force interface to run on the last possible core
-    core_affinity::set_for_current(last_core);
+    core_affinity::set_for_current(cores.pop_back().unwrap());
 
     info!("Starting simulation");
 
-    let core = cores.pop_front().unwrap();
+    while !cores.is_empty() {
+        let core = cores.pop_front().unwrap();
+        let ir = is_running.clone();
+        let ip = is_preparing.clone();
+        let seed: u64 = rng.gen();
 
-    let ir = is_running.clone();
-    thread::spawn(move || {
-        info!(core_id = core.id, "Starting simulation");
+        thread::spawn(move || {
+            core_affinity::set_for_current(core);
 
-        while !ir.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(50));
-        }
+            info!(core_id = core.id, seed = seed, "Preparing simulation");
 
-        core_affinity::set_for_current(core);
+            let mut rng = ChaCha20Rng::seed_from_u64(seed);
+            let delegate = Delegate::new(&mut rng, keypair)?;
+            let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
 
-        let mut rng = config.rng();
-        let keypair = Keypair::random(&mut rng);
-        let delegate = Delegate::new(&mut rng, keypair)?;
-        let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
-
-        // Wait for signal to start the simulation
-        for round in 0u64.. {
-            if let Err(e) = tick(core.id, &mut sim, round) {
-                ir.store(false, Ordering::SeqCst);
-                thread::sleep(Duration::from_millis(50));
-
-                Err(e)?;
+            while ip.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(25));
             }
-        }
 
-        Ok::<_, Error>(())
-    });
+            info!(core_id = core.id, seed = seed, "Starting simulation");
 
+            // Wait for signal to start the simulation
+            for round in 0u64.. {
+                if let Err(e) = tick(core.id, &mut sim, round) {
+                    ir.store(false, Ordering::SeqCst);
+                    thread::sleep(Duration::from_millis(50));
+
+                    Err(e)?;
+                }
+            }
+
+            Ok::<_, Error>(())
+        });
+    }
+
+    thread::sleep(Duration::from_millis(50));
     is_running.store(true, Ordering::SeqCst);
+    is_preparing.store(false, Ordering::SeqCst);
 
-    match observer::main(&is_running) {
-        Ok(_) => {
-            observer::restore_terminal()?;
-            info!("Observer finished.");
-        }
-        Err(e) => {
-            observer::restore_terminal()?;
-            error!(msg = %e, "Observer failed because of error");
-        }
+    info!("Signaled all simulations to start.");
+
+    while is_running.load(Ordering::Relaxed) {
+        let metrics = METRICS.read().unwrap();
+        dbg!(metrics.keys().copied().collect_vec());
+
+        info!(
+            transactions_processed = metrics.get("transactions").map(|x| x.count).unwrap_or(0),
+            transactions_per_second = metrics.get("transactions").map(|x| x.tps).unwrap_or(0.0),
+            "Tick!"
+        );
+
+        thread::sleep(Duration::from_millis(250));
     }
 
     Ok(())

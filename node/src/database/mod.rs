@@ -1,6 +1,6 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
-use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
+use mugraph_core::{error::Error, inc, types::Signature};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{
@@ -31,7 +31,7 @@ pub enum Mode {
 pub struct Read(ReadTransaction);
 
 impl Read {
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn open_table<K: Key, V: Value>(
         &self,
         table: TableDefinition<K, V>,
@@ -44,7 +44,7 @@ impl Read {
 pub struct Write(WriteTransaction);
 
 impl Write {
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn open_table<K: Key, V: Value>(
         &self,
         table: TableDefinition<K, V>,
@@ -53,7 +53,7 @@ impl Write {
         Ok(self.0.open_table(table)?)
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn commit(self) -> Result<(), Error> {
         inc!("database.write.commit");
         Ok(self.0.commit()?)
@@ -61,7 +61,7 @@ impl Write {
 }
 
 impl Database {
-    pub fn setup<R: CryptoRng + Rng>(rng: &mut R, path: impl Into<PathBuf>) -> Result<Self, Error> {
+    pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
         let file = OpenOptions::new()
             .read(true)
@@ -74,7 +74,7 @@ impl Database {
         Ok(Self {
             db: Self::setup_with_backend(backend, !path.exists())?,
             mode: Mode::File { path },
-            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+            rng: ChaCha20Rng::seed_from_u64(thread_rng().gen()),
         })
     }
 
@@ -95,7 +95,7 @@ impl Database {
         })
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn reopen(&mut self) -> Result<(), Error> {
         match self.mode {
             Mode::File { ref path } => {
@@ -140,7 +140,7 @@ impl Database {
         Ok(db)
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn read(&mut self) -> Result<Read, Error> {
         let result = { self.db.begin_read().map(Read).map_err(Error::from) };
 
@@ -158,7 +158,7 @@ impl Database {
         }
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     pub fn write(&mut self) -> Result<Write, Error> {
         let result = { self.db.begin_write().map(Write).map_err(Error::from) };
 

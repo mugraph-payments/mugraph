@@ -12,7 +12,7 @@ pub async fn start(config: &config::Config) -> Result<()> {
 
     axum::serve(
         listener,
-        Router::new().nest("/v0", route::v0::router(config)?),
+        Router::new().nest("/v0", route::v0::router(config.keypair()?)?),
     )
     .await?;
 

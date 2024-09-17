@@ -1,13 +1,12 @@
 use color_eyre::eyre::Result;
 use metrics::counter;
-use mugraph_core::{error::Error, inc, types::*, utils::timed};
+use mugraph_core::{error::Error, inc, types::*};
 use rand::prelude::*;
 use tracing::{debug, warn};
 
 mod action;
 mod config;
 mod delegate;
-pub mod observer;
 mod state;
 mod tick;
 
@@ -33,7 +32,6 @@ impl Simulation {
     }
 
     #[tracing::instrument(skip(self))]
-    #[timed]
     pub fn tick(&mut self, round: u64) -> Result<(), Error> {
         debug!(
             core_id = self.core_id,
@@ -59,7 +57,7 @@ impl Simulation {
         Ok(())
     }
 
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Transaction(transaction) => {

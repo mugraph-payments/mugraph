@@ -1,6 +1,6 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
-use mugraph_core::{error::Error, inc, utils::timed};
+use mugraph_core::{error::Error, inc};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, StorageBackend};
@@ -17,35 +17,35 @@ pub struct TestBackend {
 
 impl StorageBackend for TestBackend {
     #[inline]
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn len(&self) -> Result<u64, std::io::Error> {
         self.maybe_fail()?;
         self.inner.len()
     }
 
     #[inline]
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn read(&self, offset: u64, len: usize) -> Result<Vec<u8>, std::io::Error> {
         self.maybe_fail()?;
         self.inner.read(offset, len)
     }
 
     #[inline]
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn set_len(&self, len: u64) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
         self.inner.set_len(len)
     }
 
     #[inline]
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn sync_data(&self, eventual: bool) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
         self.inner.sync_data(eventual)
     }
 
     #[inline]
-    #[timed]
+    #[tracing::instrument(skip_all)]
     fn write(&self, offset: u64, data: &[u8]) -> Result<(), std::io::Error> {
         self.maybe_fail()?;
         self.inner.write(offset, data)
