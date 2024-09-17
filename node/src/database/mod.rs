@@ -1,6 +1,7 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
-use mugraph_core::{error::Error, inc, types::Signature};
+use metrics::counter;
+use mugraph_core::{error::Error, types::Signature};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{
@@ -49,13 +50,13 @@ impl Write {
         &self,
         table: TableDefinition<K, V>,
     ) -> Result<Table<K, V>, Error> {
-        inc!("database.write.open_table");
+        counter!("mugraph.simulator.database.write.open_table").increment(1);
         Ok(self.0.open_table(table)?)
     }
 
     #[tracing::instrument(skip_all)]
     pub fn commit(self) -> Result<(), Error> {
-        inc!("database.write.commit");
+        counter!("mugraph.simulator.database.write.commit").increment(1);
         Ok(self.0.commit()?)
     }
 }
@@ -115,7 +116,7 @@ impl Database {
             }
         }
 
-        inc!("database.reopen");
+        counter!("mugraph.simulator.database.reopen").increment(1);
 
         Ok(())
     }
@@ -152,7 +153,7 @@ impl Database {
                 self.read()
             }
             v => {
-                inc!("database.read");
+                counter!("mugraph.simulator.database.read").increment(1);
                 v
             }
         }

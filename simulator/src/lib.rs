@@ -1,8 +1,8 @@
 use color_eyre::eyre::Result;
 use metrics::counter;
-use mugraph_core::{error::Error, inc, types::*};
+use mugraph_core::{error::Error, types::*};
 use rand::prelude::*;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 mod action;
 mod config;
@@ -45,8 +45,7 @@ impl Simulation {
             match self.handle_action(&action) {
                 Ok(_) => break,
                 Err(Error::SimulatedError { reason }) => {
-                    counter!("mugraph.resources", "name" => "retries", "reason" => reason)
-                        .increment(1);
+                    counter!("mugraph.simulator.simulated_errors", "reason" => reason).increment(1);
                 }
                 Err(e) => {
                     return Err(e);
@@ -61,6 +60,8 @@ impl Simulation {
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
             Action::Transaction(transaction) => {
+                info!("Processing transaction");
+
                 let response = self.delegate.recv_transaction_v0(transaction)?;
 
                 match response {
@@ -79,11 +80,13 @@ impl Simulation {
                             index += 1;
                         }
 
-                        counter!("transactions").increment(1);
+                        counter!("mugraph.simulator.transactions").increment(1);
                     }
                 }
             }
             Action::DoubleSpend(transaction) => {
+                info!("Processing double spend");
+
                 self.delegate.recv_transaction_v0(transaction)?;
 
                 match self.delegate.recv_transaction_v0(transaction) {
@@ -93,12 +96,12 @@ impl Simulation {
                         })
                     }
                     Err(Error::AlreadySpent { .. }) => {
-                        inc!("blocked_double_spent");
+                        counter!("mugraph.simulator.blocked_double_spent").increment(1);
                     }
                     Err(e) => return Err(e),
                 }
 
-                inc!("double_spends");
+                counter!("mugraph.simulator.double_spends").increment(1);
             }
         }
 

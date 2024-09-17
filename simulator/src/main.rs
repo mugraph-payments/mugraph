@@ -12,8 +12,7 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use itertools::Itertools;
-use mugraph_core::{error::Error, metrics::METRICS, types::Keypair};
+use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{tick, Config, Delegate, Simulation};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -81,15 +80,6 @@ fn main() -> Result<()> {
     info!("Signaled all simulations to start.");
 
     while is_running.load(Ordering::Relaxed) {
-        let metrics = METRICS.read().unwrap();
-        dbg!(metrics.keys().copied().collect_vec());
-
-        info!(
-            transactions_processed = metrics.get("transactions").map(|x| x.count).unwrap_or(0),
-            transactions_per_second = metrics.get("transactions").map(|x| x.tps).unwrap_or(0.0),
-            "Tick!"
-        );
-
         thread::sleep(Duration::from_millis(250));
     }
 

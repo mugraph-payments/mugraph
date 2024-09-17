@@ -1,6 +1,7 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
-use mugraph_core::{error::Error, inc};
+use metrics::counter;
+use mugraph_core::error::Error;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{backends::FileBackend, StorageBackend};
@@ -83,7 +84,7 @@ impl TestBackend {
         let mut rng = self.rng.clone();
 
         if rng.gen_bool(self.failure_rate) {
-            inc!("injected_failures");
+            counter!("mugraph.simulator.injected_failures").increment(1);
 
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
