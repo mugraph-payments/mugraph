@@ -46,6 +46,7 @@ in
     inherit RUSTFLAGS;
 
     RUST_LOG = "info";
+    RUSTFMT = "${pkgs.rust-bin.nightly.latest}/bin/rustfmt";
   };
 
   cargoLock = {

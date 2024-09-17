@@ -1,7 +1,4 @@
-use std::{
-    fs::{self, OpenOptions},
-    path::PathBuf,
-};
+use std::{fs::OpenOptions, path::PathBuf};
 
 use mugraph_core::{error::Error, inc, types::Signature, utils::timed};
 use rand::prelude::*;

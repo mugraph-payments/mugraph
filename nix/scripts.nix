@@ -12,18 +12,21 @@ let
 
   scripts = {
     fix = writeShellApplication {
+      pname = "mu-fix";
       name = "µ-fix";
       runtimeInputs = [ rust ];
       text = "${rust}/bin/cargo clippy --fix --allow-dirty";
     };
 
     fmt = writeShellApplication {
+      pname = "mu-fix";
       name = "µ-fmt";
       runtimeInputs = [ rust ];
-      text = "${rust}/bin/cargo fmt";
+      text = "exec ${rust}/bin/cargo fmt $@";
     };
 
     test = writeShellApplication {
+      pname = "mu-fix";
       name = "µ-test";
       runtimeInputs = [
         rust

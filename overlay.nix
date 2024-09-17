@@ -17,7 +17,7 @@ let
   };
 
   devShells.default = mkShell {
-    inherit (lib.env) RUST_LOG RUSTFLAGS;
+    inherit (lib.env) RUST_LOG RUSTFLAGS RUSTFMT;
     inherit (checks.pre-commit) shellHook;
 
     name = "mu-shell";
