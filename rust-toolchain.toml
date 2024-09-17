@@ -5,5 +5,5 @@ components = [
   "llvm-tools-preview",
   "rust-analyzer",
   "rust-src",
-  "rustfmt",
+  "rustfmt"
 ]

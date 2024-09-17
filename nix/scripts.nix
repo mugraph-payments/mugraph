@@ -12,31 +12,34 @@ let
 
   scripts = {
     fix = writeShellApplication {
-      pname = "mu-fix";
-      name = "µ-fix";
+      name = "mu-fix";
       runtimeInputs = [ rust ];
-      text = "${rust}/bin/cargo clippy --fix --allow-dirty";
+      text = ''
+        exec ${rust}/bin/cargo clippy --fix --allow-dirty "$@"
+      '';
     };
 
     fmt = writeShellApplication {
-      pname = "mu-fix";
-      name = "µ-fmt";
+      name = "mu-fmt";
       runtimeInputs = [ rust ];
-      text = "exec ${rust}/bin/cargo fmt $@";
+      text = ''
+        exec ${rust}/bin/cargo fmt "$@"
+      '';
     };
 
     test = writeShellApplication {
-      pname = "mu-fix";
-      name = "µ-test";
+      name = "mu-test";
       runtimeInputs = [
         rust
         cargo-nextest
       ];
-      text = "${rust}/bin/cargo nextest run";
+      text = ''
+        exec ${rust}/bin/cargo nextest run "$@"
+      '';
     };
   };
 in
 symlinkJoin {
-  name = "µ-scripts";
+  name = "mu-scripts";
   paths = attrValues scripts;
 }
