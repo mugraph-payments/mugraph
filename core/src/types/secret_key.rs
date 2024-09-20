@@ -8,7 +8,10 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use super::PublicKey;
-use crate::{crypto::G, error::Error};
+use crate::{
+    crypto::{traits::Secret, G},
+    error::Error,
+};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
@@ -29,6 +32,13 @@ impl proptest::arbitrary::Arbitrary for SecretKey {
     }
 }
 
+impl Secret for SecretKey {
+    #[inline]
+    fn to_scalar(&self) -> crate::crypto::Scalar {
+        Scalar::from_bytes_mod_order(self.0)
+    }
+}
+
 impl SecretKey {
     #[inline]
     pub const fn zero() -> Self {
@@ -38,11 +48,6 @@ impl SecretKey {
     #[inline]
     pub fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         Scalar::random(rng).into()
-    }
-
-    #[inline]
-    pub fn to_scalar(&self) -> Scalar {
-        Scalar::from_bytes_mod_order(self.0)
     }
 
     #[inline]

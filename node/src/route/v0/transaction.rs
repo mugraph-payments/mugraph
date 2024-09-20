@@ -1,16 +1,16 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{
-    crypto,
+    crypto::{self, schnorr::SchnorrPair, traits::Pair},
     error::Error,
-    types::{Keypair, Signature, Transaction, V0Response},
+    types::{Keypair, SecretKey, Signature, Transaction, V0Response},
 };
 
 use crate::database::{Database, NOTES};
 
 #[inline]
-pub fn transaction_v0(
+pub fn transaction_v0<P: Pair>(
     transaction: &Transaction,
-    keypair: Keypair,
+    keypair: P,
     database: &mut Database,
 ) -> Result<V0Response, Error> {
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
@@ -22,8 +22,8 @@ pub fn transaction_v0(
     {
         for (i, atom) in transaction.atoms.iter().enumerate() {
             if transaction.is_output(i) {
-                let sig = crypto::sign_blinded(
-                    &keypair.secret_key,
+                let sig = crypto::sign_blinded::<P>(
+                    keypair.secret(),
                     &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );
 
@@ -47,7 +47,7 @@ pub fn transaction_v0(
                 }
             };
 
-            crypto::verify(&keypair.public_key, atom.nonce.as_ref(), signature)?;
+            crypto::verify::<P>(&keypair.public(), atom.nonce.as_ref(), signature)?;
 
             match read.get(signature) {
                 Ok(Some(_)) => {

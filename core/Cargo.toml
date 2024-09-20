@@ -16,6 +16,7 @@ onlyerror = { workspace = true }
 paste = { workspace = true }
 proptest = { workspace = true }
 rand = { workspace = true }
+rand_chacha = { workspace = true }
 redb = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }

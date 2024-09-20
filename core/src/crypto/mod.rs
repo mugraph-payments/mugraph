@@ -1,9 +1,14 @@
 use blake3::Hasher;
 use rand::prelude::{CryptoRng, RngCore};
+use schnorr::SchnorrPair;
+use traits::Pair;
+use traits::Public;
+use traits::Secret;
 
 use crate::{error::Result, types::*};
 
 pub mod schnorr;
+pub mod traits;
 
 pub const HTC_SEP: &[u8] = b"mugraph_v0_htc";
 
@@ -32,7 +37,7 @@ pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> Blin
     }
 }
 
-pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> Blinded<Signature> {
+pub fn sign_blinded<P: Pair>(secret_key: P::Secret, blinded_point: &Point) -> Blinded<Signature> {
     let res = blinded_point * secret_key.to_scalar();
     Blinded(res.into())
 }
@@ -48,7 +53,11 @@ pub fn unblind_signature(
     Ok(Signature(res.compress().0))
 }
 
-pub fn verify(public_key: &PublicKey, message: &[u8], signature: Signature) -> Result<bool> {
+pub fn verify<P: Pair>(
+    public_key: &P::Public,
+    message: &[u8],
+    signature: Signature,
+) -> Result<bool> {
     let y = hash_to_scalar(&[HTC_SEP, message]);
     Ok(y * public_key.to_point()? == signature.to_point()?)
 }

@@ -3,7 +3,14 @@ use std::collections::VecDeque;
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
-use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*};
+use mugraph_core::crypto::traits::Pair;
+use mugraph_core::crypto::traits::Public;
+use mugraph_core::{
+    builder::TransactionBuilder,
+    crypto::{self, schnorr::SchnorrPair},
+    error::Error,
+    types::*,
+};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -11,7 +18,7 @@ use crate::{Action, Config, Delegate};
 
 pub struct State {
     pub rng: ChaCha20Rng,
-    pub keypair: Keypair,
+    pub keypair: SchnorrPair,
     pub notes: VecDeque<Note>,
     pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
 }
@@ -45,7 +52,7 @@ impl State {
 
         Ok(Self {
             rng: ChaCha20Rng::seed_from_u64(rng.gen()),
-            keypair: delegate.keypair,
+            keypair: delegate.keypair.clone(),
             notes,
             by_asset_id,
         })
@@ -177,13 +184,13 @@ impl State {
 
         let note = Note {
             amount,
-            delegate: self.keypair.public_key,
+            delegate: self.keypair.public(),
             asset_id,
             nonce: nonce.finalize().into(),
             signature: crypto::unblind_signature(
                 &signature,
                 &crypto::blind(&mut self.rng, &[]).factor,
-                &self.keypair.public_key,
+                &self.keypair.public(),
             )?,
         };
 
