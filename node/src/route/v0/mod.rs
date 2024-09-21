@@ -55,7 +55,7 @@ pub async fn rpc<P: Pair>(
         Request::V0(V0Request::Transaction(t)) => {
             let mut db = database.lock().unwrap();
 
-            match transaction_v0(&t, keypair, &mut db) {
+            match transaction_v0(&t, &keypair, &mut db) {
                 Ok(response) => Json(Response::V0(response)).into_response(),
                 Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
             }

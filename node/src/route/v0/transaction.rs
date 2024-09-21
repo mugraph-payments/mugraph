@@ -10,7 +10,7 @@ use crate::database::{Database, NOTES};
 #[inline]
 pub fn transaction_v0<P: Pair>(
     transaction: &Transaction,
-    keypair: P,
+    keypair: &P,
     database: &mut Database,
 ) -> Result<V0Response, Error> {
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
@@ -23,7 +23,7 @@ pub fn transaction_v0<P: Pair>(
         for (i, atom) in transaction.atoms.iter().enumerate() {
             if transaction.is_output(i) {
                 let sig = crypto::sign_blinded::<P>(
-                    keypair.secret(),
+                    &keypair.secret(),
                     &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );
 

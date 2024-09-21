@@ -37,7 +37,7 @@ impl Delegate {
         };
 
         let blind = crypto::blind_note(&mut self.rng, &note);
-        let signed = crypto::sign_blinded::<SchnorrPair>(self.keypair.secret(), &blind.point);
+        let signed = crypto::sign_blinded::<SchnorrPair>(&self.keypair.secret(), &blind.point);
         note.signature = crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public())?;
 
         Ok(note)
@@ -46,6 +46,6 @@ impl Delegate {
     #[inline(always)]
     #[tracing::instrument(skip_all)]
     pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
-        transaction_v0(tx, self.keypair.clone(), &mut self.db)
+        transaction_v0(tx, &self.keypair, &mut self.db)
     }
 }
