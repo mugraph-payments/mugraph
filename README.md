@@ -88,131 +88,52 @@ AI, pseudonymity does not provide sufficient privacy.
 I think that Mugraph has a real shot of solving those problems, and that's why
 I'm building it.
 
-## Overview
+## Running
 
-> [!NOTE]
-> This overview describes a variant of the blind signatures protocol proposed
-> by David Wagner here[2]. For all practical terms, they are equivalent.
+### With Docker
 
-In 1983, David Chaum conceived ECash, arguably the first form of
-cryptographically secure digital money, in his paper [Blind Signatures for
-Untraceable Payments][1]. In it, David Chaum describes a bank (called a Mint)
-that emit **Bearer Tokens**.
+TODO.
 
-They are called "bearer" tokens because, like physical cash, possession of the token itself confers the right to redeem its value, and are created through a process called **Blind Signature**.
+## Developing
 
-### Blind Signatures
+All of the core development team uses [Nix](https://nixos.org) to set up the development environment, so changes in the environment setup are more likely to appear there first. With that being said, Mugraph uses stable Rust, which you can install with [rustup](https://rustup.rs):
 
-A Blind Signature is a signature in which the signer is able to verify
-attribution (that they in fact signed it at some point), while not revealing
-what signed message created that input. Following the usual conventions for
-cryptographic examples, we have Alice (the user) and Bob (the Mint). Given
-that:
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
 
-- $G$ is a publicly available generator point on the Ristreto25519 curve,
-- Bob has a public/private keypair $k, K$, and $K$ is publicly available.
-- Alice has a secret $x$, representing her deposit on Bob.
+Then, you can build the application using `cargo build`, as expected.
 
-Then:
+### With Nix
 
-1. Alice computes $Y = H(x)$, where $H$ is a function that maps the secret to a
-   point on the elliptic curve (hash to curve).
-1. Alice generats a random blinding factor $r$.
-1. Alice the blinded point $B' = Y + r \cdot G$:
-1. Alice sends $B'$ to Bob.
-1. Bob receives $B'$ and computes the blinded signature $C' = k \cdot B'$.
-1. Bob sends $C'$ back to Alice.
-1. Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
+First, you will need [Nix](https://nixos.org) installed, which you can do with the [Determinate Systems Nix Installer](https://github.com/DeterminateSystems/nix-installer), like so:
 
-$$
-\begin{align}
-C = C' - r \cdot K \\
-  = k \cdot B' - r \cdot K \\
-  = k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
-  = k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
-  = k \cdot Y
-\end{align}
-$$
+```sh
+curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+```
 
-To verify the signature, Alice (or any verifier) can check if $C = k \cdot
-H(x)$. If this equality holds, it proves that $C$ originated from Bob's private
-key $k$, without Bob knowing the original message $x$.
+Then, you can run this command to spawn a development shell:
 
-This protocol has been implemented multiple times before, notably in the [
-Protocol](https://cashu.space), running on top of the Lightning Network. It is
-very cryptographically solid, even 40+ years after it was created, but it also
-has some very known flaws:
+```sh
+nix develop
+```
 
-1. Mints are in total control of issuing tokens, and the only thing barring
-   them from practicing fractional reserves is the risk of a Bank Run.
-2. Mints don't know which deposit they are redeeming, but they know what asset
-   is being transacted and the amounts. Those increase risk of deanonimization
-   with data and pattern analysis.
+You can also install [direnv](https://direnv.net/) do do this automatically when you `cd` to the folder. You can now build the application using Cargo:
 
-## Protocol
+```sh
+cargo build
+```
 
-Mugraph differentiates itself from ECash because we use **Zero-Knowledge
-Proofs**, specifically ZK-SNARKS, to move the state forward. This means:
+## Licensing
 
-1. Instead of Mints, we have **Delegates**. They don't emit tokens
-   or control the funds at all, instead they only verify and apply proofs.
-2. Users do all operations inside the system, delegates only protect against
-   double-spend.
-3. Notes themselves can have programs, allowing for arbitrary conditions on
-   spending.
+### Software
 
-### Delegates
+Mugraph, as well as all projects under the `mugraph-payments` is dual-licensed under the [MIT](./LICENSE) and [Apache 2.0](./LICENSE-APACHE) licenses.
 
-The equivalent to Mints in Mugraph are **Delegates**.
+This should cover most possible uses for this software, but if you need an exception for any reason, please do get in touch.
 
-1. Verifying *operation proofs* and signing **Blinded Notes**.
-1. Signing external transctions on behalf of the user.
-1. Emitting **Notes** in response to user deposits.
+### Logo
 
-### Default Programs
+The project logo uses the [Berkeley Mono Typeface](https://berkeleygraphics.com/), under a [Developer License](https://cdn.berkeleygraphics.com/static/legal/licenses/developer-license.pdf).
 
-#### $F$: Fission
-
-Splits a note into two blinded notes. It is defined as:
-
-$$
-F(n, i) \mapsto { n'_o, n'_c }
-$$
-
-Where:
-
-- $n$ is the input note to be slit in two
-- $i$ is the output amount requested by the operation
-- $n'_o$ is a blinded note for the amount $i$
-- $n'_c$ is another blinded note for the amount $n_i - i$, where $n_i$ is the
-  note amount.
-
-#### $F'$: Fusion
-
-Joins two notes with the same Asset ID and server keys into a single one. It is
-defined as:
-
-$F'(n_0, n_1) \mapsto n'$
-
-Where:
-
-- $n_0$ and $n_1$ are the input notes to be fused
-- $n'$ is a blinded node for the amount $n_0i + n_1i$
-
-Mugraph (pronounced *"mew-graph"*) is a Layer 2 Network for the Cardano blockchain for untraceable payments with instant finality. It is very simplified in both operations and architecture, meant to be easy to integrate anywhere.
-
-## Glossary
-
-| Symbol | Description                                                             |
-|--------|-------------------------------------------------------------------------|
-| $G$    | A generator point in the Ristreto25519 curve.                           |
-| $n$    | A Note, blindly signed by the Delegate and ready to be used.            |
-| $n'$   | A Note with a blinded nullifier to be sent to the Delegate for signing. |
-
-## Further Reading
-
-1. [Roadmap](./support/roadmap.md)
-1. [Licensing](./support/licensing.md)
-
-[1]: ./support/reference-material/papers/blind-signatures-for-untraceable-payments.md
-[2]: ./support/reference-material/blind-dh.md
+All graphics we create are also licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/?ref=chooser-v1). It only requires attribution, but if this license is a problem for your use-case, get in touch.
