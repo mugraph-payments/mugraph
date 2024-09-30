@@ -12,7 +12,13 @@ use std::{
 };
 
 use color_eyre::eyre::Result;
-use mugraph_core::{error::Error, types::Keypair};
+use mugraph_core::{
+    crypto::{
+        schnorr::SchnorrPair,
+        traits::{Pair, Seed},
+    },
+    error::Error,
+};
 use mugraph_simulator::{tick, Config, Delegate, Simulation};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -31,7 +37,7 @@ fn main() -> Result<()> {
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
     let is_running = Arc::new(AtomicBool::new(false));
     let is_preparing = Arc::new(AtomicBool::new(true));
-    let keypair = Keypair::random(&mut rng);
+    let keypair = SchnorrPair::random(&mut rng);
 
     // Force interface to run on the last possible core
     core_affinity::set_for_current(cores.pop_back().unwrap());
@@ -43,6 +49,7 @@ fn main() -> Result<()> {
         let ir = is_running.clone();
         let ip = is_preparing.clone();
         let seed: u64 = rng.gen();
+        let keypair = keypair.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);

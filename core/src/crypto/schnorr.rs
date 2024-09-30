@@ -1,57 +1,102 @@
 use curve25519_dalek::ristretto::CompressedRistretto;
-use rand::{CryptoRng, RngCore};
+use rand::{
+    rngs::{StdRng, ThreadRng},
+    CryptoRng, RngCore,
+};
+use traits::{Pair, Seed, Signature};
 
 use crate::{
     crypto::*,
     error::{Error, Result},
 };
 
-pub struct Signature {
+pub struct SchnorrSignature {
     r: Hash,
     s: Hash,
 }
 
-pub fn sign<R: RngCore + CryptoRng>(
-    rng: &mut R,
-    secret_key: &SecretKey,
-    message: &[u8],
-) -> Signature {
-    let k = Scalar::random(rng);
+#[derive(Clone, Debug)]
+pub struct SchnorrPair {
+    public_key: PublicKey,
+    secret_key: SecretKey,
+}
 
-    let r = G * k;
-    let r_ = r.compress().to_bytes();
-
-    let e = hash_to_scalar(&[&r_, message, secret_key.public().to_bytes()]);
-
-    let s = k + e * secret_key.to_scalar();
-    let s_ = s.to_bytes();
-
-    Signature {
-        r: Hash(r_),
-        s: Hash(s_),
+impl SchnorrPair {
+    pub fn new(public_key: PublicKey, secret_key: SecretKey) -> Self {
+        SchnorrPair {
+            public_key,
+            secret_key,
+        }
     }
 }
 
-pub fn verify(public_key: &PublicKey, signature: &Signature, message: &[u8]) -> Result<()> {
-    let s = Scalar::from_bytes_mod_order(*signature.s);
-    let r = CompressedRistretto::from_slice(&*signature.r)
-        .map_err(|_| Error::Other)?
-        .decompress()
-        .ok_or(Error::Other)?;
+impl Signature for SchnorrSignature {}
+impl Seed for StdRng {}
+impl Seed for ThreadRng {}
 
-    let e = hash_to_scalar(&[&*signature.r, message, public_key.to_bytes()]);
-    let lhs = G * s;
-    let rhs = r + public_key.to_point()? * e;
+impl Pair for SchnorrPair {
+    type Signature = SchnorrSignature;
+    type Public = PublicKey;
+    type Secret = SecretKey;
+    type Seed = StdRng;
 
-    if lhs == rhs {
-        Ok(())
-    } else {
-        Err(Error::Other)
+    fn sign(&self, seed: &mut Self::Seed, message: &[u8]) -> Self::Signature {
+        let k = Scalar::random(seed);
+
+        let r = G * k;
+        let r_ = r.compress().to_bytes();
+
+        let e = hash_to_scalar(&[&r_, message, self.secret_key.public().to_bytes()]);
+
+        let s = k + e * self.secret_key.to_scalar();
+        let s_ = s.to_bytes();
+
+        SchnorrSignature {
+            r: Hash(r_),
+            s: Hash(s_),
+        }
+    }
+
+    fn public(&self) -> Self::Public {
+        self.public_key
+    }
+
+    fn secret(&self) -> Self::Secret {
+        self.secret_key
+    }
+
+    fn verify(&self, signature: &Self::Signature, message: &[u8]) -> Result<()> {
+        let s = Scalar::from_bytes_mod_order(*signature.s);
+        let r = CompressedRistretto::from_slice(&*signature.r)
+            .map_err(|_| Error::Other)?
+            .decompress()
+            .ok_or(Error::Other)?;
+
+        let e = hash_to_scalar(&[&*signature.r, message, self.public_key.to_bytes()]);
+        let lhs = G * s;
+        let rhs = r + self.public_key.to_point()? * e;
+
+        if lhs == rhs {
+            Ok(())
+        } else {
+            Err(Error::Other)
+        }
+    }
+
+    fn random(seed: &mut impl Seed) -> Self {
+        let secret_key = SecretKey::random(seed);
+        let public_key = secret_key.public();
+
+        Self {
+            public_key,
+            secret_key,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use proptest::prelude::*;
     use rand::{prelude::*, rngs::StdRng};
     use test_strategy::proptest;
@@ -64,9 +109,13 @@ mod tests {
 
     #[proptest]
     fn test_sign_verify(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
-        let signed = sign(&mut rng, &pair.secret_key, &message);
+        let schnorr_pair = SchnorrPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+        };
+        let signed = schnorr_pair.sign(&mut rng, &message);
 
-        prop_assert_eq!(verify(&pair.public_key, &signed, &message), Ok(()));
+        prop_assert_eq!(schnorr_pair.verify(&signed, &message), Ok(()));
     }
 
     #[proptest]
@@ -76,10 +125,14 @@ mod tests {
         b: Keypair,
         message: Vec<u8>,
     ) {
-        let signed = sign(&mut rng, &a.secret_key, &message);
+        let schnorr_pair = SchnorrPair {
+            public_key: a.public_key,
+            secret_key: a.secret_key,
+        };
+        let signed = schnorr_pair.sign(&mut rng, &message);
 
         prop_assert_eq!(
-            verify(&b.public_key, &signed, &message).is_ok(),
+            schnorr_pair.verify(&signed, &message).is_ok(),
             a.public_key == b.public_key
         );
     }
@@ -91,10 +144,14 @@ mod tests {
         message: Vec<u8>,
         message2: Vec<u8>,
     ) {
-        let signed = sign(&mut rng, &pair.secret_key, &message);
+        let schnorr_pair = SchnorrPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+        };
+        let signed = schnorr_pair.sign(&mut rng, &message);
 
         prop_assert_eq!(
-            verify(&pair.public_key, &signed, &message2).is_ok(),
+            schnorr_pair.verify(&signed, &message2).is_ok(),
             message == message2
         );
     }
@@ -105,29 +162,37 @@ mod tests {
         pair: Keypair,
         message: Vec<u8>,
     ) {
-        let signed = sign(&mut rng, &pair.secret_key, &message);
-
+        let schnorr_pair = SchnorrPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+        };
+        let signed = schnorr_pair.sign(&mut rng, &message);
         let mut signed_ = signed;
         signed_.r[0] = signed_.r[0].wrapping_add(1);
 
-        prop_assert_eq!(
-            verify(&pair.public_key, &signed_, &message),
-            Err(Error::Other)
-        );
+        prop_assert_eq!(schnorr_pair.verify(&signed_, &message), Err(Error::Other));
     }
 
     #[proptest]
     fn test_verify_rogue_key(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
-        let signed = sign(&mut rng, &pair.secret_key, &message);
+        let schnorr_pair = SchnorrPair {
+            public_key: pair.public_key,
+            secret_key: pair.secret_key,
+        };
+        let signed = schnorr_pair.sign(&mut rng, &message);
 
         // Create a rogue public key
         let rogue_scalar = Scalar::random(&mut rng);
         let pubkey_point: Point = pair.public_key.to_point()?;
         let rogue_public_key = pubkey_point + G * rogue_scalar;
+        let rogue_schnorr_pair = SchnorrPair {
+            public_key: rogue_public_key.into(),
+            secret_key: pair.secret_key,
+        };
 
         // The signature should not verify with the rogue key
         prop_assert_eq!(
-            verify(&rogue_public_key.into(), &signed, &message),
+            rogue_schnorr_pair.verify(&signed, &message),
             Err(Error::Other)
         );
     }

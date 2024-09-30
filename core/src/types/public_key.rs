@@ -7,7 +7,10 @@ use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{crypto::Scalar, error::Error};
+use crate::{
+    crypto::{traits::Public, Point, Scalar},
+    error::Error,
+};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
@@ -23,6 +26,16 @@ impl Arbitrary for PublicKey {
             .prop_filter("must not be empty", |x| *x != [0u8; 32])
             .prop_map(Self)
             .boxed()
+    }
+}
+
+impl Public for PublicKey {
+    fn to_point(&self) -> Result<Point, Error> {
+        self.to_compressed_point()?
+            .decompress()
+            .ok_or(Error::InvalidKey {
+                reason: "Failed to decompress ristretto point".to_string(),
+            })
     }
 }
 

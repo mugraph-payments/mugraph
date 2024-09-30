@@ -1,6 +1,8 @@
 use proptest::prelude::*;
 use rand::prelude::*;
 
+use crate::crypto::traits::Pair;
+
 use super::{PublicKey, SecretKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

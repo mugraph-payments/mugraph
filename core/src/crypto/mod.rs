@@ -1,9 +1,14 @@
 use blake3::Hasher;
 use rand::prelude::{CryptoRng, RngCore};
+use schnorr::SchnorrPair;
+use traits::Pair;
+use traits::Public;
+use traits::Secret;
 
 use crate::{error::Result, types::*};
 
 pub mod schnorr;
+pub mod traits;
 
 pub const HTC_SEP: &[u8] = b"mugraph_v0_htc";
 
@@ -32,7 +37,7 @@ pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> Blin
     }
 }
 
-pub fn sign_blinded(secret_key: &SecretKey, blinded_point: &Point) -> Blinded<Signature> {
+pub fn sign_blinded<P: Pair>(secret_key: &P::Secret, blinded_point: &Point) -> Blinded<Signature> {
     let res = blinded_point * secret_key.to_scalar();
     Blinded(res.into())
 }
@@ -48,7 +53,11 @@ pub fn unblind_signature(
     Ok(Signature(res.compress().0))
 }
 
-pub fn verify(public_key: &PublicKey, message: &[u8], signature: Signature) -> Result<bool> {
+pub fn verify<P: Pair>(
+    public_key: &P::Public,
+    message: &[u8],
+    signature: Signature,
+) -> Result<bool> {
     let y = hash_to_scalar(&[HTC_SEP, message]);
     Ok(y * public_key.to_point()? == signature.to_point()?)
 }
@@ -97,10 +106,10 @@ mod tests {
     fn test_blinding_workflow(#[strategy(rng())] mut rng: StdRng, pair: Keypair, msg: Vec<u8>) {
         let blinded = blind(&mut rng, &msg);
 
-        let sig = sign_blinded(&pair.secret_key, &blinded.point);
+        let sig = sign_blinded::<SchnorrPair>(&pair.secret_key, &blinded.point);
         let unblinded = unblind_signature(&sig, &blinded.factor, &pair.public_key)?;
 
-        prop_assert!(verify(&pair.public_key, &msg, unblinded)?);
+        prop_assert!(verify::<SchnorrPair>(&pair.public_key, &msg, unblinded)?);
     }
 
     #[proptest]
@@ -112,10 +121,13 @@ mod tests {
     ) {
         let blinded = blind(&mut rng, &a);
 
-        let sig = sign_blinded(&pair.secret_key, &blinded.point);
+        let sig = sign_blinded::<SchnorrPair>(&pair.secret_key, &blinded.point);
         let unblinded = unblind_signature(&sig, &blinded.factor, &pair.public_key)?;
 
-        prop_assert_eq!(verify(&pair.public_key, &b, unblinded)?, a == b);
+        prop_assert_eq!(
+            verify::<SchnorrPair>(&pair.public_key, &b, unblinded)?,
+            a == b
+        );
     }
 
     #[proptest]
@@ -127,9 +139,12 @@ mod tests {
     ) {
         let blinded = blind(&mut rng, &msg);
 
-        let sig = sign_blinded(&a.secret_key, &blinded.point);
+        let sig = sign_blinded::<SchnorrPair>(&a.secret_key, &blinded.point);
         let unblinded = unblind_signature(&sig, &blinded.factor, &a.public_key)?;
 
-        prop_assert_eq!(verify(&b.public_key, &msg, unblinded)?, a == b);
+        prop_assert_eq!(
+            verify::<SchnorrPair>(&b.public_key, &msg, unblinded)?,
+            a == b
+        );
     }
 }

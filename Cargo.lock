@@ -819,6 +819,7 @@ dependencies = [
  "paste",
  "proptest",
  "rand",
+ "rand_chacha",
  "redb",
  "serde",
  "serde_bytes",
