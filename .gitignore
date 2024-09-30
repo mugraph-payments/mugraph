@@ -4,3 +4,5 @@ target
 # TODO: Remove this once we reach 0.1
 proptest-regressions
 *.proptest-regressions
+
+db
