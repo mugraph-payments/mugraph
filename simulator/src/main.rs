@@ -50,7 +50,9 @@ fn main() -> Result<()> {
             info!(core_id = core.id, seed = seed, "Preparing simulation");
 
             let mut rng = ChaCha20Rng::seed_from_u64(seed);
-            let delegate = Delegate::new(&mut rng, keypair)?;
+
+            let remote_target = Some("http://localhost:9999".to_string());
+            let delegate = Delegate::new(&mut rng, keypair, remote_target)?;
             let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
 
             while ip.load(Ordering::Relaxed) {

@@ -9,6 +9,7 @@ mod config;
 mod delegate;
 mod state;
 mod tick;
+mod node;
 
 pub use self::{action::Action, config::Config, delegate::Delegate, state::State, tick::tick};
 
