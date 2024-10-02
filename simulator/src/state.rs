@@ -14,6 +14,7 @@ pub struct State {
     pub keypair: Keypair,
     pub notes: VecDeque<Note>,
     pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
+    pub node_endpoint: String,
 }
 
 impl State {
@@ -48,6 +49,7 @@ impl State {
             keypair: delegate.keypair,
             notes,
             by_asset_id,
+            node_endpoint: config.node_endpoint
         })
     }
 
