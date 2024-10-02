@@ -1,6 +1,5 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
-use mugraph_node::database::Database;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use reqwest::blocking::Client;
@@ -9,7 +8,6 @@ use tracing::info;
 #[derive(Debug)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,
-    pub db: Database,
     pub keypair: Keypair,
     client: Client,
     target: String,
@@ -17,13 +15,12 @@ pub struct Delegate {
 
 impl Delegate {
     pub fn new<R: Rng + CryptoRng>(rng: &mut R, keypair: Keypair, target: String) -> Result<Self, Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
+        let rng = ChaCha20Rng::seed_from_u64(rng.gen());
 
         info!(public_key = %keypair.public_key, "Starting delegate");
-        let db = Database::setup_test(&mut rng, None)?;
 
         let client = Client::new();
-        Ok(Self { db, rng, keypair, client, target })
+        Ok(Self { rng, keypair, client, target })
     }
 
     #[tracing::instrument(skip_all)]
