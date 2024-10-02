@@ -2,20 +2,19 @@
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use std::{
-    collections::VecDeque,
-    sync::{
+    collections::VecDeque, net::SocketAddr, str::FromStr, sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    },
-    thread,
-    time::Duration,
+    }, thread, time::Duration
 };
 
 use color_eyre::eyre::Result;
 use mugraph_core::{error::Error, types::Keypair};
+use mugraph_node;
 use mugraph_simulator::{tick, Config, Delegate, Simulation};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use tokio::runtime::Runtime;
 use tracing::info;
 
 fn main() -> Result<()> {
@@ -36,6 +35,33 @@ fn main() -> Result<()> {
     // Force interface to run on the last possible core
     core_affinity::set_for_current(cores.pop_back().unwrap());
 
+    let node_core = cores.pop_front().unwrap();
+    let node_seed = rng.gen();
+
+    let protocol_end = config.node_endpoint.rfind("/").unwrap_or(0) + 1; // FIXME: dont add if the value is already 0
+    let node_endpoint = config.node_endpoint[protocol_end..].to_string();
+
+    thread::spawn(move || {
+        core_affinity::set_for_current(node_core);
+        info!(core_id = node_core.id, seed = node_seed, public_key = %keypair.public_key,  "Starting node");
+
+        let config = mugraph_node::config::Config {
+            addr: SocketAddr::from_str(&node_endpoint).expect("Invalid address"),
+            seed: node_seed,
+            public_key: Some(serde_json::to_string(&keypair.public_key).expect("Failed to serialize public key")),
+            secret_key: Some(serde_json::to_string(&keypair.secret_key).expect("Failed to serialize secret key")),
+        };
+
+        let rt = Runtime::new().expect("Failed to create runtime");
+        rt.block_on(async {
+            if let Err(e) = mugraph_node::start(&config).await {
+                eprintln!("Failed to start server: {:?}", e);
+            }
+        });
+
+        Ok::<_, Error>(())
+    });
+
     info!("Starting simulation");
 
     while !cores.is_empty() {
@@ -44,7 +70,7 @@ fn main() -> Result<()> {
         let ip = is_preparing.clone();
         let seed: u64 = rng.gen();
         let node_target = config.node_endpoint.clone();
-        
+
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 

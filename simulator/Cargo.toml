@@ -26,3 +26,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tikv-jemallocator = "0.6.0"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
+tokio.workspace = true

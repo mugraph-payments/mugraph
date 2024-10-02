@@ -6,8 +6,6 @@ use rand_chacha::ChaCha20Rng;
 use reqwest::blocking::Client;
 use tracing::info;
 
-// use crate::node::{Node, NodeTarget};
-
 #[derive(Debug)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,

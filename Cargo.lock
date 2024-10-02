@@ -1047,6 +1047,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tikv-jemallocator",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
