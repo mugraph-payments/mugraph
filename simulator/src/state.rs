@@ -49,7 +49,7 @@ impl State {
             keypair: delegate.keypair,
             notes,
             by_asset_id,
-            node_endpoint: config.node_endpoint
+            node_endpoint: config.node_endpoint,
         })
     }
 

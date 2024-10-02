@@ -2,10 +2,15 @@
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use std::{
-    collections::VecDeque, net::SocketAddr, str::FromStr, sync::{
+    collections::VecDeque,
+    net::SocketAddr,
+    str::FromStr,
+    sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
-    }, thread, time::Duration
+    },
+    thread,
+    time::Duration,
 };
 
 use color_eyre::eyre::Result;
@@ -48,8 +53,12 @@ fn main() -> Result<()> {
         let config = mugraph_node::config::Config {
             addr: SocketAddr::from_str(&node_endpoint).expect("Invalid address"),
             seed: node_seed,
-            public_key: Some(serde_json::to_string(&keypair.public_key).expect("Failed to serialize public key")),
-            secret_key: Some(serde_json::to_string(&keypair.secret_key).expect("Failed to serialize secret key")),
+            public_key: Some(
+                serde_json::to_string(&keypair.public_key).expect("Failed to serialize public key"),
+            ),
+            secret_key: Some(
+                serde_json::to_string(&keypair.secret_key).expect("Failed to serialize secret key"),
+            ),
         };
 
         let rt = Runtime::new().expect("Failed to create runtime");

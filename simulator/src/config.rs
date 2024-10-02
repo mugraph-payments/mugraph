@@ -18,7 +18,11 @@ pub struct Config {
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
 
-    #[clap(long = "node-endpoint", default_value = "http://0.0.0.0:9999", env = "MUGRAPH_SIMULATOR_NODE_ENDPOINT")]
+    #[clap(
+        long = "node-endpoint",
+        default_value = "http://0.0.0.0:9999",
+        env = "MUGRAPH_SIMULATOR_NODE_ENDPOINT"
+    )]
     /// The endpoint for the node for the simulation
     pub node_endpoint: String,
 }
