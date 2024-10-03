@@ -68,17 +68,15 @@ impl Delegate {
         let response_text = response.text().map_err(|err| Error::ServerError {
             reason: err.to_string(),
         })?;
-        let v0_response: V0Response = serde_json::from_str(&response_text).map_err(|_| {
-            if response_text.contains("Atom has already been spent") {
-                return Error::AlreadySpent {
-                    signature: tx.signatures[0],
-                };
-            }
-            Error::ServerError {
-                reason: response_text,
-            }
-        })?;
 
-        Ok(v0_response)
+        match serde_json::from_str::<V0Response>(&response_text) {
+            Ok(v0_response) => Ok(v0_response),
+            Err(_) => match serde_json::from_str::<Error>(&response_text) {
+                Ok(api_error) => Err(api_error),
+                Err(_) => Err(Error::ServerError {
+                    reason: response_text,
+                }),
+            },
+        }
     }
 }

@@ -52,7 +52,7 @@ pub async fn rpc(
 
             match transaction_v0(&t, keypair, &mut db) {
                 Ok(response) => Json(Response::V0(response)).into_response(),
-                Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
+                Err(e) => Json(json!(e)).into_response(),
             }
         }
     }
