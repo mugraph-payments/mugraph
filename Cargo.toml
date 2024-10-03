@@ -30,6 +30,7 @@ proptest = { version = "1.5.0" }
 rand = "0.8.5"
 rand_chacha = { version = "0.3.1", features = ["simd"] }
 redb = { git = "https://github.com/cberner/redb.git" }
+reqwest = { version = "0.11", features = ["json", "blocking"] }
 serde = { version = "1.0.208", features = ["derive"] }
 serde_bytes = { version = "0.11.15" }
 serde_json = "1.0.127"
