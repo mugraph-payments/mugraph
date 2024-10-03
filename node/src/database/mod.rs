@@ -51,7 +51,6 @@ impl Write {
 impl Database {
     pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
-        let first_setup = !path.exists();
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -61,7 +60,7 @@ impl Database {
         let backend = FileBackend::new(file)?;
 
         Ok(Self {
-            db: Self::setup_with_backend(backend, first_setup)?,
+            db: Self::setup_with_backend(backend, true)?,
             file_path: path,
         })
     }
