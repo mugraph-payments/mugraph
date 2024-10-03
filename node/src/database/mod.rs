@@ -2,30 +2,17 @@ use std::{fs::OpenOptions, path::PathBuf};
 
 use metrics::counter;
 use mugraph_core::{error::Error, types::Signature};
-use rand::prelude::*;
-use rand_chacha::ChaCha20Rng;
 use redb::{
     backends::FileBackend, Builder, Database as Redb, Key, ReadOnlyTable, ReadTransaction,
     StorageBackend, Table, TableDefinition, Value, WriteTransaction,
 };
 
-mod test_backend;
-
-pub use self::test_backend::*;
-
 pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
 
 #[derive(Debug)]
 pub struct Database {
-    mode: Mode,
-    rng: ChaCha20Rng,
     db: Redb,
-}
-
-#[derive(Debug, Clone)]
-pub enum Mode {
-    File { path: PathBuf },
-    Test { path: PathBuf },
+    file_path: PathBuf,
 }
 
 #[repr(transparent)]
@@ -73,48 +60,22 @@ impl Database {
         let backend = FileBackend::new(file)?;
 
         Ok(Self {
-            db: Self::setup_with_backend(backend, !path.exists())?,
-            mode: Mode::File { path },
-            rng: ChaCha20Rng::seed_from_u64(thread_rng().gen()),
-        })
-    }
-
-    pub fn setup_test<R: CryptoRng + Rng>(
-        rng: &mut R,
-        path: Option<PathBuf>,
-    ) -> Result<Self, Error> {
-        let exists = path.is_some();
-        let backend = TestBackend::new(rng, path)?;
-        let path = backend.path.clone();
-
-        let db = Self::setup_with_backend(backend, !exists)?;
-
-        Ok(Self {
-            mode: Mode::Test { path },
-            db,
-            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+            db: Self::setup_with_backend(backend, true)?,
+            file_path: path,
         })
     }
 
     #[tracing::instrument(skip_all)]
     pub fn reopen(&mut self) -> Result<(), Error> {
-        match self.mode {
-            Mode::File { ref path } => {
-                let file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(path)?;
-                let backend = FileBackend::new(file)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&self.file_path)?;
+        let backend = FileBackend::new(file)?;
 
-                self.db = Self::setup_with_backend(backend, false)?;
-            }
-            Mode::Test { ref path } => {
-                let backend = TestBackend::new(&mut self.rng.clone(), Some(path.clone()))?;
-                self.db = Self::setup_with_backend(backend, false)?;
-            }
-        }
+        self.db = Self::setup_with_backend(backend, false)?;
 
         counter!("mugraph.simulator.database.reopen").increment(1);
 

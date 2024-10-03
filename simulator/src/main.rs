@@ -43,6 +43,7 @@ fn main() -> Result<()> {
         let ir = is_running.clone();
         let ip = is_preparing.clone();
         let seed: u64 = rng.gen();
+        let node_target = config.node_endpoint.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
@@ -50,7 +51,8 @@ fn main() -> Result<()> {
             info!(core_id = core.id, seed = seed, "Preparing simulation");
 
             let mut rng = ChaCha20Rng::seed_from_u64(seed);
-            let delegate = Delegate::new(&mut rng, keypair)?;
+
+            let delegate = Delegate::new(&mut rng, keypair, node_target)?;
             let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
 
             while ip.load(Ordering::Relaxed) {

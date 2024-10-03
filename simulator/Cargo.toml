@@ -21,6 +21,7 @@ onlyerror = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 redb = { workspace = true }
+reqwest = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
