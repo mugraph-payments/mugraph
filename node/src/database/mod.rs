@@ -11,13 +11,8 @@ pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes"
 
 #[derive(Debug)]
 pub struct Database {
-    mode: Mode,
     db: Redb,
-}
-
-#[derive(Debug, Clone)]
-pub enum Mode {
-    File { path: PathBuf },
+    file_path: PathBuf,
 }
 
 #[repr(transparent)]
@@ -67,25 +62,21 @@ impl Database {
 
         Ok(Self {
             db: Self::setup_with_backend(backend, first_setup)?,
-            mode: Mode::File { path },
+            file_path: path,
         })
     }
 
     #[tracing::instrument(skip_all)]
     pub fn reopen(&mut self) -> Result<(), Error> {
-        match self.mode {
-            Mode::File { ref path } => {
-                let file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(path)?;
-                let backend = FileBackend::new(file)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&self.file_path)?;
+        let backend = FileBackend::new(file)?;
 
-                self.db = Self::setup_with_backend(backend, false)?;
-            }
-        }
+        self.db = Self::setup_with_backend(backend, false)?;
 
         counter!("mugraph.simulator.database.reopen").increment(1);
 
