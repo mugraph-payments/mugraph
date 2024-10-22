@@ -1,7 +1,8 @@
 use std::fmt;
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT as G, Scalar};
 use proptest::prelude::*;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
 use crate::{protocol::*, DecodeFields, EncodeFields, Error};
@@ -9,25 +10,30 @@ use crate::{protocol::*, DecodeFields, EncodeFields, Error};
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct PublicKey(#[serde(with = "hex::serde")] [u8; 32]);
+pub struct SecretKey(#[serde(with = "hex::serde")] [u8; 32]);
 
-impl PublicKey {
+impl SecretKey {
     pub fn zero() -> Self {
         Self([0u8; 32])
     }
 
-    pub fn from_point(point: EdwardsPoint) -> Self {
-        Self(point.compress().to_bytes())
+    pub fn random() -> Self {
+        Scalar::random(&mut OsRng).into()
+    }
+
+    pub fn public(&self) -> PublicKey {
+        let this = Scalar::from_bytes_mod_order(self.0);
+        PublicKey::from_point(this * G)
     }
 }
 
-impl Encode for PublicKey {
+impl Encode for SecretKey {
     fn as_bytes(&self) -> Vec<u8> {
         self.0.to_vec()
     }
 }
 
-impl EncodeFields for PublicKey {
+impl EncodeFields for SecretKey {
     fn as_fields(&self) -> Vec<F> {
         self.0
             .chunks(8)
@@ -36,11 +42,11 @@ impl EncodeFields for PublicKey {
     }
 }
 
-impl Decode for PublicKey {
+impl Decode for SecretKey {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != 32 {
             return Err(Error::DecodeError(format!(
-                "Invalid length for PublicKey: expected 32, got {}",
+                "Invalid length for SecretKey: expected 32, got {}",
                 bytes.len()
             )));
         }
@@ -50,11 +56,11 @@ impl Decode for PublicKey {
     }
 }
 
-impl DecodeFields for PublicKey {
+impl DecodeFields for SecretKey {
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() != 4 {
             return Err(Error::DecodeError(format!(
-                "Invalid number of fields for PublicKey: expected 4, got {}",
+                "Invalid number of fields for SecretKey: expected 4, got {}",
                 fields.len()
             )));
         }
@@ -67,17 +73,17 @@ impl DecodeFields for PublicKey {
     }
 }
 
-impl From<[u8; 32]> for PublicKey {
+impl From<[u8; 32]> for SecretKey {
     fn from(value: [u8; 32]) -> Self {
         Self(value)
     }
 }
 
-impl From<&[u8]> for PublicKey {
+impl From<&[u8]> for SecretKey {
     fn from(slice: &[u8]) -> Self {
         if slice.len() != 32 {
             panic!(
-                "Invalid slice length for PublicKey: expected 32, got {}",
+                "Invalid slice length for SecretKey: expected 32, got {}",
                 slice.len()
             );
         }
@@ -89,27 +95,25 @@ impl From<&[u8]> for PublicKey {
     }
 }
 
-impl From<EdwardsPoint> for PublicKey {
-    fn from(point: EdwardsPoint) -> Self {
-        Self(point.compress().to_bytes())
+impl From<Scalar> for SecretKey {
+    fn from(scalar: Scalar) -> Self {
+        Self(scalar.to_bytes())
     }
 }
 
-impl From<PublicKey> for EdwardsPoint {
-    fn from(public_key: PublicKey) -> Self {
-        CompressedEdwardsY(public_key.0)
-            .decompress()
-            .expect("Invalid public key")
+impl From<SecretKey> for Scalar {
+    fn from(secret_key: SecretKey) -> Self {
+        Scalar::from_bytes_mod_order(secret_key.0)
     }
 }
 
-impl AsRef<[u8]> for PublicKey {
+impl AsRef<[u8]> for SecretKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl Arbitrary for PublicKey {
+impl Arbitrary for SecretKey {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
@@ -120,7 +124,7 @@ impl Arbitrary for PublicKey {
     }
 }
 
-impl fmt::Display for PublicKey {
+impl fmt::Display for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0.iter() {
             write!(f, "{:02x}", byte)?;
@@ -129,7 +133,7 @@ impl fmt::Display for PublicKey {
     }
 }
 
-impl fmt::Debug for PublicKey {
+impl fmt::Debug for SecretKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
@@ -137,8 +141,8 @@ impl fmt::Debug for PublicKey {
 
 #[cfg(test)]
 mod tests {
-    use super::PublicKey;
+    use super::SecretKey;
 
-    crate::test_encode_bytes!(PublicKey);
-    crate::test_encode_fields!(PublicKey);
+    crate::test_encode_bytes!(SecretKey);
+    crate::test_encode_fields!(SecretKey);
 }

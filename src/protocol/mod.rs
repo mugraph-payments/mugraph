@@ -1,7 +1,8 @@
 mod codec;
 
+pub mod crypto;
 mod message;
-pub mod note;
+mod note;
 mod seal;
 mod types;
 
