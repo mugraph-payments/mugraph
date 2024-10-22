@@ -15,6 +15,12 @@ pub trait EncodeFields {
     }
 }
 
+impl<T: EncodeFields> EncodeFields for [T] {
+    fn as_fields(&self) -> Vec<F> {
+        self.iter().flat_map(|x| x.as_fields()).collect()
+    }
+}
+
 pub trait Decode: Sized {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error>;
 }

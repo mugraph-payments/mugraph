@@ -73,6 +73,18 @@ impl DecodeFields for SecretKey {
     }
 }
 
+impl From<Hash> for SecretKey {
+    fn from(value: Hash) -> Self {
+        Self(value.inner())
+    }
+}
+
+impl From<SecretKey> for Hash {
+    fn from(value: SecretKey) -> Self {
+        Hash::new(value.0)
+    }
+}
+
 impl From<[u8; 32]> for SecretKey {
     fn from(value: [u8; 32]) -> Self {
         Self(value)

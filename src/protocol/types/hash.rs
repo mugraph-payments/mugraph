@@ -1,12 +1,13 @@
 use std::fmt;
 
+use curve25519_dalek::Scalar;
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
-use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
+use test_strategy::Arbitrary;
 
 use crate::{protocol::*, Decode, DecodeFields, Encode, EncodeFields, Error};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Hash(#[serde(with = "hex::serde")] [u8; 32]);
@@ -38,9 +39,8 @@ impl Hash {
         *self == Self::zero()
     }
 
-    #[allow(clippy::self_named_constructors)]
-    pub fn hash(input: &[u8]) -> Self {
-        Self(blake3::hash(input).into())
+    pub fn inner(&self) -> [u8; 32] {
+        self.0
     }
 }
 
@@ -82,12 +82,15 @@ impl AsRef<[u8]> for Hash {
     }
 }
 
-impl Arbitrary for Hash {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
+impl From<Scalar> for Hash {
+    fn from(scalar: Scalar) -> Self {
+        Self(scalar.to_bytes())
+    }
+}
 
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        any::<Vec<u8>>().prop_map(|x| Hash::hash(&x)).boxed()
+impl From<Hash> for Scalar {
+    fn from(hash: Hash) -> Self {
+        Scalar::from_bytes_mod_order(hash.0)
     }
 }
 
