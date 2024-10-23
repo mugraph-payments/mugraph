@@ -13,12 +13,17 @@ pub use self::{
 };
 
 pub struct Mint {
+    pub secret_key: SecretKey,
+    pub public_key: PublicKey,
     pub config: config::Config,
     pub database: Database,
 }
 
 impl Mint {
     pub fn new(config: &config::Config) -> Result<Self, Error> {
+        let secret_key = config.secret_key()?;
+        let public_key = secret_key.public();
+
         let database = match fs::exists(&config.database_path)? {
             true => redb::Builder::new().open(&config.database_path)?,
             false => {
@@ -30,6 +35,8 @@ impl Mint {
         Ok(Self {
             config: config.clone(),
             database,
+            secret_key,
+            public_key,
         })
     }
 

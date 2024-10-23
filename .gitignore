@@ -3,3 +3,6 @@
 /result-bin
 .pre-commit-config.yaml
 /proptest-regressions
+.direnv
+*.key
+db
