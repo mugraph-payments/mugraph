@@ -31,11 +31,25 @@ pub use plonky2::{
     iop::witness::WitnessWrite,
     plonk::config::Hasher,
 };
-
-// `mu` in hex
-pub const MAGIC_NUMBER: u16 = 0x6D75;
+use plonky2::{hash::hash_types::HashOutTarget, iop::target::Target};
 
 pub(crate) fn circuit_builder() -> CircuitBuilder {
     let config = CircuitConfig::standard_recursion_config();
     CircuitBuilder::new(config)
+}
+
+#[inline(always)]
+pub fn magic_prefix() -> [F; 2] {
+    [
+        F::from_canonical_u64(MAGIC_PREFIX_FIELDS[0]),
+        F::from_canonical_u64(MAGIC_PREFIX_FIELDS[1]),
+    ]
+}
+
+pub(crate) fn circuit_hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {
+    let prefix = magic_prefix();
+    let t0 = builder.constant(prefix[0]);
+    let t1 = builder.constant(prefix[1]);
+
+    builder.hash_n_to_hash_no_pad::<PoseidonHash>([&[t0, t1], data].concat())
 }

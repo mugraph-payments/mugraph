@@ -1,4 +1,4 @@
-use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT as G, EdwardsPoint, Scalar};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint, Scalar};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,11 @@ pub struct DleqProof {
 }
 
 impl DleqProof {
-    pub fn generate(secret_key: SecretKey, b_prime: &EdwardsPoint, c_prime: &EdwardsPoint) -> Self {
+    pub fn generate(
+        secret_key: SecretKey,
+        b_prime: &RistrettoPoint,
+        c_prime: &RistrettoPoint,
+    ) -> Self {
         let mut rng = OsRng;
         let public_key = secret_key.public();
         let r = Scalar::random(&mut rng);
@@ -39,7 +43,12 @@ impl DleqProof {
         }
     }
 
-    pub fn verify(&self, b_prime: EdwardsPoint, c_prime: EdwardsPoint, a: EdwardsPoint) -> bool {
+    pub fn verify(
+        &self,
+        b_prime: RistrettoPoint,
+        c_prime: RistrettoPoint,
+        a: RistrettoPoint,
+    ) -> bool {
         let e: Scalar = self.e.into();
         let s: Scalar = self.s.into();
 

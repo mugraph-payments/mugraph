@@ -8,24 +8,22 @@ use crate::{unwind_panic, Error};
 /// Consumes a note, creating a new one with another Nonce
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Redeem {
-    pub input: Note,
+    pub input: SealedNote,
     pub output: Note,
 }
 
 impl Arbitrary for Redeem {
-    type Parameters = Note;
+    type Parameters = SealedNote;
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(input: Self::Parameters) -> Self::Strategy {
-        let note: Note = input.clone();
-
         any::<Hash>()
             .prop_map(move |nonce| Self {
-                input: note.clone(),
+                input: input.clone(),
                 output: Note {
-                    asset_id: note.asset_id,
-                    asset_name: note.asset_name,
-                    amount: note.amount,
+                    asset_id: input.note.asset_id,
+                    asset_name: input.note.asset_name,
+                    amount: input.note.amount,
                     nonce,
                 },
             })
@@ -33,50 +31,15 @@ impl Arbitrary for Redeem {
     }
 
     fn arbitrary() -> Self::Strategy {
-        any::<Note>().prop_flat_map(Self::arbitrary_with).boxed()
-    }
-}
-
-impl Encode for Redeem {
-    fn as_bytes(&self) -> Vec<u8> {
-        [self.input.as_bytes(), self.output.as_bytes()].concat()
+        any::<SealedNote>()
+            .prop_flat_map(Self::arbitrary_with)
+            .boxed()
     }
 }
 
 impl EncodeFields for Redeem {
     fn as_fields(&self) -> Vec<F> {
-        [self.input.as_fields(), self.output.as_fields()].concat()
-    }
-}
-
-impl Decode for Redeem {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let note_size = Note::BYTE_SIZE;
-
-        if bytes.len() != 2 * note_size {
-            return Err(Error::DecodeError("Invalid size".to_string()));
-        }
-
-        let (input_bytes, output_bytes) = bytes.split_at(note_size);
-        let input = Note::from_bytes(input_bytes)?;
-        let output = Note::from_bytes(output_bytes)?;
-
-        Ok(Self { input, output })
-    }
-}
-
-impl DecodeFields for Redeem {
-    fn from_fields(fields: &[F]) -> Result<Self, Error> {
-        let note_field_size = Note::FIELD_SIZE;
-
-        if fields.len() != 2 * note_field_size {
-            return Err(Error::DecodeError("Invalid size".to_string()));
-        }
-
-        let (input_fields, output_fields) = fields.split_at(note_field_size);
-        let input = Note::from_fields(input_fields)?;
-        let output = Note::from_fields(output_fields)?;
-        Ok(Self { input, output })
+        [self.input.note.as_fields(), self.output.as_fields()].concat()
     }
 }
 
@@ -125,8 +88,9 @@ impl Sealable for Redeem {
 
         builder.assert_bool(are_nonces_diff);
 
-        let commitment = builder.hash_n_to_hash_no_pad::<PoseidonHash>(
-            [
+        let commitment = circuit_hash_to_curve(
+            &mut builder,
+            &[
                 vec![input_amount],
                 input_asset_id.elements.to_vec(),
                 input_asset_name.elements.to_vec(),
@@ -165,11 +129,11 @@ impl Sealable for Redeem {
 
         pw.set_target(
             circuit.input_amount,
-            F::from_canonical_u64(self.input.amount),
+            F::from_canonical_u64(self.input.note.amount),
         );
-        pw.set_hash_target(circuit.input_asset_id, self.input.asset_id.into());
-        pw.set_hash_target(circuit.input_asset_name, self.input.asset_name.into());
-        pw.set_hash_target(circuit.input_nonce, self.input.nonce.into());
+        pw.set_hash_target(circuit.input_asset_id, self.input.note.asset_id.into());
+        pw.set_hash_target(circuit.input_asset_name, self.input.note.asset_name.into());
+        pw.set_hash_target(circuit.input_nonce, self.input.note.nonce.into());
         pw.set_target(
             circuit.output_amount,
             F::from_canonical_u64(self.output.amount),
@@ -178,8 +142,9 @@ impl Sealable for Redeem {
         pw.set_hash_target(circuit.output_asset_name, self.output.asset_name.into());
         pw.set_hash_target(circuit.output_nonce, self.output.nonce.into());
 
-        let commitment =
-            PoseidonHash::hash_no_pad(&[self.input.as_fields(), self.output.as_fields()].concat());
+        let commitment = PoseidonHash::hash_no_pad(
+            &[self.input.note.as_fields(), self.output.as_fields()].concat(),
+        );
         pw.set_hash_target(circuit.commitment, commitment);
 
         unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
@@ -193,13 +158,6 @@ impl ToMessage for Redeem {
     fn method() -> Method {
         Method::Redeem
     }
-
-    fn payload(&self) -> Payload {
-        Payload {
-            inputs: vec![self.input.hash()],
-            outputs: vec![self.output.hash()],
-        }
-    }
 }
 
 #[cfg(test)]
@@ -208,9 +166,6 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::{protocol::*, Error};
-
-    crate::test_encode_bytes!(Redeem);
-    crate::test_encode_fields!(Redeem);
 
     fn run(redeem: Redeem) -> Result<(), Error> {
         Redeem::verify(redeem.hash(), redeem.seal()?)
@@ -228,7 +183,7 @@ mod tests {
                 r
             })
             .prop_filter("redeem amounts must not match", |r: &Redeem| {
-                r.input.amount != r.output.amount
+                r.input.note.amount != r.output.amount
             })
     }
 
@@ -247,7 +202,7 @@ mod tests {
                 r
             })
             .prop_filter("redeem asset_ids must not match", |r: &Redeem| {
-                r.input.asset_id != r.output.asset_id
+                r.input.note.asset_id != r.output.asset_id
             })
     }
 
@@ -266,7 +221,7 @@ mod tests {
                 r
             })
             .prop_filter("redeem asset names must not match", |r: &Redeem| {
-                r.input.asset_name != r.output.asset_name
+                r.input.note.asset_name != r.output.asset_name
             })
     }
 

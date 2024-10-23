@@ -1,9 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{
-    edwards::{CompressedEdwardsY, EdwardsPoint},
-    Scalar,
-};
+use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
@@ -101,15 +98,15 @@ impl From<BlindSignature> for Scalar {
     }
 }
 
-impl From<EdwardsPoint> for BlindSignature {
-    fn from(point: EdwardsPoint) -> Self {
+impl From<RistrettoPoint> for BlindSignature {
+    fn from(point: RistrettoPoint) -> Self {
         Self(point.compress().to_bytes())
     }
 }
 
-impl From<BlindSignature> for EdwardsPoint {
+impl From<BlindSignature> for RistrettoPoint {
     fn from(hash: BlindSignature) -> Self {
-        CompressedEdwardsY::from_slice(&hash.0)
+        CompressedRistretto::from_slice(&hash.0)
             .unwrap()
             .decompress()
             .unwrap()

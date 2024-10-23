@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT as G, EdwardsPoint, Scalar};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint, Scalar};
 use proptest::prelude::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -39,9 +39,9 @@ impl SecretKey {
     ///
     /// # Returns
     ///
-    /// Returns C', the signed blinded note as an `EdwardsPoint`.
+    /// Returns C', the signed blinded note as an `RistrettoPoint`.
     pub fn sign_blinded(&self, b_prime: BlindedValue) -> BlindSignature {
-        (Scalar::from(*self) * EdwardsPoint::from(b_prime)).into()
+        (Scalar::from(*self) * RistrettoPoint::from(b_prime)).into()
     }
 }
 

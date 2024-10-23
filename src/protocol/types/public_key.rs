@@ -1,6 +1,11 @@
 use std::fmt;
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint, Scalar};
+use crypto::hash_to_curve;
+use curve25519_dalek::{
+    constants::RISTRETTO_BASEPOINT_POINT as G,
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    Scalar,
+};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -16,8 +21,26 @@ impl PublicKey {
         Self([0u8; 32])
     }
 
-    pub fn from_point(point: EdwardsPoint) -> Self {
+    pub fn from_point(point: RistrettoPoint) -> Self {
         Self(point.compress().to_bytes())
+    }
+
+    /// Blinds a value before sending it to the mint for signing.
+    ///
+    /// This function applies a blinding factor to the original bytes,
+    /// creating a blinded version that can be sent to the mint for signing
+    /// without revealing the actual value.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - The bytes to be blinded.
+    /// * `r` - A random scalar (r) used as the blinding factor.
+    ///
+    /// # Returns
+    ///
+    /// Returns B', the blinded note value as a `BlindedValue`.
+    pub fn blind(&self, note: Note, r: &Scalar) -> Result<BlindedValue, Error> {
+        Ok((hash_to_curve(&note)? + r * G).into())
     }
 
     /// Unblinds a signed value to obtain the final signature.
@@ -32,10 +55,8 @@ impl PublicKey {
     /// * `mint_pubkey` - The public key of the mint (A).
     ///
     /// # Returns
-    ///
-    /// Returns C, the unblinded signature as an `EdwardsPoint`.
     pub fn unblind(&self, value: BlindSignature, r: Scalar) -> Signature {
-        (EdwardsPoint::from(value) - r * EdwardsPoint::from(*self)).into()
+        (RistrettoPoint::from(value) - r * RistrettoPoint::from(*self)).into()
     }
 }
 
@@ -107,15 +128,15 @@ impl From<&[u8]> for PublicKey {
     }
 }
 
-impl From<EdwardsPoint> for PublicKey {
-    fn from(point: EdwardsPoint) -> Self {
+impl From<RistrettoPoint> for PublicKey {
+    fn from(point: RistrettoPoint) -> Self {
         Self(point.compress().to_bytes())
     }
 }
 
-impl From<PublicKey> for EdwardsPoint {
+impl From<PublicKey> for RistrettoPoint {
     fn from(public_key: PublicKey) -> Self {
-        CompressedEdwardsY(public_key.0)
+        CompressedRistretto(public_key.0)
             .decompress()
             .expect("Invalid public key")
     }

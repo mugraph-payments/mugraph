@@ -14,12 +14,15 @@ use test_strategy::Arbitrary;
 use super::{DecodeFields, Hash, Name, PublicKey};
 use crate::{protocol::*, unwind_panic, Decode, Encode, EncodeFields, Error};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Arbitrary, Serialize, Deserialize)]
+#[derive(
+    Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Arbitrary, Serialize, Deserialize,
+)]
 pub struct SealedNote {
     pub issuing_key: PublicKey,
     pub host: String,
     pub port: u16,
     pub note: Note,
+    pub signature: Signature,
 }
 
 impl SealedNote {
@@ -150,8 +153,9 @@ impl Sealable for Note {
         let nonce = builder.add_virtual_hash();
 
         // Public input
-        let commitment = builder.hash_n_to_hash_no_pad::<PoseidonHash>(
-            [
+        let commitment = circuit_hash_to_curve(
+            &mut builder,
+            &[
                 vec![amount],
                 asset_id.elements.to_vec(),
                 asset_name.elements.to_vec(),

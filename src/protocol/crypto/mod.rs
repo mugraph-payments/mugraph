@@ -1,32 +1,9 @@
 mod dleq;
 
-use curve25519_dalek::{
-    constants::ED25519_BASEPOINT_POINT as G,
-    edwards::EdwardsPoint,
-    scalar::Scalar,
-};
+use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint};
 pub use dleq::*;
 
-use crate::protocol::*;
-
-/// Blinds a note value before sending it to the mint for signing.
-///
-/// This function applies a blinding factor to the original note point,
-/// creating a blinded version that can be sent to the mint for signing
-/// without revealing the actual note value.
-///
-/// # Arguments
-///
-/// * `note_point` - The original note point to be blinded.
-/// * `r` - A random scalar (r) used as the blinding factor.
-///
-/// # Returns
-///
-/// Returns B', the blinded note value as an `EdwardsPoint`.
-pub fn blind_note(note: &Note, r: &Scalar) -> BlindedValue {
-    let point = hash_to_curve(&note.as_bytes());
-    (point + r * G).into()
-}
+use crate::{protocol::*, Error};
 
 /// Converts a note's fields into a curve point for signing.
 ///
@@ -40,8 +17,12 @@ pub fn blind_note(note: &Note, r: &Scalar) -> BlindedValue {
 ///
 /// # Returns
 ///
-/// Returns an `EdwardsPoint` representing the hashed note on the curve.
-pub fn hash_to_curve(message: &[u8]) -> EdwardsPoint {
-    let scalar = Scalar::from_bytes_mod_order(todo!());
-    scalar * G
+/// Returns an `RistrettoPoint` representing the hashed note on the curve.
+pub fn hash_to_curve(note: &Note) -> Result<RistrettoPoint, Error> {
+    let hash: Hash = PoseidonHash::hash_no_pad(&note.as_fields()).into();
+
+    CompressedRistretto::from_slice(&hash.inner())
+        .map_err(|e| Error::DecodeError(e.to_string()))?
+        .decompress()
+        .ok_or(Error::DecodeError("Failed to decompress hash".to_string()))
 }

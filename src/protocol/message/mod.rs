@@ -10,7 +10,6 @@ pub use redeem::{Circuit as RedeemCircuit, Redeem};
 
 pub trait ToMessage: Sealable {
     fn method() -> Method;
-    fn payload(&self) -> Payload;
 
     fn to_message(&self) -> Result<Message, Error> {
         Ok(Message {
@@ -19,7 +18,7 @@ pub trait ToMessage: Sealable {
                 &Self::circuit_data().verifier_only.circuit_digest.elements,
             )?,
             seal: self.seal()?,
-            payload: self.payload(),
+            payload: todo!(),
         })
     }
 }
@@ -33,8 +32,8 @@ pub enum Method {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Payload {
-    pub inputs: Vec<Hash>,
-    pub outputs: Vec<Hash>,
+    pub inputs: Vec<Signature>,
+    pub outputs: Vec<BlindedValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
