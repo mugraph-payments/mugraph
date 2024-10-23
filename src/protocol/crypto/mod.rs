@@ -9,24 +9,34 @@ pub use dleq::*;
 
 use crate::protocol::*;
 
-/// Compute C' = a * B'
-pub fn compute_c_prime(secret_key: SecretKey, b_prime: &EdwardsPoint) -> EdwardsPoint {
+/// Signs a blinded note value using the mint's secret key
+/// B' = blinded note value, secret_key = mint's signing key
+/// Returns C' = signed blinded note
+pub fn blind_sign(secret_key: SecretKey, b_prime: &EdwardsPoint) -> EdwardsPoint {
     Scalar::from(secret_key) * b_prime
 }
 
-/// Compute B' = Y + r * G
-pub fn compute_b_prime(y: &EdwardsPoint, r: &Scalar) -> EdwardsPoint {
-    y + r * G
+/// Blinds a note value before sending to mint for signing
+/// note_point = original note point, blinding_factor = random scalar r
+/// Returns B' = blinded note value
+pub fn blind_note(note_point: &EdwardsPoint, blinding_factor: &Scalar) -> EdwardsPoint {
+    note_point + blinding_factor * G
 }
 
-/// Compute C = C' - r * A
-pub fn compute_c(c_prime: &EdwardsPoint, r: &Scalar, a: &EdwardsPoint) -> EdwardsPoint {
-    let c = c_prime - r * a;
-    c
+/// Unblinds a signed note value to get final signature
+/// signed_blinded_note = C', blinding_factor = r, mint_pubkey = A
+/// Returns C = unblinded signature
+pub fn unblind_signature(
+    signed_blinded_note: &EdwardsPoint,
+    blinding_factor: &Scalar,
+    mint_pubkey: &EdwardsPoint,
+) -> EdwardsPoint {
+    signed_blinded_note - blinding_factor * mint_pubkey
 }
 
-/// Hash an arbitrary message to a point on the curve
-pub fn hash_to_curve(message: &[u8]) -> EdwardsPoint {
+/// Converts a note's fields into a curve point for signing
+/// Used before blinding to get initial note point
+pub fn note_to_curve_point(note_fields: &[u8]) -> EdwardsPoint {
     let scalar = Scalar::from_bytes_mod_order(todo!());
     scalar * G
 }

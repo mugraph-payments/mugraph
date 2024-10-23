@@ -11,13 +11,9 @@ pub struct DleqProof {
 }
 
 impl DleqProof {
-    pub fn generate(
-        secret_key: SecretKey,
-        public_key: PublicKey,
-        b_prime: &EdwardsPoint,
-        c_prime: &EdwardsPoint,
-    ) -> Self {
+    pub fn generate(secret_key: SecretKey, b_prime: &EdwardsPoint, c_prime: &EdwardsPoint) -> Self {
         let mut rng = OsRng;
+        let public_key = secret_key.public();
         let r = Scalar::random(&mut rng);
         let secret_key: Scalar = secret_key.into();
 
