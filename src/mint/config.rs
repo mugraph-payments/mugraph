@@ -2,8 +2,10 @@ use std::{env, net::SocketAddr, path::PathBuf};
 
 use argh::FromArgs;
 
+use super::Tcp;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Transport {
+pub enum TransportKind {
     #[default]
     Tcp,
     WebSockets,
@@ -26,7 +28,7 @@ pub struct Config {
 
     #[argh(option, from_str_fn(parse_transport))]
     /// which transport to use (TCP, UDP, WebSockets)
-    pub transport: Transport,
+    pub transport: TransportKind,
 
     #[argh(option)]
     /// TCP Address to listen on for requests
@@ -37,6 +39,13 @@ impl Config {
     pub fn load() -> Self {
         argh::from_env()
     }
+
+    pub fn transport(&self) -> impl super::Transport {
+        match self.transport {
+            TransportKind::Tcp => Tcp::new(self.listen_address),
+            TransportKind::WebSockets => todo!(),
+        }
+    }
 }
 
 fn default_db_path() -> PathBuf {
@@ -45,10 +54,10 @@ fn default_db_path() -> PathBuf {
     path
 }
 
-fn parse_transport(input: &str) -> Result<Transport, String> {
+fn parse_transport(input: &str) -> Result<TransportKind, String> {
     match input {
-        "tcp" => Ok(Transport::Tcp),
-        "ws" => Ok(Transport::WebSockets),
+        "tcp" => Ok(TransportKind::Tcp),
+        "ws" => Ok(TransportKind::WebSockets),
         t => Err(format!(
             "Invalid transport: {t}. Expected one of 'tcp', 'udp', 'ws'."
         )),

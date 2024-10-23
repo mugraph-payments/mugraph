@@ -33,8 +33,8 @@ impl Mint {
         })
     }
 
-    pub fn start<T: Transport>(mut self, params: T::Params) -> Result<(), Error> {
-        T::start(&mut self, params)?;
+    pub fn start<T: Transport>(mut self, transport: T) -> Result<(), Error> {
+        transport.start(&mut self)?;
         Ok(())
     }
 
