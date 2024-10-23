@@ -5,9 +5,12 @@ use redb::Database;
 use crate::{protocol::*, Error};
 
 mod config;
-pub mod server;
+mod transport;
 
-pub use config::*;
+pub use self::{
+    config::*,
+    transport::{Tcp, Transport},
+};
 
 pub struct Mint {
     pub config: config::Config,
@@ -28,6 +31,11 @@ impl Mint {
             config: config.clone(),
             database,
         })
+    }
+
+    pub fn start<T: Transport>(mut self, params: T::Params) -> Result<(), Error> {
+        T::start(&mut self, params)?;
+        Ok(())
     }
 
     pub fn apply(&mut self, message: &Message) -> Result<Vec<Signature>, Error> {
