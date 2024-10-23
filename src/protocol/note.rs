@@ -3,7 +3,7 @@ use std::fmt;
 use plonky2::{
     hash::{hash_types::HashOutTarget, poseidon::PoseidonHash},
     iop::{
-        target::Target,
+        target::{BoolTarget, Target},
         witness::{PartialWitness, WitnessWrite},
     },
     plonk::{circuit_data::CircuitConfig, config::Hasher},
@@ -68,7 +68,7 @@ impl Decode for Note {
             return Err(Error::DecodeError("Invalid size".to_string()));
         }
 
-        let amount = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        let amount = u64::from_le_bytes(bytes[0usize..8].try_into().unwrap());
         let asset_id = Hash::from_bytes(&bytes[8..8 + 32])?;
         let asset_name = Name::from_bytes(&bytes[8 + 32..8 + 32 + 32])?;
         let nonce = Hash::from_bytes(&bytes[8 + 32 + 32..])?;
@@ -137,6 +137,19 @@ pub struct Circuit {
     commitment: HashOutTarget,
 }
 
+fn hash_is_not_zero(builder: &mut CircuitBuilder, hash: HashOutTarget) -> BoolTarget {
+    let zero = builder.zero();
+    let mut not_zero = builder._true();
+
+    for i in 0..hash.elements.len() {
+        let is_eq = builder.is_equal(hash.elements[i], zero);
+        let is_diff = builder.not(is_eq);
+        not_zero = builder.and(not_zero, is_diff);
+    }
+
+    not_zero
+}
+
 impl Sealable for Note {
     type Circuit = Circuit;
 
@@ -165,18 +178,17 @@ impl Sealable for Note {
         );
         builder.register_public_inputs(&commitment.elements);
 
-        for i in 0..4 {
-            let is_zero = builder.is_equal(asset_id.elements[i], zero);
-            builder.assert_zero(is_zero.target);
-            let is_zero = builder.is_equal(asset_name.elements[i], zero);
-            builder.assert_zero(is_zero.target);
-            let is_zero = builder.is_equal(nonce.elements[i], zero);
-            builder.assert_zero(is_zero.target);
-        }
-
         // Assert amount is non-zero
         let is_zero = builder.is_equal(amount, zero);
-        builder.assert_zero(is_zero.target);
+        let not_zero = builder.not(is_zero);
+        builder.assert_bool(not_zero);
+
+        let asset_id_not_zero = hash_is_not_zero(&mut builder, asset_id);
+        builder.assert_bool(asset_id_not_zero);
+        let asset_name_not_zero = hash_is_not_zero(&mut builder, asset_name);
+        builder.assert_bool(asset_name_not_zero);
+        let nonce_not_zero = hash_is_not_zero(&mut builder, nonce);
+        builder.assert_bool(nonce_not_zero);
 
         let data = builder.build::<C>();
 
@@ -279,10 +291,14 @@ mod tests {
     }
 
     #[proptest(cases = 50)]
-    #[ignore = "must be fixed before v0.1"]
-    fn test_prove_asset_id_with_zero_bytes_slice(mut note: Note) {
+    // There was a bug where if you changed a hash so that one of the fields was zero, the proof
+    // fails. This test ensures the behavior does not happen anymore.
+    fn test_prove_asset_id_with_zero_bytes_slice(
+        #[strategy(0usize..4)] index: usize,
+        mut note: Note,
+    ) {
         let mut asset_id = note.asset_id.as_bytes();
-        asset_id[0..8].copy_from_slice(&[0u8; 8]);
+        asset_id[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
         note.asset_id = Hash::from_slice(&asset_id)?;
 
         prop_assert!(
@@ -292,10 +308,14 @@ mod tests {
     }
 
     #[proptest(cases = 50)]
-    #[ignore = "must be fixed before v0.1"]
-    fn test_prove_asset_name_with_zero_bytes_slice(mut note: Note) {
+    // There was a bug where if you changed a hash so that one of the fields was zero, the proof
+    // fails. This test ensures the behavior does not happen anymore.
+    fn test_prove_asset_name_with_zero_bytes_slice(
+        #[strategy(0usize..4)] index: usize,
+        mut note: Note,
+    ) {
         let mut asset_name = note.asset_name.as_bytes();
-        asset_name[0..8].copy_from_slice(&[0u8; 8]);
+        asset_name[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
         note.asset_name = Name::from_slice(&asset_name)?;
 
         prop_assert!(
@@ -305,10 +325,11 @@ mod tests {
     }
 
     #[proptest(cases = 50)]
-    #[ignore = "must be fixed before v0.1"]
-    fn test_prove_nonce_with_zero_bytes_slice(mut note: Note) {
+    // There was a bug where if you changed a hash so that one of the fields was zero, the proof
+    // fails. This test ensures the behavior does not happen anymore.
+    fn test_prove_nonce_with_zero_bytes_slice(#[strategy(0usize..4)] index: usize, mut note: Note) {
         let mut nonce = note.nonce.as_bytes();
-        nonce[0..8].copy_from_slice(&[0u8; 8]);
+        nonce[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
         note.nonce = Hash::from_slice(&nonce)?;
 
         prop_assert!(
