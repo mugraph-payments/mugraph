@@ -16,10 +16,10 @@
   outputs =
     {
       nixpkgs,
-      rust-overlay,
       flake-utils,
-      process-compose,
       pre-commit-hooks,
+      process-compose,
+      rust-overlay,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -63,6 +63,8 @@
             doCheck = false;
           };
 
+          llvm-bolt = pkgs.llvmPackages_19.bolt;
+
           mugraph-watch = (import process-compose.lib { inherit pkgs; }).makeProcessCompose {
             modules = [
               {
@@ -100,6 +102,7 @@
 
           buildInputs = with pkgs; [
             packages.mugraph-watch
+            packages.llvm-bolt
             rust
 
             cargo-nextest

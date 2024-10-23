@@ -1,6 +1,9 @@
 use std::fmt;
 
-use curve25519_dalek::Scalar;
+use curve25519_dalek::{
+    edwards::{CompressedEdwardsY, EdwardsPoint},
+    Scalar,
+};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
@@ -53,9 +56,11 @@ impl From<[u8; 32]> for Hash {
 impl From<[u64; 4]> for Hash {
     fn from(value: [u64; 4]) -> Self {
         let mut bytes = [0u8; 32];
+
         for (i, &val) in value.iter().enumerate() {
             bytes[i * 8..(i + 1) * 8].copy_from_slice(&val.to_le_bytes());
         }
+
         Self(bytes)
     }
 }
@@ -63,9 +68,11 @@ impl From<[u64; 4]> for Hash {
 impl From<&[u64]> for Hash {
     fn from(slice: &[u64]) -> Self {
         let mut bytes = [0u8; 32];
+
         for (i, &val) in slice.iter().enumerate().take(4) {
             let start = i * 8;
             let end = (i + 1) * 8;
+
             if end <= bytes.len() {
                 bytes[start..end].copy_from_slice(&val.to_le_bytes());
             } else {
@@ -91,6 +98,21 @@ impl From<Scalar> for Hash {
 impl From<Hash> for Scalar {
     fn from(hash: Hash) -> Self {
         Scalar::from_bytes_mod_order(hash.0)
+    }
+}
+
+impl From<EdwardsPoint> for Hash {
+    fn from(point: EdwardsPoint) -> Self {
+        Self(point.compress().to_bytes())
+    }
+}
+
+impl From<Hash> for EdwardsPoint {
+    fn from(hash: Hash) -> Self {
+        CompressedEdwardsY::from_slice(&hash.0)
+            .unwrap()
+            .decompress()
+            .unwrap()
     }
 }
 

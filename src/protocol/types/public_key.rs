@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint, Scalar};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,24 @@ impl PublicKey {
 
     pub fn from_point(point: EdwardsPoint) -> Self {
         Self(point.compress().to_bytes())
+    }
+
+    /// Unblinds a signed value to obtain the final signature.
+    ///
+    /// This function removes the blinding factor from the signed blinded note,
+    /// resulting in the final unblinded signature.
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - The signed blinded note (C') received from the mint.
+    /// * `r` - The random scalar (r) used in the blinding process.
+    /// * `mint_pubkey` - The public key of the mint (A).
+    ///
+    /// # Returns
+    ///
+    /// Returns C, the unblinded signature as an `EdwardsPoint`.
+    pub fn unblind(&self, value: BlindSignature, r: Scalar) -> Signature {
+        (EdwardsPoint::from(value) - r * EdwardsPoint::from(*self)).into()
     }
 }
 

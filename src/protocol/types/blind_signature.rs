@@ -13,9 +13,9 @@ use crate::{protocol::*, Decode, DecodeFields, Encode, EncodeFields, Error};
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct Signature(#[serde(with = "hex::serde")] [u8; 32]);
+pub struct BlindSignature(#[serde(with = "hex::serde")] [u8; 32]);
 
-impl Signature {
+impl BlindSignature {
     pub fn zero() -> Self {
         Self([0u8; 32])
     }
@@ -27,7 +27,7 @@ impl Signature {
     pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != 32 {
             return Err(Error::DecodeError(format!(
-                "Invalid slice length for Signature: expected 32, got {}",
+                "Invalid slice length for BlindSignature: expected 32, got {}",
                 bytes.len()
             )));
         }
@@ -47,13 +47,13 @@ impl Signature {
     }
 }
 
-impl From<[u8; 32]> for Signature {
+impl From<[u8; 32]> for BlindSignature {
     fn from(value: [u8; 32]) -> Self {
         Self(value)
     }
 }
 
-impl From<[u64; 4]> for Signature {
+impl From<[u64; 4]> for BlindSignature {
     fn from(value: [u64; 4]) -> Self {
         let mut bytes = [0u8; 32];
 
@@ -65,7 +65,7 @@ impl From<[u64; 4]> for Signature {
     }
 }
 
-impl From<&[u64]> for Signature {
+impl From<&[u64]> for BlindSignature {
     fn from(slice: &[u64]) -> Self {
         let mut bytes = [0u8; 32];
 
@@ -83,32 +83,32 @@ impl From<&[u64]> for Signature {
     }
 }
 
-impl AsRef<[u8]> for Signature {
+impl AsRef<[u8]> for BlindSignature {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
-impl From<Scalar> for Signature {
+impl From<Scalar> for BlindSignature {
     fn from(scalar: Scalar) -> Self {
         Self(scalar.to_bytes())
     }
 }
 
-impl From<Signature> for Scalar {
-    fn from(hash: Signature) -> Self {
+impl From<BlindSignature> for Scalar {
+    fn from(hash: BlindSignature) -> Self {
         Scalar::from_bytes_mod_order(hash.0)
     }
 }
 
-impl From<EdwardsPoint> for Signature {
+impl From<EdwardsPoint> for BlindSignature {
     fn from(point: EdwardsPoint) -> Self {
         Self(point.compress().to_bytes())
     }
 }
 
-impl From<Signature> for EdwardsPoint {
-    fn from(hash: Signature) -> Self {
+impl From<BlindSignature> for EdwardsPoint {
+    fn from(hash: BlindSignature) -> Self {
         CompressedEdwardsY::from_slice(&hash.0)
             .unwrap()
             .decompress()
@@ -116,7 +116,7 @@ impl From<Signature> for EdwardsPoint {
     }
 }
 
-impl fmt::Display for Signature {
+impl fmt::Display for BlindSignature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0.iter() {
             write!(f, "{:02x}", byte)?;
@@ -125,33 +125,33 @@ impl fmt::Display for Signature {
     }
 }
 
-impl fmt::Debug for Signature {
+impl fmt::Debug for BlindSignature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl From<HashOut<F>> for Signature {
+impl From<HashOut<F>> for BlindSignature {
     fn from(value: HashOut<F>) -> Self {
         Self::from_slice(&value.to_bytes()).unwrap()
     }
 }
 
-impl From<Signature> for HashOut<F> {
-    fn from(value: Signature) -> Self {
+impl From<BlindSignature> for HashOut<F> {
+    fn from(value: BlindSignature) -> Self {
         HashOut {
             elements: value.as_fields().try_into().unwrap(),
         }
     }
 }
 
-impl Encode for Signature {
+impl Encode for BlindSignature {
     fn as_bytes(&self) -> Vec<u8> {
         self.0.to_vec()
     }
 }
 
-impl EncodeFields for Signature {
+impl EncodeFields for BlindSignature {
     fn as_fields(&self) -> Vec<F> {
         self.0
             .chunks(8)
@@ -160,11 +160,11 @@ impl EncodeFields for Signature {
     }
 }
 
-impl Decode for Signature {
+impl Decode for BlindSignature {
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != 32 {
             return Err(Error::DecodeError(format!(
-                "Invalid length for Signature: expected 32, got {}",
+                "Invalid length for BlindSignature: expected 32, got {}",
                 bytes.len()
             )));
         }
@@ -175,11 +175,11 @@ impl Decode for Signature {
     }
 }
 
-impl DecodeFields for Signature {
+impl DecodeFields for BlindSignature {
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() != 4 {
             return Err(Error::DecodeError(format!(
-                "Invalid number of fields for Signature: expected 4, got {}",
+                "Invalid number of fields for BlindSignature: expected 4, got {}",
                 fields.len()
             )));
         }
@@ -196,9 +196,9 @@ impl DecodeFields for Signature {
 
 #[cfg(test)]
 mod tests {
-    use super::Signature;
+    use super::BlindSignature;
     use crate::{test_encode_bytes, test_encode_fields};
 
-    test_encode_bytes!(Signature);
-    test_encode_fields!(Signature);
+    test_encode_bytes!(BlindSignature);
+    test_encode_fields!(BlindSignature);
 }

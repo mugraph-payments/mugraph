@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT as G, Scalar};
+use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT as G, EdwardsPoint, Scalar};
 use proptest::prelude::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,24 @@ impl SecretKey {
     pub fn public(&self) -> PublicKey {
         let this = Scalar::from_bytes_mod_order(self.0);
         PublicKey::from_point(this * G)
+    }
+
+    /// Signs a blinded note value using this secret key
+    ///
+    /// This function performs blind signing, which is a cryptographic operation
+    /// where the signer (the mint) signs a message (the blinded note value)
+    /// without knowing its contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `secret_key` - The mint's secret signing key.
+    /// * `b_prime` - The blinded note value (B') to be signed.
+    ///
+    /// # Returns
+    ///
+    /// Returns C', the signed blinded note as an `EdwardsPoint`.
+    pub fn sign_blinded(&self, b_prime: BlindedValue) -> BlindSignature {
+        (Scalar::from(*self) * EdwardsPoint::from(b_prime)).into()
     }
 }
 

@@ -9,34 +9,39 @@ pub use dleq::*;
 
 use crate::protocol::*;
 
-/// Signs a blinded note value using the mint's secret key
-/// B' = blinded note value, secret_key = mint's signing key
-/// Returns C' = signed blinded note
-pub fn blind_sign(secret_key: SecretKey, b_prime: &EdwardsPoint) -> EdwardsPoint {
-    Scalar::from(secret_key) * b_prime
+/// Blinds a note value before sending it to the mint for signing.
+///
+/// This function applies a blinding factor to the original note point,
+/// creating a blinded version that can be sent to the mint for signing
+/// without revealing the actual note value.
+///
+/// # Arguments
+///
+/// * `note_point` - The original note point to be blinded.
+/// * `r` - A random scalar (r) used as the blinding factor.
+///
+/// # Returns
+///
+/// Returns B', the blinded note value as an `EdwardsPoint`.
+pub fn blind_note(note: &Note, r: &Scalar) -> BlindedValue {
+    let point = hash_to_curve(&note.as_bytes());
+    (point + r * G).into()
 }
 
-/// Blinds a note value before sending to mint for signing
-/// note_point = original note point, blinding_factor = random scalar r
-/// Returns B' = blinded note value
-pub fn blind_note(note_point: &EdwardsPoint, blinding_factor: &Scalar) -> EdwardsPoint {
-    note_point + blinding_factor * G
-}
-
-/// Unblinds a signed note value to get final signature
-/// signed_blinded_note = C', blinding_factor = r, mint_pubkey = A
-/// Returns C = unblinded signature
-pub fn unblind_signature(
-    signed_blinded_note: &EdwardsPoint,
-    blinding_factor: &Scalar,
-    mint_pubkey: &EdwardsPoint,
-) -> EdwardsPoint {
-    signed_blinded_note - blinding_factor * mint_pubkey
-}
-
-/// Converts a note's fields into a curve point for signing
-/// Used before blinding to get initial note point
-pub fn note_to_curve_point(note_fields: &[u8]) -> EdwardsPoint {
+/// Converts a note's fields into a curve point for signing.
+///
+/// This function is used before blinding to get the initial note point.
+/// It hashes the input message to a scalar and then multiplies it with
+/// the base point to get a point on the curve.
+///
+/// # Arguments
+///
+/// * `message` - A byte slice containing the note's fields to be hashed.
+///
+/// # Returns
+///
+/// Returns an `EdwardsPoint` representing the hashed note on the curve.
+pub fn hash_to_curve(message: &[u8]) -> EdwardsPoint {
     let scalar = Scalar::from_bytes_mod_order(todo!());
     scalar * G
 }
