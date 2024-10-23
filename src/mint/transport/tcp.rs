@@ -18,7 +18,7 @@ impl Tcp {
 impl Transport for Tcp {
     type Params = SocketAddr;
 
-    fn start(&self, mint: &mut Mint) -> Result<(), Error> {
+    fn listen(&self, mint: &mut Mint) -> Result<(), Error> {
         let listener = TcpListener::bind(self.listen_address)?;
 
         println!("Server listening on {}", listener.local_addr()?);

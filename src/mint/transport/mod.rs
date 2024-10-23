@@ -8,5 +8,5 @@ pub use tcp::Tcp;
 pub trait Transport {
     type Params;
 
-    fn start(&self, mint: &mut Mint) -> Result<(), Error>;
+    fn listen(&self, mint: &mut Mint) -> Result<(), Error>;
 }

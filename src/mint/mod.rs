@@ -34,7 +34,7 @@ impl Mint {
     }
 
     pub fn start<T: Transport>(mut self, transport: T) -> Result<(), Error> {
-        transport.start(&mut self)?;
+        transport.listen(&mut self)?;
         Ok(())
     }
 
