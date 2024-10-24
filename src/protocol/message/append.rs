@@ -4,7 +4,7 @@ use curve25519_dalek::Scalar;
 use proptest::{collection::vec, prelude::*, strategy::Just};
 use rand::{prelude::*, rngs::OsRng};
 
-use crate::{protocol::*, unwind_panic};
+use crate::{protocol::*, testing::distribute, unwind_panic};
 
 #[derive(Debug)]
 pub struct Append<const I: usize, const O: usize> {
@@ -68,90 +68,33 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(secret_key: Self::Parameters) -> Self::Strategy {
-        let input_notes = (vec((any::<Hash>(), any::<SealedNote>()), I..=I)).prop_map(move |notes| {
-            notes
-                .into_iter()
-                .map(|(r, note)| {
-                    let r: Scalar = r.into();
-                    let blinded = secret_key.public().blind(note.note.clone(), &r).unwrap();
-                    let blind_sig = secret_key.sign_blinded(blinded);
-                    let signature = secret_key.public().unblind(blind_sig, r);
+        // Use `distribute` to generate balanced inputs and outputs
+        distribute(I, O)
+            .prop_map(move |(input_notes, output_notes)| {
+                // Sign each input note to create a `SealedNote`
+                let inputs = input_notes
+                    .into_iter()
+                    .map(|note| {
+                        let r = Scalar::random(&mut OsRng);
+                        let blinded = secret_key.public().blind(note.clone(), &r).unwrap();
+                        let blind_sig = secret_key.sign_blinded(blinded);
+                        let signature = secret_key.public().unblind(blind_sig, r);
 
-                    SealedNote {
-                        issuing_key: secret_key.public(),
-                        host: note.host,
-                        port: note.port,
-                        note: note.note,
-                        signature,
-                    }
-                })
-                .collect::<Vec<_>>()
-        });
+                        SealedNote {
+                            issuing_key: secret_key.public(),
+                            host: "localhost".to_string(),
+                            port: 4000,
+                            note,
+                            signature,
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-        let outputs = input_notes.clone().prop_flat_map(move |inputs| {
-            // Group inputs by asset_id and asset_name
-            let mut balances: HashMap<(Hash, Name), u128> = HashMap::new();
-            for input in &inputs {
-                let key = (input.note.asset_id, input.note.asset_name);
-                *balances.entry(key).or_default() += input.note.amount as u128;
-            }
-
-            // Generate O output notes that balance with inputs
-            let mut outputs = Vec::with_capacity(O);
-            let mut remaining_balances = balances.clone();
-
-            // Distribute amounts across outputs
-            while outputs.len() < O && !remaining_balances.is_empty() {
-                let (&(asset_id, asset_name), balance) =
-                    remaining_balances.iter_mut().next().unwrap();
-
-                // Generate a random amount that doesn't exceed the remaining balance
-                let amount = if *balance > 1 {
-                    let max = (*balance).min(u64::MAX as u128) as u64;
-                    if max > 1 {
-                        (1..max).choose(&mut OsRng).unwrap()
-                    } else {
-                        1
-                    }
-                } else {
-                    1
-                };
-
-                *balance -= amount as u128;
-
-                // Remove if fully distributed
-                if *balance == 0 {
-                    remaining_balances.remove(&(asset_id, asset_name));
+                // Ensure inputs and outputs have correct sizes
+                Append {
+                    inputs: inputs.try_into().unwrap(),
+                    outputs: output_notes.try_into().unwrap(),
                 }
-
-                outputs.push(Note {
-                    asset_id,
-                    asset_name,
-                    amount,
-                    nonce: Hash::random(),
-                });
-            }
-
-            // Fill remaining outputs with the last asset if needed
-            while outputs.len() < O {
-                let last = outputs.last().unwrap();
-
-                outputs.push(Note {
-                    asset_id: last.asset_id,
-                    asset_name: last.asset_name,
-                    amount: 1,
-                    nonce: Hash::random(),
-                });
-            }
-
-            Just(outputs)
-        });
-
-        // Combine inputs and outputs into Append
-        (input_notes, outputs)
-            .prop_map(|(inputs, outputs)| Append {
-                inputs: inputs.try_into().unwrap(),
-                outputs: outputs.try_into().unwrap(),
             })
             .boxed()
     }

@@ -6,6 +6,7 @@ use rand::{prelude::*, rngs::OsRng};
 
 use crate::protocol::*;
 
+#[cfg(test)]
 #[macro_export]
 macro_rules! test_encode_bytes {
     ($t:ty) => {
@@ -20,6 +21,7 @@ macro_rules! test_encode_bytes {
     };
 }
 
+#[cfg(test)]
 #[macro_export]
 macro_rules! test_encode_fields {
     ($t:ty) => {

@@ -3,8 +3,6 @@ mod error;
 pub mod mint;
 pub mod protocol;
 pub mod wallet;
-
-#[cfg(test)]
 pub mod testing;
 
 pub use self::{
