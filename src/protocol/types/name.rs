@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::Hash;
 use crate::{protocol::*, Decode, DecodeFields, Encode, EncodeFields, Error};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Name(#[serde(with = "hex::serde")] [u8; 32]);

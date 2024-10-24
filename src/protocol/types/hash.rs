@@ -7,7 +7,9 @@ use test_strategy::Arbitrary;
 
 use crate::{protocol::*, Decode, DecodeFields, Encode, EncodeFields, Error};
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary, Hash,
+)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Hash(#[serde(with = "hex::serde")] [u8; 32]);
