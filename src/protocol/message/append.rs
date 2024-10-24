@@ -12,13 +12,22 @@ pub struct Append<const I: usize, const O: usize> {
     pub outputs: [Note; O],
 }
 
+pub struct Payload {
+    outputs: Vec<BlindedValue>,
+}
+
+impl EncodeFields for Payload {
+    fn as_fields(&self) -> Vec<F> {
+        self.outputs.iter().flat_map(|x| x.as_fields()).collect()
+    }
+}
+
 impl<const I: usize, const O: usize> Append<I, O> {
     pub fn payload(&self) -> Payload {
         let key = self.inputs.first().map(|x| x.issuing_key).unwrap();
 
         // TODO: the r should be kept to the future so it can be used to unblind
         Payload {
-            inputs: self.inputs.iter().map(|x| x.signature).collect(),
             outputs: self
                 .outputs
                 .iter()
@@ -158,6 +167,8 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
 
         for _ in 0..O {
             let (commitment, fields) = circuit_seal_note(&mut builder);
+            builder.register_public_inputs(&commitment.elements);
+
             outputs.push(Atom {
                 commitment,
                 fields: fields.try_into().unwrap(),
@@ -224,17 +235,12 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
 
         // Set input values
         for (i, input) in self.inputs.iter().enumerate() {
-            let commitment = PoseidonHash::hash_no_pad(&input.note.as_fields_with_prefix());
-
-            pw.set_hash_target(circuit.inputs[i].commitment, commitment);
             pw.set_target_arr(&circuit.inputs[i].fields, &input.note.as_fields());
         }
 
         // Set output values
         for (i, output) in self.outputs.iter().enumerate() {
-            let commitment = PoseidonHash::hash_no_pad(&output.as_fields_with_prefix());
-
-            pw.set_hash_target(circuit.outputs[i].commitment, commitment);
+            pw.set_hash_target(circuit.outputs[i].commitment, output.hash().into());
             pw.set_target_arr(&circuit.outputs[i].fields, &output.as_fields());
         }
 

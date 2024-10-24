@@ -99,7 +99,6 @@ pub(crate) fn circuit_seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget,
         ]
         .concat(),
     );
-    builder.register_public_inputs(&commitment.elements);
 
     // Assert amount is non-zero
     let is_zero = builder.is_equal(amount[0], zero);

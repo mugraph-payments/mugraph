@@ -147,6 +147,7 @@ impl Sealable for Note {
         let mut builder = CircuitBuilder::new(config);
 
         let (commitment, targets) = circuit_seal_note(&mut builder);
+        builder.register_public_inputs(&commitment.elements);
 
         let data = builder.build::<C>();
 
