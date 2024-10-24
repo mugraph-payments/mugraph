@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crypto::hash_to_curve;
 use curve25519_dalek::{
     constants::RISTRETTO_BASEPOINT_POINT as G,
     ristretto::{CompressedRistretto, RistrettoPoint},
