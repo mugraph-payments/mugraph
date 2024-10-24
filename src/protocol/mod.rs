@@ -32,7 +32,10 @@ pub use plonky2::{
     iop::witness::WitnessWrite,
     plonk::config::Hasher,
 };
-use plonky2::{hash::hash_types::HashOutTarget, iop::target::Target};
+use plonky2::{
+    hash::hash_types::HashOutTarget,
+    iop::target::{BoolTarget, Target},
+};
 
 pub(crate) fn circuit_builder() -> CircuitBuilder {
     let config = CircuitConfig::standard_recursion_config();
@@ -75,4 +78,52 @@ pub(crate) fn circuit_hash_to_curve(builder: &mut CircuitBuilder, data: &[Target
     let t1 = builder.constant(prefix[1]);
 
     builder.hash_n_to_hash_no_pad::<PoseidonHash>([&[t0, t1], data].concat())
+}
+
+pub(crate) fn circuit_seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
+    let zero = builder.zero();
+
+    // Private inputs
+    let mut targets = builder.add_virtual_targets(Note::FIELD_SIZE);
+    let (amount, rest) = targets.split_at_mut(1);
+    let (asset_id, rest) = rest.split_at_mut(4);
+    let (asset_name, nonce) = rest.split_at_mut(4);
+
+    // Public input
+    let commitment = circuit_hash_to_curve(
+        builder,
+        &[
+            amount.to_vec(),
+            asset_id.to_vec(),
+            asset_name.to_vec(),
+            nonce.to_vec(),
+        ]
+        .concat(),
+    );
+    builder.register_public_inputs(&commitment.elements);
+
+    // Assert amount is non-zero
+    let is_zero = builder.is_equal(amount[0], zero);
+    builder.assert_zero(is_zero.target);
+
+    let asset_id_not_zero = hash_is_zero(builder, asset_id);
+    builder.assert_zero(asset_id_not_zero.target);
+    let asset_name_not_zero = hash_is_zero(builder, asset_name);
+    builder.assert_zero(asset_name_not_zero.target);
+    let nonce_not_zero = hash_is_zero(builder, nonce);
+    builder.assert_zero(nonce_not_zero.target);
+
+    (commitment, targets)
+}
+
+fn hash_is_zero(builder: &mut CircuitBuilder, targets: &[Target]) -> BoolTarget {
+    let zero = builder.zero();
+    let mut target = builder._true();
+
+    for input in targets {
+        let is_zero = builder.is_equal(*input, zero);
+        target = builder.and(target, is_zero);
+    }
+
+    target
 }

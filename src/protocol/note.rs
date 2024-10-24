@@ -3,7 +3,7 @@ use std::fmt;
 use plonky2::{
     hash::{hash_types::HashOutTarget, poseidon::PoseidonHash},
     iop::{
-        target::{BoolTarget, Target},
+        target::Target,
         witness::{PartialWitness, WitnessWrite},
     },
     plonk::{circuit_data::CircuitConfig, config::Hasher},
@@ -133,23 +133,8 @@ impl fmt::Debug for Note {
 
 pub struct Circuit {
     data: CircuitData,
-    asset_id: HashOutTarget,
-    asset_name: HashOutTarget,
-    amount: Target,
-    nonce: HashOutTarget,
+    targets: Vec<Target>,
     commitment: HashOutTarget,
-}
-
-fn hash_is_zero(builder: &mut CircuitBuilder, hash: HashOutTarget) -> BoolTarget {
-    let zero = builder.zero();
-    let mut target = builder._true();
-
-    for i in 0..hash.elements.len() {
-        let is_zero = builder.is_equal(hash.elements[i], zero);
-        target = builder.and(target, is_zero);
-    }
-
-    target
 }
 
 impl Sealable for Note {
@@ -159,46 +144,13 @@ impl Sealable for Note {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::new(config);
 
-        let zero = builder.zero();
-
-        // Private inputs
-        let amount = builder.add_virtual_target();
-        let asset_id = builder.add_virtual_hash();
-        let asset_name = builder.add_virtual_hash();
-        let nonce = builder.add_virtual_hash();
-
-        // Public input
-        let commitment = circuit_hash_to_curve(
-            &mut builder,
-            &[
-                vec![amount],
-                asset_id.elements.to_vec(),
-                asset_name.elements.to_vec(),
-                nonce.elements.to_vec(),
-            ]
-            .concat(),
-        );
-        builder.register_public_inputs(&commitment.elements);
-
-        // Assert amount is non-zero
-        let is_zero = builder.is_equal(amount, zero);
-        builder.assert_zero(is_zero.target);
-
-        let asset_id_not_zero = hash_is_zero(&mut builder, asset_id);
-        builder.assert_zero(asset_id_not_zero.target);
-        let asset_name_not_zero = hash_is_zero(&mut builder, asset_name);
-        builder.assert_zero(asset_name_not_zero.target);
-        let nonce_not_zero = hash_is_zero(&mut builder, nonce);
-        builder.assert_zero(nonce_not_zero.target);
+        let (commitment, targets) = circuit_seal_note(&mut builder);
 
         let data = builder.build::<C>();
 
         Circuit {
             data,
-            asset_id,
-            asset_name,
-            amount,
-            nonce,
+            targets,
             commitment,
         }
     }
@@ -209,15 +161,10 @@ impl Sealable for Note {
 
     fn prove(&self) -> Result<Proof, Error> {
         let circuit = Self::circuit();
+        let commitment = PoseidonHash::hash_no_pad(&self.as_fields_with_prefix());
 
         let mut pw = PartialWitness::new();
-
-        pw.set_target(circuit.amount, F::from_canonical_u64(self.amount));
-        pw.set_hash_target(circuit.asset_id, self.asset_id.into());
-        pw.set_hash_target(circuit.asset_name, self.asset_name.into());
-        pw.set_hash_target(circuit.nonce, self.nonce.into());
-
-        let commitment = PoseidonHash::hash_no_pad(&self.as_fields_with_prefix());
+        pw.set_target_arr(&circuit.targets, &self.as_fields());
         pw.set_hash_target(circuit.commitment, commitment);
 
         unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
