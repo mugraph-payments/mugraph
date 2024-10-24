@@ -2,6 +2,7 @@ use std::fmt;
 
 use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
+use rand::{prelude::*, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
@@ -43,6 +44,10 @@ impl Hash {
 
     pub fn inner(&self) -> [u8; 32] {
         self.0
+    }
+
+    pub fn random() -> Self {
+        Self((&mut OsRng).gen())
     }
 }
 

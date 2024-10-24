@@ -47,9 +47,6 @@ impl Mint {
 
     pub fn apply(&mut self, message: &Message) -> Result<Vec<Signature>, Error> {
         match message.method {
-            Method::Redeem => {
-                todo!("Implement redeem logic");
-            }
             Method::Append => todo!(),
         }
     }

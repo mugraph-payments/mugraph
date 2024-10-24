@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use curve25519_dalek::Scalar;
-use proptest::{collection::vec, prelude::*};
+use proptest::{collection::vec, prelude::*, strategy::Just};
 use rand::{prelude::*, rngs::OsRng};
 
 use crate::{protocol::*, unwind_panic};
@@ -9,8 +11,6 @@ pub struct Append<const I: usize, const O: usize> {
     pub inputs: [SealedNote; I],
     pub outputs: [Note; O],
 }
-
-use std::collections::HashMap;
 
 impl<const I: usize, const O: usize> Append<I, O> {
     pub fn is_valid(&self) -> bool {
@@ -97,51 +97,54 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
             }
 
             // Generate O output notes that balance with inputs
-            vec(any::<Note>(), O..=O).prop_map(move |mut outputs| {
-                let mut remaining = balances.clone();
+            let mut outputs = Vec::with_capacity(O);
+            let mut remaining_balances = balances.clone();
 
-                // Distribute amounts across outputs
-                for output in &mut outputs {
-                    if let Some(&(asset_id, asset_name)) = remaining.keys().next() {
-                        let balance = remaining.get_mut(&(asset_id, asset_name)).unwrap();
-                        output.asset_id = asset_id;
-                        output.asset_name = asset_name;
+            // Distribute amounts across outputs
+            while outputs.len() < O && !remaining_balances.is_empty() {
+                let (&(asset_id, asset_name), balance) =
+                    remaining_balances.iter_mut().next().unwrap();
 
-                        // Ensure non-zero amount that doesn't exceed remaining balance
-                        output.amount = if *balance > 1 {
-                            let max = (*balance).min(u64::MAX as u128) as u64;
-
-                            if max > 1 {
-                                (1..max).choose(&mut OsRng).unwrap()
-                            } else {
-                                1
-                            }
-                        } else {
-                            1
-                        };
-
-                        *balance -= output.amount as u128;
-
-                        // Remove if fully distributed
-                        if *balance == 0 {
-                            remaining.remove(&(asset_id, asset_name));
-                        }
+                // Generate a random amount that doesn't exceed the remaining balance
+                let amount = if *balance > 1 {
+                    let max = (*balance).min(u64::MAX as u128) as u64;
+                    if max > 1 {
+                        (1..max).choose(&mut OsRng).unwrap()
+                    } else {
+                        1
                     }
+                } else {
+                    1
+                };
+
+                *balance -= amount as u128;
+
+                // Remove if fully distributed
+                if *balance == 0 {
+                    remaining_balances.remove(&(asset_id, asset_name));
                 }
 
-                // Distribute any remaining amounts
-                for (output, (&(asset_id, asset_name), balance)) in outputs
-                    .iter_mut()
-                    .zip(remaining.iter())
-                    .filter(|(_, (_, balance))| **balance > 0)
-                {
-                    output.asset_id = asset_id;
-                    output.asset_name = asset_name;
-                    output.amount = *balance as u64;
-                }
+                outputs.push(Note {
+                    asset_id,
+                    asset_name,
+                    amount,
+                    nonce: Hash::random(),
+                });
+            }
 
-                outputs
-            })
+            // Fill remaining outputs with the last asset if needed
+            while outputs.len() < O {
+                let last = outputs.last().unwrap();
+
+                outputs.push(Note {
+                    asset_id: last.asset_id,
+                    asset_name: last.asset_name,
+                    amount: 1,
+                    nonce: Hash::random(),
+                });
+            }
+
+            Just(outputs)
         });
 
         // Combine inputs and outputs into Append
@@ -310,7 +313,6 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
     use test_strategy::proptest;
 
     use super::*;

@@ -65,7 +65,7 @@ pub fn magic_prefix() -> [F; 2] {
 ///
 /// Returns an `RistrettoPoint` representing the hashed note on the curve.
 pub fn hash_to_curve(note: &Note) -> Result<RistrettoPoint, Error> {
-    let hash: Hash = PoseidonHash::hash_no_pad(&note.as_fields()).into();
+    let hash: Hash = PoseidonHash::hash_no_pad(&note.as_fields_with_prefix()).into();
     let res = Scalar::from_bytes_mod_order(hash.as_bytes().try_into().unwrap());
 
     Ok(res * G)

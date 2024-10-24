@@ -3,10 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{protocol::*, Error};
 
 mod append;
-mod redeem;
 
 pub use append::{Append, Circuit as AppendCircuit};
-pub use redeem::{Circuit as RedeemCircuit, Redeem};
 
 pub trait ToMessage: Sealable {
     fn method() -> Method;
@@ -18,14 +16,15 @@ pub trait ToMessage: Sealable {
                 &Self::circuit_data().verifier_only.circuit_digest.elements,
             )?,
             seal: self.seal()?,
-            payload: todo!(),
+            payload: Payload {
+                inputs: vec![],
+                outputs: vec![],
+            },
         })
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum Method {
-    #[serde(rename = "mu.v1.redeem")]
-    Redeem,
     #[serde(rename = "mu.v1.append")]
     Append,
 }
