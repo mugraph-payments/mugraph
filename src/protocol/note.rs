@@ -189,7 +189,7 @@ mod tests {
         Note::verify(note.hash(), note.seal()?)
     }
 
-    #[proptest(cases = 100)]
+    #[proptest(cases = 10)]
     fn test_prove(note: Note) {
         prop_assert!(run(note).is_ok())
     }

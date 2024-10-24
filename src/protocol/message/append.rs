@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use curve25519_dalek::Scalar;
-use proptest::{collection::vec, prelude::*, strategy::Just};
-use rand::{prelude::*, rngs::OsRng};
+use proptest::prelude::*;
+use rand::rngs::OsRng;
 
 use crate::{protocol::*, testing::distribute, unwind_panic};
 
@@ -14,36 +14,21 @@ pub struct Append<const I: usize, const O: usize> {
 
 impl<const I: usize, const O: usize> Append<I, O> {
     pub fn is_valid(&self) -> bool {
-        let mut balance: HashMap<(Hash, Name), i128> = HashMap::new();
+        let mut pre = HashMap::new();
+        let mut post = HashMap::new();
 
-        for input in &self.inputs {
-            let amount = input.note.amount;
-
-            if amount == 0 {
-                return false;
-            }
-
-            balance
-                .entry((input.note.asset_id, input.note.asset_name))
-                .and_modify(|x| *x += amount as i128)
-                .or_insert(amount as i128);
+        for input in self.inputs.iter() {
+            *pre.entry((input.note.asset_id, input.note.asset_name))
+                .or_insert(0u128) += input.note.amount as u128;
         }
 
-        for output in &self.outputs {
-            let amount = output.amount;
-
-            if amount == 0 {
-                return false;
-            }
-
-            balance
+        for output in self.outputs.iter() {
+            *post
                 .entry((output.asset_id, output.asset_name))
-                .and_modify(|x| *x -= amount as i128)
-                .or_insert(-1);
+                .or_insert(0u128) += output.amount as u128;
         }
 
-        // Check if all sums are zero
-        balance.values().all(|&sum| sum == 0)
+        pre.values().sum::<u128>() == post.values().sum::<u128>()
     }
 }
 

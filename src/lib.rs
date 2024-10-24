@@ -2,8 +2,8 @@ mod error;
 
 pub mod mint;
 pub mod protocol;
-pub mod wallet;
 pub mod testing;
+pub mod wallet;
 
 pub use self::{
     error::Error,
