@@ -75,14 +75,21 @@ pub(crate) fn distribute(
     assert_ne!(outputs, 0);
     assert!(
         inputs < u8::MAX as usize,
-        "Input count should never be too big."
+        "Input count should never be too big"
     );
     assert!(
         outputs < u8::MAX as usize,
-        "Output count should never be too big."
+        "Output count should never be too big"
     );
 
-    let input_notes = vec(any::<Note>(), min(inputs, outputs));
+    let i = inputs;
+    let input_notes = vec(
+        any::<Note>().prop_map(move |mut n| {
+            n.amount = n.amount % (u64::MAX / i as u64);
+            n
+        }),
+        min(inputs, outputs),
+    );
     let output_nonces = vec(any::<Hash>(), outputs);
 
     (input_notes, output_nonces).prop_flat_map(move |(notes, nonces)| {
@@ -122,8 +129,9 @@ mod tests {
 
     #[proptest]
     fn test_distribute_numbers(
-        #[strategy(1u64..)] amount: u64,
-        #[strategy(1usize..u8::MAX as usize)] output_count: usize,
+        #[strategy(1u64..=u64::MAX as u64)] amount: u64,
+        #[strategy(((#amount / u64::MAX as u64) + 1..u8::MAX as u64).prop_map(|o| o as usize))]
+        output_count: usize,
         #[strategy(distribute_numbers(#amount, #output_count))] numbers: Vec<u64>,
     ) {
         prop_assert_eq!(numbers.len(), output_count);
@@ -141,15 +149,16 @@ mod tests {
         let (inputs, outputs) = notes;
 
         for input in inputs {
-            *pre.entry((input.asset_id, input.asset_name)).or_insert(0) += input.amount;
+            *pre.entry((input.asset_id, input.asset_name))
+                .or_insert(0u128) += input.amount as u128;
         }
 
         for output in outputs {
             *post
                 .entry((output.asset_id, output.asset_name))
-                .or_insert(0) += output.amount;
+                .or_insert(0u128) += output.amount as u128;
         }
 
-        prop_assert_eq!(pre.values().sum::<u64>(), post.values().sum::<u64>());
+        prop_assert_eq!(pre.values().sum::<u128>(), post.values().sum::<u128>());
     }
 }
