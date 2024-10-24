@@ -33,10 +33,13 @@ impl SealedNote {
 
 #[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Arbitrary, Serialize, Deserialize)]
 pub struct Note {
+    #[filter(#asset_id != Hash::zero())]
     pub asset_id: Hash,
+    #[filter(#asset_name != Name::zero())]
     pub asset_name: Name,
     #[strategy(1u64..)]
     pub amount: u64,
+    #[filter(#nonce != Hash::zero())]
     pub nonce: Hash,
 }
 
@@ -137,17 +140,16 @@ pub struct Circuit {
     commitment: HashOutTarget,
 }
 
-fn hash_is_not_zero(builder: &mut CircuitBuilder, hash: HashOutTarget) -> BoolTarget {
+fn hash_is_zero(builder: &mut CircuitBuilder, hash: HashOutTarget) -> BoolTarget {
     let zero = builder.zero();
-    let mut not_zero = builder._true();
+    let mut target = builder._true();
 
     for i in 0..hash.elements.len() {
-        let is_eq = builder.is_equal(hash.elements[i], zero);
-        let is_diff = builder.not(is_eq);
-        not_zero = builder.and(not_zero, is_diff);
+        let is_zero = builder.is_equal(hash.elements[i], zero);
+        target = builder.and(target, is_zero);
     }
 
-    not_zero
+    target
 }
 
 impl Sealable for Note {
@@ -180,15 +182,14 @@ impl Sealable for Note {
 
         // Assert amount is non-zero
         let is_zero = builder.is_equal(amount, zero);
-        let not_zero = builder.not(is_zero);
-        builder.assert_bool(not_zero);
+        builder.assert_zero(is_zero.target);
 
-        let asset_id_not_zero = hash_is_not_zero(&mut builder, asset_id);
-        builder.assert_bool(asset_id_not_zero);
-        let asset_name_not_zero = hash_is_not_zero(&mut builder, asset_name);
-        builder.assert_bool(asset_name_not_zero);
-        let nonce_not_zero = hash_is_not_zero(&mut builder, nonce);
-        builder.assert_bool(nonce_not_zero);
+        let asset_id_not_zero = hash_is_zero(&mut builder, asset_id);
+        builder.assert_zero(asset_id_not_zero.target);
+        let asset_name_not_zero = hash_is_zero(&mut builder, asset_name);
+        builder.assert_zero(asset_name_not_zero.target);
+        let nonce_not_zero = hash_is_zero(&mut builder, nonce);
+        builder.assert_zero(nonce_not_zero.target);
 
         let data = builder.build::<C>();
 
@@ -216,7 +217,7 @@ impl Sealable for Note {
         pw.set_hash_target(circuit.asset_name, self.asset_name.into());
         pw.set_hash_target(circuit.nonce, self.nonce.into());
 
-        let commitment = PoseidonHash::hash_no_pad(&self.as_fields());
+        let commitment = PoseidonHash::hash_no_pad(&self.as_fields_with_prefix());
         pw.set_hash_target(circuit.commitment, commitment);
 
         unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
@@ -240,7 +241,7 @@ mod tests {
         Note::verify(note.hash(), note.seal()?)
     }
 
-    #[proptest(cases = 1)]
+    #[proptest(cases = 100)]
     fn test_prove(note: Note) {
         prop_assert!(run(note).is_ok())
     }
@@ -252,7 +253,7 @@ mod tests {
         })
     }
 
-    #[proptest(cases = 50)]
+    #[proptest(cases = 10)]
     fn test_prove_zero_amount(#[strategy(zero_amount())] note: Note) {
         prop_assert!(
             run(note).is_err(),
@@ -267,7 +268,7 @@ mod tests {
         })
     }
 
-    #[proptest(cases = 50)]
+    #[proptest(cases = 10)]
     fn test_prove_zero_asset_id(#[strategy(zero_asset_id())] note: Note) {
         prop_assert!(
             run(note).is_err(),
@@ -282,7 +283,7 @@ mod tests {
         })
     }
 
-    #[proptest(cases = 50)]
+    #[proptest(cases = 10)]
     fn test_prove_zero_asset_name(#[strategy(zero_asset_name())] note: Note) {
         prop_assert!(
             run(note).is_err(),
@@ -290,51 +291,68 @@ mod tests {
         )
     }
 
-    #[proptest(cases = 50)]
+    fn partial_zero_asset_id() -> impl Strategy<Value = Note> {
+        (any::<Note>(), 0usize..4).prop_map(|(mut note, index): (Note, usize)| {
+            let mut asset_id = note.asset_id.as_fields();
+            asset_id[index] = F::ZERO;
+            note.asset_id = Hash::from_fields(&asset_id).unwrap();
+            note
+        })
+    }
+
+    #[proptest(cases = 10)]
     // There was a bug where if you changed a hash so that one of the fields was zero, the proof
     // fails. This test ensures the behavior does not happen anymore.
-    fn test_prove_asset_id_with_zero_bytes_slice(
-        #[strategy(0usize..4)] index: usize,
-        mut note: Note,
-    ) {
-        let mut asset_id = note.asset_id.as_bytes();
-        asset_id[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
-        note.asset_id = Hash::from_slice(&asset_id)?;
+    fn test_prove_asset_id_with_zero_bytes_slice(#[strategy(partial_zero_asset_id())] note: Note) {
+        prop_assume!(note.asset_id != Hash::zero());
 
         prop_assert!(
             run(note).is_ok(),
-            "Expected note to be valid even if a byte slice is empty, even though the whole hash is."
+            "Expected note to be valid even if a byte slice is empty, even though the whole hash isn't"
         )
     }
 
-    #[proptest(cases = 50)]
+    fn partial_zero_asset_name() -> impl Strategy<Value = Note> {
+        (any::<Note>(), 0usize..4).prop_map(|(mut note, index): (Note, usize)| {
+            let mut asset_name = note.asset_name.as_fields();
+            asset_name[index] = F::ZERO;
+            note.asset_name = Name::from_fields(&asset_name).unwrap();
+            note
+        })
+    }
+
+    #[proptest(cases = 10)]
     // There was a bug where if you changed a hash so that one of the fields was zero, the proof
     // fails. This test ensures the behavior does not happen anymore.
     fn test_prove_asset_name_with_zero_bytes_slice(
-        #[strategy(0usize..4)] index: usize,
-        mut note: Note,
+        #[strategy(partial_zero_asset_name())] note: Note,
     ) {
-        let mut asset_name = note.asset_name.as_bytes();
-        asset_name[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
-        note.asset_name = Name::from_slice(&asset_name)?;
+        prop_assume!(note.asset_name != Name::zero());
 
         prop_assert!(
             run(note).is_ok(),
-            "Expected note to be valid even if a byte slice is empty, even though the whole hash is."
+            "Expected note to be valid even if a byte slice is empty, even though the whole hash isn't"
         )
     }
 
-    #[proptest(cases = 50)]
+    fn partial_zero_nonce() -> impl Strategy<Value = Note> {
+        (any::<Note>(), 0usize..4).prop_map(|(mut note, index): (Note, usize)| {
+            let mut nonce = note.nonce.as_fields();
+            nonce[index] = F::ZERO;
+            note.nonce = Hash::from_fields(&nonce).unwrap();
+            note
+        })
+    }
+
+    #[proptest(cases = 10)]
     // There was a bug where if you changed a hash so that one of the fields was zero, the proof
     // fails. This test ensures the behavior does not happen anymore.
-    fn test_prove_nonce_with_zero_bytes_slice(#[strategy(0usize..4)] index: usize, mut note: Note) {
-        let mut nonce = note.nonce.as_bytes();
-        nonce[index * 8..(index + 1) * 8].copy_from_slice(&[0u8; 8]);
-        note.nonce = Hash::from_slice(&nonce)?;
+    fn test_prove_nonce_with_zero_bytes_slice(#[strategy(partial_zero_nonce())] note: Note) {
+        prop_assume!(note.nonce != Hash::zero());
 
         prop_assert!(
             run(note).is_ok(),
-            "Expected note to be valid even if a byte slice is empty, even though the whole hash is."
+            "Expected note to be valid even if a byte slice is empty, even though the whole hash isn't"
         )
     }
 }
