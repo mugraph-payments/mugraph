@@ -1,5 +1,8 @@
+use proptest::{collection::vec, prelude::*};
+
 use crate::{protocol::*, unwind_panic};
 
+#[derive(Debug)]
 pub struct Append<const I: usize, const O: usize> {
     pub inputs: [SealedNote; I],
     pub outputs: [Note; O],
@@ -55,6 +58,33 @@ impl<const I: usize, const O: usize> EncodeFields for Append<I, O> {
         }
 
         fields
+    }
+}
+
+impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
+    type Parameters = SecretKey;
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(key: Self::Parameters) -> Self::Strategy {
+        todo!(
+            r#"
+        This method should generate an Append<I, O>, with some rules:
+
+        - Notes have `asset_id` (Hash), `asset_name` (Name), `amount` (u64), `nonce` (Hash)
+        - Input notes must have at most O asset ids (so the outputs can contain all input assets)
+        - Per `asset_id` AND `asset_name`, the amounts on the inputs should balance the amounts on the outputs
+        - All amounts must be non-zero
+        - The number of inputs must be I and the number of outputs must be O
+        - The nonce for each note should be unique/random
+        - Use the provided secret_key to generate valid signatures for the input notes.
+        "#
+        );
+    }
+
+    fn arbitrary() -> Self::Strategy {
+        any::<SecretKey>()
+            .prop_flat_map(Self::arbitrary_with)
+            .boxed()
     }
 }
 

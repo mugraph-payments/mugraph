@@ -20,6 +20,7 @@ use crate::{protocol::*, unwind_panic, Decode, Encode, EncodeFields, Error};
 pub struct SealedNote {
     pub issuing_key: PublicKey,
     pub host: String,
+    #[strategy(1u16..)]
     pub port: u16,
     pub note: Note,
     pub signature: Signature,

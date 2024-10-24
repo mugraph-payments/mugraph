@@ -38,7 +38,9 @@ fn benchmark_sealable<T: Sealable + Arbitrary>(c: &mut Criterion) {
 
 fn benchmark(c: &mut Criterion) {
     benchmark_sealable::<Note>(c);
-    benchmark_sealable::<Redeem>(c);
+    benchmark_sealable::<Append<2, 2>>(c);
+    benchmark_sealable::<Append<4, 4>>(c);
+    benchmark_sealable::<Append<8, 8>>(c);
 }
 
 criterion_group!(benches, benchmark);
