@@ -16,6 +16,7 @@ use crate::Error;
 
 pub const D: usize = 2;
 
+pub const G: RistrettoPoint = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 pub type C = plonky2::plonk::config::PoseidonGoldilocksConfig;
 pub type F = <C as plonky2::plonk::config::GenericConfig<D>>::F;
 pub type Proof = plonky2::plonk::proof::ProofWithPublicInputs<F, C, D>;
@@ -25,7 +26,7 @@ pub type Seal = plonky2::plonk::proof::CompressedProof<F, C, D>;
 pub type CircuitConfig = plonky2::plonk::circuit_data::CircuitConfig;
 pub type PartialWitness = plonky2::iop::witness::PartialWitness<F>;
 
-use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint};
+use curve25519_dalek::{RistrettoPoint, Scalar};
 pub use plonky2::{
     field::types::{Field, PrimeField64},
     hash::poseidon::PoseidonHash,
@@ -65,11 +66,9 @@ pub fn magic_prefix() -> [F; 2] {
 /// Returns an `RistrettoPoint` representing the hashed note on the curve.
 pub fn hash_to_curve(note: &Note) -> Result<RistrettoPoint, Error> {
     let hash: Hash = PoseidonHash::hash_no_pad(&note.as_fields()).into();
+    let res = Scalar::from_bytes_mod_order(hash.as_bytes().try_into().unwrap());
 
-    CompressedRistretto::from_slice(&hash.inner())
-        .map_err(|e| Error::DecodeError(e.to_string()))?
-        .decompress()
-        .ok_or(Error::DecodeError("Failed to decompress hash".to_string()))
+    Ok(res * G)
 }
 
 pub(crate) fn circuit_hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {

@@ -1,4 +1,6 @@
+use curve25519_dalek::Scalar;
 use proptest::{collection::vec, prelude::*};
+use rand::{prelude::*, rngs::OsRng};
 
 use crate::{protocol::*, unwind_panic};
 
@@ -65,20 +67,90 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
     type Parameters = SecretKey;
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(key: Self::Parameters) -> Self::Strategy {
-        todo!(
-            r#"
-        This method should generate an Append<I, O>, with some rules:
+    fn arbitrary_with(secret_key: Self::Parameters) -> Self::Strategy {
+        let input_notes = (vec((any::<Hash>(), any::<SealedNote>()), I..=I)).prop_map(move |notes| {
+            notes
+                .into_iter()
+                .map(|(r, note)| {
+                    let r: Scalar = r.into();
+                    let blinded = secret_key.public().blind(note.note.clone(), &r).unwrap();
+                    let blind_sig = secret_key.sign_blinded(blinded);
+                    let signature = secret_key.public().unblind(blind_sig, r);
 
-        - Notes have `asset_id` (Hash), `asset_name` (Name), `amount` (u64), `nonce` (Hash)
-        - Input notes must have at most O asset ids (so the outputs can contain all input assets)
-        - Per `asset_id` AND `asset_name`, the amounts on the inputs should balance the amounts on the outputs
-        - All amounts must be non-zero
-        - The number of inputs must be I and the number of outputs must be O
-        - The nonce for each note should be unique/random
-        - Use the provided secret_key to generate valid signatures for the input notes.
-        "#
-        );
+                    SealedNote {
+                        issuing_key: secret_key.public(),
+                        host: note.host,
+                        port: note.port,
+                        note: note.note,
+                        signature,
+                    }
+                })
+                .collect::<Vec<_>>()
+        });
+
+        let outputs = input_notes.clone().prop_flat_map(move |inputs| {
+            // Group inputs by asset_id and asset_name
+            let mut balances: HashMap<(Hash, Name), u128> = HashMap::new();
+            for input in &inputs {
+                let key = (input.note.asset_id, input.note.asset_name);
+                *balances.entry(key).or_default() += input.note.amount as u128;
+            }
+
+            // Generate O output notes that balance with inputs
+            vec(any::<Note>(), O..=O).prop_map(move |mut outputs| {
+                let mut remaining = balances.clone();
+
+                // Distribute amounts across outputs
+                for output in &mut outputs {
+                    if let Some(&(asset_id, asset_name)) = remaining.keys().next() {
+                        let balance = remaining.get_mut(&(asset_id, asset_name)).unwrap();
+                        output.asset_id = asset_id;
+                        output.asset_name = asset_name;
+
+                        // Ensure non-zero amount that doesn't exceed remaining balance
+                        output.amount = if *balance > 1 {
+                            let max = (*balance).min(u64::MAX as u128) as u64;
+
+                            if max > 1 {
+                                (1..max).choose(&mut OsRng).unwrap()
+                            } else {
+                                1
+                            }
+                        } else {
+                            1
+                        };
+
+                        *balance -= output.amount as u128;
+
+                        // Remove if fully distributed
+                        if *balance == 0 {
+                            remaining.remove(&(asset_id, asset_name));
+                        }
+                    }
+                }
+
+                // Distribute any remaining amounts
+                for (output, (&(asset_id, asset_name), balance)) in outputs
+                    .iter_mut()
+                    .zip(remaining.iter())
+                    .filter(|(_, (_, balance))| **balance > 0)
+                {
+                    output.asset_id = asset_id;
+                    output.asset_name = asset_name;
+                    output.amount = *balance as u64;
+                }
+
+                outputs
+            })
+        });
+
+        // Combine inputs and outputs into Append
+        (input_notes, outputs)
+            .prop_map(|(inputs, outputs)| Append {
+                inputs: inputs.try_into().unwrap(),
+                outputs: outputs.try_into().unwrap(),
+            })
+            .boxed()
     }
 
     fn arbitrary() -> Self::Strategy {
@@ -202,13 +274,14 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         // Set input values
         for (i, input) in self.inputs.iter().enumerate() {
             // Set commitment
-            let commitment = PoseidonHash::hash_no_pad(&input.note.as_fields());
+            let commitment = PoseidonHash::hash_no_pad(&input.note.as_fields_with_prefix());
+
             for (j, element) in commitment.elements.iter().enumerate() {
                 pw.set_target(circuit.inputs[i].commitment[j], *element);
             }
 
             // Set fields
-            for (j, field) in input.note.as_fields().iter().enumerate() {
+            for (j, field) in input.note.as_fields_with_prefix().iter().enumerate() {
                 pw.set_target(circuit.inputs[i].fields[j], *field);
             }
         }
@@ -216,13 +289,14 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         // Set output values
         for (i, output) in self.outputs.iter().enumerate() {
             // Set commitment
-            let commitment = PoseidonHash::hash_no_pad(&output.as_fields());
+            let commitment = PoseidonHash::hash_no_pad(&output.as_fields_with_prefix());
+
             for (j, element) in commitment.elements.iter().enumerate() {
                 pw.set_target(circuit.outputs[i].commitment[j], *element);
             }
 
             // Set fields
-            for (j, field) in output.as_fields().iter().enumerate() {
+            for (j, field) in output.as_fields_with_prefix().iter().enumerate() {
                 pw.set_target(circuit.outputs[i].fields[j], *field);
             }
         }
@@ -240,4 +314,9 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
+
+    #[proptest(cases = 50)]
+    fn test_arbitrary_is_always_valid(append: Append<4, 4>) {
+        prop_assert!(append.is_valid());
+    }
 }
