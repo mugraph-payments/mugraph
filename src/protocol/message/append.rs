@@ -14,7 +14,7 @@ pub struct Append<const I: usize, const O: usize> {
 
 impl<const I: usize, const O: usize> Append<I, O> {
     pub fn is_valid(&self) -> bool {
-        let mut balance: HashMap<(Hash, Name), u128> = HashMap::new();
+        let mut balance: HashMap<(Hash, Name), i128> = HashMap::new();
 
         for input in &self.inputs {
             let amount = input.note.amount;
@@ -25,8 +25,8 @@ impl<const I: usize, const O: usize> Append<I, O> {
 
             balance
                 .entry((input.note.asset_id, input.note.asset_name))
-                .and_modify(|x| *x += amount as u128)
-                .or_insert(amount as u128);
+                .and_modify(|x| *x += amount as i128)
+                .or_insert(amount as i128);
         }
 
         for output in &self.outputs {
@@ -38,8 +38,8 @@ impl<const I: usize, const O: usize> Append<I, O> {
 
             balance
                 .entry((output.asset_id, output.asset_name))
-                .and_modify(|x| *x -= amount as u128)
-                .or_insert(u128::MAX);
+                .and_modify(|x| *x -= amount as i128)
+                .or_insert(-1);
         }
 
         // Check if all sums are zero

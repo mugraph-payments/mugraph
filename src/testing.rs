@@ -45,7 +45,7 @@ pub(crate) fn distribute_numbers(
         "Output count should never be too big."
     );
 
-    vec(1..=amount, output_count - 1).prop_map(move |mut v| {
+    vec(1..=amount / output_count as u64, output_count - 1).prop_map(move |mut v| {
         let sum: u64 = v.iter().sum();
         v.push(amount.saturating_sub(sum));
 
@@ -129,7 +129,7 @@ mod tests {
 
     #[proptest]
     fn test_distribute_numbers(
-        #[strategy(1u64..=u64::MAX as u64)] amount: u64,
+        #[strategy(1u64..=u64::MAX / 2)] amount: u64,
         #[strategy(((#amount / u64::MAX as u64) + 1..u8::MAX as u64).prop_map(|o| o as usize))]
         output_count: usize,
         #[strategy(distribute_numbers(#amount, #output_count))] numbers: Vec<u64>,
@@ -141,7 +141,7 @@ mod tests {
     #[proptest]
     fn test_distributed_notes_always_balance(
         #[strategy(1usize..64)] _i: usize,
-        #[strategy(1usize..#_i)] _o: usize,
+        #[strategy(1usize..=#_i)] _o: usize,
         #[strategy(distribute(#_i, #_o))] notes: (Vec<Note>, Vec<Note>),
     ) {
         let mut pre = HashMap::new();
