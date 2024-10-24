@@ -21,8 +21,8 @@ impl DleqProof {
         let r = Scalar::random(&mut rng);
         let secret_key: Scalar = secret_key.into();
 
-        let r1 = &r * &G;
-        let r2 = &r * b_prime;
+        let r1 = r * G;
+        let r2 = r * b_prime;
 
         let bytes = [
             Hash::new(*r1.compress().as_bytes()).as_fields(),
@@ -52,8 +52,8 @@ impl DleqProof {
         let e: Scalar = self.e.into();
         let s: Scalar = self.s.into();
 
-        let r1 = &s * G - &e * a;
-        let r2 = &s * b_prime - &e * c_prime;
+        let r1 = s * G - e * a;
+        let r2 = s * b_prime - e * c_prime;
 
         let bytes = [
             Hash::new(*r1.compress().as_bytes()).as_fields(),

@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::prelude::*,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
@@ -66,7 +66,7 @@ impl Config {
                 let key = SecretKey::random();
 
                 let mut file = File::create(&self.key_path)?;
-                file.write(&key.as_bytes())?;
+                file.write_all(&key.as_bytes())?;
 
                 key.as_bytes()
             }
