@@ -93,8 +93,26 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
 
 #[derive(Debug)]
 pub struct Atom {
-    pub commitment: [Target; 4],
-    pub fields: [Target; Note::FIELD_SIZE],
+    pub commitment: HashOutTarget,
+    pub fields: Vec<Target>,
+}
+
+impl Atom {
+    pub fn amount(&self) -> Target {
+        self.fields[0]
+    }
+
+    pub fn asset_id(&self) -> HashOutTarget {
+        HashOutTarget {
+            elements: self.fields[1..5].try_into().unwrap(),
+        }
+    }
+
+    pub fn asset_name(&self) -> HashOutTarget {
+        HashOutTarget {
+            elements: self.fields[5..9].try_into().unwrap(),
+        }
+    }
 }
 
 pub struct Circuit<const I: usize, const O: usize> {
@@ -112,11 +130,12 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         let mut inputs = vec![];
         let mut outputs = vec![];
 
-        // Create input and output atoms
+        // Create input and output atoms using the refined circuit_seal_note
         for _ in 0..I {
             let (commitment, fields) = circuit_seal_note(&mut builder);
+
             inputs.push(Atom {
-                commitment: commitment.elements,
+                commitment,
                 fields: fields.try_into().unwrap(),
             });
         }
@@ -124,37 +143,28 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         for _ in 0..O {
             let (commitment, fields) = circuit_seal_note(&mut builder);
             outputs.push(Atom {
-                commitment: commitment.elements,
+                commitment,
                 fields: fields.try_into().unwrap(),
             });
         }
 
         // For each unique asset_id/asset_name pair, verify sum of amounts matches
         for i in 0..I {
-            let input = &inputs[i];
-            let input_amount = input.fields[0]; // First field is amount
-            let input_asset_id = &input.fields[1..5]; // Next 4 fields are asset_id
-            let input_asset_name = &input.fields[5..9]; // Next 4 fields are asset_name
+            let mut input_sum = (&inputs[i]).amount();
 
-            // Sum up all input amounts for this asset
-            let mut input_sum = input_amount;
             for j in (i + 1)..I {
                 let other = &inputs[j];
-                let other_amount = other.fields[0];
-                let other_asset_id = &other.fields[1..5];
-                let other_asset_name = &other.fields[5..9];
 
-                // Check if assets match
-                let mut assets_match = builder._true();
-                for k in 0..4 {
-                    let id_match = builder.is_equal(input_asset_id[k], other_asset_id[k]);
-                    let name_match = builder.is_equal(input_asset_name[k], other_asset_name[k]);
-                    let both_match = builder.and(id_match, name_match);
-                    assets_match = builder.and(assets_match, both_match);
-                }
+                let assets_match = assets_match(
+                    &mut builder,
+                    inputs[i].asset_id(),
+                    inputs[i].asset_name(),
+                    other.asset_id(),
+                    other.asset_name(),
+                );
 
                 // Add amount if assets match
-                let should_add = builder.mul(assets_match.target, other_amount);
+                let should_add = builder.mul(assets_match.target, other.amount());
                 input_sum = builder.add(input_sum, should_add);
             }
 
@@ -162,21 +172,16 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
             let mut output_sum = builder.zero();
 
             for output in &outputs {
-                let output_amount = output.fields[0];
-                let output_asset_id = &output.fields[1..5];
-                let output_asset_name = &output.fields[5..9];
-
-                // Check if assets match
-                let mut assets_match = builder._true();
-                for k in 0..4 {
-                    let id_match = builder.is_equal(input_asset_id[k], output_asset_id[k]);
-                    let name_match = builder.is_equal(input_asset_name[k], output_asset_name[k]);
-                    let both_match = builder.and(id_match, name_match);
-                    assets_match = builder.and(assets_match, both_match);
-                }
+                let assets_match = assets_match(
+                    &mut builder,
+                    inputs[i].asset_id(),
+                    inputs[i].asset_name(),
+                    output.asset_id(),
+                    output.asset_name(),
+                );
 
                 // Add amount if assets match
-                let should_add = builder.mul(assets_match.target, output_amount);
+                let should_add = builder.mul(assets_match.target, output.amount());
                 output_sum = builder.add(output_sum, should_add);
             }
 
@@ -199,37 +204,22 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
 
     fn prove(&self) -> Result<Proof, Error> {
         let circuit = Self::circuit();
-
         let mut pw = PartialWitness::new();
 
         // Set input values
         for (i, input) in self.inputs.iter().enumerate() {
-            // Set commitment
             let commitment = PoseidonHash::hash_no_pad(&input.note.as_fields_with_prefix());
 
-            for (j, element) in commitment.elements.iter().enumerate() {
-                pw.set_target(circuit.inputs[i].commitment[j], *element);
-            }
-
-            // Set fields
-            for (j, field) in input.note.as_fields_with_prefix().iter().enumerate() {
-                pw.set_target(circuit.inputs[i].fields[j], *field);
-            }
+            pw.set_hash_target(circuit.inputs[i].commitment, commitment);
+            pw.set_target_arr(&circuit.inputs[i].fields, &input.note.as_fields());
         }
 
         // Set output values
         for (i, output) in self.outputs.iter().enumerate() {
-            // Set commitment
             let commitment = PoseidonHash::hash_no_pad(&output.as_fields_with_prefix());
 
-            for (j, element) in commitment.elements.iter().enumerate() {
-                pw.set_target(circuit.outputs[i].commitment[j], *element);
-            }
-
-            // Set fields
-            for (j, field) in output.as_fields_with_prefix().iter().enumerate() {
-                pw.set_target(circuit.outputs[i].fields[j], *field);
-            }
+            pw.set_hash_target(circuit.outputs[i].commitment, commitment);
+            pw.set_target_arr(&circuit.outputs[i].fields, &output.as_fields());
         }
 
         unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
@@ -237,6 +227,25 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
             reason: e.to_string(),
         }))
     }
+}
+
+fn assets_match(
+    builder: &mut CircuitBuilder,
+    id1: HashOutTarget,
+    name1: HashOutTarget,
+    id2: HashOutTarget,
+    name2: HashOutTarget,
+) -> BoolTarget {
+    let mut assets_match = builder._true();
+
+    for k in 0..4 {
+        let id_match = builder.is_equal(id1.elements[k], id2.elements[k]);
+        let name_match = builder.is_equal(name1.elements[k], name2.elements[k]);
+        let both_match = builder.and(id_match, name_match);
+        assets_match = builder.and(assets_match, both_match);
+    }
+
+    assets_match
 }
 
 #[cfg(test)]

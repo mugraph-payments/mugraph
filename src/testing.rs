@@ -124,7 +124,6 @@ pub(crate) fn distribute(
 mod tests {
     use std::collections::HashMap;
 
-    use proptest::prelude::*;
     use test_strategy::proptest;
 
     use super::*;
