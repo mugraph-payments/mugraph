@@ -140,6 +140,7 @@ pub struct Circuit {
 
 impl Sealable for Note {
     type Circuit = Circuit;
+    type Payload = Hash;
 
     fn circuit() -> Self::Circuit {
         let config = CircuitConfig::standard_recursion_config();

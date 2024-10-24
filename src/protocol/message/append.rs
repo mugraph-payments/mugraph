@@ -13,6 +13,20 @@ pub struct Append<const I: usize, const O: usize> {
 }
 
 impl<const I: usize, const O: usize> Append<I, O> {
+    pub fn payload(&self) -> Payload {
+        let key = self.inputs.first().map(|x| x.issuing_key).unwrap();
+
+        // TODO: the r should be kept to the future so it can be used to unblind
+        Payload {
+            inputs: self.inputs.iter().map(|x| x.signature).collect(),
+            outputs: self
+                .outputs
+                .iter()
+                .filter_map(|x| key.blind(x.clone(), &Scalar::random(&mut OsRng)).ok())
+                .collect(),
+        }
+    }
+
     pub fn is_valid(&self) -> bool {
         let mut pre = HashMap::new();
         let mut post = HashMap::new();
@@ -61,9 +75,10 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
                     .into_iter()
                     .map(|note| {
                         let r = Scalar::random(&mut OsRng);
-                        let blinded = secret_key.public().blind(note.clone(), &r).unwrap();
+                        let public_key = secret_key.public();
+                        let blinded = public_key.blind(note.clone(), &r).unwrap();
                         let blind_sig = secret_key.sign_blinded(blinded);
-                        let signature = secret_key.public().unblind(blind_sig, r);
+                        let signature = public_key.unblind(blind_sig, r);
 
                         SealedNote {
                             issuing_key: secret_key.public(),
@@ -123,6 +138,7 @@ pub struct Circuit<const I: usize, const O: usize> {
 
 impl<const I: usize, const O: usize> Sealable for Append<I, O> {
     type Circuit = Circuit<I, O>;
+    type Payload = Payload;
 
     fn circuit() -> Self::Circuit {
         let mut builder = circuit_builder();
@@ -255,7 +271,27 @@ mod tests {
     use super::*;
 
     #[proptest(cases = 50)]
-    fn test_arbitrary_is_always_valid(append: Append<4, 4>) {
+    fn test_arbitrary_is_always_valid_4x4(append: Append<4, 4>) {
+        prop_assert!(append.is_valid());
+    }
+
+    #[proptest(cases = 50)]
+    fn test_verify_seal_4x4(append: Append<4, 4>) {
+        prop_assert_eq!(
+            append
+                .seal()
+                .and_then(|seal| Append::<4, 4>::verify(append.payload(), seal)),
+            Ok(())
+        );
+    }
+
+    #[proptest(cases = 50)]
+    fn test_arbitrary_is_always_valid_16x16(append: Append<16, 16>) {
+        prop_assert!(append.is_valid());
+    }
+
+    #[proptest(cases = 50)]
+    fn test_arbitrary_is_always_valid_32x32(append: Append<32, 32>) {
         prop_assert!(append.is_valid());
     }
 }

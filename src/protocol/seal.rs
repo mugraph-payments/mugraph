@@ -5,6 +5,7 @@ use crate::{unwind_panic, Error};
 
 pub trait Sealable: EncodeFields {
     type Circuit;
+    type Payload: EncodeFields;
 
     fn circuit() -> Self::Circuit;
     fn circuit_data() -> CircuitData;
@@ -23,10 +24,10 @@ pub trait Sealable: EncodeFields {
         Ok(proof.proof)
     }
 
-    fn verify(hash: Hash, proof: Seal) -> Result<(), Error> {
+    fn verify(payload: Self::Payload, proof: Seal) -> Result<(), Error> {
         let proof = CompressedProofWithPublicInputs {
             proof,
-            public_inputs: hash.as_fields(),
+            public_inputs: payload.as_fields(),
         };
 
         unwind_panic!(Self::circuit_data().verify_compressed(proof)).map_err(|e| Error::CryptoError {

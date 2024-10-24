@@ -35,6 +35,17 @@ pub struct Payload {
     pub outputs: Vec<BlindedValue>,
 }
 
+impl EncodeFields for Payload {
+    fn as_fields(&self) -> Vec<F> {
+        self.inputs
+            .iter()
+            .map(|x| x.as_fields())
+            .chain(self.outputs.iter().map(|x| x.as_fields()))
+            .flatten()
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Message {
     pub method: Method,
