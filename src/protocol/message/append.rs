@@ -1,23 +1,72 @@
-use serde::{Deserialize, Serialize};
-use test_strategy::Arbitrary;
+use crate::protocol::*;
 
-use crate::{protocol::*, Error};
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Arbitrary)]
-pub struct Append {
-    pub inputs: Vec<Note>,
-    pub outputs: Vec<Note>,
+pub struct Append<const I: usize, const O: usize> {
+    pub inputs: [SealedNote; I],
+    pub outputs: [Note; O],
 }
 
-pub struct Circuit {
+impl<const I: usize, const O: usize> EncodeFields for Append<I, O> {
+    fn as_fields(&self) -> Vec<F> {
+        let mut fields = Vec::new();
+
+        for input in &self.inputs {
+            fields.extend(input.note.as_fields());
+        }
+
+        for output in &self.outputs {
+            fields.extend(output.as_fields());
+        }
+
+        fields
+    }
+}
+
+#[derive(Debug)]
+pub struct Atom {
+    pub commitment: [Target; 4],
+    pub fields: [Target; Note::FIELD_SIZE],
+}
+
+pub struct Circuit<const I: usize, const O: usize> {
     data: CircuitData,
+    inputs: [Atom; I],
+    outputs: [Atom; O],
 }
 
-impl Sealable for Append {
-    type Circuit = Circuit;
+impl<const I: usize, const O: usize> Sealable for Append<I, O> {
+    type Circuit = Circuit<I, O>;
 
     fn circuit() -> Self::Circuit {
-        todo!()
+        let mut builder = circuit_builder();
+
+        let mut inputs = vec![];
+        let mut outputs = vec![];
+
+        for _ in 0..I {
+            let (commitment, fields) = circuit_seal_note(&mut builder);
+
+            inputs.push(Atom {
+                commitment: commitment.elements,
+                fields: fields.try_into().unwrap(),
+            });
+        }
+
+        for _ in 0..O {
+            let (commitment, fields) = circuit_seal_note(&mut builder);
+
+            outputs.push(Atom {
+                commitment: commitment.elements,
+                fields: fields.try_into().unwrap(),
+            });
+        }
+
+        let circuit = Circuit {
+            data: builder.build::<C>(),
+            inputs: inputs.try_into().unwrap(),
+            outputs: outputs.try_into().unwrap(),
+        };
+
+        circuit
     }
 
     fn circuit_data() -> CircuitData {
@@ -27,76 +76,4 @@ impl Sealable for Append {
     fn prove(&self) -> Result<Proof, Error> {
         todo!()
     }
-}
-
-impl EncodeFields for Append {
-    fn as_fields(&self) -> Vec<F> {
-        let mut fields = Vec::new();
-
-        // Add number of inputs and outputs
-        fields.push(F::from_canonical_u64(self.inputs.len() as u64));
-        fields.push(F::from_canonical_u64(self.outputs.len() as u64));
-
-        // Encode inputs
-        for input in &self.inputs {
-            fields.extend(input.as_fields());
-        }
-
-        // Encode outputs
-        for output in &self.outputs {
-            fields.extend(output.as_fields());
-        }
-
-        fields
-    }
-}
-
-impl DecodeFields for Append {
-    fn from_fields(fields: &[F]) -> Result<Self, Error> {
-        if fields.len() < 2 {
-            return Err(Error::DecodeError(
-                "Not enough fields for Append".to_string(),
-            ));
-        }
-
-        let num_inputs = fields[0].to_canonical_u64() as usize;
-        let num_outputs = fields[1].to_canonical_u64() as usize;
-        let mut cursor = 2;
-
-        let mut inputs = Vec::with_capacity(num_inputs);
-        let mut outputs = Vec::with_capacity(num_outputs);
-
-        for _ in 0..num_inputs {
-            if cursor + Note::FIELD_SIZE > fields.len() {
-                return Err(Error::DecodeError(
-                    "Not enough fields for input note".to_string(),
-                ));
-            }
-            inputs.push(Note::from_fields(
-                &fields[cursor..cursor + Note::FIELD_SIZE],
-            )?);
-            cursor += Note::FIELD_SIZE;
-        }
-
-        for _ in 0..num_outputs {
-            if cursor + Note::FIELD_SIZE > fields.len() {
-                return Err(Error::DecodeError(
-                    "Not enough fields for output note".to_string(),
-                ));
-            }
-            outputs.push(Note::from_fields(
-                &fields[cursor..cursor + Note::FIELD_SIZE],
-            )?);
-            cursor += Note::FIELD_SIZE;
-        }
-
-        Ok(Append { inputs, outputs })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Append;
-
-    crate::test_encode_fields!(Append);
 }
