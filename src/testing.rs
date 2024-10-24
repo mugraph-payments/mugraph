@@ -40,6 +40,11 @@ pub(crate) fn distribute_numbers(
     amount: u64,
     output_count: usize,
 ) -> impl Strategy<Value = Vec<u64>> {
+    assert!(
+        output_count < u8::MAX as usize,
+        "Output count should never be too big."
+    );
+
     vec(1..=amount, output_count - 1).prop_map(move |mut v| {
         let sum: u64 = v.iter().sum();
         v.push(amount.saturating_sub(sum));
@@ -68,6 +73,14 @@ pub(crate) fn distribute(
 ) -> impl Strategy<Value = (Vec<Note>, Vec<Note>)> {
     assert_ne!(inputs, 0);
     assert_ne!(outputs, 0);
+    assert!(
+        inputs < u8::MAX as usize,
+        "Input count should never be too big."
+    );
+    assert!(
+        outputs < u8::MAX as usize,
+        "Output count should never be too big."
+    );
 
     let input_notes = vec(any::<Note>(), min(inputs, outputs));
     let output_nonces = vec(any::<Hash>(), outputs);
@@ -110,7 +123,7 @@ mod tests {
     #[proptest]
     fn test_distribute_numbers(
         #[strategy(1u64..)] amount: u64,
-        #[strategy(1usize..(#amount as usize))] output_count: usize,
+        #[strategy(1usize..u8::MAX as usize)] output_count: usize,
         #[strategy(distribute_numbers(#amount, #output_count))] numbers: Vec<u64>,
     ) {
         prop_assert_eq!(numbers.len(), output_count);
