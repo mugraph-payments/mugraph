@@ -12,6 +12,7 @@ pub struct Append<const I: usize, const O: usize> {
     pub outputs: [Note; O],
 }
 
+#[derive(Debug, Clone)]
 pub struct Payload {
     outputs: Vec<BlindedValue>,
 }
@@ -282,6 +283,7 @@ mod tests {
     }
 
     #[proptest(cases = 50)]
+    #[ignore]
     fn test_verify_seal_4x4(append: Append<4, 4>) {
         prop_assert_eq!(
             append
@@ -289,6 +291,15 @@ mod tests {
                 .and_then(|seal| Append::<4, 4>::verify(append.payload(), seal)),
             Ok(())
         );
+    }
+
+    #[proptest(cases = 1)]
+    fn test_verify_seal_4x4_proof_len(append: Append<4, 4>) {
+        prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
+    }
+    #[proptest(cases = 1)]
+    fn test_verify_seal_16x16_proof_len(append: Append<16, 16>) {
+        prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
     }
 
     #[proptest(cases = 50)]

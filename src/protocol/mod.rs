@@ -1,5 +1,6 @@
 mod codec;
 
+pub mod crypto;
 mod message;
 mod note;
 mod seal;
