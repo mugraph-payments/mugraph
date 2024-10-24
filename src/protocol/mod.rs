@@ -38,7 +38,7 @@ use plonky2::{
     iop::target::{BoolTarget, Target},
 };
 
-pub(crate) fn circuit_builder() -> CircuitBuilder {
+pub fn circuit_builder() -> CircuitBuilder {
     let config = CircuitConfig::standard_recursion_config();
     CircuitBuilder::new(config)
 }
@@ -64,14 +64,12 @@ pub fn magic_prefix() -> [F; 2] {
 /// # Returns
 ///
 /// Returns an `RistrettoPoint` representing the hashed note on the curve.
-pub fn hash_to_curve(note: &Note) -> Result<RistrettoPoint, Error> {
-    let hash: Hash = PoseidonHash::hash_no_pad(&note.as_fields_with_prefix()).into();
-    let res = Scalar::from_bytes_mod_order(hash.as_bytes().try_into().unwrap());
-
+pub fn hash_to_curve(value: impl EncodeFields) -> Result<RistrettoPoint, Error> {
+    let res: Scalar = value.hash().into();
     Ok(res * G)
 }
 
-pub(crate) fn circuit_hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {
+pub fn circuit_hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {
     let prefix = magic_prefix();
     let t0 = builder.constant(prefix[0]);
     let t1 = builder.constant(prefix[1]);

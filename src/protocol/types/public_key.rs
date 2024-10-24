@@ -39,7 +39,7 @@ impl PublicKey {
     ///
     /// Returns B', the blinded note value as a `BlindedValue`.
     pub fn blind(&self, note: Note, r: &Scalar) -> Result<BlindedValue, Error> {
-        Ok((hash_to_curve(&note)? + r * G).into())
+        Ok((hash_to_curve(note)? + r * G).into())
     }
 
     /// Unblinds a signed value to obtain the final signature.
