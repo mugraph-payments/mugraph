@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::{fmt, ops::Mul};
 
 use curve25519_dalek::Scalar as DalekScalar;
 use proptest::prelude::*;
@@ -6,8 +6,18 @@ use proptest::prelude::*;
 use super::circuit_ops::CircuitMul;
 use crate::protocol::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Scalar([F; 4]);
+
+impl fmt::Debug for Scalar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Scalar(0x")?;
+        for field in self.0.iter().rev() {
+            write!(f, "{:016x}", field.0)?;
+        }
+        write!(f, ")")
+    }
+}
 
 impl Scalar {
     pub fn target(builder: &mut CircuitBuilder) -> HashOutTarget {
@@ -74,76 +84,36 @@ impl CircuitMul<Scalar> for Scalar {
         lhs: HashOutTarget,
         rhs: HashOutTarget,
     ) -> HashOutTarget {
-        // Step 1: Split inputs into 32-bit limbs for modular multiplication
-        let mut lhs_limbs = Vec::new();
-        let mut rhs_limbs = Vec::new();
+        let zero = builder.zero();
 
-        for i in 0..4 {
-            // Split each 64-bit element into two 32-bit limbs
-            let lhs_bits = builder.split_le_base::<2>(lhs.elements[i], 32);
-            let rhs_bits = builder.split_le_base::<2>(rhs.elements[i], 32);
+        // Create intermediate targets for partial products
+        let mut partial_sums = vec![zero; 8];
 
-            lhs_limbs.extend(lhs_bits);
-            rhs_limbs.extend(rhs_bits);
-        }
-
-        // Step 2: Perform schoolbook multiplication of 32-bit limbs
-        let mut result_limbs = vec![builder.zero(); 8];
+        // Process each limb pair and handle carries
         for i in 0..4 {
             for j in 0..4 {
-                let prod = builder.mul(lhs_limbs[i], rhs_limbs[j]);
-                let shift = i + j;
-
-                // Add to appropriate position with carry handling
-                let mut carry = prod;
-                for k in shift..shift + 2 {
-                    if k < 8 {
-                        let sum = builder.add(result_limbs[k], carry);
-                        let divisor = builder.constant(F::from_canonical_u64(1u64 << 32));
-                        // Use multiplication and subtraction to compute remainder
-                        let div = builder.div(sum, divisor);
-                        let div_times_divisor = builder.mul(div, divisor);
-                        let rem = builder.sub(sum, div_times_divisor);
-                        result_limbs[k] = rem;
-                        carry = div;
-                    }
-                }
+                let idx = i + j;
+                partial_sums[idx] =
+                    builder.mul_add(lhs.elements[i], rhs.elements[j], partial_sums[idx]);
             }
         }
 
-        // Step 3: Reduce modulo 2^252 + 27742317777372353535851937790883648493
-        let modulus_low = F::from_canonical_u64((1u64 << 32) - 1);
-        let modulus_high = F::from_canonical_u64(1u64 << 32);
+        // Perform carry propagation
+        let mut result = [zero; 4];
+        let mut carry = zero;
 
-        // Handle the reduction by using the special form of the modulus
-        for i in (4..8).rev() {
-            let hi = result_limbs[i];
-
-            // Multiply high limb by 2^32 - 1 and add to lower limbs
-            for j in 0..4 {
-                let modulus_low_target = builder.constant(modulus_low);
-                let term = builder.mul(hi, modulus_low_target);
-                result_limbs[j] = builder.add(result_limbs[j], term);
-            }
-
-            // Add high limb to next lower limb
-            if i > 0 {
-                result_limbs[i - 1] = builder.add(result_limbs[i - 1], hi);
-            }
-        }
-
-        // Combine limbs back into 64-bit elements
-        let mut final_elements = [builder.zero(); 4];
         for i in 0..4 {
-            let lo = result_limbs[i * 2];
-            let modulus_high_target = builder.constant(modulus_high);
-            let hi = builder.mul(result_limbs[i * 2 + 1], modulus_high_target);
-            final_elements[i] = builder.add(lo, hi);
+            let sum_with_carry = builder.add(partial_sums[i], carry);
+
+            // Constrain sum_with_carry to be within 64 bits and get the new carry
+            let (sum_low, new_carry) = builder.split_low_high(sum_with_carry, 64, 128);
+
+            result[i] = sum_low;
+            let mul = builder.add(partial_sums[i + 4], new_carry);
+            carry = mul;
         }
 
-        HashOutTarget {
-            elements: final_elements,
-        }
+        HashOutTarget { elements: result }
     }
 }
 
