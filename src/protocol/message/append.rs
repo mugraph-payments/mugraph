@@ -217,8 +217,6 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
             builder.connect(input_sum, output_sum);
         }
 
-        
-
         Circuit {
             data: builder.build::<C>(),
             inputs: inputs.try_into().unwrap(),

@@ -31,10 +31,10 @@ impl From<DalekPoint> for Point {
         let bytes = value.compress().to_bytes();
 
         Self([
-            F::from_canonical_u64(u64::from_le_bytes(bytes[0..8].try_into().unwrap())),
-            F::from_canonical_u64(u64::from_le_bytes(bytes[8..16].try_into().unwrap())),
-            F::from_canonical_u64(u64::from_le_bytes(bytes[16..24].try_into().unwrap())),
-            F::from_canonical_u64(u64::from_le_bytes(bytes[24..32].try_into().unwrap())),
+            F::from_noncanonical_u64(u64::from_le_bytes(bytes[0..8].try_into().unwrap())),
+            F::from_noncanonical_u64(u64::from_le_bytes(bytes[8..16].try_into().unwrap())),
+            F::from_noncanonical_u64(u64::from_le_bytes(bytes[16..24].try_into().unwrap())),
+            F::from_noncanonical_u64(u64::from_le_bytes(bytes[24..32].try_into().unwrap())),
             F::ZERO,
             F::ZERO,
             F::ZERO,
@@ -48,8 +48,7 @@ impl From<Point> for DalekPoint {
         let mut bytes = [0u8; 32];
 
         for (i, field) in value.0.iter().take(4).enumerate() {
-            let value = field.to_canonical_u64();
-            bytes[i * 8..(i + 1) * 8].copy_from_slice(&value.to_le_bytes());
+            bytes[i * 8..(i + 1) * 8].copy_from_slice(&field.0.to_le_bytes());
         }
 
         CompressedRistretto(bytes).decompress().unwrap()
