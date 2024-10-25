@@ -178,7 +178,7 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
 
         // For each unique asset_id/asset_name pair, verify sum of amounts matches
         for i in 0..I {
-            let mut input_sum = (&inputs[i]).amount();
+            let mut input_sum = inputs[i].amount();
 
             for j in (i + 1)..I {
                 let other = &inputs[j];
@@ -217,13 +217,13 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
             builder.connect(input_sum, output_sum);
         }
 
-        let circuit = Circuit {
+        
+
+        Circuit {
             data: builder.build::<C>(),
             inputs: inputs.try_into().unwrap(),
             outputs: outputs.try_into().unwrap(),
-        };
-
-        circuit
+        }
     }
 
     fn circuit_data() -> CircuitData {

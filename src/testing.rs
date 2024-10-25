@@ -87,7 +87,7 @@ pub(crate) fn distribute(
     let i = inputs;
     let input_notes = vec(
         any::<Note>().prop_map(move |mut n| {
-            n.amount = n.amount % (u64::MAX / i as u64);
+            n.amount %= u64::MAX / i as u64;
             n
         }),
         min(inputs, outputs),
@@ -109,7 +109,7 @@ pub(crate) fn distribute(
                     output_notes.push(Note {
                         amount,
                         asset_id: input.asset_id,
-                        asset_name: input.asset_name.clone(),
+                        asset_name: input.asset_name,
                         nonce: nonces.pop().unwrap(),
                     });
                 }
@@ -131,7 +131,7 @@ mod tests {
     #[proptest]
     fn test_distribute_numbers(
         #[strategy(1u64..=u64::MAX / 2)] amount: u64,
-        #[strategy(((#amount / u64::MAX as u64) + 1..u8::MAX as u64).prop_map(|o| o as usize))]
+        #[strategy(((#amount / u64::MAX) + 1..u8::MAX as u64).prop_map(|o| o as usize))]
         output_count: usize,
         #[strategy(distribute_numbers(#amount, #output_count))] numbers: Vec<u64>,
     ) {

@@ -8,10 +8,7 @@ use curve25519_dalek::{
     RistrettoPoint as DalekPoint,
     Scalar as DalekScalar,
 };
-use plonky2::{
-    field::extension::Extendable,
-    hash::hash_types::{HashOut, RichField},
-};
+use plonky2::hash::hash_types::HashOut;
 use proptest::prelude::*;
 
 use crate::{protocol::*, unwind_panic};

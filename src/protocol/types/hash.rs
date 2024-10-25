@@ -47,7 +47,7 @@ impl Hash {
     }
 
     pub fn random() -> Self {
-        Self((&mut OsRng).gen())
+        Self(OsRng.gen())
     }
 }
 
