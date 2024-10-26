@@ -25,9 +25,30 @@ impl Scalar {
     }
 }
 
+impl Encode for Scalar {
+    fn as_bytes(&self) -> Vec<u8> {
+        self.0.iter().flat_map(|&x| x.0.to_le_bytes()).collect()
+    }
+}
+
 impl EncodeFields for Scalar {
     fn as_fields(&self) -> Vec<F> {
         self.0.to_vec()
+    }
+}
+
+impl Decode for Scalar {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() != 32 {
+            return Err(Error::DecodeError("Expected 32 bytes".to_string()));
+        }
+
+        let mut fields = [F::ZERO; 4];
+        for (i, chunk) in bytes.chunks(8).enumerate() {
+            fields[i] = F::from_noncanonical_u64(u64::from_le_bytes(chunk.try_into().unwrap()));
+        }
+
+        Ok(Self(fields))
     }
 }
 
@@ -104,33 +125,36 @@ impl CircuitMul<Scalar> for Scalar {
             }
         }
 
-        // Step 2: Reduce higher limbs modulo 2^255-19
-        result[0] = t[0];
-        result[1] = t[1];
-        result[2] = t[2];
-        result[3] = t[3];
-
+        // Step 2: Reduction modulo 2^255 - 19
         let nineteen = F::from_canonical_u64(19);
-        for i in 4..8 {
+
+        // First reduction pass
+        for i in (4..8).rev() {
             let reduced = builder.mul_const(nineteen, t[i]);
-            result[i - 4] = builder.add(result[i - 4], reduced);
+            t[i - 4] = builder.add(t[i - 4], reduced);
         }
 
-        // Step 3: Carry propagation with 32-bit limbs
-        for _ in 0..2 {
-            for i in 0..3 {
-                // Use 32-bit splits instead of 51-bit
-                let (low, carry) = builder.split_low_high(result[i], 32, 32);
+        // Initial copy
+        for i in 0..4 {
+            result[i] = t[i];
+        }
+
+        // Multiple reduction passes to ensure complete reduction
+        for _ in 0..3 {
+            let mut carry = builder.zero();
+            for i in 0..4 {
+                let sum = builder.add(result[i], carry);
+                let (low, high) = builder.split_low_high(sum, 64, 64);
                 result[i] = low;
-                result[i + 1] = builder.add(result[i + 1], carry);
+
+                if i < 3 {
+                    carry = high;
+                } else {
+                    // Final carry gets multiplied by 19 and added back to first limb
+                    let reduced = builder.mul_const(nineteen, high);
+                    result[0] = builder.add(result[0], reduced);
+                }
             }
-
-            // Handle final carry
-            let (low, carry) = builder.split_low_high(result[3], 32, 32);
-            result[3] = low;
-
-            let reduced_carry = builder.mul_const(nineteen, carry);
-            result[0] = builder.add(result[0], reduced_carry);
         }
 
         HashOutTarget { elements: result }
@@ -145,6 +169,9 @@ mod tests {
 
     use super::*;
     use crate::unwind_panic;
+
+    crate::test_encode_bytes!(Scalar);
+    crate::test_encode_fields!(Scalar);
 
     fn test_circuit_mul<A, B>(a: A, b: B, verify: bool) -> Result<A, Error>
     where
@@ -192,8 +219,7 @@ mod tests {
     }
 
     #[proptest]
-    #[ignore]
-    fn test_curve25519_scalar_roundtrip(scalar: Scalar) {
+    fn test_curve25519_conversion_roundtrip(scalar: Scalar) {
         prop_assert_eq!(Scalar::from(DalekScalar::from(scalar)), scalar);
     }
 
