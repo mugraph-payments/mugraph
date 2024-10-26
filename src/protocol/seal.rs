@@ -1,9 +1,11 @@
+use std::panic::RefUnwindSafe;
+
 use plonky2::plonk::proof::CompressedProofWithPublicInputs;
 
 use super::*;
 use crate::{unwind_panic, Error};
 
-pub trait Sealable: EncodeFields {
+pub trait Sealable: EncodeFields + RefUnwindSafe {
     type Circuit;
     type Payload: EncodeFields;
 
@@ -12,16 +14,16 @@ pub trait Sealable: EncodeFields {
     fn prove(&self) -> Result<Proof, Error>;
 
     fn seal(&self) -> Result<Seal, Error> {
-        let data = Self::circuit_data();
-        let proof = unwind_panic!(self.prove())?;
+        let compressed = unwind_panic(move || {
+            let data = Self::circuit_data();
+            let proof = self.prove()?;
 
-        let proof = unwind_panic!(proof.compress(&data.verifier_only.circuit_digest, &data.common))
-            .map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
+            proof
+                .compress(&data.verifier_only.circuit_digest, &data.common)
+                .map_err(Error::from)
         })?;
 
-        Ok(proof.proof)
+        Ok(compressed.proof)
     }
 
     fn verify(payload: Self::Payload, proof: Seal) -> Result<(), Error> {
@@ -30,9 +32,10 @@ pub trait Sealable: EncodeFields {
             public_inputs: payload.as_fields(),
         };
 
-        unwind_panic!(Self::circuit_data().verify_compressed(proof)).map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
+        unwind_panic(|| {
+            Self::circuit_data()
+                .verify_compressed(proof)
+                .map_err(Error::from)
         })
     }
 }

@@ -63,3 +63,12 @@ impl From<hickory_resolver::error::ResolveError> for Error {
         Error::InvalidHostname(err.to_string())
     }
 }
+
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::CryptoError {
+            kind: err.root_cause().to_string(),
+            reason: err.to_string(),
+        }
+    }
+}

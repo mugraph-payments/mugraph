@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.91"
 argh = "0.1.12"
 blake3 = "1.5.4"
 curve25519-dalek = { version = "4.1.3", features = ["digest", "rand_core"] }

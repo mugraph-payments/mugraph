@@ -163,17 +163,16 @@ impl Sealable for Note {
     }
 
     fn prove(&self) -> Result<Proof, Error> {
-        let circuit = Self::circuit();
-        let commitment = PoseidonHash::hash_no_pad(&self.as_fields_with_prefix());
+        unwind_panic(|| {
+            let circuit = Self::circuit();
+            let commitment = PoseidonHash::hash_no_pad(&self.as_fields_with_prefix());
 
-        let mut pw = PartialWitness::new();
-        pw.set_target_arr(&circuit.targets, &self.as_fields());
-        pw.set_hash_target(circuit.commitment, commitment);
+            let mut pw = PartialWitness::new();
+            pw.set_target_arr(&circuit.targets, &self.as_fields());
+            pw.set_hash_target(circuit.commitment, commitment);
 
-        unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
-        }))
+            circuit.data.prove(pw).map_err(Error::from)
+        })
     }
 }
 

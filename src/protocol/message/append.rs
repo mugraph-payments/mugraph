@@ -229,24 +229,23 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
     }
 
     fn prove(&self) -> Result<Proof, Error> {
-        let circuit = Self::circuit();
-        let mut pw = PartialWitness::new();
+        unwind_panic(|| {
+            let circuit = Self::circuit();
+            let mut pw = PartialWitness::new();
 
-        // Set input values
-        for (i, input) in self.inputs.iter().enumerate() {
-            pw.set_target_arr(&circuit.inputs[i].fields, &input.note.as_fields());
-        }
+            // Set input values
+            for (i, input) in self.inputs.iter().enumerate() {
+                pw.set_target_arr(&circuit.inputs[i].fields, &input.note.as_fields());
+            }
 
-        // Set output values
-        for (i, output) in self.outputs.iter().enumerate() {
-            pw.set_hash_target(circuit.outputs[i].commitment, output.hash().into());
-            pw.set_target_arr(&circuit.outputs[i].fields, &output.as_fields());
-        }
+            // Set output values
+            for (i, output) in self.outputs.iter().enumerate() {
+                pw.set_hash_target(circuit.outputs[i].commitment, output.hash().into());
+                pw.set_target_arr(&circuit.outputs[i].fields, &output.as_fields());
+            }
 
-        unwind_panic!(circuit.data.prove(pw).map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
-        }))
+            circuit.data.prove(pw).map_err(Error::from)
+        })
     }
 }
 

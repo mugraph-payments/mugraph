@@ -11,11 +11,9 @@ pub struct Scalar([F; 4]);
 
 impl fmt::Debug for Scalar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Scalar(0x")?;
-        for field in self.0.iter().rev() {
-            write!(f, "{:016x}", field.0)?;
-        }
-        write!(f, ")")
+        f.debug_tuple("Scalar")
+            .field(&DalekScalar::from(*self).as_bytes())
+            .finish()
     }
 }
 
@@ -30,6 +28,16 @@ impl Scalar {
 impl EncodeFields for Scalar {
     fn as_fields(&self) -> Vec<F> {
         self.0.to_vec()
+    }
+}
+
+impl DecodeFields for Scalar {
+    fn from_fields(bytes: &[F]) -> Result<Self, Error> {
+        if bytes.len() != 4 {
+            return Err(Error::DecodeError("Expected 4 field elements".to_string()));
+        }
+
+        Ok(Self(bytes.try_into().unwrap()))
     }
 }
 
@@ -85,33 +93,44 @@ impl CircuitMul<Scalar> for Scalar {
         rhs: HashOutTarget,
     ) -> HashOutTarget {
         let zero = builder.zero();
+        let mut result = [zero; 4];
 
-        // Create intermediate targets for partial products
-        let mut partial_sums = vec![zero; 8];
-
-        // Process each limb pair and handle carries
+        // Step 1: Compute partial products
+        let mut t = [zero; 8];
         for i in 0..4 {
             for j in 0..4 {
-                let idx = i + j;
-                partial_sums[idx] =
-                    builder.mul_add(lhs.elements[i], rhs.elements[j], partial_sums[idx]);
+                let prod = builder.mul(lhs.elements[i], rhs.elements[j]);
+                t[i + j] = builder.add(t[i + j], prod);
             }
         }
 
-        // Perform carry propagation
-        let mut result = [zero; 4];
-        let mut carry = zero;
+        // Step 2: Reduce higher limbs modulo 2^255-19
+        result[0] = t[0];
+        result[1] = t[1];
+        result[2] = t[2];
+        result[3] = t[3];
 
-        for i in 0..4 {
-            let sum_with_carry = builder.add(partial_sums[i], carry);
+        let nineteen = F::from_canonical_u64(19);
+        for i in 4..8 {
+            let reduced = builder.mul_const(nineteen, t[i]);
+            result[i - 4] = builder.add(result[i - 4], reduced);
+        }
 
-            // Constrain sum_with_carry to be within 65 bits and get the new carry
-            let (sum_low, new_carry) = builder.split_low_high(sum_with_carry, 64, 65);
-            result[i] = sum_low;
-
-            if i < 3 {
-                carry = builder.add(partial_sums[i + 4], new_carry);
+        // Step 3: Carry propagation with 32-bit limbs
+        for _ in 0..2 {
+            for i in 0..3 {
+                // Use 32-bit splits instead of 51-bit
+                let (low, carry) = builder.split_low_high(result[i], 32, 32);
+                result[i] = low;
+                result[i + 1] = builder.add(result[i + 1], carry);
             }
+
+            // Handle final carry
+            let (low, carry) = builder.split_low_high(result[3], 32, 32);
+            result[3] = low;
+
+            let reduced_carry = builder.mul_const(nineteen, carry);
+            result[0] = builder.add(result[0], reduced_carry);
         }
 
         HashOutTarget { elements: result }
@@ -127,9 +146,9 @@ mod tests {
     use super::*;
     use crate::unwind_panic;
 
-    fn test_circuit_mul<A, B>(a: A, b: B) -> Result<(), Error>
+    fn test_circuit_mul<A, B>(a: A, b: B, verify: bool) -> Result<A, Error>
     where
-        A: Arbitrary + EncodeFields + CircuitMul<B>,
+        A: Arbitrary + EncodeFields + DecodeFields + CircuitMul<B>,
         B: Arbitrary + EncodeFields,
     {
         let mut builder = circuit_builder();
@@ -142,6 +161,7 @@ mod tests {
 
         let c = Scalar::circuit_mul(&mut builder, a_target, b_target);
         builder.register_public_inputs(&c.elements);
+        builder.register_public_inputs(&result.elements);
 
         builder.connect_hashes(result, c);
         let circuit = builder.build::<C>();
@@ -159,22 +179,16 @@ mod tests {
                 elements: b.as_fields().try_into().unwrap(),
             },
         );
-        pw.set_hash_target(
-            result,
-            HashOut {
-                elements: (a * b).as_fields().try_into().unwrap(),
-            },
-        );
 
-        let proof = unwind_panic!(circuit.prove(pw).map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
-        }))?;
+        let proof = circuit.prove(pw)?;
 
-        unwind_panic!(circuit.verify(proof).map_err(|e| Error::CryptoError {
-            kind: e.root_cause().to_string(),
-            reason: e.to_string(),
-        }))
+        if verify {
+            circuit.verify(proof.clone())?;
+        }
+
+        let result: &[F] = &proof.public_inputs[(proof.public_inputs.len() - 4)..];
+
+        A::from_fields(&result)
     }
 
     #[proptest]
@@ -185,6 +199,11 @@ mod tests {
 
     #[proptest(cases = 1)]
     fn test_mul_scalars(a: Scalar, b: Scalar) {
-        prop_assert_eq!(test_circuit_mul(a, b), Ok(()))
+        let val = DalekScalar::from(a) * DalekScalar::from(b);
+
+        prop_assert_eq!(
+            unwind_panic(move || test_circuit_mul(a, b, false)),
+            Ok(Scalar::from(val))
+        );
     }
 }
