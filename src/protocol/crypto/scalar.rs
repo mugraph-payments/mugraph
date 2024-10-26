@@ -105,12 +105,13 @@ impl CircuitMul<Scalar> for Scalar {
         for i in 0..4 {
             let sum_with_carry = builder.add(partial_sums[i], carry);
 
-            // Constrain sum_with_carry to be within 64 bits and get the new carry
-            let (sum_low, new_carry) = builder.split_low_high(sum_with_carry, 64, 128);
-
+            // Constrain sum_with_carry to be within 65 bits and get the new carry
+            let (sum_low, new_carry) = builder.split_low_high(sum_with_carry, 64, 65);
             result[i] = sum_low;
-            let mul = builder.add(partial_sums[i + 4], new_carry);
-            carry = mul;
+
+            if i < 3 {
+                carry = builder.add(partial_sums[i + 4], new_carry);
+            }
         }
 
         HashOutTarget { elements: result }
