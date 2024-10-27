@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mugraph::protocol::*;
+use mugraph::protocol::{circuit::*, *};
 use prop::{strategy::ValueTree, test_runner::TestRunner};
 use proptest::{prelude::*, strategy::Strategy};
 

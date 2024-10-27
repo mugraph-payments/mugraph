@@ -8,7 +8,12 @@ use curve25519_dalek::{
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::*, DecodeFields, EncodeFields, Error};
+use crate::{
+    protocol::{circuit::*, crypto::hash_to_curve, *},
+    DecodeFields,
+    EncodeFields,
+    Error,
+};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(transparent)]

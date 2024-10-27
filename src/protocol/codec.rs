@@ -1,6 +1,6 @@
 use plonky2::{hash::poseidon::PoseidonHash, plonk::config::Hasher};
 
-use super::{Field, F};
+use super::circuit::{Field, F};
 use crate::{protocol::Hash, Error};
 
 pub const MAGIC_PREFIX: [u8; 16] = *b"mugraph.v1.ecash";

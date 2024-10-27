@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use circuit::*;
 use curve25519_dalek::Scalar;
+use plonky2::{hash::hash_types::HashOutTarget, iop::target::Target};
 use proptest::prelude::*;
 use rand::rngs::OsRng;
 
-use crate::{protocol::*, testing::distribute, unwind_panic};
+use crate::{protocol::*, testing::distribute, unwind_panic, Error};
 
 #[derive(Debug)]
 pub struct Append<const I: usize, const O: usize> {
@@ -79,9 +81,8 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
     fn arbitrary_with(secret_key: Self::Parameters) -> Self::Strategy {
         // Use `distribute` to generate balanced inputs and outputs
         distribute(I, O)
-            .prop_map(move |(input_notes, output_notes)| {
-                // Sign each input note to create a `SealedNote`
-                let inputs = input_notes
+            .prop_map(move |(inputs, outputs)| {
+                let inputs = inputs
                     .into_iter()
                     .map(|note| {
                         let r = Scalar::random(&mut OsRng);
@@ -100,10 +101,9 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
                     })
                     .collect::<Vec<_>>();
 
-                // Ensure inputs and outputs have correct sizes
                 Append {
                     inputs: inputs.try_into().unwrap(),
-                    outputs: output_notes.try_into().unwrap(),
+                    outputs: outputs.try_into().unwrap(),
                 }
             })
             .boxed()
@@ -156,24 +156,17 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         let mut inputs = vec![];
         let mut outputs = vec![];
 
-        // Create input and output atoms using the refined circuit_seal_note
+        // Create input and output atoms using the refined circuit::seal_note
         for _ in 0..I {
-            let (commitment, fields) = circuit_seal_note(&mut builder);
-
-            inputs.push(Atom {
-                commitment,
-                fields: fields.try_into().unwrap(),
-            });
+            let (commitment, fields) = circuit::seal_note(&mut builder);
+            inputs.push(Atom { commitment, fields });
         }
 
         for _ in 0..O {
-            let (commitment, fields) = circuit_seal_note(&mut builder);
+            let (commitment, fields) = circuit::seal_note(&mut builder);
             builder.register_public_inputs(&commitment.elements);
 
-            outputs.push(Atom {
-                commitment,
-                fields: fields.try_into().unwrap(),
-            });
+            outputs.push(Atom { commitment, fields });
         }
 
         // For each unique asset_id/asset_name pair, verify sum of amounts matches
@@ -270,7 +263,6 @@ fn assets_match(
 
 #[cfg(test)]
 mod tests {
-    use test_strategy::proptest;
 
     use super::*;
 
@@ -301,4 +293,6 @@ mod tests {
     test_append_seal!(2, 2);
     test_append_seal!(4, 4);
     test_append_seal!(8, 8);
+    test_append_seal!(16, 16);
+    test_append_seal!(32, 32);
 }

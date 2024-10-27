@@ -5,7 +5,7 @@ use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::{protocol::*, Decode, DecodeFields, Encode, EncodeFields, Error};
+use crate::{protocol::circuit::*, Decode, DecodeFields, Encode, EncodeFields, Error};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
 #[repr(transparent)]

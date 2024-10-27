@@ -5,7 +5,7 @@ use proptest::prelude::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::*, DecodeFields, EncodeFields, Error};
+use crate::{protocol::{*, circuit::*}, DecodeFields, EncodeFields, Error};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(transparent)]

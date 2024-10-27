@@ -1,3 +1,4 @@
+use circuit::{Seal, Sealable, F};
 use serde::{Deserialize, Serialize};
 
 use crate::{protocol::*, Error};

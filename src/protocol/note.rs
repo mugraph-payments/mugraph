@@ -12,7 +12,14 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use super::{DecodeFields, Hash, Name, PublicKey};
-use crate::{protocol::*, unwind_panic, Decode, Encode, EncodeFields, Error};
+use crate::{
+    protocol::{circuit::*, *},
+    unwind_panic,
+    Decode,
+    Encode,
+    EncodeFields,
+    Error,
+};
 
 #[derive(
     Default, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Arbitrary, Serialize, Deserialize,
@@ -146,7 +153,7 @@ impl Sealable for Note {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::new(config);
 
-        let (commitment, targets) = circuit_seal_note(&mut builder);
+        let (commitment, targets) = circuit::seal_note(&mut builder);
         builder.register_public_inputs(&commitment.elements);
 
         let data = builder.build::<C>();
