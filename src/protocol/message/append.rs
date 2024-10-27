@@ -274,38 +274,31 @@ mod tests {
 
     use super::*;
 
-    #[proptest(cases = 50)]
-    fn test_arbitrary_is_always_valid_4x4(append: Append<4, 4>) {
-        prop_assert!(append.is_valid());
+    #[cfg(test)]
+    #[macro_export]
+    macro_rules! test_append_seal {
+        ($i:expr, $o:expr) => {
+            ::paste::paste! {
+                #[::test_strategy::proptest(cases = 10)]
+                fn [<test_$i x $i>](append: Append<$i, $o>) {
+                    prop_assert_eq!(
+                        append
+                            .seal()
+                            .and_then(|seal| Append::<$i, $o>::verify(append.payload(), seal)),
+                        Ok(())
+                    );
+                }
+
+                #[::test_strategy::proptest(cases = 10)]
+                fn [<test_proof_size_ $i x $i>](append: Append<$i, $o>) {
+                    prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
+                }
+            }
+        };
     }
 
-    #[proptest(cases = 50)]
-    #[ignore]
-    fn test_verify_seal_4x4(append: Append<4, 4>) {
-        prop_assert_eq!(
-            append
-                .seal()
-                .and_then(|seal| Append::<4, 4>::verify(append.payload(), seal)),
-            Ok(())
-        );
-    }
-
-    #[proptest(cases = 1)]
-    fn test_verify_seal_4x4_proof_len(append: Append<4, 4>) {
-        prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
-    }
-    #[proptest(cases = 1)]
-    fn test_verify_seal_16x16_proof_len(append: Append<16, 16>) {
-        prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
-    }
-
-    #[proptest(cases = 50)]
-    fn test_arbitrary_is_always_valid_16x16(append: Append<16, 16>) {
-        prop_assert!(append.is_valid());
-    }
-
-    #[proptest(cases = 50)]
-    fn test_arbitrary_is_always_valid_32x32(append: Append<32, 32>) {
-        prop_assert!(append.is_valid());
-    }
+    test_append_seal!(1, 1);
+    test_append_seal!(2, 2);
+    test_append_seal!(4, 4);
+    test_append_seal!(8, 8);
 }

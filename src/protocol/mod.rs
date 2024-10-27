@@ -6,6 +6,18 @@ mod note;
 mod seal;
 mod types;
 
+pub use curve25519_dalek::{RistrettoPoint as DalekPoint, Scalar as DalekScalar};
+pub use plonky2::{
+    field::types::{Field, PrimeField64},
+    hash::poseidon::PoseidonHash,
+    iop::witness::WitnessWrite,
+    plonk::config::Hasher,
+};
+use plonky2::{
+    hash::hash_types::HashOutTarget,
+    iop::target::{BoolTarget, Target},
+};
+
 pub use self::{
     codec::*,
     message::*,
@@ -17,7 +29,7 @@ use crate::Error;
 
 pub const D: usize = 2;
 
-pub const G: RistrettoPoint = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+pub const G: DalekPoint = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 pub type C = plonky2::plonk::config::PoseidonGoldilocksConfig;
 pub type F = <C as plonky2::plonk::config::GenericConfig<D>>::F;
 pub type Proof = plonky2::plonk::proof::ProofWithPublicInputs<F, C, D>;
@@ -26,18 +38,6 @@ pub type CircuitBuilder = plonky2::plonk::circuit_builder::CircuitBuilder<F, D>;
 pub type Seal = plonky2::plonk::proof::CompressedProof<F, C, D>;
 pub type CircuitConfig = plonky2::plonk::circuit_data::CircuitConfig;
 pub type PartialWitness = plonky2::iop::witness::PartialWitness<F>;
-
-use curve25519_dalek::{RistrettoPoint, Scalar};
-pub use plonky2::{
-    field::types::{Field, PrimeField64},
-    hash::poseidon::PoseidonHash,
-    iop::witness::WitnessWrite,
-    plonk::config::Hasher,
-};
-use plonky2::{
-    hash::hash_types::HashOutTarget,
-    iop::target::{BoolTarget, Target},
-};
 
 pub fn circuit_builder() -> CircuitBuilder {
     let config = CircuitConfig::standard_recursion_config();
@@ -64,9 +64,9 @@ pub fn magic_prefix() -> [F; 2] {
 ///
 /// # Returns
 ///
-/// Returns an `RistrettoPoint` representing the hashed note on the curve.
-pub fn hash_to_curve(value: impl EncodeFields) -> Result<RistrettoPoint, Error> {
-    let res: Scalar = value.hash().into();
+/// Returns an `DalekPoint` representing the hashed note on the curve.
+pub fn hash_to_curve(value: impl EncodeFields) -> Result<DalekPoint, Error> {
+    let res: DalekScalar = value.hash().into();
     Ok(res * G)
 }
 
