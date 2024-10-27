@@ -6,7 +6,7 @@ use curve25519_dalek::{
 use proptest::prelude::*;
 
 use super::Scalar;
-use crate::protocol::*;
+use crate::protocol::{circuit::*, crypto::G};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Point([F; 8]);

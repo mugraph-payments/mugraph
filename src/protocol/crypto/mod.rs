@@ -3,6 +3,11 @@ pub use curve25519_dalek::{RistrettoPoint as DalekPoint, Scalar as DalekScalar};
 use super::EncodeFields;
 use crate::Error;
 
+mod point;
+mod scalar;
+
+pub use self::{point::Point, scalar::Scalar};
+
 pub const G: DalekPoint = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
 // pub use self::{point::Point, scalar::Scalar};
