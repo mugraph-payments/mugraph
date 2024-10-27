@@ -30,8 +30,12 @@ paste = "1.0.15"
 lto = "fat"
 opt-level = 3
 
+[profile.dev.package]
 insta.opt-level = 3
 similar.opt-level = 3
+plonky2.opt-level = 3
+curve25519-dalek.opt-level = 3
+
 [[bin]]
 name = "mugraph-mint"
 path = "src/bin/mint.rs"
