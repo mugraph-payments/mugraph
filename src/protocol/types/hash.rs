@@ -137,7 +137,7 @@ impl fmt::Debug for Hash {
 
 impl From<HashOut<F>> for Hash {
     fn from(value: HashOut<F>) -> Self {
-        Self::from_slice(&value.to_bytes()).unwrap()
+        Self::from_bytes(&value.to_bytes()).unwrap()
     }
 }
 

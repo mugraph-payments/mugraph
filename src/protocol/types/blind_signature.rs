@@ -17,26 +17,12 @@ impl BlindSignature {
         Self([0u8; 32])
     }
 
-    pub fn new(val: [u8; 32]) -> Self {
-        Self(val)
-    }
-
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != 32 {
-            return Err(Error::DecodeError(format!(
-                "Invalid slice length for BlindSignature: expected 32, got {}",
-                bytes.len()
-            )));
-        }
-
-        let mut array = [0u8; 32];
-        array.copy_from_slice(bytes);
-
-        Ok(Self(array))
-    }
-
     pub fn is_zero(&self) -> bool {
         *self == Self::zero()
+    }
+
+    pub fn new(val: [u8; 32]) -> Self {
+        Self(val)
     }
 
     pub fn inner(&self) -> [u8; 32] {
@@ -130,7 +116,7 @@ impl fmt::Debug for BlindSignature {
 
 impl From<HashOut<F>> for BlindSignature {
     fn from(value: HashOut<F>) -> Self {
-        Self::from_slice(&value.to_bytes()).unwrap()
+        Self::from_bytes(&value.to_bytes()).unwrap()
     }
 }
 

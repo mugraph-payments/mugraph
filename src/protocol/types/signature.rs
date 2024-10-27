@@ -21,20 +21,6 @@ impl Signature {
         Self(val)
     }
 
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != 32 {
-            return Err(Error::DecodeError(format!(
-                "Invalid slice length for Signature: expected 32, got {}",
-                bytes.len()
-            )));
-        }
-
-        let mut array = [0u8; 32];
-        array.copy_from_slice(bytes);
-
-        Ok(Self(array))
-    }
-
     pub fn is_zero(&self) -> bool {
         *self == Self::zero()
     }
@@ -130,7 +116,7 @@ impl fmt::Debug for Signature {
 
 impl From<HashOut<F>> for Signature {
     fn from(value: HashOut<F>) -> Self {
-        Self::from_slice(&value.to_bytes()).unwrap()
+        Self::from_bytes(&value.to_bytes()).unwrap()
     }
 }
 

@@ -38,7 +38,7 @@ pub fn magic_prefix() -> [F; 2] {
     ]
 }
 
-pub(crate) fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
+pub fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
     let zero = builder.zero();
 
     // Private inputs

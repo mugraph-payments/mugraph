@@ -130,7 +130,7 @@ impl fmt::Debug for BlindedValue {
 
 impl From<HashOut<F>> for BlindedValue {
     fn from(value: HashOut<F>) -> Self {
-        Self::from_slice(&value.to_bytes()).unwrap()
+        Self::from_bytes(&value.to_bytes()).unwrap()
     }
 }
 

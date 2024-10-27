@@ -5,7 +5,12 @@ use proptest::prelude::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::{*, circuit::*}, DecodeFields, EncodeFields, Error};
+use crate::{
+    protocol::{circuit::*, *},
+    DecodeFields,
+    EncodeFields,
+    Error,
+};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(transparent)]
@@ -23,7 +28,8 @@ impl SecretKey {
 
     pub fn public(&self) -> PublicKey {
         let this = Scalar::from_bytes_mod_order(self.0);
-        PublicKey::from_point(this * G)
+
+        (this * G).into()
     }
 
     /// Signs a blinded note value using this secret key
@@ -68,6 +74,7 @@ impl Decode for SecretKey {
                 bytes.len()
             )));
         }
+
         let mut array = [0u8; 32];
         array.copy_from_slice(bytes);
         Ok(Self(array))
@@ -82,11 +89,13 @@ impl DecodeFields for SecretKey {
                 fields.len()
             )));
         }
+
         let mut bytes = [0u8; 32];
         for (i, field) in fields.iter().enumerate() {
             let field_bytes = field.to_canonical_u64().to_le_bytes();
             bytes[i * 8..(i + 1) * 8].copy_from_slice(&field_bytes);
         }
+
         Ok(Self(bytes))
     }
 }
