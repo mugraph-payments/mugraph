@@ -2,7 +2,7 @@ use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{*, circuit::*};
+use crate::protocol::{circuit::*, *};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct DleqProof {

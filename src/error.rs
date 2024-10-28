@@ -72,3 +72,17 @@ impl From<anyhow::Error> for Error {
         }
     }
 }
+
+impl From<ark_ec::hashing::HashToCurveError> for Error {
+    fn from(err: ark_ec::hashing::HashToCurveError) -> Self {
+        use std::error::Error as _;
+
+        Error::CryptoError {
+            kind: err
+                .source()
+                .map(|x| x.to_string())
+                .unwrap_or("HashToCurveError".to_string()),
+            reason: err.to_string(),
+        }
+    }
+}
