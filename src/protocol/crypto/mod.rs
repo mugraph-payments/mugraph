@@ -46,6 +46,20 @@ mod tests {
 
                     prop_assert_eq!(result, note.hash());
                 }
+
+                #[::test_strategy::proptest]
+                fn [<test_ $type:snake _bdhke_full_process>](note: Note, r: Hash, sk: SecretKey) {
+                    use $crate::protocol::crypto::BlindDiffieHellmanKeyExchange;
+
+                    let bdhke = <$type>::default();
+
+                    let blinded = bdhke.blind(note.clone(), r.clone())?;
+                    let blind_signature = bdhke.sign_blinded(sk.clone(), blinded)?;
+                    let public_key = sk.public();
+                    let signature = bdhke.unblind(public_key, blind_signature, r.into())?;
+
+                    prop_assert_eq!(bdhke.verify(public_key, note, signature), Ok(true));
+                }
             }
         };
     }
