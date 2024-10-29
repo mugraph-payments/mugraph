@@ -1,31 +1,44 @@
 pub use curve25519_dalek::{RistrettoPoint as DalekPoint, Scalar as DalekScalar};
 
-use super::EncodeFields;
-use crate::Error;
+mod native;
 
-mod point;
-mod scalar;
+pub use native::{NativePoint, NativeScalar};
 
-pub use self::{point::Point, scalar::Scalar};
+use crate::{protocol::*, Error};
 
-pub const G: DalekPoint = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
+pub trait BlindDiffieHellmanKeyExchange {
+    fn hash_to_curve(&self, value: &[u8]) -> Result<Hash, Error>;
+    fn blind(&self, value: &[u8], r: SecretKey) -> Result<BlindedValue, Error>;
+    fn unblind(&self, blinded_signature: BlindSignature, r: SecretKey) -> Result<Signature, Error>;
+    fn sign_blinded(
+        &self,
+        sk: SecretKey,
+        blinded_message: BlindedValue,
+    ) -> Result<BlindSignature, Error>;
+    fn verify(&self, pk: PublicKey, message: &[u8], signature: Signature) -> Result<bool, Error>;
+}
 
-// pub use self::{point::Point, scalar::Scalar};
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
 
-/// Converts a note's fields into a curve point for signing.
-///
-/// This function is used before blinding to get the initial note point.
-/// It hashes the input message to a scalar and then multiplies it with
-/// the base point to get a point on the curve.
-///
-/// # Arguments
-///
-/// * `message` - A byte slice containing the note's fields to be hashed.
-///
-/// # Returns
-///
-/// Returns an `DalekPoint` representing the hashed note on the curve.
-pub fn hash_to_curve(value: impl EncodeFields) -> Result<DalekPoint, Error> {
-    let res: DalekScalar = value.hash().into();
-    Ok(res * G)
+    use super::*;
+
+    macro_rules! generate_bdhke_tests {
+        ($type:ty) => {
+            paste::paste! {
+                #[::test_strategy::proptest]
+                fn [<test_ $type:snake _bdhke_hash_to_curve>](message: Note) {
+                    use $crate::protocol::crypto::BlindDiffieHellmanKeyExchange;
+
+                    let bdhke = <$type>::default();
+                    let result = bdhke.hash_to_curve(message.as_bytes());
+                    prop_assert_eq!(result.is_ok());
+                }
+            }
+        };
+    }
+
+    type Native = super::native::NativeBdhke;
+    generate_bdhke_tests!(Native);
 }
