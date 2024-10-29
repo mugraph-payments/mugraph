@@ -9,7 +9,7 @@ use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    protocol::{circuit::*, crypto::hash_to_curve, *},
+    protocol::{circuit::*, *},
     DecodeFields,
     EncodeFields,
     Error,
@@ -44,7 +44,7 @@ impl PublicKey {
     ///
     /// Returns B', the blinded note value as a `BlindedValue`.
     pub fn blind(&self, note: Note, r: &Scalar) -> Result<BlindedValue, Error> {
-        Ok((hash_to_curve(note)? + r * G).into())
+        todo!()
     }
 
     /// Unblinds a signed value to obtain the final signature.

@@ -7,15 +7,25 @@ pub use native::{NativePoint, NativeScalar};
 use crate::{protocol::*, Error};
 
 pub trait BlindDiffieHellmanKeyExchange {
-    fn hash_to_curve(&self, value: &[u8]) -> Result<Hash, Error>;
-    fn blind(&self, value: &[u8], r: SecretKey) -> Result<BlindedValue, Error>;
-    fn unblind(&self, blinded_signature: BlindSignature, r: SecretKey) -> Result<Signature, Error>;
+    fn hash_to_curve(&self, data: impl EncodeFields) -> Result<Hash, Error>;
+    fn blind(&self, data: impl EncodeFields, r: Hash) -> Result<BlindedValue, Error>;
+    fn unblind(
+        &self,
+        public_key: PublicKey,
+        blinded_signature: BlindSignature,
+        r: SecretKey,
+    ) -> Result<Signature, Error>;
     fn sign_blinded(
         &self,
         sk: SecretKey,
         blinded_message: BlindedValue,
     ) -> Result<BlindSignature, Error>;
-    fn verify(&self, pk: PublicKey, message: &[u8], signature: Signature) -> Result<bool, Error>;
+    fn verify(
+        &self,
+        pk: PublicKey,
+        data: impl EncodeFields,
+        signature: Signature,
+    ) -> Result<bool, Error>;
 }
 
 #[cfg(test)]
@@ -28,12 +38,13 @@ mod tests {
         ($type:ty) => {
             paste::paste! {
                 #[::test_strategy::proptest]
-                fn [<test_ $type:snake _bdhke_hash_to_curve>](message: Note) {
+                fn [<test_ $type:snake _bdhke_hash_to_curve>](note: Note) {
                     use $crate::protocol::crypto::BlindDiffieHellmanKeyExchange;
 
                     let bdhke = <$type>::default();
-                    let result = bdhke.hash_to_curve(message.as_bytes());
-                    prop_assert_eq!(result.is_ok());
+                    let result = bdhke.hash_to_curve(note.clone())?;
+
+                    prop_assert_eq!(result, note.hash());
                 }
             }
         };
