@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{constants, ristretto::CompressedRistretto, RistrettoPoint, Scalar};
+use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use rand::{prelude::*, rngs::OsRng};
 use serde::{Deserialize, Serialize};
@@ -208,40 +208,27 @@ impl DecodeFields for Hash {
 
 #[cfg(test)]
 mod tests {
-    use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint, Scalar};
+    use curve25519_dalek::{RistrettoPoint, Scalar};
     use proptest::prelude::*;
     use test_strategy::proptest;
 
     use super::Hash;
-    use crate::{test_encode_bytes, test_encode_fields, Encode};
+    use crate::{
+        test_encode_bytes,
+        test_encode_fields,
+        testing::{point_hash, scalar_hash},
+    };
 
     test_encode_bytes!(Hash);
     test_encode_fields!(Hash);
 
-    fn scalar() -> impl Strategy<Value = Hash> {
-        any::<Hash>()
-            .prop_map(|x| {
-                let mut bytes = x.as_bytes();
-                bytes[31] = 0;
-
-                bytes
-            })
-            .prop_map(|x| Hash::from_slice(&x).unwrap())
-    }
-
-    fn point() -> impl Strategy<Value = Hash> {
-        scalar()
-            .prop_map(|x| Scalar::try_from(x).unwrap() * G)
-            .prop_map(Hash::from)
-    }
-
     #[proptest]
-    fn test_hash_scalar_roundtrip(#[strategy(scalar())] hash: Hash) {
+    fn test_hash_scalar_roundtrip(#[strategy(scalar_hash())] hash: Hash) {
         prop_assert_eq!(Hash::from(Scalar::try_from(hash)?), hash);
     }
 
     #[proptest]
-    fn test_hash_point_roundtrip(#[strategy(point())] hash: Hash) {
+    fn test_hash_point_roundtrip(#[strategy(point_hash())] hash: Hash) {
         prop_assert_eq!(Hash::from(RistrettoPoint::try_from(hash)?), hash);
     }
 }

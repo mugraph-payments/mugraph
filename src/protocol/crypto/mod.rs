@@ -34,17 +34,6 @@ mod tests {
 
     use super::*;
 
-    fn scalar() -> impl Strategy<Value = Hash> {
-        any::<Hash>()
-            .prop_map(|x| {
-                let mut bytes = x.as_bytes();
-                bytes[31] = 0;
-
-                bytes
-            })
-            .prop_map(|x| Hash::from_slice(&x).unwrap())
-    }
-
     macro_rules! generate_bdhke_tests {
         ($type:ty) => {
             paste::paste! {
@@ -61,7 +50,7 @@ mod tests {
                 #[::test_strategy::proptest]
                 fn [<test_ $type:snake _bdhke_full_process>](
                     note: Note,
-                    #[strategy(scalar())] r: Hash,
+                    #[strategy($crate::testing::scalar_hash())] r: Hash,
                     sk: SecretKey
                 ) {
                     use $crate::protocol::crypto::BlindDiffieHellmanKeyExchange;

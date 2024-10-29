@@ -1,7 +1,6 @@
 use std::fmt;
 
 use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT as G,
     ristretto::{CompressedRistretto, RistrettoPoint},
     Scalar,
 };
@@ -43,7 +42,7 @@ impl PublicKey {
     /// # Returns
     ///
     /// Returns B', the blinded note value as a `BlindedValue`.
-    pub fn blind(&self, note: Note, r: &Scalar) -> Result<BlindedValue, Error> {
+    pub fn blind(&self, _note: Note, _r: &Scalar) -> Result<BlindedValue, Error> {
         todo!()
     }
 
@@ -59,8 +58,8 @@ impl PublicKey {
     /// * `mint_pubkey` - The public key of the mint (A).
     ///
     /// # Returns
-    pub fn unblind(&self, value: BlindSignature, r: Scalar) -> Signature {
-        (RistrettoPoint::from(value) - r * RistrettoPoint::from(*self)).into()
+    pub fn unblind(&self, _value: BlindSignature, _r: Scalar) -> Signature {
+        todo!()
     }
 }
 
@@ -138,11 +137,14 @@ impl From<RistrettoPoint> for PublicKey {
     }
 }
 
-impl From<PublicKey> for RistrettoPoint {
-    fn from(public_key: PublicKey) -> Self {
-        CompressedRistretto(public_key.0)
+impl TryFrom<PublicKey> for RistrettoPoint {
+    type Error = Error;
+
+    fn try_from(key: PublicKey) -> Result<Self, Self::Error> {
+        CompressedRistretto::from_slice(&key.0)
+            .map_err(|e| Error::DecodeError(e.to_string()))?
             .decompress()
-            .expect("Invalid public key")
+            .ok_or(Error::DecodeError("Could not decompress point".to_string()))
     }
 }
 
@@ -153,12 +155,16 @@ impl AsRef<[u8]> for PublicKey {
 }
 
 impl Arbitrary for PublicKey {
-    type Parameters = ();
+    type Parameters = SecretKey;
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        Hash::arbitrary_with(params)
-            .prop_map(|x| Self(x.as_ref().try_into().unwrap()))
+    fn arbitrary_with(key: Self::Parameters) -> Self::Strategy {
+        Just(key).prop_map(|k| k.public()).boxed()
+    }
+
+    fn arbitrary() -> Self::Strategy {
+        any::<SecretKey>()
+            .prop_flat_map(Self::arbitrary_with)
             .boxed()
     }
 }
@@ -180,8 +186,17 @@ impl fmt::Debug for PublicKey {
 
 #[cfg(test)]
 mod tests {
+    use curve25519_dalek::RistrettoPoint;
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
     use super::PublicKey;
 
     crate::test_encode_bytes!(PublicKey);
     crate::test_encode_fields!(PublicKey);
+
+    #[proptest]
+    fn test_key_point_roundtrip(key: PublicKey) {
+        prop_assert_eq!(PublicKey::from(RistrettoPoint::try_from(key)?), key);
+    }
 }

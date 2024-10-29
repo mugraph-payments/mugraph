@@ -26,8 +26,8 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         r: SecretKey,
     ) -> Result<Signature, Error> {
         let c_prime: NativePoint = blinded_signature.into();
-        let r_scalar: NativeScalar = r.into();
-        let a_point: NativePoint = public_key.into();
+        let r_scalar: NativeScalar = r.try_into()?;
+        let a_point: NativePoint = public_key.try_into()?;
         let c = c_prime - (r_scalar * a_point);
         Ok(c.into())
     }
@@ -37,7 +37,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         sk: SecretKey,
         blinded_message: BlindedValue,
     ) -> Result<BlindSignature, Error> {
-        let a: NativeScalar = sk.into();
+        let a: NativeScalar = sk.try_into()?;
         let b_prime: NativePoint = blinded_message.into();
         let c_prime = a * b_prime;
         Ok(c_prime.into())
@@ -50,7 +50,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         signature: Signature,
     ) -> Result<bool, Error> {
         let y: NativeScalar = self.hash_to_curve(data)?.try_into()?;
-        let a_point: NativePoint = pk.into();
+        let a_point: NativePoint = pk.try_into()?;
         let c: NativePoint = signature.into();
 
         Ok(c == a_point * y)

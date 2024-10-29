@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint, Scalar};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, Scalar};
 use proptest::prelude::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -32,22 +32,8 @@ impl SecretKey {
         (this * G).into()
     }
 
-    /// Signs a blinded note value using this secret key
-    ///
-    /// This function performs blind signing, which is a cryptographic operation
-    /// where the signer (the mint) signs a message (the blinded note value)
-    /// without knowing its contents.
-    ///
-    /// # Arguments
-    ///
-    /// * `secret_key` - The mint's secret signing key.
-    /// * `b_prime` - The blinded note value (B') to be signed.
-    ///
-    /// # Returns
-    ///
-    /// Returns C', the signed blinded note as an `RistrettoPoint`.
-    pub fn sign_blinded(&self, b_prime: BlindedValue) -> BlindSignature {
-        (Scalar::from(*self) * RistrettoPoint::from(b_prime)).into()
+    pub fn sign_blinded(&self, _b_prime: BlindedValue) -> BlindSignature {
+        todo!("to be removed and use the trait instead")
     }
 }
 
@@ -134,15 +120,21 @@ impl From<&[u8]> for SecretKey {
     }
 }
 
-impl From<Scalar> for SecretKey {
-    fn from(scalar: Scalar) -> Self {
-        Self(scalar.to_bytes())
+impl TryFrom<SecretKey> for Scalar {
+    type Error = Error;
+
+    fn try_from(secret_key: SecretKey) -> Result<Self, Error> {
+        if secret_key.as_bytes()[31] != 0 {
+            Err(Error::DecodeError("Not a valid scalar, last byte should be zero to ensure it fits inside the group modulo.".to_string()))
+        } else {
+            Ok(Scalar::from_bytes_mod_order(secret_key.0))
+        }
     }
 }
 
-impl From<SecretKey> for Scalar {
-    fn from(secret_key: SecretKey) -> Self {
-        Scalar::from_bytes_mod_order(secret_key.0)
+impl From<Scalar> for SecretKey {
+    fn from(scalar: Scalar) -> Self {
+        Self(scalar.to_bytes())
     }
 }
 
@@ -156,9 +148,12 @@ impl Arbitrary for SecretKey {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        Hash::arbitrary_with(params)
-            .prop_map(|x| Self(x.as_ref().try_into().unwrap()))
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        any::<[u8; 32]>()
+            .prop_map(|mut bytes| {
+                bytes[31] = 0;
+                Self(bytes)
+            })
             .boxed()
     }
 }
@@ -180,8 +175,17 @@ impl fmt::Debug for SecretKey {
 
 #[cfg(test)]
 mod tests {
+    use curve25519_dalek::Scalar;
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
     use super::SecretKey;
 
     crate::test_encode_bytes!(SecretKey);
     crate::test_encode_fields!(SecretKey);
+
+    #[proptest]
+    fn test_key_scalar_roundtrip(key: SecretKey) {
+        prop_assert_eq!(SecretKey::from(Scalar::try_from(key)?), key);
+    }
 }
