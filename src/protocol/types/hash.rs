@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
+use curve25519_dalek::{constants, ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use rand::{prelude::*, rngs::OsRng};
 use serde::{Deserialize, Serialize};
@@ -93,15 +93,21 @@ impl AsRef<[u8]> for Hash {
     }
 }
 
-impl From<Scalar> for Hash {
-    fn from(scalar: Scalar) -> Self {
-        Self(scalar.to_bytes())
+impl TryFrom<Hash> for Scalar {
+    type Error = Error;
+
+    fn try_from(hash: Hash) -> Result<Self, Error> {
+        if hash.as_bytes()[31] != 0 {
+            Err(Error::DecodeError("Not a valid scalar, last byte should be zero to ensure it fits inside the group modulo.".to_string()))
+        } else {
+            Ok(Scalar::from_bytes_mod_order(hash.0))
+        }
     }
 }
 
-impl From<Hash> for Scalar {
-    fn from(hash: Hash) -> Self {
-        Scalar::from_bytes_mod_order(hash.0)
+impl From<Scalar> for Hash {
+    fn from(scalar: Scalar) -> Self {
+        Self(scalar.to_bytes())
     }
 }
 
@@ -111,12 +117,14 @@ impl From<RistrettoPoint> for Hash {
     }
 }
 
-impl From<Hash> for RistrettoPoint {
-    fn from(hash: Hash) -> Self {
+impl TryFrom<Hash> for RistrettoPoint {
+    type Error = Error;
+
+    fn try_from(hash: Hash) -> Result<Self, Self::Error> {
         CompressedRistretto::from_slice(&hash.0)
-            .unwrap()
+            .map_err(|e| Error::DecodeError(e.to_string()))?
             .decompress()
-            .unwrap()
+            .ok_or(Error::DecodeError("Could not decompress point".to_string()))
     }
 }
 
@@ -200,9 +208,40 @@ impl DecodeFields for Hash {
 
 #[cfg(test)]
 mod tests {
+    use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, RistrettoPoint, Scalar};
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
     use super::Hash;
-    use crate::{test_encode_bytes, test_encode_fields};
+    use crate::{test_encode_bytes, test_encode_fields, Encode};
 
     test_encode_bytes!(Hash);
     test_encode_fields!(Hash);
+
+    fn scalar() -> impl Strategy<Value = Hash> {
+        any::<Hash>()
+            .prop_map(|x| {
+                let mut bytes = x.as_bytes();
+                bytes[31] = 0;
+
+                bytes
+            })
+            .prop_map(|x| Hash::from_slice(&x).unwrap())
+    }
+
+    fn point() -> impl Strategy<Value = Hash> {
+        scalar()
+            .prop_map(|x| Scalar::try_from(x).unwrap() * G)
+            .prop_map(Hash::from)
+    }
+
+    #[proptest]
+    fn test_hash_scalar_roundtrip(#[strategy(scalar())] hash: Hash) {
+        prop_assert_eq!(Hash::from(Scalar::try_from(hash)?), hash);
+    }
+
+    #[proptest]
+    fn test_hash_point_roundtrip(#[strategy(point())] hash: Hash) {
+        prop_assert_eq!(Hash::from(RistrettoPoint::try_from(hash)?), hash);
+    }
 }
