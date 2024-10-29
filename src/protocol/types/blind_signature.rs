@@ -2,6 +2,7 @@ use std::fmt;
 
 use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
@@ -10,7 +11,13 @@ use crate::{protocol::circuit::*, Decode, DecodeFields, Encode, EncodeFields, Er
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct BlindSignature(#[serde(with = "hex::serde")] [u8; 32]);
+pub struct BlindSignature(
+    #[strategy(any::<[u8; 32]>().prop_map(|mut x| {
+        x[31] = 0;
+        x
+    }))]
+    [u8; 32],
+);
 
 impl BlindSignature {
     pub fn zero() -> Self {

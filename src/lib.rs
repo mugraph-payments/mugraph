@@ -1,5 +1,6 @@
 mod error;
 
+pub mod crypto;
 pub mod mint;
 pub mod protocol;
 pub mod testing;

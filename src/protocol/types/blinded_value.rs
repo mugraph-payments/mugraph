@@ -1,7 +1,8 @@
 use std::fmt;
 
-use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
+use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
@@ -10,7 +11,14 @@ use crate::{protocol::circuit::*, Decode, DecodeFields, Encode, EncodeFields, Er
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary)]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct BlindedValue(#[serde(with = "hex::serde")] [u8; 32]);
+pub struct BlindedValue(
+    #[serde(with = "hex::serde")]
+    #[strategy(any::<[u8; 32]>().prop_map(|mut x| {
+        x[31] = 0;
+        x
+    }))]
+    [u8; 32],
+);
 
 impl BlindedValue {
     pub fn zero() -> Self {
@@ -86,30 +94,20 @@ impl AsRef<[u8]> for BlindedValue {
     }
 }
 
-impl From<Scalar> for BlindedValue {
-    fn from(scalar: Scalar) -> Self {
-        Self(scalar.to_bytes())
-    }
-}
-
-impl From<BlindedValue> for Scalar {
-    fn from(hash: BlindedValue) -> Self {
-        Scalar::from_bytes_mod_order(hash.0)
-    }
-}
-
 impl From<RistrettoPoint> for BlindedValue {
     fn from(point: RistrettoPoint) -> Self {
         Self(point.compress().to_bytes())
     }
 }
 
-impl From<BlindedValue> for RistrettoPoint {
-    fn from(hash: BlindedValue) -> Self {
-        CompressedRistretto::from_slice(&hash.0)
-            .unwrap()
+impl TryFrom<BlindedValue> for RistrettoPoint {
+    type Error = Error;
+
+    fn try_from(val: BlindedValue) -> Result<Self, Self::Error> {
+        CompressedRistretto::from_slice(&val.0)
+            .map_err(|e| Error::DecodeError(e.to_string()))?
             .decompress()
-            .unwrap()
+            .ok_or(Error::DecodeError("Could not decompress point".to_string()))
     }
 }
 

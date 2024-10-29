@@ -2,14 +2,15 @@ use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as G;
 pub use curve25519_dalek::{RistrettoPoint as NativePoint, Scalar as NativeScalar};
 
 use super::*;
-use crate::{protocol::types::Hash, Error};
+use crate::{protocol::Hash, Error};
 
 #[derive(Default)]
 pub struct NativeBdhke;
 
 impl BlindDiffieHellmanKeyExchange for NativeBdhke {
     fn hash_to_curve(&self, data: impl EncodeFields) -> Result<Hash, Error> {
-        Ok(data.hash())
+        let data: NativeScalar = data.hash().try_into()?;
+        Ok((data * G).into())
     }
 
     fn blind(&self, data: impl EncodeFields, r: Hash) -> Result<BlindedValue, Error> {
@@ -38,7 +39,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         blinded_message: BlindedValue,
     ) -> Result<BlindSignature, Error> {
         let a: NativeScalar = sk.try_into()?;
-        let b_prime: NativePoint = blinded_message.into();
+        let b_prime: NativePoint = blinded_message.try_into()?;
         let c_prime = a * b_prime;
         Ok(c_prime.into())
     }
