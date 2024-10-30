@@ -23,7 +23,7 @@ hickory-resolver = { version = "0.24.1", default-features = false, features = [
 ] }
 onlyerror = "0.1.4"
 plonky2 = "0.2.2"
-plonky2-bls12-381-pairing = { git = "https://github.com/cfcosta/plonky2-bls12-381-pairing" }
+poseidon-rs = "0.0.10"
 proptest = "1.5.0"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 redb = "2.1.4"

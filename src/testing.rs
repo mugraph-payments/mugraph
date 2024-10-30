@@ -129,6 +129,11 @@ mod tests {
     use super::*;
 
     #[proptest]
+    fn test_native_hash(hash: Hash) {
+        prop_assert_eq!(hash.hash(), todo!("Hash this natively to compare"));
+    }
+
+    #[proptest]
     fn test_distribute_numbers(
         #[strategy(1u64..=u64::MAX / 2)] amount: u64,
         #[strategy(((#amount / u64::MAX) + 1..u8::MAX as u64).prop_map(|o| o as usize))]

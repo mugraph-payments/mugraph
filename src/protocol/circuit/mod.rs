@@ -77,9 +77,9 @@ pub fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
 
 #[inline]
 pub fn hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {
-    let prefix = magic_prefix();
-    let t0 = builder.constant(prefix[0]);
-    let t1 = builder.constant(prefix[1]);
+    let [t0, t1] = magic_prefix();
+    let t0 = builder.constant(t0);
+    let t1 = builder.constant(t1);
 
     builder.hash_n_to_hash_no_pad::<PoseidonHash>([&[t0, t1], data].concat())
 }

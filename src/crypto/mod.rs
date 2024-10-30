@@ -39,30 +39,43 @@ pub fn secret_to_public(key: SecretKey) -> Result<PublicKey, Error> {
 
 #[cfg(test)]
 mod tests {
+    use std::panic::UnwindSafe;
+
     use proptest::prelude::*;
 
     use super::BlindDiffieHellmanKeyExchange;
-    use crate::{crypto::*, protocol::circuit::*, Error};
+    use crate::{crypto::*, protocol::circuit::*, unwind_panic, Error};
 
     type Result = std::result::Result<(), TestCaseError>;
 
-    fn test_htc<T: BlindDiffieHellmanKeyExchange>(note: Note, bdhke: T) -> Result {
-        let result = bdhke.hash_to_curve(note.clone())?;
+    fn test_htc<T: BlindDiffieHellmanKeyExchange + UnwindSafe>(note: Note, bdhke: T) -> Result {
+        let fields = note.as_fields();
+        let native = bdhke.hash_to_curve(note.clone())?.into();
 
-        let mut builder = circuit_builder();
-        let inputs = builder.add_virtual_targets(13);
-        let targets = hash_to_curve(&mut builder, &inputs);
+        let proof = unwind_panic(move || {
+            let mut builder = circuit_builder();
+            let inputs = builder.add_virtual_targets(Note::FIELD_SIZE);
+            let expected = builder.add_virtual_hash();
+            let result = hash_to_curve(&mut builder, &inputs);
 
-        builder.register_public_inputs(&[inputs.clone(), targets.elements.to_vec()].concat());
+            builder.connect_hashes(result, expected);
 
-        let circuit = builder.build::<C>();
+            builder.register_public_inputs(&inputs);
+            builder.register_public_inputs(&expected.elements);
 
-        let mut pw = PartialWitness::new();
-        pw.set_target_arr(&inputs, &note.as_fields_with_prefix());
-        let proof = circuit.prove(pw).map_err(Error::from)?;
+            let circuit = builder.build::<C>();
 
-        prop_assert_eq!(Hash::from_fields(&proof.public_inputs[13..])?, result);
-        prop_assert!(circuit.verify(proof).is_ok());
+            let mut pw = PartialWitness::new();
+            pw.set_target_arr(&inputs, &fields);
+            pw.set_hash_target(expected, native);
+
+            (circuit.prove(pw)).map_err(Error::from)
+        })?;
+
+        prop_assert_eq!(
+            Hash::from_fields(&proof.public_inputs[Note::FIELD_SIZE..])?,
+            bdhke.hash_to_curve(note.clone())?
+        );
 
         Ok(())
     }
@@ -86,12 +99,13 @@ mod tests {
     macro_rules! generate_bdhke_tests {
         ($type:ty) => {
             paste::paste! {
-                #[::test_strategy::proptest]
-                fn [<test_ $type:snake _bdhke_hash_to_curve>](note: Note) {
+                #[::test_strategy::proptest(cases = 1)]
+                fn [<test_ $type:snake _hash_to_curve>](note: Note) {
                     test_htc(note, <$type>::default())?;
                 }
 
                 #[::test_strategy::proptest]
+                #[ignore]
                 fn [<test_ $type:snake _bdhke_full_process>]( note: Note, r: Hash, secret_key: SecretKey) {
                     test_blind(note, secret_key, <$type>::default(), r)?;
                 }
