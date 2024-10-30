@@ -1,3 +1,11 @@
+#![deny(
+    clippy::correctness,
+    clippy::complexity,
+    clippy::perf,
+    clippy::big_endian_bytes,
+    clippy::missing_inline_in_public_items
+)]
+
 mod error;
 
 pub mod crypto;

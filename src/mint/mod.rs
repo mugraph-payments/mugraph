@@ -40,7 +40,7 @@ impl Mint {
         })
     }
 
-    pub fn start<T: Transport>(mut self, transport: T) -> Result<(), Error> {
+    pub fn start<T: Transport>(mut self, transport: &T) -> Result<(), Error> {
         transport.listen(&mut self)?;
         Ok(())
     }

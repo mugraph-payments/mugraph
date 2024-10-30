@@ -2,6 +2,9 @@
 name = "mugraph"
 version = "0.0.1"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mugraph-payments/mugraph"
+keywords = ["ecash", "cardano"]
 
 [dependencies]
 anyhow = "1.0.91"
