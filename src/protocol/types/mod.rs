@@ -15,3 +15,5 @@ pub use self::{
     secret_key::*,
     signature::*,
 };
+
+pub struct Bytes<const N: usize>([u8; N]);

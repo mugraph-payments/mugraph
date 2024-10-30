@@ -85,27 +85,6 @@ impl From<Scalar> for BlindSignature {
     }
 }
 
-impl From<BlindSignature> for Scalar {
-    fn from(hash: BlindSignature) -> Self {
-        Scalar::from_bytes_mod_order(hash.0)
-    }
-}
-
-impl From<RistrettoPoint> for BlindSignature {
-    fn from(point: RistrettoPoint) -> Self {
-        Self(point.compress().to_bytes())
-    }
-}
-
-impl From<BlindSignature> for RistrettoPoint {
-    fn from(hash: BlindSignature) -> Self {
-        CompressedRistretto::from_slice(&hash.0)
-            .unwrap()
-            .decompress()
-            .unwrap()
-    }
-}
-
 impl fmt::Display for BlindSignature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0.iter() {
@@ -181,6 +160,22 @@ impl DecodeFields for BlindSignature {
         }
 
         Ok(Self(bytes))
+    }
+}
+impl From<RistrettoPoint> for BlindSignature {
+    fn from(point: RistrettoPoint) -> Self {
+        Self(point.compress().to_bytes())
+    }
+}
+
+impl TryFrom<BlindSignature> for RistrettoPoint {
+    type Error = Error;
+
+    fn try_from(signature: BlindSignature) -> Result<Self, Self::Error> {
+        CompressedRistretto::from_slice(&signature.0)
+            .map_err(|e| Error::DecodeError(e.to_string()))?
+            .decompress()
+            .ok_or(Error::DecodeError("Could not decompress point".to_string()))
     }
 }
 

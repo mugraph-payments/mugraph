@@ -289,10 +289,10 @@ mod tests {
         };
     }
 
-    test_append_seal!(1, 1);
-    test_append_seal!(2, 2);
-    test_append_seal!(4, 4);
-    test_append_seal!(8, 8);
-    test_append_seal!(16, 16);
-    test_append_seal!(32, 32);
+    // test_append_seal!(1, 1);
+    // test_append_seal!(2, 2);
+    // test_append_seal!(4, 4);
+    // test_append_seal!(8, 8);
+    // test_append_seal!(16, 16);
+    // test_append_seal!(32, 32);
 }

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
+use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -76,33 +76,6 @@ impl From<&[u64]> for Signature {
 impl AsRef<[u8]> for Signature {
     fn as_ref(&self) -> &[u8] {
         &self.0
-    }
-}
-
-impl From<Scalar> for Signature {
-    fn from(scalar: Scalar) -> Self {
-        Self(scalar.to_bytes())
-    }
-}
-
-impl From<Signature> for Scalar {
-    fn from(hash: Signature) -> Self {
-        Scalar::from_bytes_mod_order(hash.0)
-    }
-}
-
-impl From<RistrettoPoint> for Signature {
-    fn from(point: RistrettoPoint) -> Self {
-        Self(point.compress().to_bytes())
-    }
-}
-
-impl From<Signature> for RistrettoPoint {
-    fn from(hash: Signature) -> Self {
-        CompressedRistretto::from_slice(&hash.0)
-            .unwrap()
-            .decompress()
-            .unwrap()
     }
 }
 
@@ -184,11 +157,37 @@ impl DecodeFields for Signature {
     }
 }
 
+impl From<RistrettoPoint> for Signature {
+    fn from(point: RistrettoPoint) -> Self {
+        Self(point.compress().to_bytes())
+    }
+}
+
+impl TryFrom<Signature> for RistrettoPoint {
+    type Error = Error;
+
+    fn try_from(signature: Signature) -> Result<Self, Self::Error> {
+        CompressedRistretto::from_slice(&signature.0)
+            .map_err(|e| Error::DecodeError(e.to_string()))?
+            .decompress()
+            .ok_or(Error::DecodeError("Could not decompress point".to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use curve25519_dalek::RistrettoPoint;
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
     use super::Signature;
     use crate::{test_encode_bytes, test_encode_fields};
 
     test_encode_bytes!(Signature);
     test_encode_fields!(Signature);
+
+    #[proptest]
+    fn test_sig_point_roundtrip(sig: Signature) {
+        prop_assert_eq!(Signature::from(RistrettoPoint::try_from(sig)?), sig);
+    }
 }
