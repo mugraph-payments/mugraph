@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
 use circuit::*;
-use curve25519_dalek::Scalar;
 use plonky2::{hash::hash_types::HashOutTarget, iop::target::Target};
 use proptest::prelude::*;
-use rand::rngs::OsRng;
 
 use crate::{protocol::*, testing::distribute, unwind_panic, Error};
 
@@ -27,16 +25,7 @@ impl EncodeFields for Payload {
 
 impl<const I: usize, const O: usize> Append<I, O> {
     pub fn payload(&self) -> Payload {
-        let key = self.inputs.first().map(|x| x.issuing_key).unwrap();
-
-        // TODO: the r should be kept to the future so it can be used to unblind
-        Payload {
-            outputs: self
-                .outputs
-                .iter()
-                .filter_map(|x| key.blind(x.clone(), &Scalar::random(&mut OsRng)).ok())
-                .collect(),
-        }
+        todo!()
     }
 
     pub fn is_valid(&self) -> bool {
@@ -78,28 +67,11 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
     type Parameters = SecretKey;
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(secret_key: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(_secret_key: Self::Parameters) -> Self::Strategy {
         // Use `distribute` to generate balanced inputs and outputs
         distribute(I, O)
             .prop_map(move |(inputs, outputs)| {
-                let inputs = inputs
-                    .into_iter()
-                    .map(|note| {
-                        let r = Scalar::random(&mut OsRng);
-                        let public_key = secret_key.public();
-                        let blinded = public_key.blind(note.clone(), &r).unwrap();
-                        let blind_sig = secret_key.sign_blinded(blinded);
-                        let signature = public_key.unblind(blind_sig, r);
-
-                        SealedNote {
-                            issuing_key: secret_key.public(),
-                            host: "localhost".to_string(),
-                            port: 4000,
-                            note,
-                            signature,
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                let inputs = inputs.into_iter().map(|_note| todo!()).collect::<Vec<_>>();
 
                 Append {
                     inputs: inputs.try_into().unwrap(),
@@ -264,7 +236,7 @@ fn assets_match(
 #[cfg(test)]
 mod tests {
 
-    use super::*;
+    
 
     #[cfg(test)]
     #[macro_export]

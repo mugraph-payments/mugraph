@@ -121,19 +121,8 @@ pub(crate) fn distribute(
     })
 }
 
-pub fn scalar_hash() -> impl Strategy<Value = Hash> {
-    any::<Hash>()
-        .prop_map(|x| {
-            let mut bytes = x.as_bytes();
-            bytes[31] = 0;
-
-            bytes
-        })
-        .prop_map(|x| Hash::from_slice(&x).unwrap())
-}
-
 pub fn point_hash() -> impl Strategy<Value = Hash> {
-    scalar_hash()
+    any::<Hash>()
         .prop_map(|x| Scalar::try_from(x).unwrap() * G)
         .prop_map(Hash::from)
 }

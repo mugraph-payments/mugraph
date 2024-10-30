@@ -7,6 +7,7 @@ use std::{
 };
 
 use argh::FromArgs;
+use rand::rngs::OsRng;
 
 use super::{Decode, Encode, SecretKey, Tcp};
 use crate::Error;
@@ -63,7 +64,7 @@ impl Config {
                 });
             }
             true => {
-                let key = SecretKey::random();
+                let key = SecretKey::random(&mut OsRng);
 
                 let mut file = File::create(&self.key_path)?;
                 file.write_all(&key.as_bytes())?;

@@ -1,3 +1,4 @@
+use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT as G;
 pub use curve25519_dalek::{RistrettoPoint as DalekPoint, Scalar as DalekScalar};
 
 mod native;
@@ -26,6 +27,13 @@ pub trait BlindDiffieHellmanKeyExchange {
         data: impl EncodeFields,
         signature: Signature,
     ) -> Result<bool, Error>;
+}
+
+pub fn secret_to_public(key: SecretKey) -> Result<PublicKey, Error> {
+    let key: curve25519_dalek::Scalar = key.try_into()?;
+    let res = key * G;
+
+    Ok(res.into())
 }
 
 #[cfg(test)]
@@ -64,10 +72,10 @@ mod tests {
         bdhke: T,
         r: Hash,
     ) -> Result {
-        let blinded = bdhke.blind(note.clone(), r.clone())?;
-        let public_key = secret_key.public();
+        let blinded = bdhke.blind(note.clone(), r)?;
+        let public_key = secret_to_public(secret_key)?;
         let blind_signature = bdhke.sign_blinded(secret_key, blinded)?;
-        let signature = bdhke.unblind(public_key, blind_signature, r.into())?;
+        let signature = bdhke.unblind(public_key, blind_signature, r)?;
 
         prop_assert_eq!(bdhke.verify(public_key, note, signature), Ok(true));
 
@@ -83,11 +91,7 @@ mod tests {
                 }
 
                 #[::test_strategy::proptest]
-                fn [<test_ $type:snake _bdhke_full_process>](
-                    note: Note,
-                    #[strategy($crate::testing::scalar_hash())] r: Hash,
-                    secret_key: SecretKey
-                ) {
+                fn [<test_ $type:snake _bdhke_full_process>]( note: Note, r: Hash, secret_key: SecretKey) {
                     test_blind(note, secret_key, <$type>::default(), r)?;
                 }
             }

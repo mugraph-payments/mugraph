@@ -2,10 +2,19 @@ use std::fmt;
 
 use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
 use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
+use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::{protocol::circuit::*, Decode, DecodeFields, Encode, EncodeFields, Error};
+
+pub type Hash = Bytes<32>;
+pub type BlindSignature = Bytes<32>;
+pub type BlindedValue = Bytes<32>;
+pub type PublicKey = Bytes<32>;
+pub type SecretKey = Bytes<32>;
+pub type Signature = Bytes<32>;
+pub type Name = Bytes<32>;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize, Arbitrary, Hash)]
 #[repr(transparent)]
@@ -35,6 +44,14 @@ impl<const N: usize> Bytes<N> {
 
     pub fn inner_mut(&mut self) -> &mut [u8; N] {
         &mut self.0
+    }
+
+    pub fn random<R: CryptoRng + Rng>(rng: &mut R) -> Bytes<N> {
+        if N == 32 {
+            Bytes::from_bytes(&Scalar::random(rng).to_bytes()).unwrap()
+        } else {
+            Self(rng.gen())
+        }
     }
 }
 

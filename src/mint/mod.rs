@@ -2,7 +2,7 @@ use std::fs::{self, File};
 
 use redb::Database;
 
-use crate::{protocol::*, Error};
+use crate::{crypto::secret_to_public, protocol::*, Error};
 
 mod config;
 mod transport;
@@ -22,7 +22,7 @@ pub struct Mint {
 impl Mint {
     pub fn new(config: &config::Config) -> Result<Self, Error> {
         let secret_key = config.secret_key()?;
-        let public_key = secret_key.public();
+        let public_key = secret_to_public(secret_key)?;
 
         let database = match fs::exists(&config.database_path)? {
             true => redb::Builder::new().open(&config.database_path)?,
