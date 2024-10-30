@@ -1,5 +1,6 @@
 mod blind_signature;
 mod blinded_value;
+pub mod bytes;
 mod hash;
 mod name;
 mod public_key;
@@ -15,5 +16,3 @@ pub use self::{
     secret_key::*,
     signature::*,
 };
-
-pub struct Bytes<const N: usize>([u8; N]);
