@@ -11,13 +11,12 @@ use plonky2::{
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use super::{DecodeFields, Hash, Name, PublicKey};
+use super::{Hash, Name, PublicKey};
 use crate::{
     protocol::{circuit::*, *},
     unwind_panic,
     Decode,
     Encode,
-    EncodeFields,
     Error,
 };
 
@@ -54,18 +53,6 @@ pub struct Note {
 
 impl Encode for Note {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(&self.amount.to_le_bytes());
-        bytes.extend_from_slice(&self.asset_id.as_bytes());
-        bytes.extend_from_slice(&self.asset_name.as_bytes());
-        bytes.extend_from_slice(&self.nonce.as_bytes());
-        bytes
-    }
-}
-
-impl EncodeFields for Note {
-    #[inline]
     fn as_fields(&self) -> Vec<F> {
         let mut fields = Vec::new();
         fields.push(F::from_canonical_u64(self.amount));
@@ -77,27 +64,6 @@ impl EncodeFields for Note {
 }
 
 impl Decode for Note {
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() < 8 + 32 * 2 + 32 {
-            return Err(Error::DecodeError("Invalid size".to_string()));
-        }
-
-        let amount = u64::from_le_bytes(bytes[0usize..8].try_into().unwrap());
-        let asset_id = Hash::from_bytes(&bytes[8..8 + 32])?;
-        let asset_name = Name::from_bytes(&bytes[8 + 32..8 + 32 + 32])?;
-        let nonce = Hash::from_bytes(&bytes[8 + 32 + 32..])?;
-
-        Ok(Note {
-            amount,
-            asset_id,
-            asset_name,
-            nonce,
-        })
-    }
-}
-
-impl DecodeFields for Note {
     #[inline]
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() < 1 + 4 + 4 + 4 {
@@ -119,9 +85,6 @@ impl DecodeFields for Note {
 }
 
 impl Note {
-    pub const BYTE_SIZE: usize = 32 * 3 + 8; // 3 Hash (32 bytes each) + 1 u64
-    pub const FIELD_SIZE: usize = 4 * 3 + 1; // 3 Hash (4 fields each) + 1 field for amount
-
     #[inline]
     pub fn asset_name(&self) -> String {
         self.asset_name.to_string()
@@ -200,9 +163,9 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
+    use crate::test_encode_decode;
 
-    crate::test_encode_bytes!(Note);
-    crate::test_encode_fields!(Note);
+    test_encode_decode!(Note);
 
     fn run(note: Note) -> Result<(), Error> {
         Note::verify(note.hash(), note.seal()?)

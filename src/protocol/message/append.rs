@@ -17,7 +17,7 @@ pub struct Payload {
     outputs: Vec<BlindedValue>,
 }
 
-impl EncodeFields for Payload {
+impl Encode for Payload {
     #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.outputs.iter().flat_map(|x| x.as_fields()).collect()
@@ -50,7 +50,7 @@ impl<const I: usize, const O: usize> Append<I, O> {
     }
 }
 
-impl<const I: usize, const O: usize> EncodeFields for Append<I, O> {
+impl<const I: usize, const O: usize> Encode for Append<I, O> {
     #[inline]
     fn as_fields(&self) -> Vec<F> {
         let mut fields = Vec::new();

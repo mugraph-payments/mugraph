@@ -19,7 +19,7 @@ pub struct Payload {
     pub outputs: Vec<BlindedValue>,
 }
 
-impl EncodeFields for Payload {
+impl Encode for Payload {
     #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.inputs

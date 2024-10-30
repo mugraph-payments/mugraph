@@ -9,13 +9,13 @@ pub struct NativeBdhke;
 
 impl BlindDiffieHellmanKeyExchange for NativeBdhke {
     #[inline]
-    fn hash_to_curve(&self, data: impl EncodeFields) -> Result<Hash, Error> {
+    fn hash_to_curve(&self, data: impl Encode) -> Result<Hash, Error> {
         let data: NativeScalar = data.hash().try_into()?;
         Ok((data * G).into())
     }
 
     #[inline]
-    fn blind(&self, data: impl EncodeFields, r: Hash) -> Result<BlindedValue, Error> {
+    fn blind(&self, data: impl Encode, r: Hash) -> Result<BlindedValue, Error> {
         let y: NativePoint = NativeScalar::try_from(self.hash_to_curve(data)?)? * G;
         let r_scalar: NativeScalar = r.try_into()?;
 
@@ -48,12 +48,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         Ok(c_prime.into())
     }
 
-    fn verify(
-        &self,
-        pk: PublicKey,
-        data: impl EncodeFields,
-        signature: Signature,
-    ) -> Result<bool, Error> {
+    fn verify(&self, pk: PublicKey, data: impl Encode, signature: Signature) -> Result<bool, Error> {
         let y: NativeScalar = self.hash_to_curve(data)?.try_into()?;
         let a_point: NativePoint = pk.try_into()?;
         let c: NativePoint = signature.try_into()?;

@@ -108,6 +108,7 @@
             cargo-nextest
             cargo-pgo
             cargo-watch
+            cargo-machete
           ];
         };
       }

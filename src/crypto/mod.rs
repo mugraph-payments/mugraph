@@ -8,8 +8,8 @@ pub use native::{NativePoint, NativeScalar};
 use crate::{protocol::*, Error};
 
 pub trait BlindDiffieHellmanKeyExchange {
-    fn hash_to_curve(&self, data: impl EncodeFields) -> Result<Hash, Error>;
-    fn blind(&self, data: impl EncodeFields, r: Hash) -> Result<BlindedValue, Error>;
+    fn hash_to_curve(&self, data: impl Encode) -> Result<Hash, Error>;
+    fn blind(&self, data: impl Encode, r: Hash) -> Result<BlindedValue, Error>;
     fn unblind(
         &self,
         public_key: PublicKey,
@@ -21,12 +21,7 @@ pub trait BlindDiffieHellmanKeyExchange {
         sk: SecretKey,
         blinded_message: BlindedValue,
     ) -> Result<BlindSignature, Error>;
-    fn verify(
-        &self,
-        pk: PublicKey,
-        data: impl EncodeFields,
-        signature: Signature,
-    ) -> Result<bool, Error>;
+    fn verify(&self, pk: PublicKey, data: impl Encode, signature: Signature) -> Result<bool, Error>;
 }
 
 #[inline]
@@ -51,10 +46,11 @@ mod tests {
     fn test_htc<T: BlindDiffieHellmanKeyExchange + UnwindSafe>(note: Note, bdhke: T) -> Result {
         let fields = note.as_fields();
         let native = bdhke.hash_to_curve(note.clone())?.into();
+        let size = note.field_len();
 
         let proof = unwind_panic(move || {
             let mut builder = circuit_builder();
-            let inputs = builder.add_virtual_targets(Note::FIELD_SIZE);
+            let inputs = builder.add_virtual_targets(size);
             let expected = builder.add_virtual_hash();
             let result = hash_to_curve(&mut builder, &inputs);
 
@@ -73,7 +69,7 @@ mod tests {
         })?;
 
         prop_assert_eq!(
-            Hash::from_fields(&proof.public_inputs[Note::FIELD_SIZE..])?,
+            Hash::from_fields(&proof.public_inputs[size..])?,
             bdhke.hash_to_curve(note.clone())?
         );
 

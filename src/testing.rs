@@ -8,31 +8,33 @@ use crate::protocol::*;
 
 #[cfg(test)]
 #[macro_export]
-macro_rules! test_encode_bytes {
+macro_rules! test_encode_decode {
     ($t:ty) => {
         paste::paste! {
-            #[test_strategy::proptest]
-            fn [<test_ $t:snake _encode_decode_bytes >](t: $t) {
-                use ::proptest::prelude::*;
+            mod [< codec_tests_ $t:snake >] {
                 use $crate::{Encode, Decode};
-                prop_assert_eq!(<$t>::from_bytes(&t.as_bytes()).unwrap(), t);
-            }
-        }
-    };
-}
-
-#[cfg(test)]
-#[macro_export]
-macro_rules! test_encode_fields {
-    ($t:ty) => {
-        paste::paste! {
-            #[::test_strategy::proptest]
-            fn [<test_ $t:snake _encode_decode_fields >](t: $t) {
                 use ::proptest::prelude::*;
-                use $crate::{EncodeFields, DecodeFields};
+                use super::*;
 
-                let fields = t.as_fields();
-                prop_assert_eq!(<$t>::from_fields(&fields).unwrap(), t);
+                #[::test_strategy::proptest]
+                fn test_encode_decode_bytes(t: $t) {
+                    use ::proptest::prelude::*;
+                    prop_assert_eq!(<$t>::from_bytes(&t.as_bytes())?, t);
+                }
+
+                #[::test_strategy::proptest]
+                fn test_hash_bytes_and_field_equality(t: $t) {
+                    prop_assert_eq!(t.hash_bytes(), t.hash());
+                    prop_assert_eq!(t.hash_bytes_with_prefix(), t.hash_with_prefix());
+                }
+
+                #[::test_strategy::proptest]
+                fn test_encode_decode_fields(t: $t) {
+                    use ::proptest::prelude::*;
+
+                    let fields = t.as_fields();
+                    prop_assert_eq!(<$t>::from_fields(&fields).unwrap(), t);
+                }
             }
         }
     };
@@ -127,11 +129,6 @@ mod tests {
     use test_strategy::proptest;
 
     use super::*;
-
-    #[proptest]
-    fn test_native_hash(hash: Hash) {
-        prop_assert_eq!(hash.hash(), todo!("Hash this natively to compare"));
-    }
 
     #[proptest]
     fn test_distribute_numbers(

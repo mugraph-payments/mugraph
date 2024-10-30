@@ -6,7 +6,7 @@ use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::{protocol::circuit::*, Decode, DecodeFields, Encode, EncodeFields, Error};
+use crate::{protocol::circuit::*, Decode, Encode, Error};
 
 pub type Hash = Bytes<32>;
 pub type BlindSignature = Bytes<32>;
@@ -197,13 +197,6 @@ impl From<Bytes<32>> for HashOut<F> {
 
 impl<const N: usize> Encode for Bytes<N> {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        self.0.to_vec()
-    }
-}
-
-impl<const N: usize> EncodeFields for Bytes<N> {
-    #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.0
             .chunks(8)
@@ -213,22 +206,6 @@ impl<const N: usize> EncodeFields for Bytes<N> {
 }
 
 impl<const N: usize> Decode for Bytes<N> {
-    #[inline]
-    fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        if bytes.len() != N {
-            return Err(Error::DecodeError(format!(
-                "Invalid length for Bytes: expected N, got {}",
-                bytes.len()
-            )));
-        }
-
-        let mut array = [0u8; N];
-        array.copy_from_slice(bytes);
-        Ok(Self(array))
-    }
-}
-
-impl<const N: usize> DecodeFields for Bytes<N> {
     #[inline]
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() != N / 8 {
@@ -258,23 +235,19 @@ mod tests {
     use test_strategy::proptest;
 
     use super::Bytes;
-    use crate::{test_encode_bytes, test_encode_fields};
+    use crate::test_encode_decode;
 
     pub type Bytes8 = Bytes<8>;
-    test_encode_bytes!(Bytes8);
-    test_encode_fields!(Bytes8);
+    test_encode_decode!(Bytes8);
 
     pub type Bytes16 = Bytes<16>;
-    test_encode_bytes!(Bytes16);
-    test_encode_fields!(Bytes16);
+    test_encode_decode!(Bytes16);
 
     pub type Bytes32 = Bytes<32>;
-    test_encode_bytes!(Bytes32);
-    test_encode_fields!(Bytes32);
+    test_encode_decode!(Bytes32);
 
     pub type Bytes64 = Bytes<64>;
-    test_encode_bytes!(Bytes64);
-    test_encode_fields!(Bytes64);
+    test_encode_decode!(Bytes64);
 
     fn crypto_rng() -> impl Strategy<Value = ChaCha20Rng> {
         any::<[u8; 32]>().prop_map(ChaCha20Rng::from_seed)

@@ -17,7 +17,7 @@ use std::panic::UnwindSafe;
 
 pub use self::{
     error::Error,
-    protocol::{Decode, DecodeFields, Encode, EncodeFields},
+    protocol::{Decode, Encode},
 };
 
 #[inline]

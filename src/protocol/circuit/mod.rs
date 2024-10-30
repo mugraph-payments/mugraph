@@ -42,9 +42,10 @@ pub fn magic_prefix() -> [F; 2] {
 #[inline]
 pub fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
     let zero = builder.zero();
+    let note_size = Note::default().field_len();
 
     // Private inputs
-    let mut targets = builder.add_virtual_targets(Note::FIELD_SIZE);
+    let mut targets = builder.add_virtual_targets(note_size);
     let (amount, rest) = targets.split_at_mut(1);
     let (asset_id, rest) = rest.split_at_mut(4);
     let (asset_name, nonce) = rest.split_at_mut(4);
@@ -96,9 +97,9 @@ fn targets_are_zero(builder: &mut CircuitBuilder, targets: &[Target]) -> BoolTar
     target
 }
 
-pub trait Sealable: EncodeFields + RefUnwindSafe {
+pub trait Sealable: Encode + RefUnwindSafe {
     type Circuit;
-    type Payload: EncodeFields;
+    type Payload: Encode;
 
     fn circuit() -> Self::Circuit;
     fn circuit_data() -> CircuitData;
