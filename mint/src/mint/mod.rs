@@ -7,16 +7,13 @@ use crate::{crypto::secret_to_public, protocol::*, Error};
 mod config;
 mod transport;
 
-pub use self::{
-    config::*,
-    transport::{Tcp, Transport},
-};
+pub use self::transport::{Tcp, Transport};
 
 pub struct Mint {
-    pub secret_key: SecretKey,
-    pub public_key: PublicKey,
-    pub config: config::Config,
-    pub database: Database,
+    secret_key: SecretKey,
+    public_key: PublicKey,
+    config: config::Config,
+    database: Database,
 }
 
 impl Mint {

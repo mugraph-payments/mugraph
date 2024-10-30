@@ -25,6 +25,7 @@ pub type Seal = plonky2::plonk::proof::CompressedProof<F, C, D>;
 pub type CircuitConfig = plonky2::plonk::circuit_data::CircuitConfig;
 pub type PartialWitness = plonky2::iop::witness::PartialWitness<F>;
 
+#[inline(always)]
 pub fn circuit_builder() -> CircuitBuilder {
     let config = CircuitConfig::standard_recursion_config();
     CircuitBuilder::new(config)
@@ -38,6 +39,7 @@ pub fn magic_prefix() -> [F; 2] {
     ]
 }
 
+#[inline]
 pub fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
     let zero = builder.zero();
 
@@ -73,6 +75,7 @@ pub fn seal_note(builder: &mut CircuitBuilder) -> (HashOutTarget, Vec<Target>) {
     (commitment, targets)
 }
 
+#[inline]
 pub fn hash_to_curve(builder: &mut CircuitBuilder, data: &[Target]) -> HashOutTarget {
     let prefix = magic_prefix();
     let t0 = builder.constant(prefix[0]);
@@ -101,6 +104,7 @@ pub trait Sealable: EncodeFields + RefUnwindSafe {
     fn circuit_data() -> CircuitData;
     fn prove(&self) -> Result<Proof, Error>;
 
+    #[inline]
     fn seal(&self) -> Result<Seal, Error> {
         let compressed = unwind_panic(move || {
             let data = Self::circuit_data();
@@ -114,6 +118,7 @@ pub trait Sealable: EncodeFields + RefUnwindSafe {
         Ok(compressed.proof)
     }
 
+    #[inline]
     fn verify(payload: Self::Payload, proof: Seal) -> Result<(), Error> {
         let proof = CompressedProofWithPublicInputs {
             proof,

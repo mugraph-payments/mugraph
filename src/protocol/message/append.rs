@@ -18,16 +18,19 @@ pub struct Payload {
 }
 
 impl EncodeFields for Payload {
+    #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.outputs.iter().flat_map(|x| x.as_fields()).collect()
     }
 }
 
 impl<const I: usize, const O: usize> Append<I, O> {
+    #[inline]
     pub fn payload(&self) -> Payload {
         todo!()
     }
 
+    #[inline]
     pub fn is_valid(&self) -> bool {
         let mut pre = HashMap::new();
         let mut post = HashMap::new();
@@ -48,6 +51,7 @@ impl<const I: usize, const O: usize> Append<I, O> {
 }
 
 impl<const I: usize, const O: usize> EncodeFields for Append<I, O> {
+    #[inline]
     fn as_fields(&self) -> Vec<F> {
         let mut fields = Vec::new();
 
@@ -67,6 +71,7 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
     type Parameters = SecretKey;
     type Strategy = BoxedStrategy<Self>;
 
+    #[inline]
     fn arbitrary_with(_secret_key: Self::Parameters) -> Self::Strategy {
         // Use `distribute` to generate balanced inputs and outputs
         distribute(I, O)
@@ -81,6 +86,7 @@ impl<const I: usize, const O: usize> Arbitrary for Append<I, O> {
             .boxed()
     }
 
+    #[inline]
     fn arbitrary() -> Self::Strategy {
         any::<SecretKey>()
             .prop_flat_map(Self::arbitrary_with)
@@ -95,16 +101,19 @@ pub struct Atom {
 }
 
 impl Atom {
+    #[inline]
     pub fn amount(&self) -> Target {
         self.fields[0]
     }
 
+    #[inline]
     pub fn asset_id(&self) -> HashOutTarget {
         HashOutTarget {
             elements: self.fields[1..5].try_into().unwrap(),
         }
     }
 
+    #[inline]
     pub fn asset_name(&self) -> HashOutTarget {
         HashOutTarget {
             elements: self.fields[5..9].try_into().unwrap(),
@@ -122,6 +131,7 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
     type Circuit = Circuit<I, O>;
     type Payload = Payload;
 
+    #[inline]
     fn circuit() -> Self::Circuit {
         let mut builder = circuit_builder();
 
@@ -189,10 +199,12 @@ impl<const I: usize, const O: usize> Sealable for Append<I, O> {
         }
     }
 
+    #[inline(always)]
     fn circuit_data() -> CircuitData {
         Self::circuit().data
     }
 
+    #[inline]
     fn prove(&self) -> Result<Proof, Error> {
         unwind_panic(|| {
             let circuit = Self::circuit();
@@ -233,38 +245,37 @@ fn assets_match(
     assets_match
 }
 
-#[cfg(test)]
-mod tests {
-
-    
-
-    #[cfg(test)]
-    #[macro_export]
-    macro_rules! test_append_seal {
-        ($i:expr, $o:expr) => {
-            ::paste::paste! {
-                #[::test_strategy::proptest(cases = 10)]
-                fn [<test_$i x $i>](append: Append<$i, $o>) {
-                    prop_assert_eq!(
-                        append
-                            .seal()
-                            .and_then(|seal| Append::<$i, $o>::verify(append.payload(), seal)),
-                        Ok(())
-                    );
-                }
-
-                #[::test_strategy::proptest(cases = 10)]
-                fn [<test_proof_size_ $i x $i>](append: Append<$i, $o>) {
-                    prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
-                }
-            }
-        };
-    }
-
-    // test_append_seal!(1, 1);
-    // test_append_seal!(2, 2);
-    // test_append_seal!(4, 4);
-    // test_append_seal!(8, 8);
-    // test_append_seal!(16, 16);
-    // test_append_seal!(32, 32);
-}
+// #[cfg(test)]
+// mod tests {
+//     use proptest::prelude::*;
+//
+//     use super::*;
+//
+//     macro_rules! test_append_seal {
+//         ($i:expr, $o:expr) => {
+//             ::paste::paste! {
+//                 #[::test_strategy::proptest(cases = 10)]
+//                 fn [<test_$i x $i>](append: Append<$i, $o>) {
+//                     prop_assert_eq!(
+//                         append
+//                             .seal()
+//                             .and_then(|seal| Append::<$i, $o>::verify(append.payload(), seal)),
+//                         Ok(())
+//                     );
+//                 }
+//
+//                 #[::test_strategy::proptest(cases = 10)]
+//                 fn [<test_proof_size_ $i x $i>](append: Append<$i, $o>) {
+//                     prop_assert_eq!(bincode::serialize(&append.seal()?)?.len(), 100);
+//                 }
+//             }
+//         };
+//     }
+//
+//     test_append_seal!(0, 0);
+//     test_append_seal!(2, 2);
+//     test_append_seal!(4, 4);
+//     test_append_seal!(8, 8);
+//     test_append_seal!(16, 16);
+//     test_append_seal!(32, 32);
+// }

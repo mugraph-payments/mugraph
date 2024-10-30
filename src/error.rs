@@ -35,6 +35,7 @@ pub enum Error {
 }
 
 impl From<std::io::Error> for Error {
+    #[inline]
     fn from(err: std::io::Error) -> Self {
         Error::StorageError {
             kind: err.kind().to_string(),
@@ -44,6 +45,7 @@ impl From<std::io::Error> for Error {
 }
 
 impl From<redb::DatabaseError> for Error {
+    #[inline]
     fn from(err: redb::DatabaseError) -> Self {
         Error::StorageError {
             kind: "DatabaseError".to_string(),
@@ -53,18 +55,21 @@ impl From<redb::DatabaseError> for Error {
 }
 
 impl From<std::str::Utf8Error> for Error {
+    #[inline]
     fn from(err: std::str::Utf8Error) -> Self {
         Error::InvalidHostname(err.to_string())
     }
 }
 
 impl From<hickory_resolver::error::ResolveError> for Error {
+    #[inline]
     fn from(err: hickory_resolver::error::ResolveError) -> Self {
         Error::InvalidHostname(err.to_string())
     }
 }
 
 impl From<anyhow::Error> for Error {
+    #[inline]
     fn from(err: anyhow::Error) -> Self {
         Error::CryptoError {
             kind: err.root_cause().to_string(),
@@ -74,6 +79,7 @@ impl From<anyhow::Error> for Error {
 }
 
 impl From<ark_ec::hashing::HashToCurveError> for Error {
+    #[inline]
     fn from(err: ark_ec::hashing::HashToCurveError) -> Self {
         use std::error::Error as _;
 

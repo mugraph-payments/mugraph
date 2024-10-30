@@ -1,6 +1,5 @@
 use std::cmp::min;
 
-use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT as G, Scalar};
 use prop::collection::vec;
 use proptest::prelude::*;
 use rand::{prelude::*, rngs::OsRng};
@@ -119,12 +118,6 @@ pub(crate) fn distribute(
             (notes.clone(), output_notes)
         })
     })
-}
-
-pub fn point_hash() -> impl Strategy<Value = Hash> {
-    any::<Hash>()
-        .prop_map(|x| Scalar::try_from(x).unwrap() * G)
-        .prop_map(Hash::from)
 }
 
 #[cfg(test)]

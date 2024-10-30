@@ -1,29 +1,12 @@
-use circuit::{Seal, Sealable, F};
+use circuit::{Seal, F};
 use serde::{Deserialize, Serialize};
 
-use crate::{protocol::*, Error};
+use crate::protocol::*;
 
 mod append;
 
 pub use append::{Append, Circuit as AppendCircuit};
 
-pub trait ToMessage: Sealable {
-    fn method() -> Method;
-
-    fn to_message(&self) -> Result<Message, Error> {
-        Ok(Message {
-            method: Self::method(),
-            program_id: Hash::from_fields(
-                &Self::circuit_data().verifier_only.circuit_digest.elements,
-            )?,
-            seal: self.seal()?,
-            payload: Payload {
-                inputs: vec![],
-                outputs: vec![],
-            },
-        })
-    }
-}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum Method {
     #[serde(rename = "mu.v1.append")]
@@ -37,6 +20,7 @@ pub struct Payload {
 }
 
 impl EncodeFields for Payload {
+    #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.inputs
             .iter()

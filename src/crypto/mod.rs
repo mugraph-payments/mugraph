@@ -29,6 +29,7 @@ pub trait BlindDiffieHellmanKeyExchange {
     ) -> Result<bool, Error>;
 }
 
+#[inline]
 pub fn secret_to_public(key: SecretKey) -> Result<PublicKey, Error> {
     let key: curve25519_dalek::Scalar = key.try_into()?;
     let res = key * G;

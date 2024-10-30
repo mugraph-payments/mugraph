@@ -1,3 +1,6 @@
+[workspace]
+members = ["mint"]
+
 [package]
 name = "mugraph"
 version = "0.0.1"
@@ -43,10 +46,6 @@ opt-level = 3
 [profile.dev.package]
 plonky2.opt-level = 3
 curve25519-dalek.opt-level = 3
-
-[[bin]]
-name = "mugraph-mint"
-path = "src/bin/mint.rs"
 
 [[bench]]
 name = "seal"

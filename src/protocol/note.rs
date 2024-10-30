@@ -34,6 +34,7 @@ pub struct SealedNote {
 }
 
 impl SealedNote {
+    #[inline]
     pub fn host(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
@@ -52,6 +53,7 @@ pub struct Note {
 }
 
 impl Encode for Note {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&self.amount.to_le_bytes());
@@ -63,6 +65,7 @@ impl Encode for Note {
 }
 
 impl EncodeFields for Note {
+    #[inline]
     fn as_fields(&self) -> Vec<F> {
         let mut fields = Vec::new();
         fields.push(F::from_canonical_u64(self.amount));
@@ -74,6 +77,7 @@ impl EncodeFields for Note {
 }
 
 impl Decode for Note {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() < 8 + 32 * 2 + 32 {
             return Err(Error::DecodeError("Invalid size".to_string()));
@@ -94,6 +98,7 @@ impl Decode for Note {
 }
 
 impl DecodeFields for Note {
+    #[inline]
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() < 1 + 4 + 4 + 4 {
             return Err(Error::DecodeError("Not enough fields for Note".to_string()));
@@ -117,18 +122,21 @@ impl Note {
     pub const BYTE_SIZE: usize = 32 * 3 + 8; // 3 Hash (32 bytes each) + 1 u64
     pub const FIELD_SIZE: usize = 4 * 3 + 1; // 3 Hash (4 fields each) + 1 field for amount
 
+    #[inline]
     pub fn asset_name(&self) -> String {
         self.asset_name.to_string()
     }
 }
 
 impl fmt::Display for Note {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
 impl fmt::Debug for Note {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Note")
             .field("asset_id", &self.asset_id)
@@ -149,6 +157,7 @@ impl Sealable for Note {
     type Circuit = Circuit;
     type Payload = Hash;
 
+    #[inline]
     fn circuit() -> Self::Circuit {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::new(config);
@@ -165,10 +174,12 @@ impl Sealable for Note {
         }
     }
 
+    #[inline]
     fn circuit_data() -> CircuitData {
         Self::circuit().data
     }
 
+    #[inline]
     fn prove(&self) -> Result<Proof, Error> {
         unwind_panic(|| {
             let circuit = Self::circuit();

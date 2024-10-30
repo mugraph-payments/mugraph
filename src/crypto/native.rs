@@ -8,11 +8,13 @@ use crate::{protocol::Hash, Error};
 pub struct NativeBdhke;
 
 impl BlindDiffieHellmanKeyExchange for NativeBdhke {
+    #[inline]
     fn hash_to_curve(&self, data: impl EncodeFields) -> Result<Hash, Error> {
         let data: NativeScalar = data.hash().try_into()?;
         Ok((data * G).into())
     }
 
+    #[inline]
     fn blind(&self, data: impl EncodeFields, r: Hash) -> Result<BlindedValue, Error> {
         let y: NativePoint = NativeScalar::try_from(self.hash_to_curve(data)?)? * G;
         let r_scalar: NativeScalar = r.try_into()?;
@@ -20,6 +22,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         Ok((y + (r_scalar * G)).into())
     }
 
+    #[inline]
     fn unblind(
         &self,
         public_key: PublicKey,
@@ -33,6 +36,7 @@ impl BlindDiffieHellmanKeyExchange for NativeBdhke {
         Ok(c.into())
     }
 
+    #[inline]
     fn sign_blinded(
         &self,
         sk: SecretKey,

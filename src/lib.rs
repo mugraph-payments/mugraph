@@ -2,17 +2,16 @@
     clippy::correctness,
     clippy::complexity,
     clippy::perf,
-    clippy::big_endian_bytes,
-    clippy::missing_inline_in_public_items
+    clippy::big_endian_bytes
 )]
+#![warn(clippy::missing_inline_in_public_items)]
 
 mod error;
 
 pub mod crypto;
-pub mod mint;
 pub mod protocol;
-pub mod testing;
-pub mod wallet;
+pub(crate) mod testing;
+pub(crate) mod wallet;
 
 use std::panic::UnwindSafe;
 
@@ -21,6 +20,7 @@ pub use self::{
     protocol::{Decode, DecodeFields, Encode, EncodeFields},
 };
 
+#[inline]
 pub fn unwind_panic<T, F>(f: F) -> Result<T, Error>
 where
     F: FnOnce() -> Result<T, Error> + UnwindSafe,

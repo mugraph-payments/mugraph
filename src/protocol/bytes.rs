@@ -26,26 +26,42 @@ pub struct Bytes<const N: usize>(
 );
 
 impl<const N: usize> Bytes<N> {
-    pub fn zero() -> Self {
+    #[inline]
+    pub const fn zero() -> Self {
         Self([0u8; N])
     }
 
-    pub fn new(val: [u8; N]) -> Self {
+    #[inline]
+    pub const fn new(val: [u8; N]) -> Self {
         Self(val)
     }
 
-    pub fn is_zero(&self) -> bool {
-        *self == Self::zero()
+    #[inline]
+    pub const fn is_zero(&self) -> bool {
+        let mut i = 0;
+
+        while i < N {
+            if self.0[i] != 0 {
+                return false;
+            }
+
+            i += 1;
+        }
+
+        true
     }
 
-    pub fn inner(&self) -> [u8; N] {
+    #[inline]
+    pub const fn inner(&self) -> [u8; N] {
         self.0
     }
 
-    pub fn inner_mut(&mut self) -> &mut [u8; N] {
+    #[inline]
+    pub const fn inner_mut(&mut self) -> &mut [u8; N] {
         &mut self.0
     }
 
+    #[inline]
     pub fn random<R: CryptoRng + Rng>(rng: &mut R) -> Bytes<N> {
         if N == 32 {
             Bytes::from_bytes(&Scalar::random(rng).to_bytes()).unwrap()
@@ -56,18 +72,21 @@ impl<const N: usize> Bytes<N> {
 }
 
 impl<const N: usize> Default for Bytes<N> {
+    #[inline]
     fn default() -> Self {
         Self::zero()
     }
 }
 
 impl<const N: usize> From<[u8; N]> for Bytes<N> {
+    #[inline]
     fn from(value: [u8; N]) -> Self {
         Self(value)
     }
 }
 
 impl<const N: usize> From<[u64; 4]> for Bytes<N> {
+    #[inline]
     fn from(value: [u64; 4]) -> Self {
         let mut bytes = [0u8; N];
 
@@ -80,6 +99,7 @@ impl<const N: usize> From<[u64; 4]> for Bytes<N> {
 }
 
 impl<const N: usize> From<&[u64]> for Bytes<N> {
+    #[inline]
     fn from(slice: &[u64]) -> Self {
         let mut bytes = [0u8; N];
 
@@ -99,6 +119,7 @@ impl<const N: usize> From<&[u64]> for Bytes<N> {
 }
 
 impl<const N: usize> AsRef<[u8]> for Bytes<N> {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
@@ -107,6 +128,7 @@ impl<const N: usize> AsRef<[u8]> for Bytes<N> {
 impl TryFrom<Bytes<32>> for Scalar {
     type Error = Error;
 
+    #[inline]
     fn try_from(bytes: Bytes<32>) -> Result<Self, Error> {
         Scalar::from_canonical_bytes(bytes.inner())
             .into_option()
@@ -115,12 +137,14 @@ impl TryFrom<Bytes<32>> for Scalar {
 }
 
 impl From<Scalar> for Bytes<32> {
+    #[inline]
     fn from(scalar: Scalar) -> Self {
         Self(scalar.to_bytes())
     }
 }
 
 impl From<RistrettoPoint> for Bytes<32> {
+    #[inline]
     fn from(point: RistrettoPoint) -> Self {
         Self(point.compress().to_bytes())
     }
@@ -129,6 +153,7 @@ impl From<RistrettoPoint> for Bytes<32> {
 impl TryFrom<Bytes<32>> for RistrettoPoint {
     type Error = Error;
 
+    #[inline]
     fn try_from(bytes: Bytes<32>) -> Result<Self, Self::Error> {
         CompressedRistretto::from_slice(&bytes.0)
             .map_err(|e| Error::DecodeError(e.to_string()))?
@@ -138,6 +163,7 @@ impl TryFrom<Bytes<32>> for RistrettoPoint {
 }
 
 impl<const N: usize> fmt::Display for Bytes<N> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0.iter() {
             write!(f, "{:02x}", byte)?;
@@ -147,18 +173,21 @@ impl<const N: usize> fmt::Display for Bytes<N> {
 }
 
 impl<const N: usize> fmt::Debug for Bytes<N> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
 
 impl From<HashOut<F>> for Bytes<32> {
+    #[inline]
     fn from(value: HashOut<F>) -> Self {
         Self::from_bytes(&value.to_bytes()).unwrap()
     }
 }
 
 impl From<Bytes<32>> for HashOut<F> {
+    #[inline]
     fn from(value: Bytes<32>) -> Self {
         HashOut {
             elements: value.as_fields().try_into().unwrap(),
@@ -167,12 +196,14 @@ impl From<Bytes<32>> for HashOut<F> {
 }
 
 impl<const N: usize> Encode for Bytes<N> {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         self.0.to_vec()
     }
 }
 
 impl<const N: usize> EncodeFields for Bytes<N> {
+    #[inline]
     fn as_fields(&self) -> Vec<F> {
         self.0
             .chunks(8)
@@ -182,6 +213,7 @@ impl<const N: usize> EncodeFields for Bytes<N> {
 }
 
 impl<const N: usize> Decode for Bytes<N> {
+    #[inline]
     fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != N {
             return Err(Error::DecodeError(format!(
@@ -197,6 +229,7 @@ impl<const N: usize> Decode for Bytes<N> {
 }
 
 impl<const N: usize> DecodeFields for Bytes<N> {
+    #[inline]
     fn from_fields(fields: &[F]) -> Result<Self, Error> {
         if fields.len() != N / 8 {
             return Err(Error::DecodeError(format!(
