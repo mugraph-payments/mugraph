@@ -1,45 +1,30 @@
-use circuit::{Seal, F};
-use serde::{Deserialize, Serialize};
-
 use crate::protocol::*;
+use mucodec::Bytes;
 
 mod append;
 
-pub use append::{Append, Circuit as AppendCircuit};
+pub use append::{Append};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Method {
-    #[serde(rename = "mu.v1.append")]
     Append,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payload {
     pub inputs: Vec<Signature>,
     pub outputs: Vec<BlindedValue>,
 }
 
-impl Encode for Payload {
-    #[inline]
-    fn as_fields(&self) -> Vec<F> {
-        self.inputs
-            .iter()
-            .map(|x| x.as_fields())
-            .chain(self.outputs.iter().map(|x| x.as_fields()))
-            .flatten()
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
     pub method: Method,
     pub program_id: Hash,
-    pub seal: Seal,
+    pub seal: Bytes<1024>,
     pub payload: Payload,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedMessage {
     pub message: Message,
     pub signatures: Vec<Signature>,

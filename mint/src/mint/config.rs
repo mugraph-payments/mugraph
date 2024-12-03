@@ -9,7 +9,7 @@ use std::{
 use argh::FromArgs;
 use rand::rngs::OsRng;
 
-use super::{Decode, Encode, SecretKey, Tcp};
+use super::{ SecretKey, Tcp};
 use crate::Error;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -12,23 +12,18 @@ keywords = ["ecash", "cardano"]
 [dependencies]
 anyhow = "1.0.91"
 argh = "0.1.12"
-ark-bls12-381 = "0.5.0"
-ark-ec = { version = "0.5.0", features = ["std"] }
-ark-ff = "0.5.0"
 blake3 = "1.5.4"
 curve25519-dalek = { version = "4.1.3", features = ["digest", "rand_core"] }
 hex = { version = "0.4.3", features = ["serde"] }
 hickory-resolver = { version = "0.24.1", default-features = false, features = [
   "dns-over-rustls",
 ] }
+mucodec = { git = "https://github.com/mugraph-payments/mucodec", version = "0.1.0", features = ["blake3", "derive", "proptest", "rand"] }
 onlyerror = "0.1.4"
-plonky2 = "0.2.2"
-poseidon-rs = "0.0.10"
 proptest = "1.5.0"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 redb = "2.1.4"
 serde = { version = "1.0.210", features = ["derive"] }
-serde_bytes = "0.11.15"
 serde_cbor = "0.11.2"
 test-strategy = "0.4.0"
 
@@ -44,7 +39,6 @@ lto = "fat"
 opt-level = 3
 
 [profile.dev.package]
-plonky2.opt-level = 3
 curve25519-dalek.opt-level = 3
 
 [[bench]]
