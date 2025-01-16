@@ -6,40 +6,6 @@ use rand::{prelude::*, rngs::OsRng};
 
 use crate::protocol::*;
 
-#[cfg(test)]
-#[macro_export]
-macro_rules! test_encode_decode {
-    ($t:ty) => {
-        paste::paste! {
-            mod [< codec_tests_ $t:snake >] {
-                use $crate::{Encode, Decode};
-                use ::proptest::prelude::*;
-                use super::*;
-
-                #[::test_strategy::proptest]
-                fn test_encode_decode_bytes(t: $t) {
-                    use ::proptest::prelude::*;
-                    prop_assert_eq!(<$t>::from_bytes(&t.as_bytes())?, t);
-                }
-
-                #[::test_strategy::proptest]
-                fn test_hash_bytes_and_field_equality(t: $t) {
-                    prop_assert_eq!(t.hash_bytes(), t.hash());
-                    prop_assert_eq!(t.hash_bytes_with_prefix(), t.hash_with_prefix());
-                }
-
-                #[::test_strategy::proptest]
-                fn test_encode_decode_fields(t: $t) {
-                    use ::proptest::prelude::*;
-
-                    let fields = t.as_fields();
-                    prop_assert_eq!(<$t>::from_fields(&fields).unwrap(), t);
-                }
-            }
-        }
-    };
-}
-
 pub(crate) fn distribute_numbers(
     amount: u64,
     output_count: usize,

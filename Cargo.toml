@@ -22,8 +22,6 @@ hickory-resolver = { version = "0.24.1", default-features = false, features = [
   "dns-over-rustls",
 ] }
 onlyerror = "0.1.4"
-plonky2 = "0.2.2"
-poseidon-rs = "0.0.10"
 proptest = "1.5.0"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
 redb = "2.1.4"
@@ -44,9 +42,4 @@ lto = "fat"
 opt-level = 3
 
 [profile.dev.package]
-plonky2.opt-level = 3
 curve25519-dalek.opt-level = 3
-
-[[bench]]
-name = "seal"
-harness = false

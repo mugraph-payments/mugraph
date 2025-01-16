@@ -8,17 +8,13 @@
 
 mod error;
 
-pub mod crypto;
 pub mod protocol;
 pub(crate) mod testing;
 pub(crate) mod wallet;
 
 use std::panic::UnwindSafe;
 
-pub use self::{
-    error::Error,
-    protocol::{Decode, Encode},
-};
+pub use self::error::Error;
 
 #[inline]
 pub fn unwind_panic<T, F>(f: F) -> Result<T, Error>

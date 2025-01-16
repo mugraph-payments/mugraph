@@ -1,12 +1,11 @@
 use std::fmt;
 
 use curve25519_dalek::{ristretto::CompressedRistretto, RistrettoPoint, Scalar};
-use plonky2::{hash::hash_types::HashOut, plonk::config::GenericHashOut};
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::{protocol::circuit::*, Decode, Encode, Error};
+use crate::Error;
 
 pub type Hash = Bytes<32>;
 pub type BlindSignature = Bytes<32>;
@@ -63,11 +62,7 @@ impl<const N: usize> Bytes<N> {
 
     #[inline]
     pub fn random<R: CryptoRng + Rng>(rng: &mut R) -> Bytes<N> {
-        if N == 32 {
-            Bytes::from_bytes(&Scalar::random(rng).to_bytes()).unwrap()
-        } else {
-            Self(rng.gen())
-        }
+        Self(rng.gen())
     }
 }
 
@@ -179,53 +174,6 @@ impl<const N: usize> fmt::Debug for Bytes<N> {
     }
 }
 
-impl From<HashOut<F>> for Bytes<32> {
-    #[inline]
-    fn from(value: HashOut<F>) -> Self {
-        Self::from_bytes(&value.to_bytes()).unwrap()
-    }
-}
-
-impl From<Bytes<32>> for HashOut<F> {
-    #[inline]
-    fn from(value: Bytes<32>) -> Self {
-        HashOut {
-            elements: value.as_fields().try_into().unwrap(),
-        }
-    }
-}
-
-impl<const N: usize> Encode for Bytes<N> {
-    #[inline]
-    fn as_fields(&self) -> Vec<F> {
-        self.0
-            .chunks(8)
-            .map(|chunk| F::from_canonical_u64(u64::from_le_bytes(chunk.try_into().unwrap())))
-            .collect()
-    }
-}
-
-impl<const N: usize> Decode for Bytes<N> {
-    #[inline]
-    fn from_fields(fields: &[F]) -> Result<Self, Error> {
-        if fields.len() != N / 8 {
-            return Err(Error::DecodeError(format!(
-                "Invalid number of fields for Bytes: expected {}, got {}",
-                N / 8,
-                fields.len()
-            )));
-        }
-
-        let mut bytes = [0u8; N];
-        for (i, field) in fields.iter().enumerate() {
-            let field_bytes = field.to_canonical_u64().to_le_bytes();
-            bytes[i * 8..(i + 1) * 8].copy_from_slice(&field_bytes);
-        }
-
-        Ok(Self(bytes))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use curve25519_dalek::{RistrettoPoint, Scalar};
@@ -235,19 +183,6 @@ mod tests {
     use test_strategy::proptest;
 
     use super::Bytes;
-    use crate::test_encode_decode;
-
-    pub type Bytes8 = Bytes<8>;
-    test_encode_decode!(Bytes8);
-
-    pub type Bytes16 = Bytes<16>;
-    test_encode_decode!(Bytes16);
-
-    pub type Bytes32 = Bytes<32>;
-    test_encode_decode!(Bytes32);
-
-    pub type Bytes64 = Bytes<64>;
-    test_encode_decode!(Bytes64);
 
     fn crypto_rng() -> impl Strategy<Value = ChaCha20Rng> {
         any::<[u8; 32]>().prop_map(ChaCha20Rng::from_seed)
