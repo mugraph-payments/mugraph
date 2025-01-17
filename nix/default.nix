@@ -16,6 +16,29 @@ let
     default = packages.mugraph-simulator;
   };
 
+  formatter =
+    (inputs.treefmt-nix.lib.evalModule prev {
+      projectRootFile = "flake.nix";
+
+      settings = {
+        allow-missing-formatter = true;
+        verbose = 0;
+
+        global.excludes = [ "*.lock" ];
+
+        formatter = {
+          nixfmt.options = [ "--strict" ];
+          rustfmt.package = lib.rust;
+        };
+      };
+
+      programs = {
+        nixfmt.enable = true;
+        taplo.enable = true;
+        rustfmt.enable = true;
+      };
+    }).config.build.wrapper;
+
   devShells.default = mkShell {
     inherit (lib.env) RUST_LOG RUSTFLAGS;
     inherit (checks.pre-commit) shellHook;
@@ -40,6 +63,7 @@ in
     inherit
       checks
       devShells
+      formatter
       inputs
       lib
       packages

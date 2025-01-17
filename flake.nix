@@ -20,6 +20,11 @@
         gitignore.follows = "gitignore";
       };
     };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -43,7 +48,12 @@
         inherit (pkgs) mugraph;
       in
       {
-        inherit (mugraph) devShells checks packages;
+        inherit (mugraph)
+          devShells
+          checks
+          packages
+          formatter
+          ;
       }
     );
 }
