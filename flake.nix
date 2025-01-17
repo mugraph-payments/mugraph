@@ -11,6 +11,10 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -20,6 +24,7 @@
       pre-commit-hooks,
       process-compose,
       rust-overlay,
+      treefmt-nix,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -41,6 +46,29 @@
           rustc = rust;
           cargo = rust;
         };
+
+        treefmt =
+          (treefmt-nix.lib.evalModule pkgs {
+            projectRootFile = "flake.nix";
+
+            settings = {
+              allow-missing-formatter = true;
+              verbose = 0;
+
+              global.excludes = [ "*.lock" ];
+
+              formatter = {
+                nixfmt.options = [ "--strict" ];
+                rustfmt.package = rust;
+              };
+            };
+
+            programs = {
+              nixfmt.enable = true;
+              taplo.enable = true;
+              rustfmt.enable = true;
+            };
+          }).config.build.wrapper;
 
         check-and-test = writeShellApplication {
           name = "mugraph-ci";
@@ -66,11 +94,7 @@
           llvm-bolt = pkgs.llvmPackages_19.bolt;
 
           mugraph-watch = (import process-compose.lib { inherit pkgs; }).makeProcessCompose {
-            modules = [
-              {
-                settings.processes.mugraph-mint.command = "${check-and-test}/bin/mugraph-ci";
-              }
-            ];
+            modules = [ { settings.processes.mugraph-mint.command = "${check-and-test}/bin/mugraph-ci"; } ];
           };
         };
 
@@ -80,10 +104,9 @@
           hooks = {
             deadnix.enable = true;
             nixfmt-rfc-style.enable = true;
-
-            rustfmt = {
+            treefmt = {
               enable = true;
-              packageOverrides.cargo = rust;
+              package = treefmt;
             };
           };
         };
@@ -91,9 +114,8 @@
       {
         inherit packages;
 
-        checks = {
-          inherit pre-commit-check;
-        };
+        checks = { inherit pre-commit-check; };
+        formatter = treefmt;
 
         devShells.default = mkShell {
           inherit (pre-commit-check) shellHook;
