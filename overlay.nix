@@ -25,6 +25,7 @@ let
     packages = [
       checks.pre-commit.enabledPackages
       lib.rust
+      prev.cargo-machete
       prev.cargo-nextest
       prev.cargo-pgo
       prev.cargo-watch
