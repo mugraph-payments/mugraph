@@ -20,8 +20,9 @@ indexmap = "2.5.0"
 itertools = { version = "0.13.0" }
 metrics = "0.23.0"
 metrics-util = { version = "0.17", default-features = false, features = [
-    "summary",
+  "summary",
 ] }
+mimalloc = "0.1.43"
 num_cpus = "1.16.0"
 once_cell = "1.19.0"
 onlyerror = "0.1.4"
