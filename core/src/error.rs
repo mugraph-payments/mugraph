@@ -57,6 +57,9 @@ pub enum Error {
     #[error("Unbalanced transaction, expected {pre:?}, got {post:?}")]
     UnbalancedTransaction { pre: Vec<u128>, post: Vec<u128> },
 
+    #[error("Invalid blinding factor")]
+    InvalidBlindingFactor,
+
     #[error("Invalid Transaction: {reason}")]
     InvalidTransaction { reason: String },
 
@@ -71,9 +74,7 @@ impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         let reason = e.to_string();
         match e.kind() {
-            ErrorKind::Other if reason.contains("injected_error") => {
-                Self::SimulatedError { reason }
-            }
+            ErrorKind::Other if reason.contains("injected_error") => Self::SimulatedError { reason },
             k => Self::StorageError {
                 kind: k.to_string(),
                 reason: e.to_string(),

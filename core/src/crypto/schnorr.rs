@@ -56,7 +56,7 @@ mod tests {
     use rand::{prelude::*, rngs::StdRng};
     use test_strategy::proptest;
 
-    use crate::crypto::schnorr::*;
+    use crate::{crypto::schnorr::*, types::Keypair};
 
     fn rng() -> impl Strategy<Value = StdRng> {
         any::<[u8; 32]>().prop_map(StdRng::from_seed)
@@ -65,8 +65,32 @@ mod tests {
     #[proptest]
     fn test_sign_verify(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
-
         prop_assert_eq!(verify(&pair.public_key, &signed, &message), Ok(()));
+    }
+
+    #[proptest]
+    fn test_sign_verify_tampered_message(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        message: Vec<u8>,
+    ) {
+        let signed = sign(&mut rng, &pair.secret_key, &message);
+        let mut tampered_message = message.clone();
+        tampered_message[0] = tampered_message[0].wrapping_add(1); // Flip one bit
+        prop_assert!(verify(&pair.public_key, &signed, &tampered_message).is_err());
+    }
+
+    #[proptest]
+    fn test_sign_verify_tampered_signature(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        message: Vec<u8>,
+    ) {
+        let mut signed = sign(&mut rng, &pair.secret_key, &message);
+        signed.r[0] = signed.r[0].wrapping_add(1); // Flip one bit
+        prop_assert!(verify(&pair.public_key, &signed, &message).is_err());
     }
 
     #[proptest]
@@ -74,10 +98,10 @@ mod tests {
         #[strategy(rng())] mut rng: StdRng,
         a: Keypair,
         b: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
         message: Vec<u8>,
     ) {
         let signed = sign(&mut rng, &a.secret_key, &message);
-
         prop_assert_eq!(
             verify(&b.public_key, &signed, &message).is_ok(),
             a.public_key == b.public_key
@@ -92,7 +116,6 @@ mod tests {
         message2: Vec<u8>,
     ) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
-
         prop_assert_eq!(
             verify(&pair.public_key, &signed, &message2).is_ok(),
             message == message2
@@ -106,10 +129,8 @@ mod tests {
         message: Vec<u8>,
     ) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
-
         let mut signed_ = signed;
         signed_.r[0] = signed_.r[0].wrapping_add(1);
-
         prop_assert_eq!(
             verify(&pair.public_key, &signed_, &message),
             Err(Error::Other)

@@ -34,8 +34,7 @@ impl Delegate {
 
         let blind = crypto::blind_note(&mut self.rng, &note);
         let signed = crypto::sign_blinded(&self.keypair.secret_key, &blind.point);
-        note.signature =
-            crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
+        note.signature = crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
 
         Ok(note)
     }

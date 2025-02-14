@@ -113,8 +113,14 @@ impl redb::Key for Signature {
 }
 
 impl redb::Value for Signature {
-    type SelfType<'a> = Self where Self: 'a;
-    type AsBytes<'a> = &'a [u8] where Self: 'a;
+    type SelfType<'a>
+        = Self
+    where
+        Self: 'a;
+    type AsBytes<'a>
+        = &'a [u8]
+    where
+        Self: 'a;
 
     fn fixed_width() -> Option<usize> {
         Some(32)

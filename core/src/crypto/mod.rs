@@ -1,7 +1,10 @@
 use blake3::Hasher;
 use rand::prelude::{CryptoRng, RngCore};
 
-use crate::{error::Result, types::*};
+use crate::{
+    error::{Error, Result},
+    types::*,
+};
 
 pub mod schnorr;
 
@@ -42,6 +45,11 @@ pub fn unblind_signature(
     blinding_factor: &Scalar,
     pubkey: &PublicKey,
 ) -> Result<Signature> {
+    // Validate inputs
+    if blinding_factor == &Scalar::ZERO {
+        return Err(Error::InvalidBlindingFactor);
+    }
+
     let inner = signature.0;
     let res = inner.to_point()? - (pubkey.to_point()? * blinding_factor);
 
@@ -49,14 +57,17 @@ pub fn unblind_signature(
 }
 
 pub fn verify(public_key: &PublicKey, message: &[u8], signature: Signature) -> Result<bool> {
-    let y = hash_to_scalar(&[HTC_SEP, message]);
+    let y = hash_to_scalar(&[message]);
     Ok(y * public_key.to_point()? == signature.to_point()?)
 }
 
 fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
     let mut hasher = Hasher::new();
 
+    hasher.update(HTC_SEP);
+
     for d in data {
+        hasher.update(&(d.len() as u64).to_le_bytes());
         hasher.update(d);
     }
 
@@ -64,8 +75,7 @@ fn hash_to_scalar(data: &[&[u8]]) -> Scalar {
 }
 
 pub fn hash_to_curve(message: &[u8]) -> Point {
-    let scalar = hash_to_scalar(&[HTC_SEP, message]);
-    G * scalar
+    G * hash_to_scalar(&[message])
 }
 
 #[cfg(test)]
@@ -78,29 +88,81 @@ mod tests {
     use crate::{testing::rng, types::Keypair};
 
     #[proptest]
-    fn test_hash_to_curve(a: Vec<u8>, b: Vec<u8>) {
-        prop_assert_eq!(
-            a == b,
-            hash_to_curve(a.as_ref()) == hash_to_curve(b.as_ref())
-        )
+    fn test_hash_to_curve_equality(a: Vec<u8>, b: Vec<u8>) {
+        prop_assert_eq!(a == b, hash_to_curve(&a) == hash_to_curve(&b));
     }
 
     #[proptest]
-    fn test_hash_to_scalar(a: Vec<u8>, b: Vec<u8>) {
-        prop_assert_eq!(
-            a == b,
-            hash_to_scalar(&[a.as_ref()]) == hash_to_scalar(&[b.as_ref()])
-        )
+    fn test_hash_to_scalar_equality(a: Vec<u8>, b: Vec<u8>) {
+        prop_assert_eq!(a == b, hash_to_scalar(&[&a]) == hash_to_scalar(&[&b]));
     }
 
     #[proptest]
-    fn test_blinding_workflow(#[strategy(rng())] mut rng: StdRng, pair: Keypair, msg: Vec<u8>) {
+    fn test_hash_to_curve_sensitivity(
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+    ) {
+        let mut b = a.clone();
+        b[0] = b[0].wrapping_add(1);
+
+        prop_assert_ne!(hash_to_curve(&a), hash_to_curve(&b));
+    }
+
+    #[proptest]
+    fn test_hash_to_scalar_sensitivity(
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+    ) {
+        let mut b = a.clone();
+        b[0] = b[0].wrapping_add(1);
+
+        prop_assert_ne!(hash_to_scalar(&[&a]), hash_to_scalar(&[&b]));
+    }
+
+    #[proptest]
+    fn test_blinding_workflow(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
+            u8,
+        >,
+    ) {
         let blinded = blind(&mut rng, &msg);
 
         let sig = sign_blinded(&pair.secret_key, &blinded.point);
         let unblinded = unblind_signature(&sig, &blinded.factor, &pair.public_key)?;
 
         prop_assert!(verify(&pair.public_key, &msg, unblinded)?);
+    }
+
+    #[proptest]
+    fn test_blinding_workflow_tampered_blinding_factor(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
+            u8,
+        >,
+    ) {
+        let blinded = blind(&mut rng, &msg);
+        let signed = sign_blinded(&pair.secret_key, &blinded.point);
+
+        let unblinded =
+            unblind_signature(&signed, &(blinded.factor + Scalar::ONE), &pair.public_key)?;
+
+        prop_assert!(!verify(&pair.public_key, &msg, unblinded).unwrap_or(false));
+    }
+
+    #[proptest]
+    fn test_blinding_workflow_tampered_blinded_point(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
+            u8,
+        >,
+    ) {
+        let blinded = blind(&mut rng, &msg);
+        let signed = sign_blinded(&pair.secret_key, &(blinded.point + G));
+        let unblinded = unblind_signature(&signed, &blinded.factor, &pair.public_key)?;
+
+        prop_assert!(!verify(&pair.public_key, &msg, unblinded).unwrap_or(false));
     }
 
     #[proptest]
