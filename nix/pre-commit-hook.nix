@@ -14,6 +14,7 @@ pre-commit-hooks.lib.${system}.run {
 
     rustfmt = {
       enable = true;
+
       packageOverrides = {
         cargo = rust;
         rustfmt = rust;

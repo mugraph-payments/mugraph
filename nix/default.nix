@@ -1,18 +1,18 @@
 inputs: final: prev:
 let
-  lib = import ./nix/lib.nix inputs { pkgs = final; };
+  lib = import ./lib.nix inputs { pkgs = final; };
 
   inherit (prev) callPackage mkShell;
   inherit (prev.lib) optionals;
   inherit (prev.stdenv) isDarwin;
   inherit (prev.darwin.apple_sdk.frameworks) SystemConfiguration;
 
-  checks.pre-commit = callPackage ./nix/pre-commit-hook.nix { };
-  scripts = callPackage ./nix/scripts.nix { };
+  checks.pre-commit = callPackage ./pre-commit-hook.nix { };
+  scripts = callPackage ./scripts.nix { };
 
   packages = {
-    mugraph-node = callPackage ./node/package.nix { };
-    mugraph-simulator = callPackage ./simulator/package.nix { };
+    mugraph-node = callPackage ../node/package.nix { };
+    mugraph-simulator = callPackage ../simulator/package.nix { };
     default = packages.mugraph-simulator;
   };
 
