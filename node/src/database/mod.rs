@@ -5,17 +5,8 @@ use mugraph_core::{error::Error, types::Signature};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use redb::{
-    backends::FileBackend,
-    Builder,
-    Database as Redb,
-    Key,
-    ReadOnlyTable,
-    ReadTransaction,
-    StorageBackend,
-    Table,
-    TableDefinition,
-    Value,
-    WriteTransaction,
+    backends::FileBackend, Builder, Database as Redb, Key, ReadOnlyTable, ReadTransaction,
+    StorageBackend, Table, TableDefinition, Value, WriteTransaction,
 };
 
 mod test_backend;
