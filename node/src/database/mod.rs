@@ -136,35 +136,20 @@ impl Database {
     }
 
     #[tracing::instrument(skip_all)]
-    pub fn read(&mut self) -> Result<Read, Error> {
-        let result = { self.db.begin_read().map(Read).map_err(Error::from) };
+    #[inline]
+    pub fn read(&self) -> Result<Read, Error> {
+        let result = self.db.begin_read().map(Read).map_err(Error::from)?;
+        counter!("mugraph.simulator.database.read").increment(1);
 
-        match result {
-            Err(Error::StorageError { reason, .. })
-                if reason.to_lowercase().contains("previous i/o error") =>
-            {
-                self.reopen()?;
-                self.read()
-            }
-            v => {
-                counter!("mugraph.simulator.database.read").increment(1);
-                v
-            }
-        }
+        Ok(result)
     }
 
     #[tracing::instrument(skip_all)]
-    pub fn write(&mut self) -> Result<Write, Error> {
-        let result = { self.db.begin_write().map(Write).map_err(Error::from) };
+    #[inline]
+    pub fn write(&self) -> Result<Write, Error> {
+        let result = self.db.begin_write().map(Write).map_err(Error::from)?;
+        counter!("mugraph.simulator.database.write").increment(1);
 
-        match result {
-            Err(Error::StorageError { reason, .. })
-                if reason.to_lowercase().contains("previous i/o error") =>
-            {
-                self.reopen()?;
-                self.write()
-            }
-            v => v,
-        }
+        Ok(result)
     }
 }

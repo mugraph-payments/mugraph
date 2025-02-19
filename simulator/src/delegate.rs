@@ -41,7 +41,7 @@ impl Delegate {
 
     #[inline(always)]
     #[tracing::instrument(skip_all)]
-    pub fn recv_transaction_v0(&mut self, tx: &Refresh) -> Result<V0Response, Error> {
-        refresh_v0(tx, self.keypair, &mut self.db)
+    pub fn recv_transaction_v0(&self, tx: &Refresh) -> Result<V0Response, Error> {
+        refresh_v0(tx, self.keypair, &self.db)
     }
 }

@@ -11,7 +11,7 @@ use crate::database::{Database, NOTES};
 pub fn refresh_v0(
     transaction: &Refresh,
     keypair: Keypair,
-    database: &mut Database,
+    database: &Database,
 ) -> Result<V0Response, Error> {
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let mut consumed_inputs = Vec::with_capacity(transaction.input_mask.count_ones() as usize);

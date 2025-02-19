@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::{
     extract::State,
@@ -22,7 +22,7 @@ use crate::database::Database;
 #[derive(Clone)]
 pub struct Context {
     keypair: Keypair,
-    database: Arc<Mutex<Database>>,
+    database: Arc<Database>,
 }
 
 pub fn router(keypair: Keypair) -> Result<Router, Error> {
@@ -30,7 +30,7 @@ pub fn router(keypair: Keypair) -> Result<Router, Error> {
         .route("/health", get(health))
         .route("/rpc", post(rpc))
         .with_state(Context {
-            database: Arc::new(Mutex::new(Database::setup("./db")?)),
+            database: Arc::new(Database::setup("./db")?),
             keypair,
         });
 
@@ -47,13 +47,9 @@ pub async fn rpc(
     Json(request): Json<Request>,
 ) -> impl IntoResponse {
     match request {
-        Request::V0(V0Request::Refresh(t)) => {
-            let mut db = database.lock().unwrap();
-
-            match refresh_v0(&t, keypair, &mut db) {
-                Ok(response) => Json(Response::V0(response)).into_response(),
-                Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
-            }
-        }
+        Request::V0(V0Request::Refresh(t)) => match refresh_v0(&t, keypair, &database) {
+            Ok(response) => Json(Response::V0(response)).into_response(),
+            Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
+        },
     }
 }
