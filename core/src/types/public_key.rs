@@ -12,7 +12,7 @@ use crate::{crypto::Scalar, error::Error};
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct PublicKey(#[serde(with = "serde_bytes")] pub [u8; 32]);
+pub struct PublicKey(pub [u8; 32]);
 
 impl Arbitrary for PublicKey {
     type Parameters = ();
@@ -153,13 +153,13 @@ impl TryFrom<&[u8]> for PublicKey {
 
 impl LowerHex for PublicKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode(self.0), f)
+        Display::fmt(&muhex::encode(self.0), f)
     }
 }
 
 impl UpperHex for PublicKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode_upper(self.0), f)
+        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
     }
 }
 

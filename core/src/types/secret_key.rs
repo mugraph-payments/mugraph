@@ -13,7 +13,7 @@ use crate::{crypto::G, error::Error};
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct SecretKey(#[serde(with = "serde_bytes")] pub [u8; 32]);
+pub struct SecretKey(pub [u8; 32]);
 
 impl proptest::arbitrary::Arbitrary for SecretKey {
     type Parameters = ();
@@ -128,13 +128,13 @@ impl TryFrom<&[u8]> for SecretKey {
 
 impl LowerHex for SecretKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode(self.0), f)
+        Display::fmt(&muhex::encode(self.0), f)
     }
 }
 
 impl UpperHex for SecretKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode_upper(self.0), f)
+        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
     }
 }
 

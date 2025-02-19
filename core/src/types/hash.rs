@@ -13,7 +13,7 @@ use crate::crypto::Scalar;
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(#[serde(with = "hex::serde")] pub [u8; 32]);
+pub struct Hash(pub [u8; 32]);
 
 impl Arbitrary for Hash {
     type Parameters = ();
@@ -143,13 +143,13 @@ impl TryFrom<&[u8]> for Hash {
 
 impl LowerHex for Hash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode(self.0), f)
+        Display::fmt(&muhex::encode(self.0), f)
     }
 }
 
 impl UpperHex for Hash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&hex::encode_upper(self.0), f)
+        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
     }
 }
 
