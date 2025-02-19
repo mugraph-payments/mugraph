@@ -1,5 +1,11 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use color_eyre::eyre::Result;
 use metrics::counter;
+
+pub static TOTAL_TRANSACTIONS: AtomicU64 = AtomicU64::new(0);
+use std::time::Instant;
+
 use mugraph_core::{error::Error, types::*};
 use rand::prelude::*;
 use tracing::{debug, info, warn};
@@ -9,6 +15,7 @@ mod config;
 mod delegate;
 mod state;
 mod tick;
+pub mod tui;
 
 pub use self::{action::Action, config::Config, delegate::Delegate, state::State, tick::tick};
 
@@ -58,6 +65,8 @@ impl Simulation {
 
     #[tracing::instrument(skip_all)]
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
+        let _start_time = Instant::now();
+
         match action {
             Action::Refresh(transaction) => {
                 info!("Processing transaction");
@@ -81,6 +90,7 @@ impl Simulation {
                         }
 
                         counter!("mugraph.simulator.transactions").increment(1);
+                        TOTAL_TRANSACTIONS.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }

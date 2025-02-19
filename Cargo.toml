@@ -9,6 +9,8 @@ mugraph-node = { path = "./node" }
 axum = { version = "0.8.1", features = ["macros"] }
 blake3 = { version = "1.5.4", features = ["neon"] }
 bytemuck = { version = "1.16.3", features = ["aarch64_simd"] }
+crossterm = "0.27"
+ratatui = "0.24"
 clap = { version = "4.5.16", features = ["env", "derive"] }
 color-eyre = "0.6.3"
 core_affinity = "0.8.1"
