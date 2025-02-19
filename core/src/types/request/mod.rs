@@ -21,11 +21,11 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::types::{Transaction, V0Request};
+    use crate::types::{Refresh, V0Request};
 
     #[test]
     fn test_serialization() {
-        let request: Request = V0Request::Transaction(Transaction::default()).into();
+        let request: Request = V0Request::Refresh(Refresh::default()).into();
 
         let expected = json!({
             "n": "v0",

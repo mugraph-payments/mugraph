@@ -61,7 +61,7 @@ pub enum Error {
     InvalidBlindingFactor,
 
     #[error("Invalid Transaction: {reason}")]
-    InvalidTransaction { reason: String },
+    InvalidOperation { reason: String },
 
     #[error("Multiple errors happened at once: {errors:?}")]
     Multiple { errors: Vec<Error> },

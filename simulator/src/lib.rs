@@ -59,7 +59,7 @@ impl Simulation {
     #[tracing::instrument(skip_all)]
     fn handle_action(&mut self, action: &Action) -> Result<(), Error> {
         match action {
-            Action::Transaction(transaction) => {
+            Action::Refresh(transaction) => {
                 info!("Processing transaction");
 
                 let response = self.delegate.recv_transaction_v0(transaction)?;
@@ -84,7 +84,7 @@ impl Simulation {
                     }
                 }
             }
-            Action::DoubleSpend(transaction) => {
+            Action::DoubleRefresh(transaction) => {
                 info!("Processing double spend");
 
                 self.delegate.recv_transaction_v0(transaction)?;

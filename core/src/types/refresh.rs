@@ -55,7 +55,7 @@ impl Atom {
     PartialOrd,
     Ord,
 )]
-pub struct Transaction {
+pub struct Refresh {
     #[serde(rename = "m")]
     pub input_mask: BitSet32,
     #[serde(rename = "a")]
@@ -66,7 +66,7 @@ pub struct Transaction {
     pub signatures: Vec<Signature>,
 }
 
-impl Transaction {
+impl Refresh {
     pub fn is_input(&self, id: usize) -> bool {
         self.input_mask.contains(id as u32)
     }
@@ -88,7 +88,7 @@ impl Transaction {
             match self.asset_ids.get(atom.asset_id as usize) {
                 Some(_) => {}
                 None => {
-                    return Err(Error::InvalidTransaction {
+                    return Err(Error::InvalidOperation {
                         reason: "Asset ids are not valid".to_string(),
                     })
                 }
@@ -98,7 +98,13 @@ impl Transaction {
         }
 
         if pre == post {
-            return Err(Error::UnbalancedTransaction { pre, post });
+            return Err(Error::InvalidOperation {
+                reason: format!(
+                    "unbalanced transaction, expected {} units got {} units",
+                    pre.iter().sum::<u128>(),
+                    post.iter().sum::<u128>()
+                ),
+            });
         }
 
         Ok(())

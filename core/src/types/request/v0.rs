@@ -5,5 +5,5 @@ use test_strategy::Arbitrary;
 #[serde(tag = "m", content = "p")]
 pub enum Request {
     #[serde(rename = "transaction")]
-    Transaction(crate::types::Transaction),
+    Refresh(crate::types::Refresh),
 }

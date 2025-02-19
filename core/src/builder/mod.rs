@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     error::{Error, Result},
-    types::{Atom, Hash, Note, Transaction},
+    types::{Atom, Hash, Note, Refresh},
     utils::BitSet32,
 };
 
@@ -63,7 +63,7 @@ impl TransactionBuilder {
         self.outputs.len()
     }
 
-    pub fn build(self) -> Result<Transaction> {
+    pub fn build(self) -> Result<Refresh> {
         let mut atoms = Vec::new();
         let mut signatures = Vec::new();
         let mut input_mask = BitSet32::new();
@@ -75,7 +75,7 @@ impl TransactionBuilder {
             let asset_id = match self.assets.get_index_of(&note.asset_id) {
                 Some(a) => a as u32,
                 None => {
-                    return Err(Error::InvalidTransaction {
+                    return Err(Error::InvalidOperation {
                         reason: "Missing asset_id for iput".to_string(),
                     })
                 }
@@ -102,7 +102,7 @@ impl TransactionBuilder {
             });
         }
 
-        let transaction = Transaction {
+        let transaction = Refresh {
             input_mask,
             atoms,
             asset_ids: self.assets.into_iter().collect(),

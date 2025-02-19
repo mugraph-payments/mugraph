@@ -2,14 +2,14 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{Keypair, Signature, Transaction, V0Response},
+    types::{Keypair, Refresh, Signature, V0Response},
 };
 
 use crate::database::{Database, NOTES};
 
 #[inline]
-pub fn transaction_v0(
-    transaction: &Transaction,
+pub fn refresh_v0(
+    transaction: &Refresh,
     keypair: Keypair,
     database: &mut Database,
 ) -> Result<V0Response, Error> {

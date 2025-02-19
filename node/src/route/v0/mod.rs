@@ -4,7 +4,8 @@ use axum::{
     extract::State,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
+    Json,
+    Router,
 };
 use color_eyre::eyre::Result;
 use mugraph_core::{
@@ -12,10 +13,10 @@ use mugraph_core::{
     types::{Keypair, Request, Response, V0Request},
 };
 
-mod transaction;
+mod refresh;
 
+pub use refresh::*;
 use serde_json::json;
-pub use transaction::*;
 
 use crate::database::Database;
 
@@ -47,10 +48,10 @@ pub async fn rpc(
     Json(request): Json<Request>,
 ) -> impl IntoResponse {
     match request {
-        Request::V0(V0Request::Transaction(t)) => {
+        Request::V0(V0Request::Refresh(t)) => {
             let mut db = database.lock().unwrap();
 
-            match transaction_v0(&t, keypair, &mut db) {
+            match refresh_v0(&t, keypair, &mut db) {
                 Ok(response) => Json(Response::V0(response)).into_response(),
                 Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
             }

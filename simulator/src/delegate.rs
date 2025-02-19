@@ -1,6 +1,6 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{crypto, error::Error, types::*};
-use mugraph_node::{database::Database, v0::transaction_v0};
+use mugraph_node::{database::Database, v0::refresh_v0};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use tracing::info;
@@ -41,7 +41,7 @@ impl Delegate {
 
     #[inline(always)]
     #[tracing::instrument(skip_all)]
-    pub fn recv_transaction_v0(&mut self, tx: &Transaction) -> Result<V0Response, Error> {
-        transaction_v0(tx, self.keypair, &mut self.db)
+    pub fn recv_transaction_v0(&mut self, tx: &Refresh) -> Result<V0Response, Error> {
+        refresh_v0(tx, self.keypair, &mut self.db)
     }
 }

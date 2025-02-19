@@ -77,7 +77,7 @@ impl State {
             }
         }
 
-        Ok(Action::DoubleSpend(transaction.build()?))
+        Ok(Action::DoubleRefresh(transaction.build()?))
     }
 
     #[tracing::instrument(skip_all)]
@@ -112,7 +112,7 @@ impl State {
             });
         }
 
-        Ok(Action::Transaction(transaction.build()?))
+        Ok(Action::Refresh(transaction.build()?))
     }
 
     #[tracing::instrument(skip_all)]
@@ -160,7 +160,7 @@ impl State {
             return self.generate_split();
         }
 
-        Ok(Action::Transaction(transaction.build()?))
+        Ok(Action::Refresh(transaction.build()?))
     }
 
     #[tracing::instrument(skip_all)]
