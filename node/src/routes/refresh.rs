@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{Hash, Keypair, Note, Refresh, Signature, V0Response},
+    types::{Hash, Keypair, Note, Refresh, Response, Signature},
 };
 use rand::{CryptoRng, RngCore};
 
@@ -34,7 +34,7 @@ pub fn refresh_v0(
     transaction: &Refresh,
     keypair: Keypair,
     database: &Database,
-) -> Result<V0Response, Error> {
+) -> Result<Response, Error> {
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let mut consumed_inputs = Vec::with_capacity(transaction.input_mask.count_ones() as usize);
 
@@ -95,5 +95,5 @@ pub fn refresh_v0(
 
     w.commit()?;
 
-    Ok(V0Response::Transaction { outputs })
+    Ok(Response::Transaction { outputs })
 }

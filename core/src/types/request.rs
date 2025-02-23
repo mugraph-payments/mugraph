@@ -1,35 +1,29 @@
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-pub mod v0;
+use crate::types::{Hash, Refresh};
 
-#[derive(Debug, Serialize, Deserialize, Arbitrary)]
-#[serde(tag = "n")]
+#[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
+#[serde(tag = "m", content = "p")]
 pub enum Request {
-    #[serde(rename = "v0")]
-    V0(v0::Request),
-}
-
-impl From<v0::Request> for Request {
-    fn from(value: v0::Request) -> Self {
-        Self::V0(value)
-    }
+    #[serde(rename = "refresh")]
+    Refresh(Refresh),
+    #[serde(rename = "emit")]
+    Emit { asset_id: Hash, amount: u64 },
 }
 
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::*;
-    use crate::types::{Refresh, V0Request};
+    use crate::types::{Refresh, Request};
 
     #[test]
     fn test_serialization() {
-        let request: Request = V0Request::Refresh(Refresh::default()).into();
+        let request: Request = Request::Refresh(Refresh::default()).into();
 
         let expected = json!({
-            "n": "v0",
-            "m": "transaction",
+            "m": "refresh",
             "p": {
                 "m": 0,
                 "a": [],

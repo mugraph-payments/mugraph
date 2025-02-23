@@ -6,7 +6,7 @@ use crate::types::*;
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "m", content = "r")]
 pub enum Response {
-    #[serde(rename = "transaction")]
+    #[serde(rename = "refresh")]
     Transaction {
         #[serde(rename = "s")]
         outputs: Vec<Blinded<Signature>>,

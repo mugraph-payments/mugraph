@@ -74,19 +74,19 @@ impl Simulation {
                 let response = self
                     .delegate
                     .client
-                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .post(format!("{}/refresh", self.delegate.node_addr))
                     .json(transaction)
                     .send()
                     .map_err(|e| Error::NetworkError {
                         reason: e.to_string(),
                     })?
-                    .json::<V0Response>()
+                    .json::<Response>()
                     .map_err(|e| Error::NetworkError {
                         reason: e.to_string(),
                     })?;
 
                 match response {
-                    V0Response::Transaction { outputs } => {
+                    Response::Transaction { outputs } => {
                         let mut index = 0;
 
                         for (i, atom) in transaction.atoms.iter().enumerate() {
@@ -104,7 +104,7 @@ impl Simulation {
                         counter!("mugraph.simulator.transactions").increment(1);
                         TOTAL_TRANSACTIONS.fetch_add(1, Ordering::Relaxed);
                     }
-                    V0Response::Emit(note) => {
+                    Response::Emit(note) => {
                         return Err(Error::SimulationError {
                             reason: format!("Unexpected emit response with note: {:?}", note),
                         })
@@ -116,7 +116,7 @@ impl Simulation {
 
                 self.delegate
                     .client
-                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .post(format!("{}/refresh", self.delegate.node_addr))
                     .json(transaction)
                     .send()
                     .map_err(|e| Error::NetworkError {
@@ -126,7 +126,7 @@ impl Simulation {
                 match self
                     .delegate
                     .client
-                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .post(format!("{}/refresh", self.delegate.node_addr))
                     .json(transaction)
                     .send()
                     .map_err(|e| Error::NetworkError {

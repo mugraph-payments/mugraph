@@ -1,7 +1,7 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{Hash, Keypair, Note, Request, Response, V0Request, V0Response},
+    types::{Hash, Keypair, Note, Request, Response},
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -38,7 +38,7 @@ impl Delegate {
 
     #[tracing::instrument(skip_all)]
     pub fn emit(&mut self, asset_id: Hash, amount: u64) -> Result<Note, Error> {
-        let request = Request::V0(V0Request::Emit { asset_id, amount });
+        let request = Request::Emit { asset_id, amount };
 
         let response = self
             .client
@@ -54,7 +54,7 @@ impl Delegate {
             })?;
 
         match response {
-            Response::V0(V0Response::Emit(note)) => Ok(note),
+            Response::Emit(note) => Ok(note),
             _ => Err(Error::ServerError {
                 reason: "Unexpected response type".into(),
             }),

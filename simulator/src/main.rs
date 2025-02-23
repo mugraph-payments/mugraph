@@ -16,10 +16,7 @@ use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
     tick,
     tui::{Dashboard, DashboardEvent, DashboardFormatter},
-    Config,
-    Delegate,
-    Simulation,
-    TOTAL_TRANSACTIONS,
+    Config, Delegate, Simulation, TOTAL_TRANSACTIONS,
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;

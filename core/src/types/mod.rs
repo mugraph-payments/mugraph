@@ -14,8 +14,8 @@ pub use self::{
     note::*,
     public_key::*,
     refresh::*,
-    request::{v0::Request as V0Request, Request},
-    response::{v0::Response as V0Response, Response},
+    request::Request,
+    response::Response,
     secret_key::*,
     signature::*,
 };

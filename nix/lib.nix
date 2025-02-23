@@ -45,7 +45,7 @@ in
   env = {
     inherit RUSTFLAGS;
 
-    RUST_LOG = "info";
+    RUST_LOG = "trace";
     RUSTFMT = "${pkgs.rust-bin.nightly.latest}/bin/rustfmt";
   };
 
