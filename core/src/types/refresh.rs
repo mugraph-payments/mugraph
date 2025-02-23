@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::{PublicKey, Signature, COMMITMENT_INPUT_SIZE};
-use crate::{error::Error, types::Hash, utils::BitSet32};
+use super::{PublicKey, COMMITMENT_INPUT_SIZE};
+use crate::{
+    error::Error,
+    types::{Hash, Signature},
+    utils::BitSet32,
+};
 
 pub const MAX_ATOMS: usize = 12;
 pub const MAX_INPUTS: usize = 4;

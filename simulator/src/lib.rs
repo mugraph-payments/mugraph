@@ -71,7 +71,19 @@ impl Simulation {
             Action::Refresh(transaction) => {
                 info!("Processing transaction");
 
-                let response = self.delegate.recv_refresh_v0(transaction)?;
+                let response = self
+                    .delegate
+                    .client
+                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .json(transaction)
+                    .send()
+                    .map_err(|e| Error::NetworkError {
+                        reason: e.to_string(),
+                    })?
+                    .json::<V0Response>()
+                    .map_err(|e| Error::NetworkError {
+                        reason: e.to_string(),
+                    })?;
 
                 match response {
                     V0Response::Transaction { outputs } => {
@@ -92,14 +104,34 @@ impl Simulation {
                         counter!("mugraph.simulator.transactions").increment(1);
                         TOTAL_TRANSACTIONS.fetch_add(1, Ordering::Relaxed);
                     }
+                    V0Response::Emit(note) => {
+                        return Err(Error::SimulationError {
+                            reason: format!("Unexpected emit response with note: {:?}", note),
+                        })
+                    }
                 }
             }
             Action::DoubleRefresh(transaction) => {
                 info!("Processing double spend");
 
-                self.delegate.recv_refresh_v0(transaction)?;
+                self.delegate
+                    .client
+                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .json(transaction)
+                    .send()
+                    .map_err(|e| Error::NetworkError {
+                        reason: e.to_string(),
+                    })?;
 
-                match self.delegate.recv_refresh_v0(transaction) {
+                match self
+                    .delegate
+                    .client
+                    .post(format!("{}/v0/refresh", self.delegate.node_addr))
+                    .json(transaction)
+                    .send()
+                    .map_err(|e| Error::NetworkError {
+                        reason: e.to_string(),
+                    }) {
                     Ok(_) => {
                         return Err(Error::SimulationError {
                             reason: "Expected redemption to block double spend".to_string(),

@@ -14,6 +14,9 @@ pub enum Error {
     #[error("Server error: {reason}")]
     ServerError { reason: String },
 
+    #[error("Server error: {reason}")]
+    NetworkError { reason: String },
+
     #[error("Simulated error: {reason}")]
     SimulatedError { reason: String },
 

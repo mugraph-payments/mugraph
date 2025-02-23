@@ -11,4 +11,6 @@ pub enum Response {
         #[serde(rename = "s")]
         outputs: Vec<Blinded<Signature>>,
     },
+    #[serde(rename = "emit")]
+    Emit(Note),
 }

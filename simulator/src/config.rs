@@ -3,7 +3,7 @@ use rand::{prelude::*, thread_rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use tracing::info;
 
-#[derive(Debug, Clone, Copy, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(version, author, about)]
 pub struct Config {
     #[clap(long, env = "MUGRAPH_SIMULATOR_SEED")]
@@ -17,6 +17,10 @@ pub struct Config {
     #[clap(long = "notes", default_value = "256", env = "MUGRAPH_SIMULATOR_NOTES")]
     /// The maximum amount of notes each user should have at simulation start
     pub notes: usize,
+
+    #[clap(long, default_value = "http://localhost:9999")]
+    /// The address of the running node (must start with http:// or https://)
+    pub node_addr: String,
 }
 
 impl Default for Config {

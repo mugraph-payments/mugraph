@@ -52,6 +52,8 @@ let
       prev.cargo-nextest
       prev.cargo-pgo
       prev.cargo-watch
+      prev.openssl
+      prev.pkg-config
       prev.protobuf
       prev.samply
       scripts

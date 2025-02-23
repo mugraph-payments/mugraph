@@ -9,8 +9,9 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{Keypair, Request, Response, V0Request},
+    types::{Keypair, PublicKey, Request, Response, V0Request, V0Response},
 };
+use rand::thread_rng;
 
 mod refresh;
 
@@ -29,6 +30,7 @@ pub fn router(keypair: Keypair) -> Result<Router, Error> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/rpc", post(rpc))
+        .route("/public_key", get(get_public_key))
         .with_state(Context {
             database: Arc::new(Database::setup("./db")?),
             keypair,
@@ -41,6 +43,10 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
+async fn get_public_key(State(Context { keypair, .. }): State<Context>) -> Json<PublicKey> {
+    Json(keypair.public_key)
+}
+
 #[tracing::instrument(skip_all)]
 pub async fn rpc(
     State(Context { keypair, database }): State<Context>,
@@ -51,5 +57,12 @@ pub async fn rpc(
             Ok(response) => Json(Response::V0(response)).into_response(),
             Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
         },
+        Request::V0(V0Request::Emit { asset_id, amount }) => {
+            let mut rng = thread_rng();
+            match emit_note(&keypair, asset_id, amount, &mut rng) {
+                Ok(note) => Json(Response::V0(V0Response::Emit(note))).into_response(),
+                Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
+            }
+        }
     }
 }

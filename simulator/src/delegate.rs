@@ -1,47 +1,63 @@
 use color_eyre::eyre::Result;
-use mugraph_core::{crypto, error::Error, types::*};
-use mugraph_node::{database::Database, v0::refresh_v0};
+use mugraph_core::{
+    error::Error,
+    types::{Hash, Keypair, Note, Request, Response, V0Request, V0Response},
+};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use reqwest::blocking::Client;
 use tracing::info;
 
 #[derive(Debug)]
 pub struct Delegate {
     pub rng: ChaCha20Rng,
-    pub db: Database,
+    pub client: Client,
+    pub node_addr: String,
     pub keypair: Keypair,
 }
 
 impl Delegate {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R, keypair: Keypair) -> Result<Self, Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
-
+    pub fn new<R: Rng + CryptoRng>(
+        rng: &mut R,
+        keypair: Keypair,
+        node_addr: &str,
+    ) -> Result<Self, Error> {
         info!(public_key = %keypair.public_key, "Starting delegate");
-        let db = Database::setup_test(&mut rng, None)?;
 
-        Ok(Self { db, rng, keypair })
+        let client = Client::builder().build().map_err(|e| Error::NetworkError {
+            reason: e.to_string(),
+        })?;
+
+        Ok(Self {
+            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+            client,
+            node_addr: node_addr.to_string(),
+            keypair,
+        })
     }
 
     #[tracing::instrument(skip_all)]
     pub fn emit(&mut self, asset_id: Hash, amount: u64) -> Result<Note, Error> {
-        let mut note = Note {
-            delegate: self.keypair.public_key,
-            asset_id,
-            nonce: Hash::random(&mut self.rng),
-            amount,
-            signature: Signature::default(),
-        };
+        let request = Request::V0(V0Request::Emit { asset_id, amount });
 
-        let blind = crypto::blind_note(&mut self.rng, &note);
-        let signed = crypto::sign_blinded(&self.keypair.secret_key, &blind.point);
-        note.signature = crypto::unblind_signature(&signed, &blind.factor, &self.keypair.public_key)?;
+        let response = self
+            .client
+            .post(format!("{}/rpc", self.node_addr))
+            .json(&request)
+            .send()
+            .map_err(|e| Error::NetworkError {
+                reason: e.to_string(),
+            })?
+            .json()
+            .map_err(|e| Error::NetworkError {
+                reason: e.to_string(),
+            })?;
 
-        Ok(note)
-    }
-
-    #[inline(always)]
-    #[tracing::instrument(skip_all)]
-    pub fn recv_refresh_v0(&self, tx: &Refresh) -> Result<V0Response, Error> {
-        refresh_v0(tx, self.keypair, &self.db)
+        match response {
+            Response::V0(V0Response::Emit(note)) => Ok(note),
+            _ => Err(Error::ServerError {
+                reason: "Unexpected response type".into(),
+            }),
+        }
     }
 }

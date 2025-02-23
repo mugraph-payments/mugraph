@@ -2,12 +2,34 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{Keypair, Refresh, Signature, V0Response},
+    types::{Hash, Keypair, Note, Refresh, Signature, V0Response},
 };
+use rand::{CryptoRng, RngCore};
 
 use crate::database::{Database, NOTES};
 
 #[inline]
+pub fn emit_note(
+    keypair: &Keypair,
+    asset_id: Hash,
+    amount: u64,
+    rng: &mut (impl RngCore + CryptoRng),
+) -> Result<Note, Error> {
+    let mut note = Note {
+        delegate: keypair.public_key,
+        asset_id,
+        nonce: Hash::random(rng),
+        amount,
+        signature: Signature::default(),
+    };
+
+    let blind = crypto::blind_note(rng, &note);
+    let signed = crypto::sign_blinded(&keypair.secret_key, &blind.point);
+    note.signature = crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
+
+    Ok(note)
+}
+
 pub fn refresh_v0(
     transaction: &Refresh,
     keypair: Keypair,

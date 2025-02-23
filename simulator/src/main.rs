@@ -50,6 +50,7 @@ fn main() -> Result<()> {
         let ip = is_preparing.clone();
         let seed: u64 = rng.gen();
         let tx = dashboard_tx.clone();
+        let addr = config.node_addr.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
@@ -57,36 +58,53 @@ fn main() -> Result<()> {
             let log_msg = format!("Preparing simulation on core {}, seed {}", core.id, seed);
             tx.send(DashboardEvent::Log(log_msg)).ok();
 
-            let mut rng = ChaCha20Rng::seed_from_u64(seed);
-            let delegate = Delegate::new(&mut rng, keypair)?;
-            let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
+            loop {
+                match (|| -> Result<_, Error> {
+                    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+                    let delegate = Delegate::new(&mut rng, keypair, &addr)?;
+                    let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
 
-            while ip.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(25));
-            }
-
-            tx.send(DashboardEvent::Log(format!(
-                "Starting simulation on core {}",
-                core.id
-            )))
-            .ok();
-
-            // Wait for signal to start the simulation
-            for round in 0u64.. {
-                if let Err(e) = tick(core.id, &mut sim, round) {
-                    ir.store(false, Ordering::SeqCst);
+                    while ip.load(Ordering::Relaxed) {
+                        thread::sleep(Duration::from_millis(25));
+                    }
 
                     tx.send(DashboardEvent::Log(format!(
-                        "Error on core {}: {}",
-                        core.id, e
+                        "Starting simulation on core {}",
+                        core.id
                     )))
                     .ok();
 
-                    Err(e)?;
+                    // Wait for signal to start the simulation
+                    while ir.load(Ordering::Relaxed) {
+                        for round in 0u64.. {
+                            if let Err(e) = tick(core.id, &mut sim, round) {
+                                tx.send(DashboardEvent::Log(format!(
+                                    "Error on core {}: {}",
+                                    core.id, e
+                                )))
+                                .ok();
+                                
+                                // Only exit the thread if it's a fatal error
+                                if !matches!(e, Error::SimulatedError { .. }) {
+                                    return Err(e);
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                })() {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tx.send(DashboardEvent::Log(format!(
+                            "Fatal error on core {}: {}. Restarting simulation...",
+                            core.id, e
+                        )))
+                        .ok();
+                        thread::sleep(Duration::from_secs(1));
+                        continue;
+                    }
                 }
             }
-
-            Ok::<_, Error>(())
         });
     }
 
@@ -104,6 +122,7 @@ fn main() -> Result<()> {
     // Add global metrics reporter
     let ir_metrics = is_running.clone();
     let tx_metrics = dashboard_tx.clone();
+
     thread::spawn(move || {
         while ir_metrics.load(Ordering::Relaxed) {
             let elapsed = start_time.elapsed().as_secs_f64();
@@ -138,9 +157,13 @@ fn main() -> Result<()> {
         }
     });
 
-    while is_running.load(Ordering::Relaxed) {
-        thread::sleep(Duration::from_millis(1));
+    // Wait for dashboard thread to signal quit
+    while is_running.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(100));
     }
+
+    // Give threads time to clean up
+    thread::sleep(Duration::from_secs(1));
 
     Ok(())
 }
