@@ -6,22 +6,20 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, SecretKey},
 };
-use rand::thread_rng;
-use tracing::warn;
 
 #[derive(Debug, Clone, Parser)]
-pub struct Config {
-    #[clap(short, long, default_value = "0.0.0.0:9999")]
-    pub addr: SocketAddr,
+pub enum Config {
+    #[command(about)]
+    Server {
+        #[clap(short, long, default_value = "0.0.0.0:9999")]
+        addr: SocketAddr,
 
-    #[clap(long)]
-    pub seed: Option<u64>,
+        #[clap(long)]
+        seed: Option<u64>,
 
-    #[clap(short, long)]
-    pub public_key: Option<String>,
-
-    #[clap(short, long)]
-    pub secret_key: Option<String>,
+        #[clap(short, long)]
+        secret_key: String,
+    },
 }
 
 impl Default for Config {
@@ -36,28 +34,20 @@ impl Config {
     }
 
     pub fn keypair(&self) -> Result<Keypair, Error> {
-        match (&self.public_key, &self.secret_key) {
-            (None, None) => {
-                warn!("No keypair provided, using a random one.");
-                Ok(Keypair::random(&mut thread_rng()))
-            }
-            (None, Some(secret)) => {
-                let secret_key: SecretKey = serde_json::from_str(secret)?;
+        match self {
+            Self::Server { secret_key, .. } => {
+                let key: [u8; 32] = muhex::decode(secret_key)
+                    .map_err(|e| Error::InvalidKey {
+                        reason: e.to_string(),
+                    })?
+                    .try_into()
+                    .map_err(|_| Error::InvalidKey {
+                        reason: "Invalid key size".to_string(),
+                    })?;
+                let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {
                     public_key: secret_key.public(),
-                    secret_key,
-                })
-            }
-            (Some(_), None) => Err(Error::InvalidKey {
-                reason: "Keypair contains public key but no private key".to_string(),
-            }),
-            (Some(public), Some(secret)) => {
-                let public_key = serde_json::from_str(public)?;
-                let secret_key = serde_json::from_str(secret)?;
-
-                Ok(Keypair {
-                    public_key,
                     secret_key,
                 })
             }

@@ -5,7 +5,11 @@ use mugraph_node::{config::Config, start};
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    start(&Config::new()).await?;
+    match Config::new() {
+        c @ Config::Server { addr, .. } => {
+            start(addr, c.keypair()?).await?;
+        }
+    }
 
     Ok(())
 }

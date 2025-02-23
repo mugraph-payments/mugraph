@@ -878,6 +878,7 @@ dependencies = [
  "color-eyre",
  "metrics",
  "mugraph-core",
+ "muhex",
  "rand",
  "rand_chacha",
  "redb",
