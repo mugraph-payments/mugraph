@@ -71,7 +71,7 @@ impl Simulation {
             Action::Refresh(transaction) => {
                 info!("Processing transaction");
 
-                let response = self.delegate.recv_transaction_v0(transaction)?;
+                let response = self.delegate.recv_refresh_v0(transaction)?;
 
                 match response {
                     V0Response::Transaction { outputs } => {
@@ -97,9 +97,9 @@ impl Simulation {
             Action::DoubleRefresh(transaction) => {
                 info!("Processing double spend");
 
-                self.delegate.recv_transaction_v0(transaction)?;
+                self.delegate.recv_refresh_v0(transaction)?;
 
-                match self.delegate.recv_transaction_v0(transaction) {
+                match self.delegate.recv_refresh_v0(transaction) {
                     Ok(_) => {
                         return Err(Error::SimulationError {
                             reason: "Expected redemption to block double spend".to_string(),

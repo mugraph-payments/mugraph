@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct TransactionBuilder {
+pub struct RefreshBuilder {
     pub inputs: Vec<Note>,
     pre_balances: Vec<u128>,
     post_balances: Vec<u128>,
@@ -15,7 +15,7 @@ pub struct TransactionBuilder {
     outputs: Vec<(u32, u64)>,
 }
 
-impl TransactionBuilder {
+impl RefreshBuilder {
     pub fn new() -> Self {
         Self {
             pre_balances: vec![0; 8],
@@ -102,15 +102,15 @@ impl TransactionBuilder {
             });
         }
 
-        let transaction = Refresh {
+        let refresh = Refresh {
             input_mask,
             atoms,
             asset_ids: self.assets.into_iter().collect(),
             signatures,
         };
 
-        transaction.verify()?;
+        refresh.verify()?;
 
-        Ok(transaction)
+        Ok(refresh)
     }
 }

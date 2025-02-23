@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
-use mugraph_core::{builder::TransactionBuilder, crypto, error::Error, types::*};
+use mugraph_core::{builder::RefreshBuilder, crypto, error::Error, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -64,7 +64,7 @@ impl State {
 
     #[tracing::instrument(skip_all)]
     fn generate_double_spend(&mut self) -> Result<Action, Error> {
-        let mut transaction = TransactionBuilder::new();
+        let mut transaction = RefreshBuilder::new();
 
         match self.notes.pop_front() {
             Some(input) => {
@@ -82,7 +82,7 @@ impl State {
 
     #[tracing::instrument(skip_all)]
     fn generate_split(&mut self) -> Result<Action, Error> {
-        let mut transaction = TransactionBuilder::new();
+        let mut transaction = RefreshBuilder::new();
 
         while transaction.output_count() < MAX_OUTPUTS {
             let input = match self.notes.pop_front() {
@@ -117,7 +117,7 @@ impl State {
 
     #[tracing::instrument(skip_all)]
     fn generate_join(&mut self) -> Result<Action, Error> {
-        let mut transaction = TransactionBuilder::new();
+        let mut transaction = RefreshBuilder::new();
 
         'outer: while transaction.input_count() < MAX_INPUTS {
             let mut found_pair = false;
