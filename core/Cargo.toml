@@ -10,7 +10,7 @@ curve25519-dalek = { workspace = true }
 indexmap = { workspace = true }
 muhex = { workspace = true }
 onlyerror = { workspace = true }
-paste = { workspace = true }
+paste = "1.0.15"
 proptest = { workspace = true }
 rand = { workspace = true }
 redb = { workspace = true }
