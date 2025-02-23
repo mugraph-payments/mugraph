@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 blake3 = { workspace = true }
+chrono = "0.4"
 clap = { workspace = true }
 color-eyre = { workspace = true }
 core_affinity = { workspace = true }
@@ -14,10 +15,11 @@ metrics = { workspace = true }
 mimalloc = { workspace = true }
 mugraph-core = { workspace = true }
 mugraph-node = { workspace = true }
+time = { version = "0.3", features = ["local-offset"] }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 ratatui = "0.24"
 reqwest = { version = "0.11", features = ["blocking", "json"] }
 tokio = { version = "1", features = ["full"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["time"] }

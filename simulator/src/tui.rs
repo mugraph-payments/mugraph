@@ -1,5 +1,7 @@
 use std::{
     collections::VecDeque,
+    fmt::Write,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -18,6 +20,61 @@ use ratatui::{
     Terminal,
 };
 use tokio::sync::mpsc;
+use tracing::Subscriber;
+use tracing_subscriber::{
+    fmt::{format::Writer, FmtContext, FormatEvent, FormatFields},
+    registry::LookupSpan,
+};
+
+pub struct DashboardFormatter {
+    logs: Arc<Mutex<VecDeque<String>>>,
+}
+
+impl DashboardFormatter {
+    pub fn new() -> (Self, Arc<Mutex<VecDeque<String>>>) {
+        let logs = Arc::new(Mutex::new(VecDeque::with_capacity(1000)));
+        (Self { logs: logs.clone() }, logs)
+    }
+}
+
+impl<S, N> FormatEvent<S, N> for DashboardFormatter
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        mut writer: Writer<'_>,
+        event: &tracing::Event<'_>,
+    ) -> std::fmt::Result {
+        // Create a String to store our formatted log
+        let mut log_line = String::new();
+
+        // Write timestamp
+        let now = chrono::Local::now();
+        write!(log_line, "{} ", now.format("[%H:%M:%S]"))?;
+
+        // Write level
+        write!(log_line, "{:>5} ", event.metadata().level())?;
+
+        // Write fields using the default formatter
+        ctx.field_format().format_fields(writer.by_ref(), event)?;
+
+        // Add the writer's content to our log line
+        log_line.push_str(&format!("{:?}", writer));
+        log_line.push('\n');
+
+        // Store in logs
+        let mut logs = self.logs.lock().unwrap();
+        logs.push_front(log_line);
+        if logs.len() > 1000 {
+            logs.pop_back();
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub enum DashboardEvent {
@@ -28,13 +85,12 @@ pub enum DashboardEvent {
         p90: u64,
         p99: u64,
     },
-    Log(String),
 }
 
 pub struct Dashboard {
     terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
     rx: mpsc::UnboundedReceiver<DashboardEvent>,
-    logs: VecDeque<String>,
+    logs: Arc<Mutex<VecDeque<String>>>,
     tps_history: VecDeque<(f64, f64)>,
     latency_history: VecDeque<(f64, f64)>,
     window_size: usize,
@@ -45,7 +101,7 @@ pub struct Dashboard {
 }
 
 impl Dashboard {
-    pub fn new() -> (Self, mpsc::UnboundedSender<DashboardEvent>) {
+    pub fn new(logs: Arc<Mutex<VecDeque<String>>>) -> (Self, mpsc::UnboundedSender<DashboardEvent>) {
         let (tx, rx) = mpsc::unbounded_channel();
 
         enable_raw_mode().expect("Failed to enable raw mode");
@@ -60,7 +116,7 @@ impl Dashboard {
             Self {
                 terminal,
                 rx,
-                logs: VecDeque::with_capacity(1000),
+                logs,
                 tps_history: VecDeque::with_capacity(100),
                 latency_history: VecDeque::with_capacity(100),
                 window_size: 100,
@@ -77,38 +133,29 @@ impl Dashboard {
         loop {
             // Handle any pending events
             while let Ok(event) = self.rx.try_recv() {
-                match event {
-                    DashboardEvent::Log(msg) => {
-                        self.logs.push_front(msg);
-                        if self.logs.len() > 1000 {
-                            self.logs.pop_back();
-                        }
+                let DashboardEvent::Metrics {
+                    elapsed,
+                    tps,
+                    p50,
+                    p90,
+                    p99,
+                } = event;
+                self.current_p50 = p50;
+                self.current_p90 = p90;
+                self.current_p99 = p99;
+                // Only update every 100ms to avoid too frequent updates
+                if self.last_update.elapsed() >= Duration::from_millis(100) {
+                    self.tps_history.push_back((elapsed, tps as f64));
+                    if self.tps_history.len() > self.window_size {
+                        self.tps_history.pop_front();
                     }
-                    DashboardEvent::Metrics {
-                        elapsed,
-                        tps,
-                        p50,
-                        p90,
-                        p99,
-                    } => {
-                        self.current_p50 = p50;
-                        self.current_p90 = p90;
-                        self.current_p99 = p99;
-                        // Only update every 100ms to avoid too frequent updates
-                        if self.last_update.elapsed() >= Duration::from_millis(100) {
-                            self.tps_history.push_back((elapsed, tps as f64));
-                            if self.tps_history.len() > self.window_size {
-                                self.tps_history.pop_front();
-                            }
 
-                            self.latency_history.push_back((elapsed, p99 as f64));
-                            if self.latency_history.len() > self.window_size {
-                                self.latency_history.pop_front();
-                            }
-
-                            self.last_update = Instant::now();
-                        }
+                    self.latency_history.push_back((elapsed, p99 as f64));
+                    if self.latency_history.len() > self.window_size {
+                        self.latency_history.pop_front();
                     }
+
+                    self.last_update = Instant::now();
                 }
             }
 
@@ -203,10 +250,13 @@ impl Dashboard {
                 // Draw Logs (left side)
                 let log_items: Vec<ListItem> = self
                     .logs
-                    .iter()
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .into_iter()
                     .rev() // Show latest logs first
                     .take(log_chunks[0].height as usize - 2) // -2 for borders
-                    .map(|s| ListItem::new(s.as_str()))
+                    .map(|s| ListItem::new(s.clone()))
                     .collect();
 
                 let logs = List::new(log_items)
@@ -272,6 +322,7 @@ impl Dashboard {
                 }
             }
         }
+
         Ok(())
     }
 }

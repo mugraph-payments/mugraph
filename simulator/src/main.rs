@@ -15,15 +15,27 @@ use color_eyre::eyre::Result;
 use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
     tick,
-    tui::{Dashboard, DashboardEvent},
-    Config, Delegate, Simulation, TOTAL_TRANSACTIONS,
+    tui::{Dashboard, DashboardEvent, DashboardFormatter},
+    Config,
+    Delegate,
+    Simulation,
+    TOTAL_TRANSACTIONS,
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use tracing::info;
+use tracing::{error, info};
+use tracing_subscriber::prelude::*;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    // Set up the dashboard formatter
+    let (formatter, logs) = DashboardFormatter::new();
+
+    // Initialize the tracing subscriber
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().event_format(formatter))
+        .init();
 
     let config = Config::default();
     let mut rng = match config.seed {
@@ -37,7 +49,7 @@ fn main() -> Result<()> {
     let keypair = Keypair::random(&mut rng);
 
     // Create the dashboard
-    let (mut dashboard, dashboard_tx) = Dashboard::new();
+    let (mut dashboard, dashboard_tx) = Dashboard::new(logs);
 
     // Force interface to run on the last possible core
     core_affinity::set_for_current(cores.pop_back().unwrap());
@@ -49,14 +61,12 @@ fn main() -> Result<()> {
         let ir = is_running.clone();
         let ip = is_preparing.clone();
         let seed: u64 = rng.gen();
-        let tx = dashboard_tx.clone();
         let addr = config.node_addr.clone();
 
         thread::spawn(move || {
             core_affinity::set_for_current(core);
 
-            let log_msg = format!("Preparing simulation on core {}, seed {}", core.id, seed);
-            tx.send(DashboardEvent::Log(log_msg)).ok();
+            info!("Preparing simulation on core {}, seed {}", core.id, seed);
 
             loop {
                 match (|| -> Result<_, Error> {
@@ -68,22 +78,14 @@ fn main() -> Result<()> {
                         thread::sleep(Duration::from_millis(25));
                     }
 
-                    tx.send(DashboardEvent::Log(format!(
-                        "Starting simulation on core {}",
-                        core.id
-                    )))
-                    .ok();
+                    info!("Starting simulation on core {}", core.id);
 
                     // Wait for signal to start the simulation
                     while ir.load(Ordering::Relaxed) {
                         for round in 0u64.. {
                             if let Err(e) = tick(core.id, &mut sim, round) {
-                                tx.send(DashboardEvent::Log(format!(
-                                    "Error on core {}: {}",
-                                    core.id, e
-                                )))
-                                .ok();
-                                
+                                error!("Error on core {}: {}", core.id, e);
+
                                 // Only exit the thread if it's a fatal error
                                 if !matches!(e, Error::SimulatedError { .. }) {
                                     return Err(e);
@@ -95,11 +97,10 @@ fn main() -> Result<()> {
                 })() {
                     Ok(_) => {}
                     Err(e) => {
-                        tx.send(DashboardEvent::Log(format!(
+                        error!(
                             "Fatal error on core {}: {}. Restarting simulation...",
                             core.id, e
-                        )))
-                        .ok();
+                        );
                         thread::sleep(Duration::from_secs(1));
                         continue;
                     }
@@ -113,11 +114,7 @@ fn main() -> Result<()> {
     is_preparing.store(false, Ordering::SeqCst);
     let start_time = Instant::now();
 
-    dashboard_tx
-        .send(DashboardEvent::Log(
-            "Signaled all simulations to start.".to_string(),
-        ))
-        .ok();
+    info!("Signaled all simulations to start.");
 
     // Add global metrics reporter
     let ir_metrics = is_running.clone();
@@ -149,11 +146,11 @@ fn main() -> Result<()> {
 
     // Run the dashboard in a separate thread
     let ir = is_running.clone();
+
     thread::spawn(move || {
         if let Err(e) = dashboard.run() {
             ir.store(false, Ordering::SeqCst);
-
-            eprintln!("Dashboard error: {}", e);
+            error!("Dashboard error: {}", e);
         }
     });
 
