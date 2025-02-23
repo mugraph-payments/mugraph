@@ -37,7 +37,7 @@ impl Config {
     pub fn rng(&self) -> ChaChaRng {
         let seed = match self.seed {
             Some(seed) => seed,
-            None => thread_rng().gen(),
+            None => thread_rng().r#gen(),
         };
 
         info!(

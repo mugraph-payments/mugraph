@@ -57,7 +57,7 @@ fn main() -> Result<()> {
         let core = cores.pop_front().unwrap();
         let ir = is_running.clone();
         let ip = is_preparing.clone();
-        let seed: u64 = rng.gen();
+        let seed: u64 = rng.r#gen();
         let addr = config.node_addr.clone();
 
         thread::spawn(move || {

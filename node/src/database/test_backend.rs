@@ -55,7 +55,7 @@ impl StorageBackend for TestBackend {
 
 impl TestBackend {
     pub fn new<R: CryptoRng + Rng>(rng: &mut R, path: Option<PathBuf>) -> Result<Self, Error> {
-        let mut rng = ChaCha20Rng::seed_from_u64(rng.gen());
+        let mut rng = ChaCha20Rng::seed_from_u64(rng.r#gen());
         let failure_rate = rng.gen_range(0.0f64..0.01f64);
 
         info!(

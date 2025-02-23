@@ -44,7 +44,7 @@ impl State {
         }
 
         Ok(Self {
-            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+            rng: ChaCha20Rng::seed_from_u64(rng.r#gen()),
             keypair: delegate.keypair,
             notes,
             by_asset_id,

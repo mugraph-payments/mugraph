@@ -4,8 +4,7 @@ use axum::{
     extract::State,
     response::IntoResponse,
     routing::{get, post},
-    Json,
-    Router,
+    Json, Router,
 };
 use color_eyre::eyre::Result;
 use mugraph_core::{

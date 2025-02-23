@@ -75,7 +75,7 @@ impl Database {
         Ok(Self {
             db: Self::setup_with_backend(backend, !path.exists())?,
             mode: Mode::File { path },
-            rng: ChaCha20Rng::seed_from_u64(thread_rng().gen()),
+            rng: ChaCha20Rng::seed_from_u64(thread_rng().r#gen()),
         })
     }
 
@@ -89,7 +89,7 @@ impl Database {
         Ok(Self {
             mode: Mode::Test { path },
             db,
-            rng: ChaCha20Rng::seed_from_u64(rng.gen()),
+            rng: ChaCha20Rng::seed_from_u64(rng.r#gen()),
         })
     }
 
