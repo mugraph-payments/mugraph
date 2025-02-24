@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use blake3::Hasher;
 use color_eyre::eyre::Result;
 use metrics::counter;
+use mugraph_core::crypto;
 
 pub static TOTAL_TRANSACTIONS: AtomicU64 = AtomicU64::new(0);
 use std::time::Instant;
@@ -95,6 +97,15 @@ impl Simulation {
                             }
 
                             let asset_id = transaction.asset_ids[atom.asset_id as usize];
+
+                            // Store blinding factors before sending transaction
+                            let mut nonce = Hasher::new();
+                            nonce.update(asset_id.as_ref());
+                            nonce.update(&atom.amount.to_be_bytes());
+                            let nonce_hash: Hash = nonce.finalize().into();
+
+                            let blinded = crypto::blind(&mut self.state.rng, nonce_hash.as_ref());
+                            self.state.blinding_factors.insert(nonce_hash, blinded);
 
                             self.state.recv(asset_id, atom.amount, outputs[index])?;
 

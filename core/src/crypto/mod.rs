@@ -99,7 +99,9 @@ mod tests {
 
     #[proptest]
     fn test_hash_to_curve_sensitivity(
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<
+            u8,
+        >,
     ) {
         let mut b = a.clone();
         b[0] = b[0].wrapping_add(1);
@@ -109,7 +111,9 @@ mod tests {
 
     #[proptest]
     fn test_hash_to_scalar_sensitivity(
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<
+            u8,
+        >,
     ) {
         let mut b = a.clone();
         b[0] = b[0].wrapping_add(1);

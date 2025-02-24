@@ -79,7 +79,10 @@ impl Database {
         })
     }
 
-    pub fn setup_test<R: CryptoRng + Rng>(rng: &mut R, path: Option<PathBuf>) -> Result<Self, Error> {
+    pub fn setup_test<R: CryptoRng + Rng>(
+        rng: &mut R,
+        path: Option<PathBuf>,
+    ) -> Result<Self, Error> {
         let exists = path.is_some();
         let backend = TestBackend::new(rng, path)?;
         let path = backend.path.clone();
@@ -118,7 +121,10 @@ impl Database {
         Ok(())
     }
 
-    fn setup_with_backend<B: StorageBackend>(backend: B, should_setup: bool) -> Result<Redb, Error> {
+    fn setup_with_backend<B: StorageBackend>(
+        backend: B,
+        should_setup: bool,
+    ) -> Result<Redb, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         if should_setup {

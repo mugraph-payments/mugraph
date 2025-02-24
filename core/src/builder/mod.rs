@@ -97,7 +97,7 @@ impl RefreshBuilder {
                 delegate,
                 asset_id,
                 amount,
-                nonce: Hash::zero(), // TODO: Generate a nonce for outputs
+                nonce: Hash::random(&mut rand::thread_rng()), // Generate random nonce
                 signature: None,
             });
         }

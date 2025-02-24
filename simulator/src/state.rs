@@ -1,8 +1,9 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
+use mugraph_core::crypto::BlindedPoint;
 use mugraph_core::{builder::RefreshBuilder, crypto, error::Error, types::*};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
@@ -14,6 +15,7 @@ pub struct State {
     pub keypair: Keypair,
     pub notes: VecDeque<Note>,
     pub by_asset_id: IndexMap<Hash, IndexSet<u32>>,
+    pub blinding_factors: HashMap<Hash, BlindedPoint>,
 }
 
 impl State {
@@ -48,6 +50,7 @@ impl State {
             keypair: delegate.keypair,
             notes,
             by_asset_id,
+            blinding_factors: HashMap::new(),
         })
     }
 
@@ -174,15 +177,24 @@ impl State {
         nonce.update(asset_id.as_ref());
         nonce.update(&amount.to_be_bytes());
         nonce.update(signature.0.as_ref());
+        let nonce_hash: Hash = nonce.finalize().into();
+
+        // Get the blinding factor we stored earlier for this note
+        let blinded_point =
+            self.blinding_factors
+                .remove(&nonce_hash)
+                .ok_or_else(|| Error::SimulationError {
+                    reason: "Missing blinding factor for note".into(),
+                })?;
 
         let note = Note {
             amount,
             delegate: self.keypair.public_key,
             asset_id,
-            nonce: nonce.finalize().into(),
+            nonce: nonce_hash,
             signature: crypto::unblind_signature(
                 &signature,
-                &crypto::blind(&mut self.rng, &[]).factor,
+                &blinded_point.factor,
                 &self.keypair.public_key,
             )?,
         };

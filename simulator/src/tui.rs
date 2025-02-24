@@ -58,16 +58,14 @@ where
         // Write level
         write!(log_line, "{:>5} ", event.metadata().level())?;
 
-        // Write fields using the default formatter
         ctx.field_format().format_fields(writer.by_ref(), event)?;
 
-        // Add the writer's content to our log line
-        log_line.push_str(&format!("{:?}", writer));
         log_line.push('\n');
 
         // Store in logs
         let mut logs = self.logs.lock().unwrap();
         logs.push_front(log_line);
+
         if logs.len() > 1000 {
             logs.pop_back();
         }
@@ -101,7 +99,9 @@ pub struct Dashboard {
 }
 
 impl Dashboard {
-    pub fn new(logs: Arc<Mutex<VecDeque<String>>>) -> (Self, mpsc::UnboundedSender<DashboardEvent>) {
+    pub fn new(
+        logs: Arc<Mutex<VecDeque<String>>>,
+    ) -> (Self, mpsc::UnboundedSender<DashboardEvent>) {
         let (tx, rx) = mpsc::unbounded_channel();
 
         enable_raw_mode().expect("Failed to enable raw mode");
