@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let request: Request = Request::Refresh(Refresh::default()).into();
+        let request: Request = Request::Refresh(Refresh::default());
 
         let expected = json!({
             "m": "refresh",

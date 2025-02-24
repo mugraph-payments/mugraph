@@ -107,8 +107,9 @@ impl Simulation {
                     Response::Emit(note) => {
                         return Err(Error::SimulationError {
                             reason: format!("Unexpected emit response with note: {:?}", note),
-                        })
+                        });
                     }
+                    Response::Error { reason } => return Err(Error::SimulationError { reason }),
                 }
             }
             Action::DoubleRefresh(transaction) => {
@@ -135,7 +136,7 @@ impl Simulation {
                     Ok(_) => {
                         return Err(Error::SimulationError {
                             reason: "Expected redemption to block double spend".to_string(),
-                        })
+                        });
                     }
                     Err(Error::AlreadySpent { .. }) => {
                         counter!("mugraph.simulator.blocked_double_spent").increment(1);

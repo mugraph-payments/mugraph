@@ -30,7 +30,7 @@ pub fn emit_note(
     Ok(note)
 }
 
-pub fn refresh_v0(
+pub fn refresh(
     transaction: &Refresh,
     keypair: Keypair,
     database: &Database,

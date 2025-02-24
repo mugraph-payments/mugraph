@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use axum::{
+    Json,
+    Router,
     extract::State,
-    response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use color_eyre::eyre::Result;
 use mugraph_core::{
@@ -16,7 +16,6 @@ use rand::thread_rng;
 mod refresh;
 
 pub use refresh::*;
-use serde_json::json;
 
 use crate::database::Database;
 
@@ -52,17 +51,21 @@ async fn get_public_key(State(Context { keypair, .. }): State<Context>) -> Json<
 pub async fn rpc(
     State(Context { keypair, database }): State<Context>,
     Json(request): Json<Request>,
-) -> impl IntoResponse {
+) -> Json<Response> {
     match request {
-        Request::Refresh(t) => match refresh_v0(&t, keypair, &database) {
-            Ok(response) => Json(response).into_response(),
-            Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
+        Request::Refresh(t) => match refresh(&t, keypair, &database) {
+            Ok(response) => Json(response),
+            Err(e) => Json(Response::Error {
+                reason: e.to_string(),
+            }),
         },
         Request::Emit { asset_id, amount } => {
             let mut rng = thread_rng();
             match emit_note(&keypair, asset_id, amount, &mut rng) {
-                Ok(note) => Json(Response::Emit(note)).into_response(),
-                Err(e) => Json(json!({ "error": e.to_string() })).into_response(),
+                Ok(note) => Json(Response::Emit(note)),
+                Err(e) => Json(Response::Error {
+                    reason: e.to_string(),
+                }),
             }
         }
     }

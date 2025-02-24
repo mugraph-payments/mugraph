@@ -13,4 +13,6 @@ pub enum Response {
     },
     #[serde(rename = "emit")]
     Emit(Note),
+    #[serde(rename = "error")]
+    Error { reason: String },
 }
