@@ -94,14 +94,14 @@ impl Refresh {
                 None => {
                     return Err(Error::InvalidOperation {
                         reason: "Asset ids are not valid".to_string(),
-                    })
+                    });
                 }
             }
 
             target[atom.asset_id as usize] += atom.amount as u128;
         }
 
-        if pre == post {
+        if pre != post {
             return Err(Error::InvalidOperation {
                 reason: format!(
                     "unbalanced transaction, expected {} units got {} units",

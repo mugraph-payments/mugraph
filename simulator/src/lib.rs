@@ -76,7 +76,7 @@ impl Simulation {
                 let response = self
                     .delegate
                     .client
-                    .post(format!("{}/refresh", self.delegate.node_addr))
+                    .post(format!("{}/rpc", self.delegate.node_addr))
                     .json(transaction)
                     .send()
                     .map_err(|e| Error::NetworkError {
@@ -123,13 +123,13 @@ impl Simulation {
                     Response::Error { reason } => return Err(Error::SimulationError { reason }),
                 }
             }
-            Action::DoubleRefresh(transaction) => {
+            Action::DoubleRefresh(refresh) => {
                 info!("Processing double spend");
 
                 self.delegate
                     .client
-                    .post(format!("{}/refresh", self.delegate.node_addr))
-                    .json(transaction)
+                    .post(format!("{}/rpc", self.delegate.node_addr))
+                    .json(refresh)
                     .send()
                     .map_err(|e| Error::NetworkError {
                         reason: e.to_string(),
@@ -138,8 +138,8 @@ impl Simulation {
                 match self
                     .delegate
                     .client
-                    .post(format!("{}/refresh", self.delegate.node_addr))
-                    .json(transaction)
+                    .post(format!("{}/rpc", self.delegate.node_addr))
+                    .json(refresh)
                     .send()
                     .map_err(|e| Error::NetworkError {
                         reason: e.to_string(),
