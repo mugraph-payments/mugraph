@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
+    Json,
+    Router,
     extract::State,
     routing::{get, post},
 };
@@ -42,7 +43,9 @@ pub async fn health() -> &'static str {
     "OK"
 }
 
-async fn get_public_key(State(Context { keypair, .. }): State<Context>) -> Json<PublicKey> {
+async fn get_public_key(
+    State(Context { keypair, .. }): State<Context>,
+) -> Json<PublicKey> {
     Json(keypair.public_key)
 }
 

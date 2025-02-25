@@ -14,7 +14,11 @@ use std::{
 use color_eyre::eyre::Result;
 use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
-    Config, Delegate, Simulation, TOTAL_TRANSACTIONS, tick,
+    Config,
+    Delegate,
+    Simulation,
+    TOTAL_TRANSACTIONS,
+    tick,
     tui::{Dashboard, DashboardEvent, DashboardFormatter},
 };
 use rand::prelude::*;
@@ -68,7 +72,8 @@ fn main() -> Result<()> {
                 match (|| -> Result<_, Error> {
                     let mut rng = ChaCha20Rng::seed_from_u64(seed);
                     let delegate = Delegate::new(&mut rng, keypair, &addr)?;
-                    let mut sim = Simulation::new(&mut rng, core.id as u32, delegate)?;
+                    let mut sim =
+                        Simulation::new(&mut rng, core.id as u32, delegate)?;
 
                     while ip.load(Ordering::Relaxed) {
                         thread::sleep(Duration::from_millis(25));

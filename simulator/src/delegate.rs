@@ -24,9 +24,10 @@ impl Delegate {
     ) -> Result<Self, Error> {
         info!(public_key = %keypair.public_key, "Starting delegate");
 
-        let client = Client::builder().build().map_err(|e| Error::NetworkError {
-            reason: e.to_string(),
-        })?;
+        let client =
+            Client::builder().build().map_err(|e| Error::NetworkError {
+                reason: e.to_string(),
+            })?;
 
         Ok(Self {
             rng: ChaCha20Rng::seed_from_u64(rng.r#gen()),

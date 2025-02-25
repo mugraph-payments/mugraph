@@ -10,7 +10,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::crypto::Scalar;
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Hash(pub [u8; 32]);

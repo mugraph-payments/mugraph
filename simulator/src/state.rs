@@ -3,8 +3,13 @@ use std::collections::{HashMap, VecDeque};
 use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
-use mugraph_core::crypto::BlindedPoint;
-use mugraph_core::{builder::RefreshBuilder, crypto, error::Error, types::*};
+use mugraph_core::{
+    builder::RefreshBuilder,
+    crypto,
+    crypto::BlindedPoint,
+    error::Error,
+    types::*,
+};
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 
@@ -19,7 +24,10 @@ pub struct State {
 }
 
 impl State {
-    pub fn setup<R: CryptoRng + Rng>(rng: &mut R, delegate: &mut Delegate) -> Result<Self, Error> {
+    pub fn setup<R: CryptoRng + Rng>(
+        rng: &mut R,
+        delegate: &mut Delegate,
+    ) -> Result<Self, Error> {
         let config = Config::new();
         let assets = (0..config.assets)
             .map(|_| Hash::random(rng))
@@ -56,7 +64,8 @@ impl State {
 
     #[tracing::instrument(skip_all)]
     pub fn next_action(&mut self) -> Result<Action, Error> {
-        gauge!("mugraph.resources", "name" => "available_notes").set(self.notes.len() as f64);
+        gauge!("mugraph.resources", "name" => "available_notes")
+            .set(self.notes.len() as f64);
 
         match self.rng.gen_range(0u32..100) {
             0..45 => self.generate_split(),
@@ -130,12 +139,18 @@ impl State {
                     break 'outer;
                 }
 
-                let a = match notes.pop().and_then(|x| self.notes.remove(x as usize)) {
+                let a = match notes
+                    .pop()
+                    .and_then(|x| self.notes.remove(x as usize))
+                {
                     Some(a) => a,
                     None => continue,
                 };
 
-                let b = match notes.pop().and_then(|x| self.notes.remove(x as usize)) {
+                let b = match notes
+                    .pop()
+                    .and_then(|x| self.notes.remove(x as usize))
+                {
                     Some(b) => b,
                     None => {
                         // Put 'a' back if we couldn't find a pair
@@ -180,12 +195,12 @@ impl State {
         let nonce_hash: Hash = nonce.finalize().into();
 
         // Get the blinding factor we stored earlier for this note
-        let blinded_point =
-            self.blinding_factors
-                .remove(&nonce_hash)
-                .ok_or_else(|| Error::SimulationError {
-                    reason: "Missing blinding factor for note".into(),
-                })?;
+        let blinded_point = self
+            .blinding_factors
+            .remove(&nonce_hash)
+            .ok_or_else(|| Error::SimulationError {
+                reason: "Missing blinding factor for note".into(),
+            })?;
 
         let note = Note {
             amount,

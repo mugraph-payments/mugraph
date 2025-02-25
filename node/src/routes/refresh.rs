@@ -25,7 +25,8 @@ pub fn emit_note(
 
     let blind = crypto::blind_note(rng, &note);
     let signed = crypto::sign_blinded(&keypair.secret_key, &blind.point);
-    note.signature = crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
+    note.signature =
+        crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
 
     Ok(note)
 }
@@ -35,8 +36,10 @@ pub fn refresh(
     keypair: Keypair,
     database: &Database,
 ) -> Result<Response, Error> {
-    let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
-    let mut consumed_inputs = Vec::with_capacity(transaction.input_mask.count_ones() as usize);
+    let mut outputs =
+        Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
+    let mut consumed_inputs =
+        Vec::with_capacity(transaction.input_mask.count_ones() as usize);
 
     let w = database.write()?;
     let read = database.read()?.open_table(NOTES)?;
@@ -46,7 +49,9 @@ pub fn refresh(
             if transaction.is_output(i) {
                 let sig = crypto::sign_blinded(
                     &keypair.secret_key,
-                    &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
+                    &crypto::hash_to_curve(
+                        atom.commitment(&transaction.asset_ids).as_ref(),
+                    ),
                 );
 
                 outputs.push(sig);
@@ -55,7 +60,10 @@ pub fn refresh(
             }
 
             let signature = match atom.signature {
-                Some(s) if transaction.signatures[s as usize] == Signature::zero() => {
+                Some(s)
+                    if transaction.signatures[s as usize]
+                        == Signature::zero() =>
+                {
                     return Err(Error::InvalidSignature {
                         reason: "Signature can not be empty".to_string(),
                         signature: Signature::zero(),
@@ -64,12 +72,17 @@ pub fn refresh(
                 Some(s) => transaction.signatures[s as usize],
                 None => {
                     return Err(Error::InvalidAtom {
-                        reason: "Atom {} is an input but it is not signed.".into(),
+                        reason: "Atom {} is an input but it is not signed."
+                            .into(),
                     });
                 }
             };
 
-            crypto::verify(&keypair.public_key, atom.nonce.as_ref(), signature)?;
+            crypto::verify(
+                &keypair.public_key,
+                atom.nonce.as_ref(),
+                signature,
+            )?;
 
             match read.get(signature) {
                 Ok(Some(_)) => {

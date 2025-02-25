@@ -8,7 +8,12 @@ use std::{
 use crossterm::{
     ExecutableCommand,
     event::{self, Event, KeyCode},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{
+        EnterAlternateScreen,
+        LeaveAlternateScreen,
+        disable_raw_mode,
+        enable_raw_mode,
+    },
 };
 use ratatui::{
     Terminal,
@@ -17,7 +22,16 @@ use ratatui::{
     style::{Color, Style},
     symbols,
     text::{Line, Span},
-    widgets::{Block, Borders, Chart, Dataset, GraphType, List, ListItem, Paragraph},
+    widgets::{
+        Block,
+        Borders,
+        Chart,
+        Dataset,
+        GraphType,
+        List,
+        ListItem,
+        Paragraph,
+    },
 };
 use tokio::sync::mpsc;
 use tracing::Subscriber;
@@ -110,7 +124,8 @@ impl Dashboard {
             .execute(EnterAlternateScreen)
             .expect("Failed to enter alternate screen");
         let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend).expect("Failed to create terminal");
+        let terminal =
+            Terminal::new(backend).expect("Failed to create terminal");
 
         (
             Self {
@@ -173,7 +188,10 @@ impl Dashboard {
                 // Split the bottom area into logs and metrics
                 let log_chunks = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .constraints([
+                        Constraint::Percentage(50),
+                        Constraint::Percentage(50),
+                    ])
                     .split(chunks[2]);
 
                 // Draw TPS Graph
@@ -195,8 +213,14 @@ impl Dashboard {
                         ratatui::widgets::Axis::default()
                             .style(Style::default().fg(Color::Gray))
                             .bounds([
-                                self.tps_history.front().map(|(x, _)| *x).unwrap_or(0.0),
-                                self.tps_history.back().map(|(x, _)| *x).unwrap_or(0.0),
+                                self.tps_history
+                                    .front()
+                                    .map(|(x, _)| *x)
+                                    .unwrap_or(0.0),
+                                self.tps_history
+                                    .back()
+                                    .map(|(x, _)| *x)
+                                    .unwrap_or(0.0),
                             ]),
                     )
                     .y_axis(
@@ -222,13 +246,23 @@ impl Dashboard {
                     .data(self.latency_history.as_slices().0);
 
                 let latency_chart = Chart::new(vec![latency_dataset])
-                    .block(Block::default().title("Latency (ms)").borders(Borders::ALL))
+                    .block(
+                        Block::default()
+                            .title("Latency (ms)")
+                            .borders(Borders::ALL),
+                    )
                     .x_axis(
                         ratatui::widgets::Axis::default()
                             .style(Style::default().fg(Color::Gray))
                             .bounds([
-                                self.latency_history.front().map(|(x, _)| *x).unwrap_or(0.0),
-                                self.latency_history.back().map(|(x, _)| *x).unwrap_or(0.0),
+                                self.latency_history
+                                    .front()
+                                    .map(|(x, _)| *x)
+                                    .unwrap_or(0.0),
+                                self.latency_history
+                                    .back()
+                                    .map(|(x, _)| *x)
+                                    .unwrap_or(0.0),
                             ]),
                     )
                     .y_axis(
@@ -264,40 +298,60 @@ impl Dashboard {
                     .style(Style::default().fg(Color::White));
 
                 // Draw Metrics (right side)
-                let current_tps = self.tps_history.back().map(|(_, tps)| *tps).unwrap_or(0.0);
-                let avg_tps = self.tps_history.iter().map(|(_, t)| t).sum::<f64>()
-                    / self.tps_history.len().max(1) as f64;
+                let current_tps =
+                    self.tps_history.back().map(|(_, tps)| *tps).unwrap_or(0.0);
+                let avg_tps =
+                    self.tps_history.iter().map(|(_, t)| t).sum::<f64>()
+                        / self.tps_history.len().max(1) as f64;
 
                 let metrics_text = vec![
                     Line::from(Span::raw("")),
                     Line::from(vec![
-                        Span::styled("Current TPS: ", Style::default().fg(Color::Cyan)),
+                        Span::styled(
+                            "Current TPS: ",
+                            Style::default().fg(Color::Cyan),
+                        ),
                         Span::styled(
                             format!("{:.2}", current_tps),
                             Style::default().fg(Color::White),
                         ),
                     ]),
                     Line::from(vec![
-                        Span::styled("Average TPS: ", Style::default().fg(Color::Cyan)),
-                        Span::styled(format!("{:.2}", avg_tps), Style::default().fg(Color::White)),
+                        Span::styled(
+                            "Average TPS: ",
+                            Style::default().fg(Color::Cyan),
+                        ),
+                        Span::styled(
+                            format!("{:.2}", avg_tps),
+                            Style::default().fg(Color::White),
+                        ),
                     ]),
                     Line::from(Span::raw("")),
                     Line::from(vec![
-                        Span::styled("P50 Latency: ", Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            "P50 Latency: ",
+                            Style::default().fg(Color::Yellow),
+                        ),
                         Span::styled(
                             format!("{}ms", self.current_p50),
                             Style::default().fg(Color::White),
                         ),
                     ]),
                     Line::from(vec![
-                        Span::styled("P90 Latency: ", Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            "P90 Latency: ",
+                            Style::default().fg(Color::Yellow),
+                        ),
                         Span::styled(
                             format!("{}ms", self.current_p90),
                             Style::default().fg(Color::White),
                         ),
                     ]),
                     Line::from(vec![
-                        Span::styled("P99 Latency: ", Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            "P99 Latency: ",
+                            Style::default().fg(Color::Yellow),
+                        ),
                         Span::styled(
                             format!("{}ms", self.current_p99),
                             Style::default().fg(Color::White),
@@ -306,7 +360,9 @@ impl Dashboard {
                 ];
 
                 let metrics = Paragraph::new(metrics_text)
-                    .block(Block::default().title("Metrics").borders(Borders::ALL))
+                    .block(
+                        Block::default().title("Metrics").borders(Borders::ALL),
+                    )
                     .alignment(Alignment::Left);
 
                 f.render_widget(logs, log_chunks[0]);

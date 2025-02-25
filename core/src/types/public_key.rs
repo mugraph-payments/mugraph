@@ -9,7 +9,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{crypto::Scalar, error::Error};
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct PublicKey(pub [u8; 32]);
@@ -39,8 +50,10 @@ impl PublicKey {
 
     #[inline]
     pub fn to_compressed_point(&self) -> Result<CompressedRistretto, Error> {
-        CompressedRistretto::from_slice(&self.0).map_err(|e| Error::InvalidKey {
-            reason: e.to_string(),
+        CompressedRistretto::from_slice(&self.0).map_err(|e| {
+            Error::InvalidKey {
+                reason: e.to_string(),
+            }
         })
     }
 

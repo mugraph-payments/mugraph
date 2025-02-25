@@ -32,7 +32,11 @@ pub fn sign<R: RngCore + CryptoRng>(
     }
 }
 
-pub fn verify(public_key: &PublicKey, signature: &Signature, message: &[u8]) -> Result<()> {
+pub fn verify(
+    public_key: &PublicKey,
+    signature: &Signature,
+    message: &[u8],
+) -> Result<()> {
     let s = Scalar::from_bytes_mod_order(*signature.s);
     let r = CompressedRistretto::from_slice(&*signature.r)
         .map_err(|_| Error::Other)?
@@ -63,7 +67,11 @@ mod tests {
     }
 
     #[proptest]
-    fn test_sign_verify(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
+    fn test_sign_verify(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        message: Vec<u8>,
+    ) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
         prop_assert_eq!(verify(&pair.public_key, &signed, &message), Ok(()));
     }
@@ -78,7 +86,9 @@ mod tests {
         let signed = sign(&mut rng, &pair.secret_key, &message);
         let mut tampered_message = message.clone();
         tampered_message[0] = tampered_message[0].wrapping_add(1); // Flip one bit
-        prop_assert!(verify(&pair.public_key, &signed, &tampered_message).is_err());
+        prop_assert!(
+            verify(&pair.public_key, &signed, &tampered_message).is_err()
+        );
     }
 
     #[proptest]
@@ -138,7 +148,11 @@ mod tests {
     }
 
     #[proptest]
-    fn test_verify_rogue_key(#[strategy(rng())] mut rng: StdRng, pair: Keypair, message: Vec<u8>) {
+    fn test_verify_rogue_key(
+        #[strategy(rng())] mut rng: StdRng,
+        pair: Keypair,
+        message: Vec<u8>,
+    ) {
         let signed = sign(&mut rng, &pair.secret_key, &message);
 
         // Create a rogue public key

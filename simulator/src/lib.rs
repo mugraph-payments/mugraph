@@ -19,7 +19,13 @@ mod state;
 mod tick;
 pub mod tui;
 
-pub use self::{action::Action, config::Config, delegate::Delegate, state::State, tick::tick};
+pub use self::{
+    action::Action,
+    config::Config,
+    delegate::Delegate,
+    state::State,
+    tick::tick,
+};
 
 pub struct Simulation {
     core_id: u32,
@@ -96,7 +102,8 @@ impl Simulation {
                                 continue;
                             }
 
-                            let asset_id = transaction.asset_ids[atom.asset_id as usize];
+                            let asset_id =
+                                transaction.asset_ids[atom.asset_id as usize];
 
                             // Store blinding factors before sending transaction
                             let mut nonce = Hasher::new();
@@ -104,10 +111,19 @@ impl Simulation {
                             nonce.update(&atom.amount.to_be_bytes());
                             let nonce_hash: Hash = nonce.finalize().into();
 
-                            let blinded = crypto::blind(&mut self.state.rng, nonce_hash.as_ref());
-                            self.state.blinding_factors.insert(nonce_hash, blinded);
+                            let blinded = crypto::blind(
+                                &mut self.state.rng,
+                                nonce_hash.as_ref(),
+                            );
+                            self.state
+                                .blinding_factors
+                                .insert(nonce_hash, blinded);
 
-                            self.state.recv(asset_id, atom.amount, outputs[index])?;
+                            self.state.recv(
+                                asset_id,
+                                atom.amount,
+                                outputs[index],
+                            )?;
 
                             index += 1;
                         }
@@ -117,10 +133,15 @@ impl Simulation {
                     }
                     Response::Emit(note) => {
                         return Err(Error::SimulationError {
-                            reason: format!("Unexpected emit response with note: {:?}", note),
+                            reason: format!(
+                                "Unexpected emit response with note: {:?}",
+                                note
+                            ),
                         });
                     }
-                    Response::Error { reason } => return Err(Error::SimulationError { reason }),
+                    Response::Error { reason } => {
+                        return Err(Error::SimulationError { reason });
+                    }
                 }
             }
             Action::DoubleRefresh(refresh) => {
@@ -146,11 +167,13 @@ impl Simulation {
                     }) {
                     Ok(_) => {
                         return Err(Error::SimulationError {
-                            reason: "Expected redemption to block double spend".to_string(),
+                            reason: "Expected redemption to block double spend"
+                                .to_string(),
                         });
                     }
                     Err(Error::AlreadySpent { .. }) => {
-                        counter!("mugraph.simulator.blocked_double_spent").increment(1);
+                        counter!("mugraph.simulator.blocked_double_spent")
+                            .increment(1);
                     }
                     Err(e) => return Err(e),
                 }

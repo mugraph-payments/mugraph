@@ -10,7 +10,18 @@ use serde::{Deserialize, Serialize};
 use super::PublicKey;
 use crate::{crypto::G, error::Error};
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct SecretKey(pub [u8; 32]);

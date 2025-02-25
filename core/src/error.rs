@@ -29,7 +29,9 @@ pub enum Error {
     #[error("Rng error: {reason}")]
     RngError { reason: String },
 
-    #[error("Insufficient funds for {asset_id}, expected {expected} but got {got}")]
+    #[error(
+        "Insufficient funds for {asset_id}, expected {expected} but got {got}"
+    )]
     InsufficientFunds {
         asset_id: Hash,
         expected: u64,
@@ -103,7 +105,10 @@ impl From<rand::Error> for Error {
 }
 
 #[inline]
-fn to_simulated_or_storage_error<T: std::error::Error + ToString>(value: T, kind: &str) -> Error {
+fn to_simulated_or_storage_error<T: std::error::Error + ToString>(
+    value: T,
+    kind: &str,
+) -> Error {
     let reason = value.to_string();
 
     match reason.contains("injected_error") {

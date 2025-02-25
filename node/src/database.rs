@@ -3,11 +3,21 @@ use std::{fs::OpenOptions, path::PathBuf};
 use metrics::counter;
 use mugraph_core::{error::Error, types::Signature};
 use redb::{
-    Builder, Database as Redb, Key, ReadOnlyTable, ReadTransaction, StorageBackend, Table,
-    TableDefinition, Value, WriteTransaction, backends::FileBackend,
+    Builder,
+    Database as Redb,
+    Key,
+    ReadOnlyTable,
+    ReadTransaction,
+    StorageBackend,
+    Table,
+    TableDefinition,
+    Value,
+    WriteTransaction,
+    backends::FileBackend,
 };
 
-pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> =
+    TableDefinition::new("notes");
 
 #[derive(Debug)]
 pub struct Database {

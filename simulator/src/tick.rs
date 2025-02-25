@@ -6,7 +6,11 @@ use tracing::error;
 use crate::Simulation;
 
 #[tracing::instrument(skip(sim))]
-pub fn tick(core_id: usize, sim: &mut Simulation, round: u64) -> Result<(), Error> {
+pub fn tick(
+    core_id: usize,
+    sim: &mut Simulation,
+    round: u64,
+) -> Result<(), Error> {
     match sim.tick(round) {
         Ok(_) => {}
         Err(e) => {
