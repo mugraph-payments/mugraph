@@ -36,14 +36,20 @@ impl Config {
     pub fn keypair(&self) -> Result<Keypair, Error> {
         match self {
             Self::Server { secret_key, .. } => {
-                let key: [u8; 32] = muhex::decode(secret_key)
-                    .map_err(|e| Error::InvalidKey {
+                let key_bytes = muhex::decode(secret_key).map_err(|e| {
+                    Error::InvalidKey {
                         reason: e.to_string(),
-                    })?
-                    .try_into()
-                    .map_err(|_| Error::InvalidKey {
-                        reason: "Invalid key size".to_string(),
-                    })?;
+                    }
+                })?;
+
+                if key_bytes.len() != 32 {
+                    return Err(Error::InvalidKey {
+                        reason: "Secret key must be 32 bytes".to_string(),
+                    });
+                }
+
+                let key: [u8; 32] =
+                    key_bytes.try_into().expect("Already validated length");
                 let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {

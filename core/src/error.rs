@@ -82,9 +82,21 @@ impl From<std::io::Error> for Error {
             ErrorKind::Other if reason.contains("injected_error") => {
                 Self::SimulatedError { reason }
             }
-            k => Self::StorageError {
-                kind: k.to_string(),
-                reason: e.to_string(),
+            ErrorKind::NotFound => Self::StorageError {
+                kind: "NotFound".to_string(),
+                reason,
+            },
+            ErrorKind::PermissionDenied => Self::StorageError {
+                kind: "PermissionDenied".to_string(),
+                reason,
+            },
+            ErrorKind::AlreadyExists => Self::StorageError {
+                kind: "AlreadyExists".to_string(),
+                reason,
+            },
+            _ => Self::StorageError {
+                kind: e.kind().to_string(),
+                reason,
             },
         }
     }

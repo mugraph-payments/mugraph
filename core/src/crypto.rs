@@ -6,8 +6,6 @@ use crate::{
     types::*,
 };
 
-pub mod schnorr;
-
 pub const HTC_SEP: &[u8] = b"mugraph_v0_htc";
 
 pub type Point = curve25519_dalek::ristretto::RistrettoPoint;

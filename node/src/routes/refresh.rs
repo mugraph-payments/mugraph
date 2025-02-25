@@ -5,15 +5,16 @@ use mugraph_core::{
     types::{Hash, Keypair, Note, Refresh, Response, Signature},
 };
 use rand::{CryptoRng, RngCore};
+use redb::ReadableTable;
 
 use crate::database::{Database, NOTES};
 
 #[inline]
-pub fn emit_note(
+pub fn emit_note<R: RngCore + CryptoRng>(
     keypair: &Keypair,
     asset_id: Hash,
     amount: u64,
-    rng: &mut (impl RngCore + CryptoRng),
+    rng: &mut R,
 ) -> Result<Note, Error> {
     let mut note = Note {
         delegate: keypair.public_key,
@@ -38,13 +39,11 @@ pub fn refresh(
 ) -> Result<Response, Error> {
     let mut outputs =
         Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
-    let mut consumed_inputs =
-        Vec::with_capacity(transaction.input_mask.count_ones() as usize);
-
     let w = database.write()?;
-    let read = database.read()?.open_table(NOTES)?;
 
     {
+        let mut table = w.open_table(NOTES)?;
+
         for (i, atom) in transaction.atoms.iter().enumerate() {
             if transaction.is_output(i) {
                 let sig = crypto::sign_blinded(
@@ -55,29 +54,31 @@ pub fn refresh(
                 );
 
                 outputs.push(sig);
-
                 continue;
             }
 
             let signature = match atom.signature {
-                Some(s)
-                    if transaction.signatures[s as usize]
-                        == Signature::zero() =>
-                {
-                    return Err(Error::InvalidSignature {
-                        reason: "Signature can not be empty".to_string(),
-                        signature: Signature::zero(),
-                    });
-                }
                 Some(s) => transaction.signatures[s as usize],
                 None => {
                     return Err(Error::InvalidAtom {
-                        reason: "Atom {} is an input but it is not signed."
-                            .into(),
+                        reason: format!("Atom {} is input but unsigned", i),
                     });
                 }
             };
 
+            if signature == Signature::zero() {
+                return Err(Error::InvalidSignature {
+                    reason: "Zero signature".to_string(),
+                    signature,
+                });
+            }
+
+            // Check if already spent
+            if table.get(signature)?.is_some() {
+                return Err(Error::AlreadySpent { signature });
+            }
+
+            // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
             crypto::verify(
                 &keypair.public_key,
@@ -85,29 +86,11 @@ pub fn refresh(
                 signature,
             )?;
 
-            match read.get(signature) {
-                Ok(Some(_)) => {
-                    return Err(Error::AlreadySpent { signature });
-                }
-                Ok(None) => {
-                    consumed_inputs.push(signature);
-                }
-                Err(e) => {
-                    return Err(Error::ServerError {
-                        reason: e.to_string(),
-                    });
-                }
-            }
-        }
-
-        let mut table = w.open_table(NOTES)?;
-
-        for input in consumed_inputs.into_iter() {
-            table.insert(input, true)?;
+            // Mark as spent
+            table.insert(signature, true)?;
         }
     }
 
     w.commit()?;
-
     Ok(Response::Transaction { outputs })
 }
