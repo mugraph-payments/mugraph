@@ -15,6 +15,7 @@ pub type Scalar = curve25519_dalek::scalar::Scalar;
 
 pub const G: Point = curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 
+#[derive(Debug, Clone, Copy)]
 pub struct BlindedPoint {
     pub factor: Scalar,
     pub point: Point,

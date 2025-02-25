@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use blake3::Hasher;
 use color_eyre::eyre::Result;
 use metrics::counter;
 use mugraph_core::crypto;
@@ -95,37 +94,38 @@ impl Simulation {
 
                 match response {
                     Response::Transaction { outputs } => {
-                        let mut index = 0;
-
+                        let mut blinding_factors = Vec::new();
                         for (i, atom) in transaction.atoms.iter().enumerate() {
-                            if transaction.is_input(i) {
-                                continue;
+                            if transaction.is_output(i) {
+                                let commitment =
+                                    atom.commitment(&transaction.asset_ids);
+                                let blinded = crypto::blind(
+                                    &mut self.state.rng,
+                                    commitment.as_ref(),
+                                );
+                                self.state
+                                    .blinding_factors
+                                    .insert(atom.nonce, blinded);
+                                blinding_factors.push((atom.nonce, blinded));
                             }
+                        }
 
-                            let asset_id =
-                                transaction.asset_ids[atom.asset_id as usize];
+                        let mut index = 0;
+                        for (i, atom) in transaction.atoms.iter().enumerate() {
+                            if transaction.is_output(i) {
+                                let (nonce, blinding) = blinding_factors[index];
 
-                            // Store blinding factors before sending transaction
-                            let mut nonce = Hasher::new();
-                            nonce.update(asset_id.as_ref());
-                            nonce.update(&atom.amount.to_be_bytes());
-                            let nonce_hash: Hash = nonce.finalize().into();
+                                self.state.recv(
+                                    transaction.asset_ids
+                                        [atom.asset_id as usize],
+                                    atom.amount,
+                                    outputs[index],
+                                    nonce,
+                                    blinding.factor,
+                                )?;
 
-                            let blinded = crypto::blind(
-                                &mut self.state.rng,
-                                nonce_hash.as_ref(),
-                            );
-                            self.state
-                                .blinding_factors
-                                .insert(nonce_hash, blinded);
-
-                            self.state.recv(
-                                asset_id,
-                                atom.amount,
-                                outputs[index],
-                            )?;
-
-                            index += 1;
+                                index += 1;
+                            }
                         }
 
                         counter!("mugraph.simulator.transactions").increment(1);

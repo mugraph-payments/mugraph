@@ -78,9 +78,10 @@ pub fn refresh(
                 }
             };
 
+            let commitment = atom.commitment(&transaction.asset_ids);
             crypto::verify(
                 &keypair.public_key,
-                atom.nonce.as_ref(),
+                commitment.as_ref(),
                 signature,
             )?;
 

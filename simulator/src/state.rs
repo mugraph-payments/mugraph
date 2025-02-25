@@ -1,12 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 
-use blake3::Hasher;
 use indexmap::{IndexMap, IndexSet};
 use metrics::gauge;
 use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
-    crypto::BlindedPoint,
+    crypto::{BlindedPoint, Scalar},
     error::Error,
     types::*,
 };
@@ -187,29 +186,17 @@ impl State {
         asset_id: Hash,
         amount: u64,
         signature: Blinded<Signature>,
+        nonce: Hash,
+        blinding_factor: Scalar,
     ) -> Result<(), Error> {
-        let mut nonce = Hasher::new();
-        nonce.update(asset_id.as_ref());
-        nonce.update(&amount.to_be_bytes());
-        nonce.update(signature.0.as_ref());
-        let nonce_hash: Hash = nonce.finalize().into();
-
-        // Get the blinding factor we stored earlier for this note
-        let blinded_point = self
-            .blinding_factors
-            .remove(&nonce_hash)
-            .ok_or_else(|| Error::SimulationError {
-                reason: "Missing blinding factor for note".into(),
-            })?;
-
         let note = Note {
             amount,
             delegate: self.keypair.public_key,
             asset_id,
-            nonce: nonce_hash,
+            nonce,
             signature: crypto::unblind_signature(
                 &signature,
-                &blinded_point.factor,
+                &blinding_factor,
                 &self.keypair.public_key,
             )?,
         };
