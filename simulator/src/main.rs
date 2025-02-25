@@ -4,8 +4,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::{Duration, Instant},
@@ -14,9 +14,8 @@ use std::{
 use color_eyre::eyre::Result;
 use mugraph_core::{error::Error, types::Keypair};
 use mugraph_simulator::{
-    tick,
+    Config, Delegate, Simulation, TOTAL_TRANSACTIONS, tick,
     tui::{Dashboard, DashboardEvent, DashboardFormatter},
-    Config, Delegate, Simulation, TOTAL_TRANSACTIONS,
 };
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;

@@ -1,5 +1,5 @@
 use clap::Parser;
-use rand::{prelude::*, thread_rng, SeedableRng};
+use rand::{SeedableRng, prelude::*, thread_rng};
 use rand_chacha::ChaChaRng;
 use tracing::info;
 

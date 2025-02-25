@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{PublicKey, COMMITMENT_INPUT_SIZE};
+use super::{COMMITMENT_INPUT_SIZE, PublicKey};
 use crate::{
     error::Error,
     types::{Hash, Signature},

@@ -77,7 +77,7 @@ impl RefreshBuilder {
                 None => {
                     return Err(Error::InvalidOperation {
                         reason: "Missing asset_id for iput".to_string(),
-                    })
+                    });
                 }
             };
 

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::State,
     routing::{get, post},
-    Json, Router,
 };
 use color_eyre::eyre::Result;
 use mugraph_core::{
