@@ -16,8 +16,7 @@ use redb::{
     backends::FileBackend,
 };
 
-pub const NOTES: TableDefinition<Signature, bool> =
-    TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
 
 #[derive(Debug)]
 pub struct Database {
@@ -45,7 +44,7 @@ impl Write {
     pub fn open_table<K: Key, V: Value>(
         &self,
         table: TableDefinition<K, V>,
-    ) -> Result<Table<K, V>, Error> {
+    ) -> Result<Table<'_, K, V>, Error> {
         counter!("mugraph.simulator.database.write.open_table").increment(1);
         Ok(self.0.open_table(table)?)
     }
@@ -73,10 +72,7 @@ impl Database {
         })
     }
 
-    fn setup_with_backend<B: StorageBackend>(
-        backend: B,
-        should_setup: bool,
-    ) -> Result<Redb, Error> {
+    fn setup_with_backend<B: StorageBackend>(backend: B, should_setup: bool) -> Result<Redb, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         if should_setup {
