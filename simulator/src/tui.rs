@@ -318,13 +318,11 @@ impl Dashboard {
             })?;
 
             // Check for quit
-            if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    if key.code == KeyCode::Char('q') {
+            if event::poll(std::time::Duration::from_millis(100))?
+                && let Event::Key(key) = event::read()?
+                    && key.code == KeyCode::Char('q') {
                         break;
                     }
-                }
-            }
         }
 
         Ok(())
