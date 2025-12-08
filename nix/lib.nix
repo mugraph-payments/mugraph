@@ -52,7 +52,7 @@ in
   cargoLock = {
     lockFile = ../Cargo.lock;
     outputHashes = {
-      "muhex-0.1.0" = "sha256-Xx4KJ1NnG+SHMlQzK88+hWHMCM5A2TXVHJki5N/GNAs=";
+      "muhex-0.1.0" = "sha256-3C8wzuqNMiUyChaJ2z7oOV5I9M14Srd4THeC6lW6u14=";
     };
   };
 }

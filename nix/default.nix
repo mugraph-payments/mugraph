@@ -57,7 +57,8 @@ let
       prev.protobuf
       prev.samply
       scripts
-    ] ++ optionals isDarwin [ SystemConfiguration ];
+    ]
+    ++ optionals isDarwin [ SystemConfiguration ];
   };
 in
 {
