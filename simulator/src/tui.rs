@@ -320,9 +320,10 @@ impl Dashboard {
             // Check for quit
             if event::poll(std::time::Duration::from_millis(100))?
                 && let Event::Key(key) = event::read()?
-                    && key.code == KeyCode::Char('q') {
-                        break;
-                    }
+                && key.code == KeyCode::Char('q')
+            {
+                break;
+            }
         }
 
         Ok(())
