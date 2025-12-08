@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 blake3 = { workspace = true }
-chrono = "0.4"
 clap = { workspace = true }
 color-eyre = { workspace = true }
 core_affinity = { workspace = true }
@@ -15,7 +14,7 @@ metrics = { workspace = true }
 mimalloc = { workspace = true }
 mugraph-core = { workspace = true }
 mugraph-node = { workspace = true }
-time = { version = "0.3", features = ["local-offset"] }
+time = { version = "0.3", features = ["local-offset", "macros"] }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 ratatui = "0.29"

@@ -19,12 +19,15 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Chart, Dataset, GraphType, List, ListItem, Paragraph},
 };
+use time::{OffsetDateTime, format_description::FormatItem, macros::format_description};
 use tokio::sync::mpsc;
 use tracing::Subscriber;
 use tracing_subscriber::{
     fmt::{FmtContext, FormatEvent, FormatFields, format::Writer},
     registry::LookupSpan,
 };
+
+const TIME_FORMAT: &[FormatItem<'static>] = format_description!("[hour]:[minute]:[second]");
 
 pub struct DashboardFormatter {
     logs: Arc<Mutex<VecDeque<String>>>,
@@ -52,8 +55,11 @@ where
         let mut log_line = String::new();
 
         // Write timestamp
-        let now = chrono::Local::now();
-        write!(log_line, "{} ", now.format("[%H:%M:%S]"))?;
+        let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+        let formatted_time = now
+            .format(TIME_FORMAT)
+            .unwrap_or_else(|_| "--:--:--".to_string());
+        write!(log_line, "[{}] ", formatted_time)?;
 
         // Write level
         write!(log_line, "{:>5} ", event.metadata().level())?;
