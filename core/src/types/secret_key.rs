@@ -7,7 +7,7 @@ use curve25519_dalek::Scalar;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 
-use super::PublicKey;
+use super::{Hash, PublicKey};
 use crate::{crypto::G, error::Error};
 
 #[derive(
@@ -48,7 +48,7 @@ impl SecretKey {
 
     #[inline]
     pub fn random<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
-        Scalar::random(rng).into()
+        Hash::random(rng).to_scalar().into()
     }
 
     #[inline]

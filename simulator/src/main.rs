@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     let config = Config::default();
     let mut rng = match config.seed {
         Some(s) => ChaCha20Rng::seed_from_u64(s),
-        None => ChaCha20Rng::from_entropy(),
+        None => ChaCha20Rng::from_rng(&mut rand::rng()),
     };
 
     let mut cores = VecDeque::from(core_affinity::get_core_ids().unwrap());
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
         let core = cores.pop_front().unwrap();
         let ir = is_running.clone();
         let ip = is_preparing.clone();
-        let seed: u64 = rng.r#gen();
+        let seed: u64 = rng.random();
         let addr = config.node_addr.clone();
 
         thread::spawn(move || {

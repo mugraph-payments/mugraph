@@ -26,9 +26,6 @@ pub enum Error {
     #[error("Storage error ({kind}): {reason}")]
     StorageError { kind: String, reason: String },
 
-    #[error("Rng error: {reason}")]
-    RngError { reason: String },
-
     #[error(
         "Insufficient funds for {asset_id}, expected {expected} but got {got}"
     )]
@@ -105,14 +102,6 @@ impl From<std::io::Error> for Error {
 impl From<Error> for std::io::Error {
     fn from(e: Error) -> Self {
         std::io::Error::other(e.to_string())
-    }
-}
-
-impl From<rand::Error> for Error {
-    fn from(value: rand::Error) -> Self {
-        Error::RngError {
-            reason: value.to_string(),
-        }
     }
 }
 

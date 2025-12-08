@@ -30,7 +30,7 @@ impl Delegate {
             })?;
 
         Ok(Self {
-            rng: ChaCha20Rng::seed_from_u64(rng.r#gen()),
+            rng: ChaCha20Rng::seed_from_u64(rng.random()),
             client,
             node_addr: node_addr.to_string(),
             keypair,

@@ -1,5 +1,5 @@
 use clap::Parser;
-use rand::{SeedableRng, prelude::*, thread_rng};
+use rand::{SeedableRng, prelude::*, rng};
 use rand_chacha::ChaChaRng;
 use tracing::info;
 
@@ -45,7 +45,7 @@ impl Config {
     pub fn rng(&self) -> ChaChaRng {
         let seed = match self.seed {
             Some(seed) => seed,
-            None => thread_rng().r#gen(),
+            None => rng().random(),
         };
 
         info!(

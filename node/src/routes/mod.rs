@@ -11,7 +11,6 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, PublicKey, Request, Response},
 };
-use rand::thread_rng;
 
 mod refresh;
 
@@ -62,7 +61,7 @@ pub async fn rpc(
             }),
         },
         Request::Emit { asset_id, amount } => {
-            let mut rng = thread_rng();
+            let mut rng = rand::rng();
             match emit_note(&keypair, asset_id, amount, &mut rng) {
                 Ok(note) => Json(Response::Emit(note)),
                 Err(e) => Json(Response::Error {

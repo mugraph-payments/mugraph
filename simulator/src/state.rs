@@ -35,10 +35,10 @@ impl State {
         let mut by_asset_id = IndexMap::new();
 
         for _ in 0..config.notes {
-            let idx = rng.gen_range(0..config.assets);
+            let idx = rng.random_range(0..config.assets);
 
             let asset_id = assets[idx];
-            let amount = rng.gen_range(1..u64::MAX / 2);
+            let amount = rng.random_range(1..u64::MAX / 2);
 
             let note = delegate.emit(asset_id, amount)?;
 
@@ -53,7 +53,7 @@ impl State {
         }
 
         Ok(Self {
-            rng: ChaCha20Rng::seed_from_u64(rng.r#gen()),
+            rng: ChaCha20Rng::seed_from_u64(rng.random()),
             keypair: delegate.keypair,
             notes,
             by_asset_id,
@@ -66,7 +66,7 @@ impl State {
         gauge!("mugraph.resources", "name" => "available_notes")
             .set(self.notes.len() as f64);
 
-        match self.rng.gen_range(0u32..100) {
+        match self.rng.random_range(0u32..100) {
             0..45 => self.generate_split(),
             45..90 => self.generate_join(),
             90.. => self.generate_double_spend(),

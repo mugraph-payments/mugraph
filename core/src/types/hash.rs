@@ -59,6 +59,11 @@ impl Hash {
 
         Self(output)
     }
+
+    #[inline]
+    pub fn to_scalar(&self) -> Scalar {
+        Scalar::from_bytes_mod_order(self.0)
+    }
 }
 
 impl AsRef<[u8; 32]> for Hash {

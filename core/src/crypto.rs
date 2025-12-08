@@ -31,7 +31,7 @@ pub fn blind<R: RngCore + CryptoRng>(
     secret_message: &[u8],
 ) -> BlindedPoint {
     let y = hash_to_curve(secret_message);
-    let r = Scalar::random(rng);
+    let r = Hash::random(rng).to_scalar();
     let b_prime = y + (G * r);
 
     BlindedPoint {
