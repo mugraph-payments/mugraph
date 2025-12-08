@@ -8,6 +8,7 @@ use redb::{
     Key,
     ReadOnlyTable,
     ReadTransaction,
+    ReadableDatabase,
     StorageBackend,
     Table,
     TableDefinition,
