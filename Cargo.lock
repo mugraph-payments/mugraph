@@ -1301,11 +1301,9 @@ dependencies = [
 
 [[package]]
 name = "muhex"
-version = "0.1.0"
-source = "git+https://github.com/cfcosta/muhex#42dba1a524d27dc330c00439e479ca0437bdd20c"
-dependencies = [
- "serde",
-]
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c1bfe4ca3377d2594851aaac4277ac293f58cd1f402e717b8087f4943fa5817"
 
 [[package]]
 name = "myn"

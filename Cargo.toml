@@ -20,7 +20,7 @@ metrics-util = { version = "0.17", default-features = false, features = [
   "summary",
 ] }
 mimalloc = "0.1.43"
-muhex = { git = "https://github.com/cfcosta/muhex", features = ["serde"] }
+muhex = "0.4.2"
 onlyerror = "0.1.4"
 proptest = { version = "1.5.0" }
 rand = "0.8.5"

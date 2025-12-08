@@ -49,10 +49,5 @@ in
     RUSTFMT = "${pkgs.rust-bin.nightly.latest}/bin/rustfmt";
   };
 
-  cargoLock = {
-    lockFile = ../Cargo.lock;
-    outputHashes = {
-      "muhex-0.1.0" = "sha256-3C8wzuqNMiUyChaJ2z7oOV5I9M14Srd4THeC6lW6u14=";
-    };
-  };
+  cargoLock.lockFile = ../Cargo.lock;
 }
