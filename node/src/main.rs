@@ -8,13 +8,19 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
     let config = Config::new();
+    let keypair = config.keypair()?;
 
     match &config {
+        Config::GenerateKey => {
+            info!(
+                secret_key = %keypair.secret_key,
+                public_key = %keypair.public_key,
+                "No secret key supplied; generated one for this node. Pass --secret-key to reuse it."
+            );
+        }
         Config::Server {
             addr, secret_key, ..
         } => {
-            let keypair = config.keypair()?;
-
             if secret_key.is_none() {
                 info!(
                     secret_key = %keypair.secret_key,

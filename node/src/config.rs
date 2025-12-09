@@ -6,7 +6,7 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, SecretKey},
 };
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng, rng};
 use rand_chacha::ChaCha20Rng;
 
 #[derive(Debug, Clone, Parser)]
@@ -22,6 +22,8 @@ pub enum Config {
         #[clap(short, long)]
         secret_key: Option<String>,
     },
+    #[command(about)]
+    GenerateKey,
 }
 
 impl Default for Config {
@@ -37,6 +39,10 @@ impl Config {
 
     pub fn keypair(&self) -> Result<Keypair, Error> {
         match self {
+            Self::GenerateKey => {
+                let mut rng = ChaCha20Rng::seed_from_u64(rng().random());
+                Ok(Keypair::random(&mut rng))
+            }
             Self::Server {
                 secret_key: Some(secret_key),
                 ..
