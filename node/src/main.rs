@@ -7,12 +7,25 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     tracing_subscriber::fmt().init();
 
-    match Config::new() {
-        c @ Config::Server { addr, .. } => {
-            let keypair = c.keypair()?;
+    let config = Config::new();
+
+    match &config {
+        Config::Server {
+            addr, secret_key, ..
+        } => {
+            let keypair = config.keypair()?;
+
+            if secret_key.is_none() {
+                info!(
+                    secret_key = %keypair.secret_key,
+                    public_key = %keypair.public_key,
+                    "No secret key supplied; generated one for this node. Pass --secret-key to reuse it."
+                );
+            }
+
             info!(addr = %addr, public_key = %keypair.public_key, "Starting server");
 
-            start(addr, keypair).await?;
+            start(*addr, keypair).await?;
         }
     }
 

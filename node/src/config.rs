@@ -6,6 +6,8 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, SecretKey},
 };
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 
 #[derive(Debug, Clone, Parser)]
 pub enum Config {
@@ -18,7 +20,7 @@ pub enum Config {
         seed: Option<u64>,
 
         #[clap(short, long)]
-        secret_key: String,
+        secret_key: Option<String>,
     },
 }
 
@@ -35,11 +37,12 @@ impl Config {
 
     pub fn keypair(&self) -> Result<Keypair, Error> {
         match self {
-            Self::Server { secret_key, .. } => {
-                let key_bytes = muhex::decode(secret_key).map_err(|e| {
-                    Error::InvalidKey {
-                        reason: e.to_string(),
-                    }
+            Self::Server {
+                secret_key: Some(secret_key),
+                ..
+            } => {
+                let key_bytes = muhex::decode(secret_key).map_err(|e| Error::InvalidKey {
+                    reason: e.to_string(),
                 })?;
 
                 if key_bytes.len() != 32 {
@@ -48,14 +51,21 @@ impl Config {
                     });
                 }
 
-                let key: [u8; 32] =
-                    key_bytes.try_into().expect("Already validated length");
+                let key: [u8; 32] = key_bytes.try_into().expect("Already validated length");
                 let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {
                     public_key: secret_key.public(),
                     secret_key,
                 })
+            }
+            Self::Server { seed, .. } => {
+                let mut rng = match seed {
+                    Some(seed) => ChaCha20Rng::seed_from_u64(*seed),
+                    None => ChaCha20Rng::from_rng(&mut rand::rng()),
+                };
+
+                Ok(Keypair::random(&mut rng))
             }
         }
     }
