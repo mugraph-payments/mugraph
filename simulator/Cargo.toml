@@ -16,10 +16,10 @@ time = { version = "0.3", features = ["local-offset", "macros"] }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 ratatui = "0.29"
-reqwest = { version = "0.12", features = [
+reqwest = { version = "0.12", default-features = false, features = [
   "blocking",
   "json",
-  "native-tls-vendored",
+  "rustls-tls",
 ] }
 tokio = { version = "1", features = ["full"] }
 tracing = { workspace = true }
