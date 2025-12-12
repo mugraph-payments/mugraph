@@ -1,11 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
     io::Stdout,
-    sync::{
-        Arc,
-        RwLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
     time::Duration,
 };
 
@@ -26,8 +21,11 @@ use ratatui::{
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
 };
 use reqwest::Url;
-use tokio::{task::JoinHandle, time::sleep};
-use tracing::{error, info, warn};
+use tokio::{
+    sync::{mpsc, watch},
+    time::{MissedTickBehavior, interval},
+};
+use tracing::{error, info};
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -150,22 +148,7 @@ struct Wallet {
     failures: u64,
 }
 
-impl Wallet {
-    fn total_balance(&self, asset: &Hash) -> u64 {
-        self.notes
-            .get(asset)
-            .map(|v| v.iter().map(|n| n.amount).sum())
-            .unwrap_or(0)
-    }
-}
-
-#[derive(Debug)]
-struct InflightTx {
-    refresh: Refresh,
-    output_owners: Vec<usize>,
-}
-
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 struct AppState {
     wallets: Vec<Wallet>,
     assets: Vec<SimAsset>,
@@ -177,37 +160,124 @@ struct AppState {
     total_ok: u64,
     total_err: u64,
     last_failure: Option<String>,
+    paused: bool,
+    shutdown: bool,
 }
 
-struct SharedState {
-    inner: RwLock<AppState>,
-    paused: AtomicBool,
-}
-
-impl SharedState {
-    fn new(app: AppState) -> Self {
-        Self {
-            inner: RwLock::new(app),
-            paused: AtomicBool::new(false),
-        }
-    }
-
-    fn log(&self, message: impl Into<String>) {
-        let mut guard = self.inner.write().unwrap();
+impl AppState {
+    fn log(&mut self, message: impl Into<String>) {
         let entry = message.into();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
-        guard.logs.push_front(format!(
+        self.logs.push_front(format!(
             "[{:>6}.{:03}] {}",
             now.as_secs(),
             now.subsec_millis(),
             entry
         ));
-        if guard.logs.len() > 200 {
-            guard.logs.pop_back();
+        if self.logs.len() > 200 {
+            self.logs.pop_back();
         }
     }
+
+    fn snapshot(&self) -> AppSnapshot {
+        let wallets = self
+            .wallets
+            .iter()
+            .map(|wallet| WalletSnapshot {
+                id: wallet.id,
+                balances: self
+                    .assets
+                    .iter()
+                    .map(|asset| {
+                        let notes = wallet.notes.get(&asset.id);
+                        WalletBalance {
+                            balance: notes
+                                .map(|v| v.iter().map(|n| n.amount).sum::<u64>())
+                                .unwrap_or(0),
+                            notes: notes.map(|v| v.len()).unwrap_or(0),
+                        }
+                    })
+                    .collect(),
+                sent: wallet.sent,
+                received: wallet.received,
+                failures: wallet.failures,
+            })
+            .collect();
+
+        AppSnapshot {
+            wallets,
+            assets: self.assets.clone(),
+            delegate_pk: self.delegate_pk,
+            node_pk: self.node_pk,
+            logs: self.logs.clone(),
+            inflight: self.inflight,
+            total_sent: self.total_sent,
+            total_ok: self.total_ok,
+            total_err: self.total_err,
+            last_failure: self.last_failure.clone(),
+            paused: self.paused,
+            shutdown: self.shutdown,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct WalletBalance {
+    balance: u64,
+    notes: usize,
+}
+
+#[derive(Debug, Clone)]
+struct WalletSnapshot {
+    id: usize,
+    balances: Vec<WalletBalance>,
+    sent: u64,
+    received: u64,
+    failures: u64,
+}
+
+#[derive(Debug, Clone)]
+struct AppSnapshot {
+    wallets: Vec<WalletSnapshot>,
+    assets: Vec<SimAsset>,
+    delegate_pk: PublicKey,
+    node_pk: Option<PublicKey>,
+    logs: VecDeque<String>,
+    inflight: usize,
+    total_sent: u64,
+    total_ok: u64,
+    total_err: u64,
+    last_failure: Option<String>,
+    paused: bool,
+    shutdown: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SimCommand {
+    TogglePause,
+    Quit,
+}
+
+#[derive(Debug)]
+struct PendingTx {
+    id: u64,
+    sender_id: usize,
+    receiver_id: usize,
+    asset: Hash,
+    input_note: Note,
+    spend_amount: u64,
+    refresh: Refresh,
+    owners: Vec<usize>,
+}
+
+#[derive(Debug)]
+enum SimEvent {
+    TxFinished {
+        pending: PendingTx,
+        result: std::result::Result<Vec<Blinded<Signature>>, String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -441,22 +511,19 @@ fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
 
 async fn bootstrap_wallets(
     client: &NodeClient,
-    state: &SharedState,
+    state: &mut AppState,
     assets: &[SimAsset],
     wallets: usize,
     notes_per_wallet: usize,
     amount_range: (u64, u64),
     rng: &mut StdRng,
 ) -> Result<()> {
-    {
-        let mut guard = state.inner.write().unwrap();
-        guard.wallets = (0..wallets)
-            .map(|id| Wallet {
-                id,
-                ..Default::default()
-            })
-            .collect();
-    }
+    state.wallets = (0..wallets)
+        .map(|id| Wallet {
+            id,
+            ..Default::default()
+        })
+        .collect();
 
     for wallet_id in 0..wallets {
         for asset in assets.iter() {
@@ -468,8 +535,7 @@ async fn bootstrap_wallets(
                     wallet_id, asset.name
                 ));
 
-                let mut guard = state.inner.write().unwrap();
-                let w = &mut guard.wallets[wallet_id];
+                let w = &mut state.wallets[wallet_id];
                 w.notes.entry(asset.id).or_default().push(note);
             }
         }
@@ -478,17 +544,17 @@ async fn bootstrap_wallets(
     Ok(())
 }
 
-fn choose_spendable_note(
-    wallet: &Wallet,
+fn reserve_spendable_note(
+    wallet: &mut Wallet,
     assets: &[SimAsset],
     rng: &mut StdRng,
-) -> Option<(Hash, usize, Note)> {
+) -> Option<(Hash, Note)> {
     let mut shuffled: Vec<Hash> = assets.iter().map(|a| a.id).collect();
     shuffled.shuffle(rng);
     for asset in shuffled {
-        if let Some(notes) = wallet.notes.get(&asset) {
-            if let Some((idx, note)) = notes.iter().enumerate().find(|(_, n)| n.amount > 0) {
-                return Some((asset, idx, note.clone()));
+        if let Some(notes) = wallet.notes.get_mut(&asset) {
+            if let Some(pos) = notes.iter().position(|n| n.amount > 0) {
+                return Some((asset, notes.swap_remove(pos)));
             }
         }
     }
@@ -559,164 +625,193 @@ fn materialize_outputs(
     Ok(created)
 }
 
-async fn traffic_loop(
+async fn simulation_owner_loop(
     client: NodeClient,
-    shared: Arc<SharedState>,
+    mut state: AppState,
     mut rng: StdRng,
     amount_range: (u64, u64),
     tick: Duration,
     max_inflight: usize,
+    mut cmd_rx: mpsc::UnboundedReceiver<SimCommand>,
+    mut event_rx: mpsc::UnboundedReceiver<SimEvent>,
+    event_tx: mpsc::UnboundedSender<SimEvent>,
+    snapshot_tx: watch::Sender<AppSnapshot>,
 ) {
-    let inflight_counter = Arc::new(AtomicU64::new(0));
+    let mut ticker = interval(tick);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    let _ = snapshot_tx.send(state.snapshot());
+
     let mut tx_id: u64 = 0;
 
     loop {
-        if shared.paused.load(Ordering::SeqCst) {
-            sleep(tick).await;
-            continue;
-        }
-
-        let (snapshot, asset_list) = {
-            let guard = shared.inner.read().unwrap();
-            (guard.wallets.clone(), guard.assets.clone())
-        };
-        if snapshot.is_empty() {
-            sleep(tick).await;
-            continue;
-        }
-
-        if inflight_counter.load(Ordering::SeqCst) >= max_inflight as u64 {
-            sleep(tick).await;
-            continue;
-        }
-
-        let sender_idx = rng.random_range(0..snapshot.len());
-        let sender = snapshot[sender_idx].clone();
-
-        let Some((asset, note_idx, note)) = choose_spendable_note(&sender, &asset_list, &mut rng)
-        else {
-            sleep(tick).await;
-            continue;
-        };
-
-        let mut receivers: Vec<_> = snapshot.iter().filter(|w| w.id != sender.id).collect();
-        receivers.shuffle(&mut rng);
-        let Some(receiver) = receivers.first().map(|w| w.id) else {
-            sleep(tick).await;
-            continue;
-        };
-
-        let spend_amount = rng
-            .random_range(amount_range.0..=amount_range.1)
-            .min(note.amount);
-
-        let (refresh, owners) =
-            match build_refresh(sender.id, receiver, asset, note.clone(), spend_amount) {
-                Ok(res) => res,
-                Err(e) => {
-                    error!("failed to build refresh: {e:#}");
-                    sleep(tick).await;
+        tokio::select! {
+            _ = ticker.tick() => {
+                if state.shutdown {
+                    break;
+                }
+                if state.paused || state.inflight >= max_inflight {
                     continue;
                 }
-            };
 
-        // Reserve input note
-        {
-            let mut guard = shared.inner.write().unwrap();
-            if let Some(notes) = guard.wallets[sender.id].notes.get_mut(&asset) {
-                if note_idx < notes.len() {
-                    notes.swap_remove(note_idx);
+                let wallet_count = state.wallets.len();
+                if wallet_count < 2 {
+                    continue;
                 }
-            }
-            guard.inflight += 1;
-            inflight_counter.fetch_add(1, Ordering::SeqCst);
-            guard.total_sent += 1;
-        }
 
-        let shared_clone = shared.clone();
-        let inflight_counter_clone = inflight_counter.clone();
-        let client_clone = client.clone();
-        tx_id += 1;
-        let id = tx_id;
+                let sender_idx = rng.random_range(0..wallet_count);
+                let receiver_idx = {
+                    let mut idx = rng.random_range(0..wallet_count - 1);
+                    if idx >= sender_idx {
+                        idx += 1;
+                    }
+                    idx
+                };
 
-        tokio::spawn(async move {
-            let inflight = InflightTx {
-                refresh: refresh.clone(),
-                output_owners: owners.clone(),
-            };
-            match client_clone.refresh(&refresh).await {
-                Ok(outputs) => {
-                    let notes = match materialize_outputs(
-                        &inflight.refresh,
-                        outputs,
-                        &inflight.output_owners,
-                    ) {
-                        Ok(n) => n,
-                        Err(e) => {
-                            error!("tx {id} materialization failed: {e:#}");
-                            let mut guard = shared_clone.inner.write().unwrap();
-                            guard.last_failure = Some(e.to_string());
-                            guard.wallets[sender.id]
-                                .notes
-                                .entry(asset)
-                                .or_default()
-                                .push(note.clone());
-                            guard.inflight = guard.inflight.saturating_sub(1);
-                            guard.total_err += 1;
-                            inflight_counter_clone.fetch_sub(1, Ordering::SeqCst);
-                            return;
-                        }
-                    };
+                let sender_id = state.wallets[sender_idx].id;
+                let receiver_id = state.wallets[receiver_idx].id;
 
-                    let log_msg = {
-                        let mut guard = shared_clone.inner.write().unwrap();
-                        for (owner, note) in notes {
-                            guard.wallets[owner]
-                                .notes
-                                .entry(note.asset_id)
-                                .or_default()
-                                .push(note.clone());
-                        }
-                        guard.wallets[sender.id].sent += 1;
-                        guard.wallets[receiver].received += 1;
-                        guard.inflight = guard.inflight.saturating_sub(1);
-                        guard.total_ok += 1;
-                        format!(
-                            "tx {id} ok sender={} receiver={} amount={spend_amount}",
-                            sender.id, receiver
-                        )
-                    };
-                    shared_clone.log(log_msg);
-                }
-                Err(e) => {
-                    warn!("tx {id} failed: {e:#}");
-                    let log_msg = format!("tx {id} failed: {e:#}");
-                    {
-                        let mut guard = shared_clone.inner.write().unwrap();
-                        guard.last_failure = Some(e.to_string());
-                        guard.wallets[sender.id]
+                let Some((asset, input_note)) = reserve_spendable_note(
+                    &mut state.wallets[sender_idx],
+                    &state.assets,
+                    &mut rng,
+                ) else {
+                    continue;
+                };
+
+                let spend_amount = rng
+                    .random_range(amount_range.0..=amount_range.1)
+                    .min(input_note.amount);
+
+                let (refresh, owners) = match build_refresh(
+                    sender_id,
+                    receiver_id,
+                    asset,
+                    input_note.clone(),
+                    spend_amount,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        state.wallets[sender_id]
                             .notes
                             .entry(asset)
                             .or_default()
-                            .push(note.clone());
-                        guard.wallets[sender.id].failures += 1;
-                        guard.inflight = guard.inflight.saturating_sub(1);
-                        guard.total_err += 1;
+                            .push(input_note);
+                        state.last_failure = Some(e.to_string());
+                        state.total_err += 1;
+                        state.wallets[sender_id].failures += 1;
+                        state.log(format!("failed to build refresh: {e:#}"));
+                        let _ = snapshot_tx.send(state.snapshot());
+                        continue;
                     }
-                    shared_clone.log(log_msg);
+                };
+
+                tx_id += 1;
+                let pending = PendingTx {
+                    id: tx_id,
+                    sender_id,
+                    receiver_id,
+                    asset,
+                    input_note,
+                    spend_amount,
+                    refresh,
+                    owners,
+                };
+
+                state.inflight += 1;
+                state.total_sent += 1;
+                let _ = snapshot_tx.send(state.snapshot());
+
+                let client_clone = client.clone();
+                let event_tx_clone = event_tx.clone();
+                tokio::spawn(async move {
+                    let result = match client_clone.refresh(&pending.refresh).await {
+                        Ok(outputs) => Ok(outputs),
+                        Err(e) => Err(e.to_string()),
+                    };
+                    let _ = event_tx_clone.send(SimEvent::TxFinished { pending, result });
+                });
+            }
+            Some(cmd) = cmd_rx.recv() => {
+                match cmd {
+                    SimCommand::TogglePause => {
+                        state.paused = !state.paused;
+                        state.log(format!("paused set to {}", state.paused));
+                        let _ = snapshot_tx.send(state.snapshot());
+                    }
+                    SimCommand::Quit => {
+                        state.shutdown = true;
+                        state.log("shutting down");
+                        let _ = snapshot_tx.send(state.snapshot());
+                        break;
+                    }
                 }
             }
-
-            inflight_counter_clone.fetch_sub(1, Ordering::SeqCst);
-        });
-
-        sleep(tick).await;
+            Some(event) = event_rx.recv() => {
+                match event {
+                    SimEvent::TxFinished { pending, result } => {
+                        state.inflight = state.inflight.saturating_sub(1);
+                        match result {
+                            Ok(outputs) => match materialize_outputs(&pending.refresh, outputs, &pending.owners) {
+                                Ok(notes) => {
+                                    for (owner, note) in notes {
+                                        state.wallets[owner]
+                                            .notes
+                                            .entry(note.asset_id)
+                                            .or_default()
+                                            .push(note);
+                                    }
+                                    state.wallets[pending.sender_id].sent += 1;
+                                    state.wallets[pending.receiver_id].received += 1;
+                                    state.total_ok += 1;
+                                    state.log(format!(
+                                        "tx {} ok sender={} receiver={} amount={}",
+                                        pending.id, pending.sender_id, pending.receiver_id, pending.spend_amount
+                                    ));
+                                }
+                                Err(e) => {
+                                    state.last_failure = Some(e.to_string());
+                                    state.total_err += 1;
+                                    state.wallets[pending.sender_id].failures += 1;
+                                    state.wallets[pending.sender_id]
+                                        .notes
+                                        .entry(pending.asset)
+                                        .or_default()
+                                        .push(pending.input_note);
+                                    state.log(format!(
+                                        "tx {} materialization failed: {e:#}",
+                                        pending.id
+                                    ));
+                                }
+                            },
+                            Err(reason) => {
+                                state.last_failure = Some(reason.clone());
+                                state.total_err += 1;
+                                state.wallets[pending.sender_id].failures += 1;
+                                state.wallets[pending.sender_id]
+                                    .notes
+                                    .entry(pending.asset)
+                                    .or_default()
+                                    .push(pending.input_note);
+                                state.log(format!("tx {} failed: {}", pending.id, reason));
+                            }
+                        }
+                        let _ = snapshot_tx.send(state.snapshot());
+                    }
+                }
+            }
+        }
     }
+
+    state.shutdown = true;
+    let _ = snapshot_tx.send(state.snapshot());
 }
 
-fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedState) -> Result<()> {
-    let snapshot = shared.inner.read().unwrap().clone();
-    let paused = shared.paused.load(Ordering::SeqCst);
+fn render_ui(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    snapshot: &AppSnapshot,
+) -> Result<()> {
+    let paused = snapshot.paused;
 
     terminal.draw(|f| {
         let layout = Layout::default()
@@ -767,6 +862,11 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
                     snapshot.inflight.to_string(),
                     Style::default().fg(Color::Yellow),
                 ),
+                Span::raw("  Last err: "),
+                Span::styled(
+                    snapshot.last_failure.as_deref().unwrap_or("-"),
+                    Style::default().fg(Color::Red),
+                ),
             ]),
         ])
         .block(Block::default().borders(Borders::ALL).title("Status"));
@@ -781,13 +881,14 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
         for wallet in snapshot.wallets.iter() {
             let row_style = Style::default().fg(wallet_color(wallet.id));
             let mut balance_lines = Vec::new();
-            for asset in snapshot.assets.iter() {
-                let bal = wallet.total_balance(&asset.id);
-                let count = wallet.notes.get(&asset.id).map(|v| v.len()).unwrap_or(0);
+            for (asset, balance) in snapshot.assets.iter().zip(wallet.balances.iter()) {
                 let short_policy = asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
                 balance_lines.push(Line::from(vec![
                     Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(format!(" ({short_policy}) bal={bal} notes={count}")),
+                    Span::raw(format!(
+                        " ({short_policy}) bal={} notes={}",
+                        balance.balance, balance.notes
+                    )),
                 ]));
             }
 
@@ -858,28 +959,42 @@ fn wallet_color(id: usize) -> Color {
     PALETTE[id % PALETTE.len()]
 }
 
-fn ui_loop(shared: Arc<SharedState>, mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+fn ui_loop(
+    snapshot_rx: watch::Receiver<AppSnapshot>,
+    cmd_tx: mpsc::UnboundedSender<SimCommand>,
+    mut terminal: Terminal<CrosstermBackend<Stdout>>,
+) -> Result<()> {
     loop {
-        render_ui(&mut terminal, &shared)?;
+        let snapshot = snapshot_rx.borrow().clone();
+        if snapshot.shutdown {
+            break;
+        }
+
+        render_ui(&mut terminal, &snapshot)?;
 
         if crossterm::event::poll(Duration::from_millis(100))? {
             match crossterm::event::read()? {
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('q'),
                     ..
-                }) => break,
+                }) => {
+                    let _ = cmd_tx.send(SimCommand::Quit);
+                    break;
+                }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('p'),
                     ..
                 }) => {
-                    let paused = shared.paused.fetch_xor(true, Ordering::SeqCst);
-                    shared.log(format!("paused set to {}", !paused));
+                    let _ = cmd_tx.send(SimCommand::TogglePause);
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
                     ..
-                }) => break,
+                }) => {
+                    let _ = cmd_tx.send(SimCommand::Quit);
+                    break;
+                }
                 _ => {}
             }
         }
@@ -914,16 +1029,16 @@ async fn main() -> Result<()> {
     );
 
     let assets = generate_assets(args.assets, &mut rng);
-    let state = Arc::new(SharedState::new(AppState {
+    let mut state = AppState {
         assets: assets.clone(),
         delegate_pk: node_pk,
         node_pk: Some(node_pk),
         ..Default::default()
-    }));
+    };
 
     bootstrap_wallets(
         &client,
-        &state,
+        &mut state,
         &assets,
         args.wallets,
         args.notes_per_wallet,
@@ -933,38 +1048,118 @@ async fn main() -> Result<()> {
     .await
     .wrap_err("bootstrap wallets")?;
 
-    let traffic_state = state.clone();
-    let traffic_client = client;
-    let traffic_rng = rng;
     let tick = Duration::from_millis(args.tick_ms);
-    let traffic_handle: JoinHandle<()> = tokio::spawn(async move {
-        traffic_loop(
-            traffic_client,
-            traffic_state,
-            traffic_rng,
-            (args.min_amount, args.max_amount),
-            tick,
-            args.max_inflight,
-        )
-        .await;
-    });
+
+    let (snapshot_tx, snapshot_rx) = watch::channel(state.snapshot());
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+    let mut owner_handle = tokio::spawn(simulation_owner_loop(
+        client,
+        state,
+        rng,
+        (args.min_amount, args.max_amount),
+        tick,
+        args.max_inflight,
+        cmd_rx,
+        event_rx,
+        event_tx,
+        snapshot_tx,
+    ));
 
     let terminal = ratatui::init();
-    let ui_state = state.clone();
-    let ui_handle = tokio::task::spawn_blocking(move || ui_loop(ui_state, terminal));
+    let ui_cmd_tx = cmd_tx.clone();
+    let mut ui_handle =
+        tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
+
+    let mut owner_done = false;
+    let mut ui_done = false;
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("received ctrl+c, shutting down");
+            let _ = cmd_tx.send(SimCommand::Quit);
         }
-        res = ui_handle => {
+        res = &mut ui_handle => {
+            ui_done = true;
+            match res {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => error!("ui task error: {e:#}"),
+                Err(e) => error!("ui task join error: {e:?}"),
+            }
+            let _ = cmd_tx.send(SimCommand::Quit);
+        }
+        res = &mut owner_handle => {
+            owner_done = true;
             if let Err(e) = res {
-                error!("ui task error: {e:?}");
+                error!("simulation owner task error: {e:?}");
             }
         }
     }
 
-    traffic_handle.abort();
+    let _ = cmd_tx.send(SimCommand::Quit);
+
+    if !owner_done {
+        if let Err(e) = owner_handle.await {
+            error!("simulation owner task error: {e:?}");
+        }
+    }
+    if !ui_done {
+        match ui_handle.await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error!("ui task error: {e:#}"),
+            Err(e) => error!("ui task join error: {e:?}"),
+        }
+    }
+
     ratatui::restore();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_note(signature_byte: u8) -> Note {
+        Note {
+            amount: 1,
+            delegate: PublicKey([9u8; 32]),
+            asset_id: Hash([7u8; 32]),
+            nonce: Hash([5u8; 32]),
+            signature: Signature([signature_byte; 32]),
+        }
+    }
+
+    #[test]
+    fn reserve_by_signature_survives_reordering() {
+        let mut notes = vec![dummy_note(1), dummy_note(2)];
+        let target = notes[1].clone();
+
+        // Simulate concurrent modification before reserving.
+        notes.swap_remove(0);
+
+        let Some(pos) = notes.iter().position(|n| n.signature == target.signature) else {
+            panic!("target note missing");
+        };
+
+        notes.swap_remove(pos);
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn reinsert_is_deduped_by_signature() {
+        let mut notes = vec![dummy_note(3)];
+        let note = notes[0].clone();
+
+        if !notes.iter().any(|n| n.signature == note.signature) {
+            notes.push(note.clone());
+        }
+        assert_eq!(notes.len(), 1);
+
+        let other = dummy_note(4);
+        if !notes.iter().any(|n| n.signature == other.signature) {
+            notes.push(other);
+        }
+        assert_eq!(notes.len(), 2);
+    }
 }

@@ -51,8 +51,10 @@ impl RefreshBuilder {
                 self.outputs.push((i as u32, amount));
             }
             None => {
-                self.post_balances[self.assets.len()] += amount as u128;
+                let index = self.assets.len();
+                self.post_balances[index] += amount as u128;
                 self.assets.insert(asset_id);
+                self.outputs.push((index as u32, amount));
             }
         }
 
