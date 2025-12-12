@@ -22,8 +22,8 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
 };
 use reqwest::Url;
 use tokio::{task::JoinHandle, time::sleep};
@@ -168,7 +168,7 @@ struct InflightTx {
 #[derive(Debug, Default, Clone)]
 struct AppState {
     wallets: Vec<Wallet>,
-    assets: Vec<Hash>,
+    assets: Vec<SimAsset>,
     delegate_pk: PublicKey,
     node_pk: Option<PublicKey>,
     logs: VecDeque<String>,
@@ -210,27 +210,239 @@ impl SharedState {
     }
 }
 
-fn generate_assets(rng: &mut impl Rng, count: usize) -> Vec<Hash> {
-    (0..count)
-        .map(|i| {
-            let mut buf = [0u8; 32];
-            rng.fill(buf.as_mut_slice());
-            let mut tag = format!("asset-{i}-").into_bytes();
-            tag.resize(32, 0);
-            let digest = Hash::digest(&buf);
-            let mut combined = [0u8; 32];
-            for (i, (a, b)) in tag.iter().zip(digest.as_ref()).enumerate() {
-                combined[i] = a ^ b;
-            }
-            Hash::from(combined)
-        })
-        .collect()
+#[derive(Debug, Clone, Copy)]
+struct CardanoAssetDef {
+    policy_id: &'static str,
+    asset_name: &'static str,
+}
+
+const CARDANO_ASSET_DEFS: &[CardanoAssetDef] = &[
+    CardanoAssetDef {
+        policy_id: "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f",
+        asset_name: "SNEK",
+    },
+    CardanoAssetDef {
+        policy_id: "a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235",
+        asset_name: "HOSKY",
+    },
+    CardanoAssetDef {
+        policy_id: "2b28c81dbba6d67e4b5a997c6be1212cba9d60d33f82444ab8b1f218",
+        asset_name: "BANK",
+    },
+    CardanoAssetDef {
+        policy_id: "961f2cac0bb1967d74691af179350c1e1062c7298d1f7be1e4696e31",
+        asset_name: "$DERP",
+    },
+    CardanoAssetDef {
+        policy_id: "98dc68b04026544619a251bc01aad2075d28433524ac36cbc75599a1",
+        asset_name: "hosk",
+    },
+    CardanoAssetDef {
+        policy_id: "7507734918533b3b896241b4704f3d4ce805256b01da6fcede430436",
+        asset_name: "BabySNEK",
+    },
+    CardanoAssetDef {
+        policy_id: "e629ee88f6dcad8948e420b929e114c8785e2d4fb9d5c077157a3b37",
+        asset_name: "BLUP",
+    },
+    CardanoAssetDef {
+        policy_id: "884892bcdc360bcef87d6b3f806e7f9cd5ac30d999d49970e7a903ae",
+        asset_name: "PAVIA",
+    },
+    CardanoAssetDef {
+        policy_id: "8a1cfae21368b8bebbbed9800fec304e95cce39a2a57dc35e2e3ebaa",
+        asset_name: "MILK",
+    },
+    CardanoAssetDef {
+        policy_id: "6cfbfedd8c8ea23d264f5ae3ef039217100c210bb66de8711f21c903",
+        asset_name: "CNFT",
+    },
+    CardanoAssetDef {
+        policy_id: "52489ea87bbceaf6375cc22f74c19382a3d5da3f8b9b15d2537044b9",
+        asset_name: "PRSPR",
+    },
+    CardanoAssetDef {
+        policy_id: "9f452e23804df3040b352b478039357b506ad3b50d2ce0d7cbd5f806",
+        asset_name: "CTV",
+    },
+    CardanoAssetDef {
+        policy_id: "6787a47e9f73efe4002d763337140da27afa8eb9a39413d2c39d4286",
+        asset_name: "RADTokens",
+    },
+    CardanoAssetDef {
+        policy_id: "f7c777fdd4531cf1c477551360e45b9684073c05c2fa61334f8f9add",
+        asset_name: "VeritreeToken",
+    },
+    CardanoAssetDef {
+        policy_id: "a00fdf4fb9ab6c8c2bd1533a2f14855edf12aed5ecbf96d4b5f5b939",
+        asset_name: "C4",
+    },
+    CardanoAssetDef {
+        policy_id: "8f52f6a88acf6127bc4758a16b6047afc4da7887feae121ec217b75a",
+        asset_name: "SNOW",
+    },
+    CardanoAssetDef {
+        policy_id: "b166a1047a8cd275bf0a50201ece3d4f0b4da300094ffcc668a6f408",
+        asset_name: "KITUP",
+    },
+    CardanoAssetDef {
+        policy_id: "2441ab3351c3b80213a98f4e09ddcf7dabe4879c3c94cc4e7205cb63",
+        asset_name: "FIRE",
+    },
+    CardanoAssetDef {
+        policy_id: "dca54ecf37b0e3af2fdfd336e1d21fadcc45b3261b0f73a095631dfe",
+        asset_name: "DOEX",
+    },
+    CardanoAssetDef {
+        policy_id: "160a880d9fc45380737cb7e57ff859763230aab28b3ef6a84007bfcc",
+        asset_name: "MIRA",
+    },
+    CardanoAssetDef {
+        policy_id: "db30c7905f598ed0154de14f970de0f61f0cb3943ed82c891968480a",
+        asset_name: "CLAP",
+    },
+    CardanoAssetDef {
+        policy_id: "547ceed647f57e64dc40a29b16be4f36b0d38b5aa3cd7afb286fc094",
+        asset_name: "bbHosky",
+    },
+    CardanoAssetDef {
+        policy_id: "5d16cc1a177b5d9ba9cfa9793b07e60f1fb70fea1f8aef064415d114",
+        asset_name: "IAG",
+    },
+    CardanoAssetDef {
+        policy_id: "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e",
+        asset_name: "worldmobiletoken",
+    },
+    CardanoAssetDef {
+        policy_id: "38ad9dc3aec6a2f38e220142b9aa6ade63ebe71f65e7cc2b7d8a8535",
+        asset_name: "CLAY",
+    },
+    CardanoAssetDef {
+        policy_id: "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61",
+        asset_name: "ShenMicroUSD",
+    },
+    CardanoAssetDef {
+        policy_id: "b6a7467ea1deb012808ef4e87b5ff371e85f7142d7b356a40d9b42a0",
+        asset_name: "Cornucopias [via ChainPort.io]",
+    },
+    CardanoAssetDef {
+        policy_id: "533bb94a8850ee3ccbe483106489399112b74c905342cb1792a797a0",
+        asset_name: "INDY",
+    },
+    CardanoAssetDef {
+        policy_id: "edfd7a1d77bcb8b884c474bdc92a16002d1fb720e454fa6e99344479",
+        asset_name: "NTX",
+    },
+    CardanoAssetDef {
+        policy_id: "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880",
+        asset_name: "iUSD",
+    },
+    CardanoAssetDef {
+        policy_id: "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61",
+        asset_name: "DjedMicroUSD",
+    },
+    CardanoAssetDef {
+        policy_id: "5dac8536653edc12f6f5e1045d8164b9f59998d3bdc300fc92843489",
+        asset_name: "NMKR",
+    },
+    CardanoAssetDef {
+        policy_id: "4fde92c2f6dbcfa2879b44f7453872b31394cfb2f70f1d4c411169ac",
+        asset_name: "Bubble",
+    },
+    CardanoAssetDef {
+        policy_id: "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880",
+        asset_name: "iBTC",
+    },
+    CardanoAssetDef {
+        policy_id: "8cfd6893f5f6c1cc954cec1a0a1460841b74da6e7803820dde62bb78",
+        asset_name: "RJV",
+    },
+    CardanoAssetDef {
+        policy_id: "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6",
+        asset_name: "MIN",
+    },
+    CardanoAssetDef {
+        policy_id: "95a427e384527065f2f8946f5e86320d0117839a5e98ea2c0b55fb00",
+        asset_name: "HUNT",
+    },
+    CardanoAssetDef {
+        policy_id: "c0ee29a85b13209423b10447d3c2e6a50641a15c57770e27cb9d5073",
+        asset_name: "WingRiders",
+    },
+    CardanoAssetDef {
+        policy_id: "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a",
+        asset_name: "CHARLI3",
+    },
+    CardanoAssetDef {
+        policy_id: "8daefa391220bd0d8d007f3748d870f7f3c106040314c8515ccc35a5",
+        asset_name: "FLAC",
+    },
+    CardanoAssetDef {
+        policy_id: "10a49b996e2402269af553a8a96fb8eb90d79e9eca79e2b4223057b6",
+        asset_name: "GERO",
+    },
+    CardanoAssetDef {
+        policy_id: "a3931691f5c4e65d01c429e473d0dd24c51afdb6daf88e632a6c1e51",
+        asset_name: "orcfaxtoken",
+    },
+    CardanoAssetDef {
+        policy_id: "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880",
+        asset_name: "iETH",
+    },
+    CardanoAssetDef {
+        policy_id: "6c8642400e8437f737eb86df0fc8a8437c760f48592b1ba8f5767e81",
+        asset_name: "Empowa",
+    },
+    CardanoAssetDef {
+        policy_id: "9a9693a9a37912a5097918f97918d15240c92ab729a0b7c4aa144d77",
+        asset_name: "SUNDAE",
+    },
+    CardanoAssetDef {
+        policy_id: "afbe91c0b44b3040e360057bf8354ead8c49c4979ae6ab7c4fbdc9eb",
+        asset_name: "MILKv2",
+    },
+    CardanoAssetDef {
+        policy_id: "682fe60c9918842b3323c43b5144bc3d52a23bd2fb81345560d73f63",
+        asset_name: "NEWM",
+    },
+    CardanoAssetDef {
+        policy_id: "b316f8f668aca7359ecc6073475c0c8106239bf87e05a3a1bd569764",
+        asset_name: "xVYFI",
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+struct SimAsset {
+    id: Hash,
+    name: &'static str,
+    policy_id: &'static str,
+}
+
+fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
+    let mut defs: Vec<CardanoAssetDef> = CARDANO_ASSET_DEFS.to_vec();
+    defs.shuffle(rng);
+
+    let mut selected = Vec::with_capacity(count);
+    for i in 0..count {
+        let def = defs[i % defs.len()];
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(def.policy_id.as_bytes());
+        bytes.extend_from_slice(def.asset_name.as_bytes());
+        let id = Hash::digest(&bytes);
+        selected.push(SimAsset {
+            id,
+            name: def.asset_name,
+            policy_id: def.policy_id,
+        });
+    }
+
+    selected
 }
 
 async fn bootstrap_wallets(
     client: &NodeClient,
     state: &SharedState,
-    assets: &[Hash],
+    assets: &[SimAsset],
     wallets: usize,
     notes_per_wallet: usize,
     amount_range: (u64, u64),
@@ -250,15 +462,15 @@ async fn bootstrap_wallets(
         for asset in assets.iter() {
             for _ in 0..notes_per_wallet {
                 let amount = rng.random_range(amount_range.0..=amount_range.1);
-                let note = client.emit(*asset, amount).await?;
+                let note = client.emit(asset.id, amount).await?;
                 state.log(format!(
-                    "emit via node wallet={} asset={asset:?} amount={amount}",
-                    wallet_id
+                    "emit via node wallet={} asset={} amount={amount}",
+                    wallet_id, asset.name
                 ));
 
                 let mut guard = state.inner.write().unwrap();
                 let w = &mut guard.wallets[wallet_id];
-                w.notes.entry(*asset).or_default().push(note);
+                w.notes.entry(asset.id).or_default().push(note);
             }
         }
     }
@@ -268,10 +480,10 @@ async fn bootstrap_wallets(
 
 fn choose_spendable_note(
     wallet: &Wallet,
-    assets: &[Hash],
+    assets: &[SimAsset],
     rng: &mut StdRng,
 ) -> Option<(Hash, usize, Note)> {
-    let mut shuffled = assets.to_vec();
+    let mut shuffled: Vec<Hash> = assets.iter().map(|a| a.id).collect();
     shuffled.shuffle(rng);
     for asset in shuffled {
         if let Some(notes) = wallet.notes.get(&asset) {
@@ -567,22 +779,31 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
 
         let mut rows = Vec::new();
         for wallet in snapshot.wallets.iter() {
-            let mut balance_strings = Vec::new();
-            for (i, asset) in snapshot.assets.iter().enumerate() {
-                let bal = wallet.total_balance(asset);
-                let short = short_hash(asset);
-                balance_strings.push(format!("a{i}:{short}={bal}"));
-            }
             let row_style = Style::default().fg(wallet_color(wallet.id));
+            let mut balance_lines = Vec::new();
+            for asset in snapshot.assets.iter() {
+                let bal = wallet.total_balance(&asset.id);
+                let count = wallet.notes.get(&asset.id).map(|v| v.len()).unwrap_or(0);
+                let short_policy = asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
+                balance_lines.push(Line::from(vec![
+                    Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
+                    Span::raw(format!(" ({short_policy}) bal={bal} notes={count}")),
+                ]));
+            }
+
+            let balances_cell = Cell::from(Text::from(balance_lines.clone()));
+            let height = balance_lines.len().max(1) as u16;
+
             rows.push(
                 Row::new(vec![
-                    wallet.id.to_string(),
-                    balance_strings.join(" "),
-                    wallet.sent.to_string(),
-                    wallet.received.to_string(),
-                    wallet.failures.to_string(),
+                    Cell::from(wallet.id.to_string()),
+                    balances_cell,
+                    Cell::from(wallet.sent.to_string()),
+                    Cell::from(wallet.received.to_string()),
+                    Cell::from(wallet.failures.to_string()),
                 ])
-                .style(row_style),
+                .style(row_style)
+                .height(height),
             );
         }
 
@@ -621,11 +842,6 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
     })?;
 
     Ok(())
-}
-
-fn short_hash(hash: &Hash) -> String {
-    let s = hash.to_string();
-    s.chars().take(8).collect()
 }
 
 fn wallet_color(id: usize) -> Color {
@@ -697,7 +913,7 @@ async fn main() -> Result<()> {
         args.node_url, node_pk
     );
 
-    let assets = generate_assets(&mut rng, args.assets);
+    let assets = generate_assets(args.assets, &mut rng);
     let state = Arc::new(SharedState::new(AppState {
         assets: assets.clone(),
         delegate_pk: node_pk,
