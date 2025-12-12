@@ -38,7 +38,7 @@ struct Args {
     #[arg(long, default_value_t = 6)]
     wallets: usize,
     /// Number of distinct assets to simulate
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, default_value_t = 8)]
     assets: usize,
     /// Number of starting notes per wallet (per asset)
     #[arg(long, default_value_t = 2)]
@@ -50,10 +50,10 @@ struct Args {
     #[arg(long, default_value_t = 50)]
     max_amount: u64,
     /// Milliseconds to wait between transaction attempts
-    #[arg(long, default_value_t = 400)]
+    #[arg(long, default_value_t = 16)]
     tick_ms: u64,
     /// Maximum concurrent in-flight transactions
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = 16)]
     max_inflight: usize,
     /// RNG seed (optional) for reproducibility
     #[arg(long)]
