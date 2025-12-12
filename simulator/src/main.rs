@@ -568,17 +568,22 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
         let mut rows = Vec::new();
         for wallet in snapshot.wallets.iter() {
             let mut balance_strings = Vec::new();
-            for asset in snapshot.assets.iter() {
+            for (i, asset) in snapshot.assets.iter().enumerate() {
                 let bal = wallet.total_balance(asset);
-                balance_strings.push(format!("{bal}"));
+                let short = short_hash(asset);
+                balance_strings.push(format!("a{i}:{short}={bal}"));
             }
-            rows.push(Row::new(vec![
-                wallet.id.to_string(),
-                balance_strings.join(","),
-                wallet.sent.to_string(),
-                wallet.received.to_string(),
-                wallet.failures.to_string(),
-            ]));
+            let row_style = Style::default().fg(wallet_color(wallet.id));
+            rows.push(
+                Row::new(vec![
+                    wallet.id.to_string(),
+                    balance_strings.join(" "),
+                    wallet.sent.to_string(),
+                    wallet.received.to_string(),
+                    wallet.failures.to_string(),
+                ])
+                .style(row_style),
+            );
         }
 
         let table = Table::new(
@@ -616,6 +621,25 @@ fn render_ui(terminal: &mut Terminal<CrosstermBackend<Stdout>>, shared: &SharedS
     })?;
 
     Ok(())
+}
+
+fn short_hash(hash: &Hash) -> String {
+    let s = hash.to_string();
+    s.chars().take(8).collect()
+}
+
+fn wallet_color(id: usize) -> Color {
+    const PALETTE: [Color; 8] = [
+        Color::Cyan,
+        Color::Green,
+        Color::Yellow,
+        Color::Magenta,
+        Color::Blue,
+        Color::LightRed,
+        Color::LightGreen,
+        Color::LightBlue,
+    ];
+    PALETTE[id % PALETTE.len()]
 }
 
 fn ui_loop(shared: Arc<SharedState>, mut terminal: Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
