@@ -56,6 +56,7 @@ let
       prev.pkg-config
       prev.protobuf
       prev.samply
+      prev.typst
       scripts
     ]
     ++ optionals isDarwin [ SystemConfiguration ];
