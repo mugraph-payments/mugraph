@@ -9,7 +9,16 @@ use color_eyre::eyre::{Result, WrapErr, eyre};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use mugraph_core::{
     builder::RefreshBuilder,
-    types::{Blinded, Hash, Note, PublicKey, Refresh, Request, Response, Signature},
+    types::{
+        Blinded,
+        Hash,
+        Note,
+        PublicKey,
+        Refresh,
+        Request,
+        Response,
+        Signature,
+    },
 };
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
 use ratatui::{
@@ -63,7 +72,6 @@ struct NodeClient {
     http: reqwest::Client,
     rpc_url: Url,
     health_url: Url,
-    public_key_url: Url,
 }
 
 impl NodeClient {
@@ -73,9 +81,6 @@ impl NodeClient {
 
         let mut health_url = base.clone();
         health_url.set_path("/health");
-
-        let mut public_key_url = base.clone();
-        public_key_url.set_path("/public_key");
 
         // Set a global request timeout so the simulator can't hang forever if
         // the node becomes unresponsive.
@@ -89,7 +94,6 @@ impl NodeClient {
             http,
             rpc_url,
             health_url,
-            public_key_url,
         })
     }
 
@@ -102,13 +106,15 @@ impl NodeClient {
     }
 
     async fn public_key(&self) -> Result<PublicKey> {
-        let res = self
-            .http
-            .get(self.public_key_url.clone())
-            .send()
-            .await?
-            .error_for_status()?;
-        Ok(res.json().await?)
+        match self.rpc(&Request::Info).await? {
+            Response::Info(pk) => Ok(pk),
+            Response::Error { reason } => {
+                Err(eyre!("public_key failed: {}", reason))
+            }
+            other => {
+                Err(eyre!("unexpected response for public_key: {:?}", other))
+            }
+        }
     }
 
     async fn rpc(&self, request: &Request) -> Result<Response> {
@@ -130,10 +136,15 @@ impl NodeClient {
         }
     }
 
-    async fn refresh(&self, refresh: &Refresh) -> Result<Vec<Blinded<Signature>>> {
+    async fn refresh(
+        &self,
+        refresh: &Refresh,
+    ) -> Result<Vec<Blinded<Signature>>> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
-            Response::Error { reason } => Err(eyre!("refresh failed: {}", reason)),
+            Response::Error { reason } => {
+                Err(eyre!("refresh failed: {}", reason))
+            }
             other => Err(eyre!("unexpected response for refresh: {:?}", other)),
         }
     }
@@ -194,7 +205,9 @@ impl AppState {
                         let notes = wallet.notes.get(&asset.id);
                         WalletBalance {
                             balance: notes
-                                .map(|v| v.iter().map(|n| n.amount).sum::<u64>())
+                                .map(|v| {
+                                    v.iter().map(|n| n.amount).sum::<u64>()
+                                })
                                 .unwrap_or(0),
                             notes: notes.map(|v| v.len()).unwrap_or(0),
                         }
@@ -599,9 +612,9 @@ fn materialize_outputs(
             continue;
         }
 
-        let signature = output_iter
-            .next()
-            .ok_or_else(|| eyre!("missing signature for output {}", atom_idx))?;
+        let signature = output_iter.next().ok_or_else(|| {
+            eyre!("missing signature for output {}", atom_idx)
+        })?;
 
         let asset = refresh
             .asset_ids
@@ -845,7 +858,11 @@ fn render_ui(
                 Span::raw("  Paused: "),
                 Span::styled(
                     format!("{}", paused),
-                    Style::default().fg(if paused { Color::Yellow } else { Color::Green }),
+                    Style::default().fg(if paused {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    }),
                 ),
             ]),
             Line::from(vec![
@@ -853,7 +870,9 @@ fn render_ui(
                 Span::styled(
                     format!(
                         "{}/{}/{}",
-                        snapshot.total_sent, snapshot.total_ok, snapshot.total_err
+                        snapshot.total_sent,
+                        snapshot.total_ok,
+                        snapshot.total_err
                     ),
                     Style::default().fg(Color::Magenta),
                 ),
@@ -874,17 +893,26 @@ fn render_ui(
 
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
+            .constraints(
+                [Constraint::Percentage(60), Constraint::Percentage(40)]
+                    .as_ref(),
+            )
             .split(layout[1]);
 
         let mut rows = Vec::new();
         for wallet in snapshot.wallets.iter() {
             let row_style = Style::default().fg(wallet_color(wallet.id));
             let mut balance_lines = Vec::new();
-            for (asset, balance) in snapshot.assets.iter().zip(wallet.balances.iter()) {
-                let short_policy = asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
+            for (asset, balance) in
+                snapshot.assets.iter().zip(wallet.balances.iter())
+            {
+                let short_policy =
+                    asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
                 balance_lines.push(Line::from(vec![
-                    Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        asset.name,
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw(format!(
                         " ({short_policy}) bal={} notes={}",
                         balance.balance, balance.notes
@@ -929,7 +957,8 @@ fn render_ui(
             .iter()
             .map(|l| ListItem::new(l.clone()))
             .collect();
-        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Logs"));
+        let log_block = List::new(logs)
+            .block(Block::default().borders(Borders::ALL).title("Logs"));
         f.render_widget(log_block, body_chunks[1]);
 
         let footer = Paragraph::new(Line::from(vec![
@@ -1069,8 +1098,9 @@ async fn main() -> Result<()> {
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();
-    let mut ui_handle =
-        tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
+    let mut ui_handle = tokio::task::spawn_blocking(move || {
+        ui_loop(snapshot_rx, ui_cmd_tx, terminal)
+    });
 
     let mut owner_done = false;
     let mut ui_done = false;
@@ -1138,7 +1168,9 @@ mod tests {
         // Simulate concurrent modification before reserving.
         notes.swap_remove(0);
 
-        let Some(pos) = notes.iter().position(|n| n.signature == target.signature) else {
+        let Some(pos) =
+            notes.iter().position(|n| n.signature == target.signature)
+        else {
             panic!("target note missing");
         };
 

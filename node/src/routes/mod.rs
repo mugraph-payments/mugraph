@@ -9,7 +9,7 @@ use axum::{
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{Keypair, PublicKey, Request, Response},
+    types::{Keypair, Request, Response},
 };
 
 mod refresh;
@@ -29,7 +29,6 @@ pub fn router(keypair: Keypair) -> Result<Router, Error> {
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .route("/health", get(health))
         .route("/rpc", post(rpc))
-        .route("/public_key", get(get_public_key))
         .with_state(Context {
             database: Arc::new(Database::setup("./db")?),
             keypair,
@@ -40,12 +39,6 @@ pub fn router(keypair: Keypair) -> Result<Router, Error> {
 
 pub async fn health() -> &'static str {
     "OK"
-}
-
-async fn get_public_key(
-    State(Context { keypair, .. }): State<Context>,
-) -> Json<PublicKey> {
-    Json(keypair.public_key)
 }
 
 #[tracing::instrument(skip_all)]
@@ -60,6 +53,7 @@ pub async fn rpc(
                 reason: e.to_string(),
             }),
         },
+        Request::Info => Json(Response::Info(keypair.public_key)),
         Request::Emit { asset_id, amount } => {
             let mut rng = rand::rng();
             match emit_note(&keypair, asset_id, amount, &mut rng) {
