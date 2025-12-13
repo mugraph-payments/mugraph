@@ -1,8 +1,8 @@
 inputs:
 { pkgs }:
 let
-  inherit (pkgs) system;
   inherit (pkgs.lib) concatStringsSep;
+  inherit (pkgs.stdenv.hostPlatform) system;
 
   platform =
     {

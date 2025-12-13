@@ -39,6 +39,7 @@
       let
         pkgs = import nixpkgs {
           inherit system;
+
           overlays = [
             rust-overlay.overlays.default
             (import ./nix inputs)
