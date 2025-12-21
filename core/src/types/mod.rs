@@ -1,4 +1,5 @@
 mod asset;
+mod dleq;
 mod hash;
 mod keypair;
 mod note;
@@ -11,6 +12,7 @@ mod signature;
 
 pub use self::{
     asset::*,
+    dleq::*,
     hash::*,
     keypair::*,
     note::*,

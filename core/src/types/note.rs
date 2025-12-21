@@ -13,6 +13,8 @@ pub struct Note {
     pub asset_id: AssetId,
     pub nonce: Hash,
     pub signature: Signature,
+    #[serde(default)]
+    pub dleq: Option<DleqProof>,
 }
 
 impl Note {
@@ -37,7 +39,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 168);
+        assert_eq!(size_of::<Note>(), 272);
         assert_eq!(align_of::<Note>(), 8);
     }
 

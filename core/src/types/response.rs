@@ -9,7 +9,7 @@ pub enum Response {
     #[serde(rename = "refresh")]
     Transaction {
         #[serde(rename = "s")]
-        outputs: Vec<Blinded<Signature>>,
+        outputs: Vec<BlindSignature>,
     },
     #[serde(rename = "public_key")]
     Info(PublicKey),

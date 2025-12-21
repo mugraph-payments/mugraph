@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{AssetId, Hash, Keypair, Note, Refresh, Response, Signature},
+    types::{AssetId, DleqProof, Hash, Keypair, Note, Refresh, Response, Signature},
 };
 use rand::{CryptoRng, RngCore};
 use redb::ReadableTable;
@@ -22,11 +22,17 @@ pub fn emit_note<R: RngCore + CryptoRng>(
         nonce: Hash::random(rng),
         amount,
         signature: Signature::default(),
+        dleq: None,
     };
 
     let blind = crypto::blind_note(rng, &note);
-    let signed = crypto::sign_blinded(&keypair.secret_key, &blind.point);
-    note.signature = crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
+    let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
+    note.signature =
+        crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)?;
+    note.dleq = Some(DleqProof {
+        proof: signed.proof,
+        blinding_factor: blind.factor.into(),
+    });
 
     Ok(note)
 }
@@ -36,6 +42,7 @@ pub fn refresh(
     keypair: Keypair,
     database: &Database,
 ) -> Result<Response, Error> {
+    let mut rng = rand::rng();
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let w = database.write()?;
 
@@ -45,6 +52,7 @@ pub fn refresh(
         for (i, atom) in transaction.atoms.iter().enumerate() {
             if transaction.is_output(i) {
                 let sig = crypto::sign_blinded(
+                    &mut rng,
                     &keypair.secret_key,
                     &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );

@@ -9,17 +9,19 @@ use color_eyre::eyre::{Result, WrapErr, eyre};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use mugraph_core::{
     builder::RefreshBuilder,
+    crypto,
     types::{
         AssetId,
         AssetName,
-        Blinded,
+        BlindSignature,
+        DleqProof,
+        Hash,
         Note,
         PolicyId,
         PublicKey,
         Refresh,
         Request,
         Response,
-        Signature,
     },
 };
 use rand::{Rng, SeedableRng, rngs::StdRng, seq::SliceRandom};
@@ -134,7 +136,7 @@ impl NodeClient {
         }
     }
 
-    async fn refresh(&self, refresh: &Refresh) -> Result<Vec<Blinded<Signature>>> {
+    async fn refresh(&self, refresh: &Refresh) -> Result<Vec<BlindSignature>> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
             Response::Error { reason } => Err(eyre!("refresh failed: {}", reason)),
@@ -280,7 +282,7 @@ struct PendingTx {
 enum SimEvent {
     TxFinished {
         pending: PendingTx,
-        result: std::result::Result<Vec<Blinded<Signature>>, String>,
+        result: std::result::Result<Vec<BlindSignature>, String>,
     },
 }
 
@@ -597,8 +599,9 @@ fn build_refresh(
 
 fn materialize_outputs(
     refresh: &Refresh,
-    outputs: Vec<Blinded<Signature>>,
+    outputs: Vec<BlindSignature>,
     owners: &[usize],
+    delegate: PublicKey,
 ) -> Result<Vec<(usize, Note)>> {
     let mut created = Vec::new();
     let mut output_iter = outputs.into_iter();
@@ -616,12 +619,31 @@ fn materialize_outputs(
             .get(atom.asset_id as usize)
             .ok_or_else(|| eyre!("invalid asset index {}", atom.asset_id))?;
 
+        let commitment = atom.commitment(&refresh.asset_ids);
+        let blinded_point = crypto::hash_to_curve(commitment.as_ref());
+        if !crypto::verify_dleq_signature(
+            &delegate,
+            &blinded_point,
+            &signature.signature,
+            &signature.proof,
+        )? {
+            return Err(eyre!("invalid DLEQ proof for output {}", atom_idx));
+        }
+
+        if !crypto::verify(&delegate, commitment.as_ref(), signature.signature.0)? {
+            return Err(eyre!("invalid signature for output {}", atom_idx));
+        }
+
         let note = Note {
             amount: atom.amount,
             delegate: atom.delegate,
             asset_id: *asset,
             nonce: atom.nonce,
-            signature: signature.0,
+            signature: signature.signature.0,
+            dleq: Some(DleqProof {
+                proof: signature.proof,
+                blinding_factor: Hash::zero(),
+            }),
         };
 
         let owner = owners
@@ -760,7 +782,12 @@ async fn simulation_owner_loop(
                     SimEvent::TxFinished { pending, result } => {
                         state.inflight = state.inflight.saturating_sub(1);
                         match result {
-                            Ok(outputs) => match materialize_outputs(&pending.refresh, outputs, &pending.owners) {
+                            Ok(outputs) => match materialize_outputs(
+                                &pending.refresh,
+                                outputs,
+                                &pending.owners,
+                                state.delegate_pk,
+                            ) {
                                 Ok(notes) => {
                                     for (owner, note) in notes {
                                         state.wallets[owner]
@@ -1124,7 +1151,7 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use mugraph_core::types::Hash;
+    use mugraph_core::types::{Hash, Signature};
 
     use super::*;
 
@@ -1138,6 +1165,7 @@ mod tests {
             },
             nonce: Hash([5u8; 32]),
             signature: Signature([signature_byte; 32]),
+            dleq: None,
         }
     }
 

@@ -12,23 +12,26 @@ use crate::{
     error::{Error, Result},
 };
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Arbitrary)]
-#[repr(transparent)]
-#[serde(transparent)]
-pub struct Blinded<T>(pub T);
-
 #[derive(
+    Debug,
     Default,
     Clone,
     Copy,
     PartialEq,
     Eq,
-    Serialize,
-    Deserialize,
-    Hash,
-    Arbitrary,
     PartialOrd,
     Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Arbitrary,
+)]
+#[repr(transparent)]
+#[serde(transparent)]
+pub struct Blinded<T>(pub T);
+
+#[derive(
+    Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Arbitrary, PartialOrd, Ord,
 )]
 #[repr(transparent)]
 #[serde(transparent)]
