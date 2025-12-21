@@ -2,7 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     error::{Error, Result},
-    types::{Atom, Hash, Note, Refresh},
+    types::{AssetId, Atom, Hash, Note, Refresh},
     utils::BitSet32,
 };
 
@@ -11,7 +11,7 @@ pub struct RefreshBuilder {
     pub inputs: Vec<Note>,
     pre_balances: Vec<u128>,
     post_balances: Vec<u128>,
-    assets: IndexSet<Hash>,
+    assets: IndexSet<AssetId>,
     outputs: Vec<(u32, u64)>,
 }
 
@@ -44,7 +44,7 @@ impl RefreshBuilder {
         self.inputs.len()
     }
 
-    pub fn output(mut self, asset_id: Hash, amount: u64) -> Self {
+    pub fn output(mut self, asset_id: AssetId, amount: u64) -> Self {
         match self.assets.get_index_of(&asset_id) {
             Some(i) => {
                 self.post_balances[i] += amount as u128;

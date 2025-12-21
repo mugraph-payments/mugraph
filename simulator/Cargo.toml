@@ -12,6 +12,7 @@ indexmap = { workspace = true }
 metrics = { workspace = true }
 mimalloc = { workspace = true }
 mugraph-core = { workspace = true }
+muhex = { workspace = true }
 time = { version = "0.3", features = ["local-offset", "macros"] }
 rand = { workspace = true }
 rand_chacha = { workspace = true }

@@ -2,23 +2,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::*;
 
-pub const COMMITMENT_INPUT_SIZE: usize = 104;
+pub const COMMITMENT_INPUT_SIZE: usize = 136;
 
 #[derive(
-    Debug,
-    Default,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    Hash,
-    test_strategy::Arbitrary,
+    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
 )]
 pub struct Note {
     pub amount: u64,
     pub delegate: PublicKey,
-    pub asset_id: Hash,
+    pub asset_id: AssetId,
     pub nonce: Hash,
     pub signature: Signature,
 }
@@ -28,9 +20,9 @@ impl Note {
         let mut output = [0u8; COMMITMENT_INPUT_SIZE];
 
         output[0..32].copy_from_slice(self.delegate.as_ref());
-        output[32..64].copy_from_slice(self.asset_id.as_ref());
-        output[64..72].copy_from_slice(&self.amount.to_le_bytes());
-        output[72..104].copy_from_slice(self.nonce.as_ref());
+        self.asset_id.write_bytes(&mut output[32..96]);
+        output[96..104].copy_from_slice(&self.amount.to_le_bytes());
+        output[104..136].copy_from_slice(self.nonce.as_ref());
 
         Hash::digest(&output)
     }
@@ -45,7 +37,7 @@ mod tests {
 
     #[test]
     fn test_byte_sizes() {
-        assert_eq!(size_of::<Note>(), 136);
+        assert_eq!(size_of::<Note>(), 168);
         assert_eq!(align_of::<Note>(), 8);
     }
 
@@ -57,9 +49,10 @@ mod tests {
 
     #[proptest]
     fn test_commitment(note: Note) {
+        let asset_id = note.asset_id.to_bytes();
         let expected = [
             note.delegate.as_ref(),
-            note.asset_id.as_ref(),
+            asset_id.as_ref(),
             note.amount.to_le_bytes().as_ref(),
             note.nonce.as_ref(),
         ]

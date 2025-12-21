@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{COMMITMENT_INPUT_SIZE, PublicKey};
 use crate::{
     error::Error,
-    types::{Hash, Signature},
+    types::{AssetId, Hash, Signature},
     utils::BitSet32,
 };
 
@@ -34,13 +34,13 @@ pub struct Atom {
 }
 
 impl Atom {
-    pub fn commitment(&self, assets: &[Hash]) -> Hash {
+    pub fn commitment(&self, assets: &[AssetId]) -> Hash {
         let mut output = [0u8; COMMITMENT_INPUT_SIZE];
 
         output[0..32].copy_from_slice(self.delegate.as_ref());
-        output[32..64].copy_from_slice(assets[self.asset_id as usize].as_ref());
-        output[64..72].copy_from_slice(&self.amount.to_le_bytes());
-        output[72..104].copy_from_slice(self.nonce.as_ref());
+        assets[self.asset_id as usize].write_bytes(&mut output[32..96]);
+        output[96..104].copy_from_slice(&self.amount.to_le_bytes());
+        output[104..136].copy_from_slice(self.nonce.as_ref());
 
         Hash::digest(&output)
     }
@@ -65,7 +65,7 @@ pub struct Refresh {
     #[serde(rename = "a")]
     pub atoms: Vec<Atom>,
     #[serde(rename = "a_")]
-    pub asset_ids: Vec<Hash>,
+    pub asset_ids: Vec<AssetId>,
     #[serde(rename = "s")]
     pub signatures: Vec<Signature>,
 }

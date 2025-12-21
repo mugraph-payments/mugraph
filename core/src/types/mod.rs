@@ -1,3 +1,4 @@
+mod asset;
 mod hash;
 mod keypair;
 mod note;
@@ -9,6 +10,7 @@ mod secret_key;
 mod signature;
 
 pub use self::{
+    asset::*,
     hash::*,
     keypair::*,
     note::*,

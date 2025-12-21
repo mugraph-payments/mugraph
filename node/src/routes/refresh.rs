@@ -2,7 +2,7 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{Hash, Keypair, Note, Refresh, Response, Signature},
+    types::{AssetId, Hash, Keypair, Note, Refresh, Response, Signature},
 };
 use rand::{CryptoRng, RngCore};
 use redb::ReadableTable;
@@ -12,7 +12,7 @@ use crate::database::{Database, NOTES};
 #[inline]
 pub fn emit_note<R: RngCore + CryptoRng>(
     keypair: &Keypair,
-    asset_id: Hash,
+    asset_id: AssetId,
     amount: u64,
     rng: &mut R,
 ) -> Result<Note, Error> {
@@ -26,8 +26,7 @@ pub fn emit_note<R: RngCore + CryptoRng>(
 
     let blind = crypto::blind_note(rng, &note);
     let signed = crypto::sign_blinded(&keypair.secret_key, &blind.point);
-    note.signature =
-        crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
+    note.signature = crypto::unblind_signature(&signed, &blind.factor, &keypair.public_key)?;
 
     Ok(note)
 }
@@ -37,8 +36,7 @@ pub fn refresh(
     keypair: Keypair,
     database: &Database,
 ) -> Result<Response, Error> {
-    let mut outputs =
-        Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
+    let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let w = database.write()?;
 
     {
@@ -48,9 +46,7 @@ pub fn refresh(
             if transaction.is_output(i) {
                 let sig = crypto::sign_blinded(
                     &keypair.secret_key,
-                    &crypto::hash_to_curve(
-                        atom.commitment(&transaction.asset_ids).as_ref(),
-                    ),
+                    &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
                 );
 
                 outputs.push(sig);
@@ -80,11 +76,7 @@ pub fn refresh(
 
             // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
-            crypto::verify(
-                &keypair.public_key,
-                commitment.as_ref(),
-                signature,
-            )?;
+            crypto::verify(&keypair.public_key, commitment.as_ref(), signature)?;
 
             // Mark as spent
             table.insert(signature, true)?;

@@ -10,9 +10,11 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use mugraph_core::{
     builder::RefreshBuilder,
     types::{
+        AssetId,
+        AssetName,
         Blinded,
-        Hash,
         Note,
+        PolicyId,
         PublicKey,
         Refresh,
         Request,
@@ -108,12 +110,8 @@ impl NodeClient {
     async fn public_key(&self) -> Result<PublicKey> {
         match self.rpc(&Request::Info).await? {
             Response::Info(pk) => Ok(pk),
-            Response::Error { reason } => {
-                Err(eyre!("public_key failed: {}", reason))
-            }
-            other => {
-                Err(eyre!("unexpected response for public_key: {:?}", other))
-            }
+            Response::Error { reason } => Err(eyre!("public_key failed: {}", reason)),
+            other => Err(eyre!("unexpected response for public_key: {:?}", other)),
         }
     }
 
@@ -128,7 +126,7 @@ impl NodeClient {
         Ok(res.json().await?)
     }
 
-    async fn emit(&self, asset_id: Hash, amount: u64) -> Result<Note> {
+    async fn emit(&self, asset_id: AssetId, amount: u64) -> Result<Note> {
         match self.rpc(&Request::Emit { asset_id, amount }).await? {
             Response::Emit(note) => Ok(note),
             Response::Error { reason } => Err(eyre!("emit failed: {}", reason)),
@@ -136,15 +134,10 @@ impl NodeClient {
         }
     }
 
-    async fn refresh(
-        &self,
-        refresh: &Refresh,
-    ) -> Result<Vec<Blinded<Signature>>> {
+    async fn refresh(&self, refresh: &Refresh) -> Result<Vec<Blinded<Signature>>> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
-            Response::Error { reason } => {
-                Err(eyre!("refresh failed: {}", reason))
-            }
+            Response::Error { reason } => Err(eyre!("refresh failed: {}", reason)),
             other => Err(eyre!("unexpected response for refresh: {:?}", other)),
         }
     }
@@ -153,7 +146,7 @@ impl NodeClient {
 #[derive(Debug, Default, Clone)]
 struct Wallet {
     id: usize,
-    notes: HashMap<Hash, Vec<Note>>,
+    notes: HashMap<AssetId, Vec<Note>>,
     sent: u64,
     received: u64,
     failures: u64,
@@ -205,9 +198,7 @@ impl AppState {
                         let notes = wallet.notes.get(&asset.id);
                         WalletBalance {
                             balance: notes
-                                .map(|v| {
-                                    v.iter().map(|n| n.amount).sum::<u64>()
-                                })
+                                .map(|v| v.iter().map(|n| n.amount).sum::<u64>())
                                 .unwrap_or(0),
                             notes: notes.map(|v| v.len()).unwrap_or(0),
                         }
@@ -278,7 +269,7 @@ struct PendingTx {
     id: u64,
     sender_id: usize,
     receiver_id: usize,
-    asset: Hash,
+    asset: AssetId,
     input_note: Note,
     spend_amount: u64,
     refresh: Refresh,
@@ -496,7 +487,7 @@ const CARDANO_ASSET_DEFS: &[CardanoAssetDef] = &[
 
 #[derive(Debug, Clone, Copy)]
 struct SimAsset {
-    id: Hash,
+    id: AssetId,
     name: &'static str,
     policy_id: &'static str,
 }
@@ -508,10 +499,14 @@ fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
     let mut selected = Vec::with_capacity(count);
     for i in 0..count {
         let def = defs[i % defs.len()];
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(def.policy_id.as_bytes());
-        bytes.extend_from_slice(def.asset_name.as_bytes());
-        let id = Hash::digest(&bytes);
+        let policy_bytes = muhex::decode(def.policy_id).expect("policy_id must be hex");
+        let policy_id = PolicyId(policy_bytes.try_into().expect("policy_id must be 28 bytes"));
+        let asset_name =
+            AssetName::new(def.asset_name.as_bytes()).expect("asset_name must be <= 32 bytes");
+        let id = AssetId {
+            policy_id,
+            asset_name,
+        };
         selected.push(SimAsset {
             id,
             name: def.asset_name,
@@ -561,14 +556,14 @@ fn reserve_spendable_note(
     wallet: &mut Wallet,
     assets: &[SimAsset],
     rng: &mut StdRng,
-) -> Option<(Hash, Note)> {
-    let mut shuffled: Vec<Hash> = assets.iter().map(|a| a.id).collect();
+) -> Option<(AssetId, Note)> {
+    let mut shuffled: Vec<AssetId> = assets.iter().map(|a| a.id).collect();
     shuffled.shuffle(rng);
     for asset in shuffled {
-        if let Some(notes) = wallet.notes.get_mut(&asset) {
-            if let Some(pos) = notes.iter().position(|n| n.amount > 0) {
-                return Some((asset, notes.swap_remove(pos)));
-            }
+        if let Some(notes) = wallet.notes.get_mut(&asset)
+            && let Some(pos) = notes.iter().position(|n| n.amount > 0)
+        {
+            return Some((asset, notes.swap_remove(pos)));
         }
     }
     None
@@ -577,7 +572,7 @@ fn reserve_spendable_note(
 fn build_refresh(
     input_owner: usize,
     output_owner: usize,
-    asset: Hash,
+    asset: AssetId,
     input_note: Note,
     amount: u64,
 ) -> Result<(Refresh, Vec<usize>)> {
@@ -612,9 +607,9 @@ fn materialize_outputs(
             continue;
         }
 
-        let signature = output_iter.next().ok_or_else(|| {
-            eyre!("missing signature for output {}", atom_idx)
-        })?;
+        let signature = output_iter
+            .next()
+            .ok_or_else(|| eyre!("missing signature for output {}", atom_idx))?;
 
         let asset = refresh
             .asset_ids
@@ -858,11 +853,7 @@ fn render_ui(
                 Span::raw("  Paused: "),
                 Span::styled(
                     format!("{}", paused),
-                    Style::default().fg(if paused {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    }),
+                    Style::default().fg(if paused { Color::Yellow } else { Color::Green }),
                 ),
             ]),
             Line::from(vec![
@@ -870,9 +861,7 @@ fn render_ui(
                 Span::styled(
                     format!(
                         "{}/{}/{}",
-                        snapshot.total_sent,
-                        snapshot.total_ok,
-                        snapshot.total_err
+                        snapshot.total_sent, snapshot.total_ok, snapshot.total_err
                     ),
                     Style::default().fg(Color::Magenta),
                 ),
@@ -893,26 +882,17 @@ fn render_ui(
 
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(
-                [Constraint::Percentage(60), Constraint::Percentage(40)]
-                    .as_ref(),
-            )
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
             .split(layout[1]);
 
         let mut rows = Vec::new();
         for wallet in snapshot.wallets.iter() {
             let row_style = Style::default().fg(wallet_color(wallet.id));
             let mut balance_lines = Vec::new();
-            for (asset, balance) in
-                snapshot.assets.iter().zip(wallet.balances.iter())
-            {
-                let short_policy =
-                    asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
+            for (asset, balance) in snapshot.assets.iter().zip(wallet.balances.iter()) {
+                let short_policy = asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
                 balance_lines.push(Line::from(vec![
-                    Span::styled(
-                        asset.name,
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
+                    Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
                     Span::raw(format!(
                         " ({short_policy}) bal={} notes={}",
                         balance.balance, balance.notes
@@ -957,8 +937,7 @@ fn render_ui(
             .iter()
             .map(|l| ListItem::new(l.clone()))
             .collect();
-        let log_block = List::new(logs)
-            .block(Block::default().borders(Borders::ALL).title("Logs"));
+        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Logs"));
         f.render_widget(log_block, body_chunks[1]);
 
         let footer = Paragraph::new(Line::from(vec![
@@ -1098,9 +1077,8 @@ async fn main() -> Result<()> {
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();
-    let mut ui_handle = tokio::task::spawn_blocking(move || {
-        ui_loop(snapshot_rx, ui_cmd_tx, terminal)
-    });
+    let mut ui_handle =
+        tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
 
     let mut owner_done = false;
     let mut ui_done = false;
@@ -1129,10 +1107,8 @@ async fn main() -> Result<()> {
 
     let _ = cmd_tx.send(SimCommand::Quit);
 
-    if !owner_done {
-        if let Err(e) = owner_handle.await {
-            error!("simulation owner task error: {e:?}");
-        }
+    if !owner_done && let Err(e) = owner_handle.await {
+        error!("simulation owner task error: {e:?}");
     }
     if !ui_done {
         match ui_handle.await {
@@ -1148,13 +1124,18 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use mugraph_core::types::Hash;
+
     use super::*;
 
     fn dummy_note(signature_byte: u8) -> Note {
         Note {
             amount: 1,
             delegate: PublicKey([9u8; 32]),
-            asset_id: Hash([7u8; 32]),
+            asset_id: AssetId {
+                policy_id: PolicyId([7u8; 28]),
+                asset_name: AssetName::empty(),
+            },
             nonce: Hash([5u8; 32]),
             signature: Signature([signature_byte; 32]),
         }
@@ -1168,9 +1149,7 @@ mod tests {
         // Simulate concurrent modification before reserving.
         notes.swap_remove(0);
 
-        let Some(pos) =
-            notes.iter().position(|n| n.signature == target.signature)
-        else {
+        let Some(pos) = notes.iter().position(|n| n.signature == target.signature) else {
             panic!("target note missing");
         };
 

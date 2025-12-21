@@ -105,7 +105,7 @@ At a high level:
 
 The current codebase prototypes an e-cash-like flow around two objects:
 
-- *Note:* a signed claim on `(delegate, asset, amount, nonce)`.
+- *Note:* a signed claim on `(delegate, policy_id, asset_name, amount, nonce)`.
 - *Refresh transaction:* consumes existing notes and creates new notes (split,
   merge, pay-with-change).
 
@@ -115,7 +115,7 @@ In the repository, these live in `mugraph-core`:
 Note {
   amount: u64,
   delegate: PublicKey,
-  asset_id: Hash,
+  asset_id: AssetId,            // (policy_id, asset_name)
   nonce: Hash,
   signature: Signature,
 }
@@ -125,7 +125,7 @@ Note {
 Refresh {
   input_mask: BitSet32,          // marks which atoms are inputs
   atoms: Vec<Atom>,              // inputs + outputs
-  asset_ids: Vec<Hash>,          // dictionary for atom asset_id indices
+  asset_ids: Vec<AssetId>,       // dictionary for atom asset_id indices
   signatures: Vec<Signature>,    // signatures for input atoms
 }
 ```
