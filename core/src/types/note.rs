@@ -14,7 +14,7 @@ pub struct Note {
     pub nonce: Hash,
     pub signature: Signature,
     #[serde(default)]
-    pub dleq: Option<DleqProof>,
+    pub dleq: Option<DleqProofWithBlinding>,
 }
 
 impl Note {

@@ -40,7 +40,7 @@ pub struct DleqProof {
     Ord,
     ::core::hash::Hash,
 )]
-pub struct DleqProof {
+pub struct DleqProofWithBlinding {
     #[serde(flatten)]
     pub proof: DleqProof,
     #[serde(rename = "r")]

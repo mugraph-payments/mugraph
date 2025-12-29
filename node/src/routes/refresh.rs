@@ -2,7 +2,9 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{AssetId, DleqProof, Hash, Keypair, Note, Refresh, Response, Signature},
+    types::{
+        AssetId, DleqProofWithBlinding, Hash, Keypair, Note, Refresh, Response, Signature,
+    },
 };
 use rand::{CryptoRng, RngCore};
 use redb::ReadableTable;
@@ -29,7 +31,7 @@ pub fn emit_note<R: RngCore + CryptoRng>(
     let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
     note.signature =
         crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)?;
-    note.dleq = Some(DleqProof {
+    note.dleq = Some(DleqProofWithBlinding {
         proof: signed.proof,
         blinding_factor: blind.factor.into(),
     });

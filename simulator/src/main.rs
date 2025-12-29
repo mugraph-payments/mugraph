@@ -14,7 +14,7 @@ use mugraph_core::{
         AssetId,
         AssetName,
         BlindSignature,
-        DleqProof,
+        DleqProofWithBlinding,
         Hash,
         Note,
         PolicyId,
@@ -640,7 +640,7 @@ fn materialize_outputs(
             asset_id: *asset,
             nonce: atom.nonce,
             signature: signature.signature.0,
-            dleq: Some(DleqProof {
+            dleq: Some(DleqProofWithBlinding {
                 proof: signature.proof,
                 blinding_factor: Hash::zero(),
             }),
