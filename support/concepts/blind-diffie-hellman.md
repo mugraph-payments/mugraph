@@ -28,9 +28,9 @@ Alice and Bob agree on a common elliptic curve group with a generator point $G$.
 Alice generates a private key $a$ and computes the corresponding public key $A$:
 
 $$
-\begin{align}
+\begin{aligned}
 A &= a \cdot G
-\end{align}
+\end{aligned}
 $$
 
 Alice sends $A$ to Bob.
@@ -38,9 +38,9 @@ Alice sends $A$ to Bob.
 Bob generates a private key $k$ and computes the corresponding public key $K$:
 
 $$
-\begin{align}
+\begin{aligned}
 K &= k \cdot G
-\end{align}
+\end{aligned}
 $$
 
 Bob makes $K$ publicly available.
@@ -55,9 +55,9 @@ c. Generate a random blinding factor $r$.
 d. Compute the blinded point $B'$:
 
 $$
-\begin{align}
+\begin{aligned}
 B' &= Y + r \cdot G
-\end{align}
+\end{aligned}
 $$
 
 Alice sends $B'$ to Bob.
@@ -67,9 +67,9 @@ Alice sends $B'$ to Bob.
 Bob receives $B'$ and computes the blinded signature $C'$:
 
 $$
-\begin{align}
+\begin{aligned}
 C' &= k \cdot B'
-\end{align}
+\end{aligned}
 $$
 
 Bob sends $C'$ back to Alice.
@@ -79,20 +79,20 @@ Bob sends $C'$ back to Alice.
 Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
 
 $$
-\begin{align}
+\begin{aligned}
 C &= C' - r \cdot K \\
   &= k \cdot B' - r \cdot K \\
   &= k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
   &= k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
   &= k \cdot Y
-\end{align}
+\end{aligned}
 $$
 
 ### 6. Verification
 
 To verify the signature, Alice (or any verifier) can check if:
 
-$$C = k \cdot H(x)$$
+$$C = K \cdot H(x)$$
 
 If this equality holds, it proves that $C$ originated from Bob's private key $k$, without Bob knowing the original message $x$.
 
@@ -104,34 +104,34 @@ If this equality holds, it proves that $C$ originated from Bob's private key $k$
 
 ## Additional Security Measure: Discrete Log Equality Proof
 
-To prevent potential attacks where Alice might not correctly generate $C'$, an additional step can be included:
+To prevent potential attacks where Bob might not correctly generate $C'$, an additional step can be included:
 
-Alice provides a Discrete Log Equality Proof (DLEQ) to demonstrate that the $a$ in $A = a \cdot G$ is equal to the $a$ in $C' = a \cdot B'$. This proof can be implemented using a Schnorr signature as follows:
+Bob provides a Discrete Log Equality Proof (DLEQ) to demonstrate that the $k$ in $K = k \cdot G$ is the same $k$ used in $C' = k \cdot B'$. This proof can be implemented using a Schnorr signature as follows:
 
-1. Alice generates a random nonce $r$.
-2. Alice computes:
+1. Bob generates a random nonce $r$.
+2. Bob computes:
 
 $$
-\begin{align}
+\begin{aligned}
 R_1 &= r \cdot G \\
 R_2 &= r \cdot B' \\
-e &= \text{hash}(R_1, R_2, A, C') \\
-s &= r + e \cdot a
-\end{align}
+e &= \text{hash}(R_1, R_2, K, C') \\
+s &= r + e \cdot k
+\end{aligned}
 $$
 
-3. Alice sends $e$ and $s$ to Bob.
-4. Bob verifies the proof by checking:
+3. Bob sends $e$ and $s$ to Alice.
+4. Alice verifies the proof by checking:
 
 $$
-\begin{align}
-R_1 &= s \cdot G - e \cdot A \\
+\begin{aligned}
+R_1 &= s \cdot G - e \cdot K \\
 R_2 &= s \cdot B' - e \cdot C' \\
-e &= \text{hash}(R_1, R_2, A, C')
-\end{align}
+e &= \text{hash}(R_1, R_2, K, C')
+\end{aligned}
 $$
 
-If the verification passes, Bob can be confident that Alice correctly generated $C'$.
+If the verification passes, Alice can be confident that Bob correctly generated $C'$.
 
 ## Advantages and Disadvantages
 
