@@ -13,7 +13,18 @@ pub const POLICY_ID_SIZE: usize = 28;
 pub const ASSET_NAME_MAX_SIZE: usize = 32;
 pub const ASSET_ID_BYTES_SIZE: usize = POLICY_ID_SIZE + 4 + ASSET_NAME_MAX_SIZE;
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct PolicyId(pub [u8; POLICY_ID_SIZE]);
@@ -238,7 +249,8 @@ impl AssetId {
         out[..POLICY_ID_SIZE].copy_from_slice(self.policy_id.as_ref());
         out[POLICY_ID_SIZE..POLICY_ID_SIZE + 4]
             .copy_from_slice(&self.asset_name.len_u32().to_le_bytes());
-        out[POLICY_ID_SIZE + 4..].copy_from_slice(self.asset_name.as_padded_bytes());
+        out[POLICY_ID_SIZE + 4..]
+            .copy_from_slice(self.asset_name.as_padded_bytes());
     }
 
     pub fn to_bytes(&self) -> [u8; ASSET_ID_BYTES_SIZE] {
@@ -252,7 +264,10 @@ impl core::fmt::Display for AssetId {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self.asset_name.is_empty() {
             true => f.write_fmt(format_args!("{}", self.policy_id)),
-            false => f.write_fmt(format_args!("{}.{}", self.policy_id, self.asset_name)),
+            false => f.write_fmt(format_args!(
+                "{}.{}",
+                self.policy_id, self.asset_name
+            )),
         }
     }
 }

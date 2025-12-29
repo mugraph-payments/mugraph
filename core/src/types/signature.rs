@@ -31,7 +31,17 @@ use crate::{
 pub struct Blinded<T>(pub T);
 
 #[derive(
-    Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Arbitrary, PartialOrd, Ord,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Hash,
+    Arbitrary,
+    PartialOrd,
+    Ord,
 )]
 #[repr(transparent)]
 #[serde(transparent)]

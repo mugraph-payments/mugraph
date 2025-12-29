@@ -3,7 +3,14 @@ use mugraph_core::{
     crypto,
     error::Error,
     types::{
-        AssetId, DleqProofWithBlinding, Hash, Keypair, Note, Refresh, Response, Signature,
+        AssetId,
+        DleqProofWithBlinding,
+        Hash,
+        Keypair,
+        Note,
+        Refresh,
+        Response,
+        Signature,
     },
 };
 use rand::{CryptoRng, RngCore};
@@ -29,8 +36,11 @@ pub fn emit_note<R: RngCore + CryptoRng>(
 
     let blind = crypto::blind_note(rng, &note);
     let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
-    note.signature =
-        crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)?;
+    note.signature = crypto::unblind_signature(
+        &signed.signature,
+        &blind.factor,
+        &keypair.public_key,
+    )?;
     note.dleq = Some(DleqProofWithBlinding {
         proof: signed.proof,
         blinding_factor: blind.factor.into(),
@@ -45,7 +55,8 @@ pub fn refresh(
     database: &Database,
 ) -> Result<Response, Error> {
     let mut rng = rand::rng();
-    let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
+    let mut outputs =
+        Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let w = database.write()?;
 
     {
@@ -56,7 +67,9 @@ pub fn refresh(
                 let sig = crypto::sign_blinded(
                     &mut rng,
                     &keypair.secret_key,
-                    &crypto::hash_to_curve(atom.commitment(&transaction.asset_ids).as_ref()),
+                    &crypto::hash_to_curve(
+                        atom.commitment(&transaction.asset_ids).as_ref(),
+                    ),
                 );
 
                 outputs.push(sig);
@@ -86,7 +99,11 @@ pub fn refresh(
 
             // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
-            crypto::verify(&keypair.public_key, commitment.as_ref(), signature)?;
+            crypto::verify(
+                &keypair.public_key,
+                commitment.as_ref(),
+                signature,
+            )?;
 
             // Mark as spent
             table.insert(signature, true)?;

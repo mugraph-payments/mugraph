@@ -5,7 +5,15 @@ use crate::types::*;
 pub const COMMITMENT_INPUT_SIZE: usize = 136;
 
 #[derive(
-    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Hash,
+    test_strategy::Arbitrary,
 )]
 pub struct Note {
     pub amount: u64,

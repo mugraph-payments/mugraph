@@ -47,8 +47,10 @@ impl Config {
                 secret_key: Some(secret_key),
                 ..
             } => {
-                let key_bytes = muhex::decode(secret_key).map_err(|e| Error::InvalidKey {
-                    reason: e.to_string(),
+                let key_bytes = muhex::decode(secret_key).map_err(|e| {
+                    Error::InvalidKey {
+                        reason: e.to_string(),
+                    }
                 })?;
 
                 if key_bytes.len() != 32 {
@@ -57,7 +59,8 @@ impl Config {
                     });
                 }
 
-                let key: [u8; 32] = key_bytes.try_into().expect("Already validated length");
+                let key: [u8; 32] =
+                    key_bytes.try_into().expect("Already validated length");
                 let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {

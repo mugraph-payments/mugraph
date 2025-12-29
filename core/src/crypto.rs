@@ -20,11 +20,17 @@ pub struct BlindedPoint {
     pub point: Point,
 }
 
-pub fn blind_note<R: RngCore + CryptoRng>(rng: &mut R, note: &Note) -> BlindedPoint {
+pub fn blind_note<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    note: &Note,
+) -> BlindedPoint {
     blind(rng, note.commitment().as_ref())
 }
 
-pub fn blind<R: RngCore + CryptoRng>(rng: &mut R, secret_message: &[u8]) -> BlindedPoint {
+pub fn blind<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    secret_message: &[u8],
+) -> BlindedPoint {
     let y = hash_to_curve(secret_message);
     let r = Hash::random(rng).to_scalar();
     let b_prime = y + (G * r);
@@ -76,7 +82,8 @@ pub fn prove_dleq<R: RngCore + CryptoRng>(
     let r_b = blinded_point * k;
 
     let public_key = secret_key.public();
-    let challenge = dleq_challenge(blinded_point, signed_point, &public_key, &r_g, &r_b);
+    let challenge =
+        dleq_challenge(blinded_point, signed_point, &public_key, &r_g, &r_b);
     let response = k + challenge * secret_key.to_scalar();
 
     DleqProof {
@@ -97,7 +104,8 @@ pub fn verify_dleq(
     let r_g = (G * z) - (public_key.to_point()? * e);
     let r_b = (blinded_point * z) - (signed_point * e);
 
-    let expected = dleq_challenge(blinded_point, signed_point, public_key, &r_g, &r_b);
+    let expected =
+        dleq_challenge(blinded_point, signed_point, public_key, &r_g, &r_b);
 
     Ok(e == expected)
 }
@@ -131,7 +139,11 @@ fn dleq_challenge(
     )
 }
 
-pub fn verify(public_key: &PublicKey, message: &[u8], signature: Signature) -> Result<bool> {
+pub fn verify(
+    public_key: &PublicKey,
+    message: &[u8],
+    signature: Signature,
+) -> Result<bool> {
     let y = hash_to_scalar(&[message]);
     Ok(y * public_key.to_point()? == signature.to_point()?)
 }
@@ -178,7 +190,8 @@ mod tests {
 
     #[proptest]
     fn test_hash_to_curve_sensitivity(
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        a: Vec<u8>,
     ) {
         let mut b = a.clone();
         b[0] = b[0].wrapping_add(1);
@@ -188,7 +201,8 @@ mod tests {
 
     #[proptest]
     fn test_hash_to_scalar_sensitivity(
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] a: Vec<u8>,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        a: Vec<u8>,
     ) {
         let mut b = a.clone();
         b[0] = b[0].wrapping_add(1);
@@ -200,9 +214,8 @@ mod tests {
     fn test_blinding_workflow(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
-            u8,
-        >,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        msg: Vec<u8>,
     ) {
         let blinded = blind(&mut rng, &msg);
 
@@ -214,7 +227,11 @@ mod tests {
             &sig.proof
         )?);
 
-        let unblinded = unblind_signature(&sig.signature, &blinded.factor, &pair.public_key)?;
+        let unblinded = unblind_signature(
+            &sig.signature,
+            &blinded.factor,
+            &pair.public_key,
+        )?;
 
         prop_assert!(verify(&pair.public_key, &msg, unblinded)?);
     }
@@ -223,9 +240,8 @@ mod tests {
     fn test_blinding_workflow_tampered_blinding_factor(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
-            u8,
-        >,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        msg: Vec<u8>,
     ) {
         let blinded = blind(&mut rng, &msg);
         let signed = sign_blinded(&mut rng, &pair.secret_key, &blinded.point);
@@ -236,22 +252,30 @@ mod tests {
             &pair.public_key,
         )?;
 
-        prop_assert!(!verify(&pair.public_key, &msg, unblinded).unwrap_or(false));
+        prop_assert!(
+            !verify(&pair.public_key, &msg, unblinded).unwrap_or(false)
+        );
     }
 
     #[proptest]
     fn test_blinding_workflow_tampered_blinded_point(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
-            u8,
-        >,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        msg: Vec<u8>,
     ) {
         let blinded = blind(&mut rng, &msg);
-        let signed = sign_blinded(&mut rng, &pair.secret_key, &(blinded.point + G));
-        let unblinded = unblind_signature(&signed.signature, &blinded.factor, &pair.public_key)?;
+        let signed =
+            sign_blinded(&mut rng, &pair.secret_key, &(blinded.point + G));
+        let unblinded = unblind_signature(
+            &signed.signature,
+            &blinded.factor,
+            &pair.public_key,
+        )?;
 
-        prop_assert!(!verify(&pair.public_key, &msg, unblinded).unwrap_or(false));
+        prop_assert!(
+            !verify(&pair.public_key, &msg, unblinded).unwrap_or(false)
+        );
     }
 
     #[proptest]
@@ -264,7 +288,11 @@ mod tests {
         let blinded = blind(&mut rng, &a);
 
         let sig = sign_blinded(&mut rng, &pair.secret_key, &blinded.point);
-        let unblinded = unblind_signature(&sig.signature, &blinded.factor, &pair.public_key)?;
+        let unblinded = unblind_signature(
+            &sig.signature,
+            &blinded.factor,
+            &pair.public_key,
+        )?;
 
         prop_assert_eq!(verify(&pair.public_key, &b, unblinded)?, a == b);
     }
@@ -279,7 +307,8 @@ mod tests {
         let blinded = blind(&mut rng, &msg);
 
         let sig = sign_blinded(&mut rng, &a.secret_key, &blinded.point);
-        let unblinded = unblind_signature(&sig.signature, &blinded.factor, &a.public_key)?;
+        let unblinded =
+            unblind_signature(&sig.signature, &blinded.factor, &a.public_key)?;
 
         prop_assert_eq!(verify(&b.public_key, &msg, unblinded)?, a == b);
     }
@@ -288,9 +317,8 @@ mod tests {
     fn test_dleq_proof_tampering_detected(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
-        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))] msg: Vec<
-            u8,
-        >,
+        #[strategy(any::<Vec<u8>>().prop_filter("must not be empty", |x| !x.is_empty()))]
+        msg: Vec<u8>,
     ) {
         let blinded = blind(&mut rng, &msg);
         let sig = sign_blinded(&mut rng, &pair.secret_key, &blinded.point);

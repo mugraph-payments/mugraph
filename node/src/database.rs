@@ -17,7 +17,8 @@ use redb::{
     backends::FileBackend,
 };
 
-pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> =
+    TableDefinition::new("notes");
 
 #[derive(Debug)]
 pub struct Database {
@@ -73,7 +74,10 @@ impl Database {
         })
     }
 
-    fn setup_with_backend<B: StorageBackend>(backend: B, should_setup: bool) -> Result<Redb, Error> {
+    fn setup_with_backend<B: StorageBackend>(
+        backend: B,
+        should_setup: bool,
+    ) -> Result<Redb, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         if should_setup {
