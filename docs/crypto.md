@@ -1,29 +1,25 @@
-# Blind Diffie-Hellman Key Exchange (BDHKE)
+# Mugraph Cryptography
 
-## Introduction
+## Blind Diffie-Hellman Key Exchange (BDHKE)
 
-This document explains the Blind Diffie-Hellman Key Exchange (BDHKE) protocol, a cryptographic method that allows two parties to establish a shared secret key without revealing their individual private keys. BDHKE is particularly useful in scenarios where privacy and anonymity are crucial, such as in digital cash systems or anonymous authentication protocols.
+Blind Diffie-Hellman Key Exchange (BDHKE) protocol is a cryptographic method that allows two parties to establish a shared secret key without revealing their individual private keys. BDHKE is used on Mugraph to guarantee group concealing, making the server oblivious to the identity of the note owner, severing the connection between inputs from one transaction to the next. The BDHKE protocol was described in a 1996 cypherpunk mailing list post by David Wagner. It was devised as an alternative to RSA blinding to circumvent the now-expired patent by David Chaum.
 
-## Historical Context
+### Overview
 
-The BDHKE protocol was unearthed from a 1996 cypherpunk mailing list post by David Wagner. It was devised as an alternative to RSA blinding to circumvent the now-expired patent by David Chaum. An implementation of this protocol, called Lucre, demonstrates its practical application.
-
-## Overview
-
-BDHKE is an extension of the traditional Diffie-Hellman key exchange, incorporating a blinding factor to enhance privacy. The protocol involves two main parties:
+BDHKE is an extension of the traditional Diffie-Hellman key exchange, incorporating a blinding factor to make it blind (meaning the message can be verified without knowning which original message generated it). The protocol involves two main parties:
 
 1. Alice: The user who initiates the key exchange and wants to obtain a blindly signed value.
 2. Bob: The signer (often referred to as the "mint" in digital cash systems) who performs the blind signing operation.
 
 The goal is for Bob to sign Alice's message without knowing its content, while Alice can later prove that the signature came from Bob.
 
-## Protocol Steps
+### Protocol Steps
 
-### 1. Initial Setup
+#### 1. Initial Setup
 
 Alice and Bob agree on a common elliptic curve group with a generator point $G$.
 
-### 2. Key Generation
+#### 2. Key Generation
 
 Alice generates a private key $a$ and computes the corresponding public key $A$:
 
@@ -45,7 +41,7 @@ $$
 
 Bob makes $K$ publicly available.
 
-### 3. Blinding
+#### 3. Blinding
 
 Alice performs the following steps:
 
@@ -62,7 +58,7 @@ $$
 
 Alice sends $B'$ to Bob.
 
-### 4. Signing
+#### 4. Signing
 
 Bob receives $B'$ and computes the blinded signature $C'$:
 
@@ -74,7 +70,7 @@ $$
 
 Bob sends $C'$ back to Alice.
 
-### 5. Unblinding
+#### 5. Unblinding
 
 Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
 
@@ -88,7 +84,7 @@ C &= C' - r \cdot K \\
 \end{aligned}
 $$
 
-### 6. Verification
+#### 6. Verification
 
 To verify the signature, Alice (or any verifier) can check if:
 
@@ -96,15 +92,15 @@ $$C = K \cdot H(x)$$
 
 If this equality holds, it proves that $C$ originated from Bob's private key $k$, without Bob knowing the original message $x$.
 
-## Security Considerations
+### Security Considerations
 
 1. The security of BDHKE relies on the hardness of the Elliptic Curve Discrete Logarithm Problem (ECDLP).
 2. The blinding factor $r$ must be kept secret by Alice to maintain the blindness property.
 3. The $H$ function should be carefully chosen to ensure it maps uniformly to the elliptic curve and does not introduce vulnerabilities.
 
-## Additional Security Measure: Discrete Log Equality Proof
+## Discrete Log Equality Proof (DLEQ Proof)
 
-To prevent potential attacks where Bob might not correctly generate $C'$, an additional step can be included:
+To prevent potential attacks where Bob might not correctly generate $C'$, an additional step is included:
 
 Bob provides a Discrete Log Equality Proof (DLEQ) to demonstrate that the $k$ in $K = k \cdot G$ is the same $k$ used in $C' = k \cdot B'$. This proof can be implemented using a Schnorr signature as follows:
 
@@ -132,29 +128,3 @@ e &= \text{hash}(R_1, R_2, K, C')
 $$
 
 If the verification passes, Alice can be confident that Bob correctly generated $C'$.
-
-## Advantages and Disadvantages
-
-### Advantages
-1. Threshold setting: This scheme is relatively straightforward to perform in a threshold setting, as it only requires curve multiplication.
-2. Patent-free: It was designed to avoid the now-expired RSA blinding patent.
-
-### Disadvantages
-1. Complex validation: Validation is more involved than simply checking a signature, as it requires repeating the Diffie-Hellman Key Exchange.
-
-## Applications
-
-BDHKE finds applications in various cryptographic protocols, including:
-
-1. Digital cash systems
-2. Anonymous credential systems
-3. Privacy-preserving authentication protocols
-4. Secure voting systems
-
-## Conclusion
-
-Blind Diffie-Hellman Key Exchange provides a powerful tool for creating cryptographic protocols that require both the establishment of shared secrets and the preservation of privacy. By combining the properties of Diffie-Hellman key exchange with blinding techniques, BDHKE enables a wide range of applications in the field of privacy-enhancing technologies.
-
-## Acknowledgments
-
-Thanks to Eric Sirion, Andrew Poelstra, and Adam Gibson for their helpful comments on the original protocol description.

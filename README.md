@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source srcset="support/assets/logo-white.svg" media="(prefers-color-scheme: dark)">
-    <img src="support/assets/logo-dark.svg" alt="Mugraph Logo" width="300">
+    <source srcset="assets/logo-white.svg" media="(prefers-color-scheme: dark)">
+    <img src="assets/logo-dark.svg" alt="Mugraph Logo" width="300">
   </picture>
 
 <p align="center"><em>Instant, untraceable payments for Cardano.</em></p>
