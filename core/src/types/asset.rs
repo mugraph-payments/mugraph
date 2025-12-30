@@ -27,7 +27,7 @@ pub const ASSET_ID_BYTES_SIZE: usize = POLICY_ID_SIZE + 4 + ASSET_NAME_MAX_SIZE;
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct PolicyId(pub [u8; POLICY_ID_SIZE]);
+pub struct PolicyId(#[serde(with = "muhex::serde")] pub [u8; POLICY_ID_SIZE]);
 
 impl Arbitrary for PolicyId {
     type Parameters = ();

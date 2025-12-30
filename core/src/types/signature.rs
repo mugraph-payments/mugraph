@@ -45,7 +45,7 @@ pub struct Blinded<T>(pub T);
 )]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct Signature(pub [u8; 32]);
+pub struct Signature(#[serde(with = "muhex::serde")] pub [u8; 32]);
 
 impl Signature {
     #[inline]
@@ -168,5 +168,22 @@ impl redb::Value for Signature {
 
     fn type_name() -> redb::TypeName {
         redb::TypeName::new("signature")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use serde_json::Value;
+    use test_strategy::proptest;
+
+    use super::Signature;
+
+    #[proptest]
+    fn test_serialization(value: Signature) {
+        prop_assert!(matches!(
+            serde_json::to_value(value).unwrap(),
+            Value::String(_)
+        ))
     }
 }

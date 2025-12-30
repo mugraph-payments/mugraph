@@ -24,7 +24,7 @@ use crate::{crypto::G, error::Error};
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct SecretKey(pub [u8; 32]);
+pub struct SecretKey(#[serde(with = "muhex::serde")] pub [u8; 32]);
 
 impl proptest::arbitrary::Arbitrary for SecretKey {
     type Parameters = ();
@@ -158,5 +158,22 @@ impl core::fmt::Display for SecretKey {
 impl core::fmt::Debug for SecretKey {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_fmt(format_args!("{:x}", self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use serde_json::Value;
+    use test_strategy::proptest;
+
+    use super::SecretKey;
+
+    #[proptest]
+    fn test_serialization(value: SecretKey) {
+        prop_assert!(matches!(
+            serde_json::to_value(value).unwrap(),
+            Value::String(_)
+        ))
     }
 }

@@ -23,7 +23,7 @@ use crate::{crypto::Scalar, error::Error};
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct PublicKey(pub [u8; 32]);
+pub struct PublicKey(#[serde(with = "muhex::serde")] pub [u8; 32]);
 
 impl Arbitrary for PublicKey {
     type Parameters = ();
@@ -185,5 +185,22 @@ impl core::fmt::Display for PublicKey {
 impl core::fmt::Debug for PublicKey {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_fmt(format_args!("{:x}", self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use serde_json::Value;
+    use test_strategy::proptest;
+
+    use super::PublicKey;
+
+    #[proptest]
+    fn test_serialization(value: PublicKey) {
+        prop_assert!(matches!(
+            serde_json::to_value(value).unwrap(),
+            Value::String(_)
+        ))
     }
 }

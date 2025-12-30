@@ -24,7 +24,7 @@ use crate::crypto::Scalar;
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(pub [u8; 32]);
+pub struct Hash(#[serde(with = "muhex::serde")] pub [u8; 32]);
 
 impl Arbitrary for Hash {
     type Parameters = ();
@@ -178,5 +178,22 @@ impl core::fmt::Display for Hash {
 impl core::fmt::Debug for Hash {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         f.write_fmt(format_args!("{:x}", self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use serde_json::Value;
+    use test_strategy::proptest;
+
+    use super::Hash;
+
+    #[proptest]
+    fn test_serialization(value: Hash) {
+        prop_assert!(matches!(
+            serde_json::to_value(value).unwrap(),
+            Value::String(_)
+        ))
     }
 }

@@ -1307,6 +1307,9 @@ name = "muhex"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c1bfe4ca3377d2594851aaac4277ac293f58cd1f402e717b8087f4943fa5817"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "myn"
