@@ -186,7 +186,9 @@ impl Serialize for AssetName {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_bytes(self.as_bytes())
+        let name = core::str::from_utf8(self.as_bytes())
+            .map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(name)
     }
 }
 
@@ -195,8 +197,8 @@ impl<'de> Deserialize<'de> for AssetName {
     where
         D: serde::Deserializer<'de>,
     {
-        let bytes: Vec<u8> = Vec::<u8>::deserialize(deserializer)?;
-        Self::new(&bytes).map_err(serde::de::Error::custom)
+        let value = String::deserialize(deserializer)?;
+        Self::new(value.as_bytes()).map_err(serde::de::Error::custom)
     }
 }
 

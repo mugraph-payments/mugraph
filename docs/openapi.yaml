@@ -120,7 +120,7 @@ paths:
                         signature: 0
                     a_:
                       - policy_id: "00000000000000000000000000000000000000000000000000000000"
-                        asset_name: "4d5547"
+                        asset_name: "MUG"
                     s:
                       - "0909090909090909090909090909090909090909090909090909090909090909"
       responses:
@@ -509,14 +509,12 @@ components:
     AssetName:
       type: string
       description: >
-        Asset name encoded as hex string (0-64 characters). This is the human-readable
-        name of the asset, encoded as hex representation of its UTF-8 bytes. For
-        example:
-        - "MUG" (3 bytes) → "4d5547" (6 hex chars)
-        - "HOSKY" (5 bytes) → "484f534b59" (10 hex chars)
+        Asset name as a UTF-8 string (0-32 bytes). Examples:
+        - "MUG"
+        - "HOSKY"
         - Empty string is valid for unnamed assets
-      pattern: "^[0-9a-fA-F]{0,64}$"
-      example: "4d5547"
+      maxLength: 32
+      example: "MUG"
 
     PublicKey:
       $ref: "#/components/schemas/HexString32"
