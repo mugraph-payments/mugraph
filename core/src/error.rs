@@ -4,7 +4,7 @@ use onlyerror::Error;
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::types::{AssetId, Signature};
+use crate::types::{AssetName, PolicyId, Signature};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -27,10 +27,11 @@ pub enum Error {
     StorageError { kind: String, reason: String },
 
     #[error(
-        "Insufficient funds for {asset_id}, expected {expected} but got {got}"
+        "Insufficient funds for asset {policy_id}.{asset_name}, expected {expected} but got {got}"
     )]
     InsufficientFunds {
-        asset_id: AssetId,
+        policy_id: PolicyId,
+        asset_name: AssetName,
         expected: u64,
         got: u64,
     },
@@ -76,9 +77,7 @@ impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         let reason = e.to_string();
         match e.kind() {
-            ErrorKind::Other if reason.contains("injected_error") => {
-                Self::SimulatedError { reason }
-            }
+            ErrorKind::Other if reason.contains("injected_error") => Self::SimulatedError { reason },
             ErrorKind::NotFound => Self::StorageError {
                 kind: "NotFound".to_string(),
                 reason,
@@ -106,10 +105,7 @@ impl From<Error> for std::io::Error {
 }
 
 #[inline]
-fn to_simulated_or_storage_error<T: std::error::Error + ToString>(
-    value: T,
-    kind: &str,
-) -> Error {
+fn to_simulated_or_storage_error<T: std::error::Error + ToString>(value: T, kind: &str) -> Error {
     let reason = value.to_string();
 
     match reason.contains("injected_error") {

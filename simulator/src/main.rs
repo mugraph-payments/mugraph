@@ -11,7 +11,7 @@ use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
     types::{
-        AssetId,
+        Asset,
         AssetName,
         BlindSignature,
         DleqProofWithBlinding,
@@ -112,12 +112,8 @@ impl NodeClient {
     async fn public_key(&self) -> Result<PublicKey> {
         match self.rpc(&Request::Info).await? {
             Response::Info(pk) => Ok(pk),
-            Response::Error { reason } => {
-                Err(eyre!("public_key failed: {}", reason))
-            }
-            other => {
-                Err(eyre!("unexpected response for public_key: {:?}", other))
-            }
+            Response::Error { reason } => Err(eyre!("public_key failed: {}", reason)),
+            other => Err(eyre!("unexpected response for public_key: {:?}", other)),
         }
     }
 
@@ -132,8 +128,15 @@ impl NodeClient {
         Ok(res.json().await?)
     }
 
-    async fn emit(&self, asset_id: AssetId, amount: u64) -> Result<Note> {
-        match self.rpc(&Request::Emit { asset_id, amount }).await? {
+    async fn emit(&self, policy_id: PolicyId, asset_name: AssetName, amount: u64) -> Result<Note> {
+        match self
+            .rpc(&Request::Emit {
+                policy_id,
+                asset_name,
+                amount,
+            })
+            .await?
+        {
             Response::Emit(note) => Ok(note),
             Response::Error { reason } => Err(eyre!("emit failed: {}", reason)),
             other => Err(eyre!("unexpected response for emit: {:?}", other)),
@@ -143,9 +146,7 @@ impl NodeClient {
     async fn refresh(&self, refresh: &Refresh) -> Result<Vec<BlindSignature>> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
-            Response::Error { reason } => {
-                Err(eyre!("refresh failed: {}", reason))
-            }
+            Response::Error { reason } => Err(eyre!("refresh failed: {}", reason)),
             other => Err(eyre!("unexpected response for refresh: {:?}", other)),
         }
     }
@@ -154,7 +155,7 @@ impl NodeClient {
 #[derive(Debug, Default, Clone)]
 struct Wallet {
     id: usize,
-    notes: HashMap<AssetId, Vec<Note>>,
+    notes: HashMap<Asset, Vec<Note>>,
     sent: u64,
     received: u64,
     failures: u64,
@@ -203,12 +204,14 @@ impl AppState {
                     .assets
                     .iter()
                     .map(|asset| {
-                        let notes = wallet.notes.get(&asset.id);
+                        let key = Asset {
+                            policy_id: asset.policy_id,
+                            asset_name: asset.asset_name,
+                        };
+                        let notes = wallet.notes.get(&key);
                         WalletBalance {
                             balance: notes
-                                .map(|v| {
-                                    v.iter().map(|n| n.amount).sum::<u64>()
-                                })
+                                .map(|v| v.iter().map(|n| n.amount).sum::<u64>())
                                 .unwrap_or(0),
                             notes: notes.map(|v| v.len()).unwrap_or(0),
                         }
@@ -279,7 +282,7 @@ struct PendingTx {
     id: u64,
     sender_id: usize,
     receiver_id: usize,
-    asset: AssetId,
+    asset: Asset,
     input_note: Note,
     spend_amount: u64,
     refresh: Refresh,
@@ -497,9 +500,10 @@ const CARDANO_ASSET_DEFS: &[CardanoAssetDef] = &[
 
 #[derive(Debug, Clone, Copy)]
 struct SimAsset {
-    id: AssetId,
+    policy_id: PolicyId,
+    asset_name: AssetName,
     name: &'static str,
-    policy_id: &'static str,
+    policy_id_hex: &'static str,
 }
 
 fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
@@ -509,21 +513,15 @@ fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
     let mut selected = Vec::with_capacity(count);
     for i in 0..count {
         let def = defs[i % defs.len()];
-        let policy_bytes =
-            muhex::decode(def.policy_id).expect("policy_id must be hex");
-        let policy_id = PolicyId(
-            policy_bytes.try_into().expect("policy_id must be 28 bytes"),
-        );
-        let asset_name = AssetName::new(def.asset_name.as_bytes())
-            .expect("asset_name must be <= 32 bytes");
-        let id = AssetId {
+        let policy_bytes = muhex::decode(def.policy_id).expect("policy_id must be hex");
+        let policy_id = PolicyId(policy_bytes.try_into().expect("policy_id must be 28 bytes"));
+        let asset_name =
+            AssetName::new(def.asset_name.as_bytes()).expect("asset_name must be <= 32 bytes");
+        selected.push(SimAsset {
             policy_id,
             asset_name,
-        };
-        selected.push(SimAsset {
-            id,
             name: def.asset_name,
-            policy_id: def.policy_id,
+            policy_id_hex: def.policy_id,
         });
     }
 
@@ -550,14 +548,20 @@ async fn bootstrap_wallets(
         for asset in assets.iter() {
             for _ in 0..notes_per_wallet {
                 let amount = rng.random_range(amount_range.0..=amount_range.1);
-                let note = client.emit(asset.id, amount).await?;
+                let note = client
+                    .emit(asset.policy_id, asset.asset_name, amount)
+                    .await?;
                 state.log(format!(
                     "emit via node wallet={} asset={} amount={amount}",
                     wallet_id, asset.name
                 ));
 
                 let w = &mut state.wallets[wallet_id];
-                w.notes.entry(asset.id).or_default().push(note);
+                let key = Asset {
+                    policy_id: asset.policy_id,
+                    asset_name: asset.asset_name,
+                };
+                w.notes.entry(key).or_default().push(note);
             }
         }
     }
@@ -569,8 +573,14 @@ fn reserve_spendable_note(
     wallet: &mut Wallet,
     assets: &[SimAsset],
     rng: &mut StdRng,
-) -> Option<(AssetId, Note)> {
-    let mut shuffled: Vec<AssetId> = assets.iter().map(|a| a.id).collect();
+) -> Option<(Asset, Note)> {
+    let mut shuffled: Vec<Asset> = assets
+        .iter()
+        .map(|a| Asset {
+            policy_id: a.policy_id,
+            asset_name: a.asset_name,
+        })
+        .collect();
     shuffled.shuffle(rng);
     for asset in shuffled {
         if let Some(notes) = wallet.notes.get_mut(&asset)
@@ -585,16 +595,16 @@ fn reserve_spendable_note(
 fn build_refresh(
     input_owner: usize,
     output_owner: usize,
-    asset: AssetId,
+    asset: Asset,
     input_note: Note,
     amount: u64,
 ) -> Result<(Refresh, Vec<usize>)> {
     let mut builder = RefreshBuilder::new().input(input_note.clone());
-    builder = builder.output(asset, amount);
+    builder = builder.output(asset.policy_id, asset.asset_name, amount);
 
     if input_note.amount > amount {
         let change = input_note.amount - amount;
-        builder = builder.output(asset, change);
+        builder = builder.output(asset.policy_id, asset.asset_name, change);
     }
 
     let refresh = builder.build()?;
@@ -621,9 +631,9 @@ fn materialize_outputs(
             continue;
         }
 
-        let signature = output_iter.next().ok_or_else(|| {
-            eyre!("missing signature for output {}", atom_idx)
-        })?;
+        let signature = output_iter
+            .next()
+            .ok_or_else(|| eyre!("missing signature for output {}", atom_idx))?;
 
         let asset = refresh
             .asset_ids
@@ -641,18 +651,15 @@ fn materialize_outputs(
             return Err(eyre!("invalid DLEQ proof for output {}", atom_idx));
         }
 
-        if !crypto::verify(
-            &delegate,
-            commitment.as_ref(),
-            signature.signature.0,
-        )? {
+        if !crypto::verify(&delegate, commitment.as_ref(), signature.signature.0)? {
             return Err(eyre!("invalid signature for output {}", atom_idx));
         }
 
         let note = Note {
             amount: atom.amount,
             delegate: atom.delegate,
-            asset_id: *asset,
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
             nonce: atom.nonce,
             signature: signature.signature.0,
             dleq: Some(DleqProofWithBlinding {
@@ -805,9 +812,13 @@ async fn simulation_owner_loop(
                             ) {
                                 Ok(notes) => {
                                     for (owner, note) in notes {
+                                        let key = Asset {
+                                            policy_id: note.policy_id,
+                                            asset_name: note.asset_name,
+                                        };
                                         state.wallets[owner]
                                             .notes
-                                            .entry(note.asset_id)
+                                            .entry(key)
                                             .or_default()
                                             .push(note);
                                     }
@@ -895,11 +906,7 @@ fn render_ui(
                 Span::raw("  Paused: "),
                 Span::styled(
                     format!("{}", paused),
-                    Style::default().fg(if paused {
-                        Color::Yellow
-                    } else {
-                        Color::Green
-                    }),
+                    Style::default().fg(if paused { Color::Yellow } else { Color::Green }),
                 ),
             ]),
             Line::from(vec![
@@ -907,9 +914,7 @@ fn render_ui(
                 Span::styled(
                     format!(
                         "{}/{}/{}",
-                        snapshot.total_sent,
-                        snapshot.total_ok,
-                        snapshot.total_err
+                        snapshot.total_sent, snapshot.total_ok, snapshot.total_err
                     ),
                     Style::default().fg(Color::Magenta),
                 ),
@@ -930,26 +935,17 @@ fn render_ui(
 
         let body_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(
-                [Constraint::Percentage(60), Constraint::Percentage(40)]
-                    .as_ref(),
-            )
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
             .split(layout[1]);
 
         let mut rows = Vec::new();
         for wallet in snapshot.wallets.iter() {
             let row_style = Style::default().fg(wallet_color(wallet.id));
             let mut balance_lines = Vec::new();
-            for (asset, balance) in
-                snapshot.assets.iter().zip(wallet.balances.iter())
-            {
-                let short_policy =
-                    asset.policy_id.get(0..8).unwrap_or(asset.policy_id);
+            for (asset, balance) in snapshot.assets.iter().zip(wallet.balances.iter()) {
+                let short_policy = &asset.policy_id_hex[0..8];
                 balance_lines.push(Line::from(vec![
-                    Span::styled(
-                        asset.name,
-                        Style::default().add_modifier(Modifier::BOLD),
-                    ),
+                    Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
                     Span::raw(format!(
                         " ({short_policy}) bal={} notes={}",
                         balance.balance, balance.notes
@@ -994,8 +990,7 @@ fn render_ui(
             .iter()
             .map(|l| ListItem::new(l.clone()))
             .collect();
-        let log_block = List::new(logs)
-            .block(Block::default().borders(Borders::ALL).title("Logs"));
+        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Logs"));
         f.render_widget(log_block, body_chunks[1]);
 
         let footer = Paragraph::new(Line::from(vec![
@@ -1135,9 +1130,8 @@ async fn main() -> Result<()> {
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();
-    let mut ui_handle = tokio::task::spawn_blocking(move || {
-        ui_loop(snapshot_rx, ui_cmd_tx, terminal)
-    });
+    let mut ui_handle =
+        tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
 
     let mut owner_done = false;
     let mut ui_done = false;
@@ -1191,10 +1185,8 @@ mod tests {
         Note {
             amount: 1,
             delegate: PublicKey([9u8; 32]),
-            asset_id: AssetId {
-                policy_id: PolicyId([7u8; 28]),
-                asset_name: AssetName::empty(),
-            },
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
             nonce: Hash([5u8; 32]),
             signature: Signature([signature_byte; 32]),
             dleq: None,
@@ -1209,9 +1201,7 @@ mod tests {
         // Simulate concurrent modification before reserving.
         notes.swap_remove(0);
 
-        let Some(pos) =
-            notes.iter().position(|n| n.signature == target.signature)
-        else {
+        let Some(pos) = notes.iter().position(|n| n.signature == target.signature) else {
             panic!("target note missing");
         };
 

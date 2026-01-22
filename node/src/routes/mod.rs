@@ -54,9 +54,13 @@ pub async fn rpc(
             }),
         },
         Request::Info => Json(Response::Info(keypair.public_key)),
-        Request::Emit { asset_id, amount } => {
+        Request::Emit {
+            policy_id,
+            asset_name,
+            amount,
+        } => {
             let mut rng = rand::rng();
-            match emit_note(&keypair, asset_id, amount, &mut rng) {
+            match emit_note(&keypair, policy_id, asset_name, amount, &mut rng) {
                 Ok(note) => Json(Response::Emit(note)),
                 Err(e) => Json(Response::Error {
                     reason: e.to_string(),

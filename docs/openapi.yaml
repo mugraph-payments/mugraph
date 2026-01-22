@@ -280,7 +280,7 @@ components:
         a_:
           type: array
           items:
-            $ref: "#/components/schemas/AssetId"
+            $ref: "#/components/schemas/Asset"
           description: >
             Asset catalog. Each atom references an asset by index into this array.
             This allows atoms to share asset definitions, reducing payload size.
@@ -311,7 +311,7 @@ components:
         - Input signatures must be previously unused
         - All assets in a refresh must be present in the asset catalog
 
-    Atom:
+  Atom:
       type: object
       required: [delegate, asset_id, amount, nonce]
       properties:
@@ -358,7 +358,7 @@ components:
 
     Note:
       type: object
-      required: [amount, delegate, asset_id, nonce, signature]
+      required: [amount, delegate, policy_id, asset_name, nonce, signature]
       properties:
         amount:
           type: integer
@@ -372,11 +372,15 @@ components:
           description: >
             Public key of the delegate that signed this note. Only this delegate
             can verify or spend the note in a refresh transaction.
-        asset_id:
-          $ref: "#/components/schemas/AssetId"
+        policy_id:
+          $ref: "#/components/schemas/PolicyId"
           description: >
-            Cardano asset identifier (policy_id + asset_name) specifying which asset
-            this note holds. Can be any Cardano native asset or a stablecoin.
+            Minting policy controlling the asset. Inline on the note for clarity.
+        asset_name:
+          $ref: "#/components/schemas/AssetName"
+          description: >
+            Asset name (0-32 bytes) identifying the token under the policy. Inline on the
+            note instead of a hashed asset_id.
         nonce:
           $ref: "#/components/schemas/Hash"
           description: >
@@ -476,7 +480,7 @@ components:
         that are directly emitted by the delegate, allowing verification that
         the note was correctly signed.
 
-    AssetId:
+    Asset:
       type: object
       required: [policy_id, asset_name]
       properties:
@@ -486,14 +490,8 @@ components:
           $ref: "#/components/schemas/AssetName"
       additionalProperties: false
       description: >
-        Cardano asset identifier consisting of policy_id and asset_name. This uniquely
-        identifies any Cardano native asset, including:
-        - Native tokens (e.g., SNEK, HOSKY)
-        - Stablecoins (e.g., USDM, iUSD)
-        - NFTs (when amount is 1)
-
-        The policy_id is the minting policy that controls who can create more of
-        this asset. The asset_name distinguishes multiple assets under the same policy.
+        Cardano asset spec consisting of policy_id and asset_name. Used inline on notes and
+        in refresh asset catalogs instead of a hashed asset identifier.
 
     PolicyId:
       type: string

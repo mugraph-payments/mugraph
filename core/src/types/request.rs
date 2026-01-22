@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::types::{AssetId, Refresh};
+use crate::types::{AssetName, PolicyId, Refresh};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "m", content = "p")]
@@ -9,7 +9,11 @@ pub enum Request {
     #[serde(rename = "refresh")]
     Refresh(Refresh),
     #[serde(rename = "emit")]
-    Emit { asset_id: AssetId, amount: u64 },
+    Emit {
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        amount: u64,
+    },
     #[serde(rename = "public_key")]
     Info,
 }

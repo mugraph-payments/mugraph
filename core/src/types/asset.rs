@@ -13,18 +13,7 @@ pub const POLICY_ID_SIZE: usize = 28;
 pub const ASSET_NAME_MAX_SIZE: usize = 32;
 pub const ASSET_ID_BYTES_SIZE: usize = POLICY_ID_SIZE + 4 + ASSET_NAME_MAX_SIZE;
 
-#[derive(
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    Hash,
-)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct PolicyId(#[serde(with = "muhex::serde")] pub [u8; POLICY_ID_SIZE]);
@@ -186,8 +175,7 @@ impl Serialize for AssetName {
     where
         S: serde::Serializer,
     {
-        let name = core::str::from_utf8(self.as_bytes())
-            .map_err(serde::ser::Error::custom)?;
+        let name = core::str::from_utf8(self.as_bytes()).map_err(serde::ser::Error::custom)?;
         serializer.serialize_str(name)
     }
 }
@@ -227,6 +215,7 @@ impl core::fmt::Debug for AssetName {
 }
 
 #[derive(
+    Debug,
     Clone,
     Copy,
     Default,
@@ -239,20 +228,14 @@ impl core::fmt::Debug for AssetName {
     PartialOrd,
     Ord,
 )]
-pub struct AssetId {
+pub struct Asset {
     pub policy_id: PolicyId,
     pub asset_name: AssetName,
 }
 
-impl AssetId {
+impl Asset {
     pub fn write_bytes(&self, out: &mut [u8]) {
-        debug_assert_eq!(out.len(), ASSET_ID_BYTES_SIZE);
-
-        out[..POLICY_ID_SIZE].copy_from_slice(self.policy_id.as_ref());
-        out[POLICY_ID_SIZE..POLICY_ID_SIZE + 4]
-            .copy_from_slice(&self.asset_name.len_u32().to_le_bytes());
-        out[POLICY_ID_SIZE + 4..]
-            .copy_from_slice(self.asset_name.as_padded_bytes());
+        write_asset_bytes(&self.policy_id, &self.asset_name, out);
     }
 
     pub fn to_bytes(&self) -> [u8; ASSET_ID_BYTES_SIZE] {
@@ -262,20 +245,11 @@ impl AssetId {
     }
 }
 
-impl core::fmt::Display for AssetId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self.asset_name.is_empty() {
-            true => f.write_fmt(format_args!("{}", self.policy_id)),
-            false => f.write_fmt(format_args!(
-                "{}.{}",
-                self.policy_id, self.asset_name
-            )),
-        }
-    }
-}
+#[inline]
+pub fn write_asset_bytes(policy_id: &PolicyId, asset_name: &AssetName, out: &mut [u8]) {
+    debug_assert_eq!(out.len(), ASSET_ID_BYTES_SIZE);
 
-impl core::fmt::Debug for AssetId {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        Display::fmt(self, f)
-    }
+    out[..POLICY_ID_SIZE].copy_from_slice(policy_id.as_ref());
+    out[POLICY_ID_SIZE..POLICY_ID_SIZE + 4].copy_from_slice(&asset_name.len_u32().to_le_bytes());
+    out[POLICY_ID_SIZE + 4..].copy_from_slice(asset_name.as_padded_bytes());
 }
