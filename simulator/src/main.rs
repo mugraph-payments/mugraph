@@ -137,7 +137,7 @@ impl NodeClient {
             })
             .await?
         {
-            Response::Emit(note) => Ok(note),
+            Response::Emit(note) => Ok(*note),
             Response::Error { reason } => Err(eyre!("emit failed: {}", reason)),
             other => Err(eyre!("unexpected response for emit: {:?}", other)),
         }

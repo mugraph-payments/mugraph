@@ -14,7 +14,7 @@ pub enum Response {
     #[serde(rename = "public_key")]
     Info(PublicKey),
     #[serde(rename = "emit")]
-    Emit(Note),
+    Emit(Box<Note>),
     #[serde(rename = "error")]
     Error { reason: String },
 }

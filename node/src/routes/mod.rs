@@ -61,7 +61,7 @@ pub async fn rpc(
         } => {
             let mut rng = rand::rng();
             match emit_note(&keypair, policy_id, asset_name, amount, &mut rng) {
-                Ok(note) => Json(Response::Emit(note)),
+                Ok(note) => Json(Response::Emit(Box::new(note))),
                 Err(e) => Json(Response::Error {
                     reason: e.to_string(),
                 }),
