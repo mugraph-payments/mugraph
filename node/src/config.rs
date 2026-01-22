@@ -21,6 +21,42 @@ pub enum Config {
 
         #[clap(short, long)]
         secret_key: Option<String>,
+
+        /// Cardano network (mainnet, preprod, preview, testnet)
+        #[clap(long, env = "CARDANO_NETWORK", default_value = "preprod")]
+        cardano_network: String,
+
+        /// Cardano provider (blockfrost, maestro)
+        #[clap(long, env = "CARDANO_PROVIDER", default_value = "blockfrost")]
+        cardano_provider: String,
+
+        /// Cardano provider API key
+        #[clap(long, env = "CARDANO_API_KEY")]
+        cardano_api_key: Option<String>,
+
+        /// Cardano provider URL (optional, for custom endpoints)
+        #[clap(long, env = "CARDANO_PROVIDER_URL")]
+        cardano_provider_url: Option<String>,
+
+        /// Optional Cardano payment signing key to import (hex encoded)
+        #[clap(long, env = "CARDANO_PAYMENT_SK")]
+        cardano_payment_sk: Option<String>,
+
+        /// Number of blocks for deposit confirmation depth (default: 15)
+        #[clap(long, env = "DEPOSIT_CONFIRM_DEPTH", default_value = "15")]
+        deposit_confirm_depth: u64,
+
+        /// Number of blocks after which unclaimed deposits expire (default: 1440)
+        #[clap(long, env = "DEPOSIT_EXPIRATION_BLOCKS", default_value = "1440")]
+        deposit_expiration_blocks: u64,
+
+        /// Minimum deposit value in lovelace
+        #[clap(long, env = "MIN_DEPOSIT_VALUE")]
+        min_deposit_value: Option<u64>,
+
+        /// Maximum transaction size in bytes for withdrawal CBOR (default: 16384)
+        #[clap(long, env = "MAX_TX_SIZE", default_value = "16384")]
+        max_tx_size: usize,
     },
     #[command(about)]
     GenerateKey,
@@ -47,10 +83,8 @@ impl Config {
                 secret_key: Some(secret_key),
                 ..
             } => {
-                let key_bytes = muhex::decode(secret_key).map_err(|e| {
-                    Error::InvalidKey {
-                        reason: e.to_string(),
-                    }
+                let key_bytes = muhex::decode(secret_key).map_err(|e| Error::InvalidKey {
+                    reason: e.to_string(),
                 })?;
 
                 if key_bytes.len() != 32 {
@@ -59,8 +93,7 @@ impl Config {
                     });
                 }
 
-                let key: [u8; 32] =
-                    key_bytes.try_into().expect("Already validated length");
+                let key: [u8; 32] = key_bytes.try_into().expect("Already validated length");
                 let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {

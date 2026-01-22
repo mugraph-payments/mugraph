@@ -14,8 +14,14 @@ pub enum Error {
     #[error("Server error: {reason}")]
     ServerError { reason: String },
 
-    #[error("Server error: {reason}")]
+    #[error("Network error: {reason}")]
     NetworkError { reason: String },
+
+    #[error("Internal error: {reason}")]
+    Internal { reason: String },
+
+    #[error("Invalid input: {reason}")]
+    InvalidInput { reason: String },
 
     #[error("Simulated error: {reason}")]
     SimulatedError { reason: String },

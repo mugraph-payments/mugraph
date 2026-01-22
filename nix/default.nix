@@ -48,6 +48,7 @@ let
     packages = [
       checks.pre-commit.enabledPackages
       lib.rust
+      prev.aiken
       prev.cargo-machete
       prev.cargo-nextest
       prev.cargo-pgo
@@ -56,7 +57,6 @@ let
       prev.pkg-config
       prev.protobuf
       prev.samply
-      prev.typst
       scripts
     ]
     ++ optionals isDarwin [ SystemConfiguration ];

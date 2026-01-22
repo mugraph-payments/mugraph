@@ -111,7 +111,7 @@ impl NodeClient {
 
     async fn public_key(&self) -> Result<PublicKey> {
         match self.rpc(&Request::Info).await? {
-            Response::Info(pk) => Ok(pk),
+            Response::Info { delegate_pk, .. } => Ok(delegate_pk),
             Response::Error { reason } => Err(eyre!("public_key failed: {}", reason)),
             other => Err(eyre!("unexpected response for public_key: {:?}", other)),
         }

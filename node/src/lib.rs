@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use color_eyre::eyre::Result;
 
+pub mod cardano;
 pub mod config;
 pub mod database;
 pub mod routes;

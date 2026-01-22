@@ -1,7 +1,10 @@
 use std::{fs::OpenOptions, path::PathBuf};
 
 use metrics::counter;
-use mugraph_core::{error::Error, types::Signature};
+use mugraph_core::{
+    error::Error,
+    types::{CardanoWallet, DepositRecord, Signature, UtxoRef, WithdrawalKey, WithdrawalRecord},
+};
 use redb::{
     Builder,
     Database as Redb,
@@ -17,8 +20,21 @@ use redb::{
     backends::FileBackend,
 };
 
-pub const NOTES: TableDefinition<Signature, bool> =
-    TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
+
+/// Schema version key for database migrations
+pub const SCHEMA_VERSION: TableDefinition<&str, u64> = TableDefinition::new("schema_version");
+
+/// Cardano wallet data (single row with key "wallet")
+pub const CARDANO_WALLET: TableDefinition<&str, CardanoWallet> =
+    TableDefinition::new("cardano_wallet");
+
+/// Deposits indexed by UTxO reference (tx_hash[32] + index[2])
+pub const DEPOSITS: TableDefinition<UtxoRef, DepositRecord> = TableDefinition::new("deposits");
+
+/// Withdrawals indexed by network[1] + tx_hash[32]
+pub const WITHDRAWALS: TableDefinition<WithdrawalKey, WithdrawalRecord> =
+    TableDefinition::new("withdrawals");
 
 #[derive(Debug)]
 pub struct Database {
@@ -74,10 +90,7 @@ impl Database {
         })
     }
 
-    fn setup_with_backend<B: StorageBackend>(
-        backend: B,
-        should_setup: bool,
-    ) -> Result<Redb, Error> {
+    fn setup_with_backend<B: StorageBackend>(backend: B, should_setup: bool) -> Result<Redb, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         if should_setup {
@@ -88,10 +101,54 @@ impl Database {
                 t.insert(Signature::zero(), true)?;
             }
 
+            {
+                let mut t = w.open_table(SCHEMA_VERSION)?;
+                t.insert("version", 1)?;
+            }
+
             w.commit()?;
         }
 
         Ok(db)
+    }
+
+    /// Run database migrations to create new tables
+    pub fn migrate(&self) -> Result<(), Error> {
+        let w = self.db.begin_write()?;
+
+        // Create CARDANO_WALLET table if it doesn't exist
+        {
+            let _ = w.open_table(CARDANO_WALLET)?;
+        }
+
+        // Create DEPOSITS table if it doesn't exist
+        {
+            let _ = w.open_table(DEPOSITS)?;
+        }
+
+        // Create WITHDRAWALS table if it doesn't exist
+        {
+            let _ = w.open_table(WITHDRAWALS)?;
+        }
+
+        // Update schema version
+        {
+            let mut t = w.open_table(SCHEMA_VERSION)?;
+            t.insert("version", 2)?;
+        }
+
+        w.commit()?;
+        Ok(())
+    }
+
+    /// Get current schema version
+    pub fn schema_version(&self) -> Result<u64, Error> {
+        let r = self.db.begin_read()?;
+        let t = r.open_table(SCHEMA_VERSION)?;
+        match t.get("version")? {
+            Some(v) => Ok(v.value()),
+            None => Ok(0),
+        }
     }
 
     #[tracing::instrument(skip_all)]
