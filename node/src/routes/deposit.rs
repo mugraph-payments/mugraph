@@ -2,8 +2,9 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{BlindSignature, DepositRequest, Response, UtxoRef},
+    types::{BlindSignature, DepositRequest, PublicKey, Response, UtxoRef},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     cardano::setup_cardano_wallet,
@@ -188,15 +189,34 @@ fn verify_deposit_signature(
     Ok(())
 }
 
+/// UTXO reference for canonical payload serialization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CanonicalUtxo {
+    tx_hash: String,
+    index: u16,
+}
+
+/// Canonical payload for signature verification
+/// Sorted JSON with no extra whitespace
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CanonicalPayload {
+    utxo: CanonicalUtxo,
+    outputs: Vec<String>,
+    #[serde(rename = "delegate_pk")]
+    delegate_pk: String,
+    #[serde(rename = "script_address")]
+    script_address: String,
+    nonce: u64,
+    network: String,
+}
+
 /// Build canonical payload for signature verification
 /// Sorted JSON with no extra whitespace
 fn build_canonical_payload(
     request: &DepositRequest,
-    delegate_pk: &mugraph_core::types::PublicKey,
+    delegate_pk: &PublicKey,
     script_address: &str,
 ) -> Vec<u8> {
-    use serde_json::json;
-
     // Convert outputs to serializable format
     // BlindSignature has: signature: Blinded<Signature>, proof: DleqProof
     // Blinded<Signature> has field 0 which is Signature
@@ -207,20 +227,20 @@ fn build_canonical_payload(
         .map(|o| hex::encode(o.signature.0.0))
         .collect();
 
-    let payload = json!({
-        "utxo": {
-            "tx_hash": request.utxo.tx_hash,
-            "index": request.utxo.index,
+    let payload = CanonicalPayload {
+        utxo: CanonicalUtxo {
+            tx_hash: request.utxo.tx_hash.clone(),
+            index: request.utxo.index,
         },
-        "outputs": outputs,
-        "delegate_pk": hex::encode(delegate_pk.0),
-        "script_address": script_address,
-        "nonce": request.nonce,
-        "network": request.network,
-    });
+        outputs,
+        delegate_pk: hex::encode(delegate_pk.0),
+        script_address: script_address.to_string(),
+        nonce: request.nonce,
+        network: request.network.clone(),
+    };
 
     // Serialize to canonical JSON (no extra whitespace, sorted keys)
-    payload.to_string().into_bytes()
+    serde_json::to_string(&payload).unwrap().into_bytes()
 }
 
 /// Fetch UTxO from provider and validate it's at the script address

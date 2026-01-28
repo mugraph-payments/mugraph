@@ -83,7 +83,7 @@ pub struct WithdrawResponse {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::Value;
 
     use crate::types::{Refresh, Request};
 
@@ -91,14 +91,21 @@ mod tests {
     fn test_serialization() {
         let request: Request = Request::Refresh(Refresh::default());
 
-        let expected = json!({
-            "m": "refresh",
-            "p": {
-                "m": 0,
-                "a": [],
-                "a_": [],
-                "s": [],
-            }
+        let expected = Value::Object({
+            let mut map = serde_json::Map::new();
+            map.insert("m".to_string(), Value::String("refresh".to_string()));
+            map.insert(
+                "p".to_string(),
+                Value::Object({
+                    let mut inner = serde_json::Map::new();
+                    inner.insert("m".to_string(), Value::Number(0.into()));
+                    inner.insert("a".to_string(), Value::Array(vec![]));
+                    inner.insert("a_".to_string(), Value::Array(vec![]));
+                    inner.insert("s".to_string(), Value::Array(vec![]));
+                    inner
+                }),
+            );
+            map
         });
 
         assert_eq!(expected, serde_json::to_value(&request).unwrap());
@@ -107,8 +114,10 @@ mod tests {
     #[test]
     fn test_info_serialization() {
         let request: Request = Request::Info;
-        let expected = json!({
-            "m": "public_key"
+        let expected = Value::Object({
+            let mut map = serde_json::Map::new();
+            map.insert("m".to_string(), Value::String("public_key".to_string()));
+            map
         });
 
         assert_eq!(expected, serde_json::to_value(&request).unwrap());
