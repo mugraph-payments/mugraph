@@ -100,6 +100,9 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let (input_totals, required_user_hashes) =
         validate_script_inputs_with_deposits(&tx_bytes, &wallet, ctx, &provider).await?;
 
+    // 6b. Enforce intent and network binding via auxiliary metadata
+    validate_withdraw_intent_metadata(&tx_bytes, &wallet.network)?;
+
     // 7. Validate user witnesses (basic count check)
     validate_user_witnesses(&tx_bytes, &request.notes, &required_user_hashes, &wallet).await?;
 
@@ -1164,6 +1167,85 @@ fn validate_transaction_balance(
     Ok(())
 }
 
+/// Validate withdrawal intent binding using auxiliary metadata.
+///
+/// Expect a metadata entry with label 1914 containing a map:
+/// { "network": "<network>", "tx_body_hash": "<hex blake2b-256(body)>" }
+fn validate_withdraw_intent_metadata(tx_cbor: &[u8], network: &str) -> Result<(), Error> {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid transaction CBOR: {}", e),
+    })?;
+
+    let aux = tx.auxiliary_data().ok_or_else(|| Error::InvalidInput {
+        reason: "Transaction missing auxiliary data for intent binding".to_string(),
+    })?;
+
+    let metadata = aux.metadata().ok_or_else(|| Error::InvalidInput {
+        reason: "Auxiliary data missing metadata map".to_string(),
+    })?;
+
+    let label = csl::BigNum::from_str("1914").map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid metadatum label: {}", e),
+    })?;
+    let metadatum = metadata.get(&label).ok_or_else(|| Error::InvalidInput {
+        reason: "Metadata label 1914 missing for intent binding".to_string(),
+    })?;
+
+    let map = metadatum.as_map().map_err(|e| Error::InvalidInput {
+        reason: format!("Metadata label 1914 must be a map: {}", e),
+    })?;
+
+    let mut network_ok = false;
+    let mut hash_ok = false;
+
+    let keys = map.keys();
+    for i in 0..keys.len() {
+        let key_md = keys.get(i);
+        let key_txt = match key_md.as_text() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+
+        let val = map.get(&key_md).map_err(|e| Error::InvalidInput {
+            reason: format!("Metadata map lookup failed: {}", e),
+        })?;
+
+        match key_txt.as_str() {
+            "network" => {
+                if let Ok(n_txt) = val.as_text() {
+                    network_ok = n_txt == network;
+                }
+            }
+            "tx_body_hash" => {
+                if let Ok(h_txt) = val.as_text() {
+                    // Compute body hash
+                    let body_bytes = tx.body().to_bytes();
+                    type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+                    let h = Blake2b256::digest(&body_bytes);
+                    let mut h_arr = [0u8; 32];
+                    h_arr.copy_from_slice(&h);
+                    let expected_hex = hex::encode(h_arr);
+                    hash_ok = h_txt.eq_ignore_ascii_case(&expected_hex);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !network_ok {
+        return Err(Error::InvalidInput {
+            reason: "Intent metadata network mismatch".to_string(),
+        });
+    }
+    if !hash_ok {
+        return Err(Error::InvalidInput {
+            reason: "Intent metadata tx_body_hash mismatch".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 /// Validate that outputs stay on the same network and do not return change to the script.
 fn validate_network_and_change_outputs(
     tx_cbor: &[u8],
@@ -1303,6 +1385,56 @@ mod tests {
         assert!(res.is_ok());
     }
 
+    #[test]
+    fn test_intent_metadata_binding() {
+        // Build tx body
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+
+        // Compute body hash
+        let body_bytes = body.to_bytes();
+        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+        let h = Blake2b256::digest(&body_bytes);
+        let mut h_arr = [0u8; 32];
+        h_arr.copy_from_slice(&h);
+        let h_hex = hex::encode(h_arr);
+
+        // Build metadata label 1914 with network + tx_body_hash
+        let mut md_map = csl::MetadataMap::new();
+        let md_network = csl::TransactionMetadatum::new_text("preprod".to_string()).unwrap();
+        let md_hash = csl::TransactionMetadatum::new_text(h_hex.clone()).unwrap();
+        md_map.insert_str("network", &md_network).unwrap();
+        md_map.insert_str("tx_body_hash", &md_hash).unwrap();
+        let metadatum = csl::TransactionMetadatum::new_map(&md_map);
+        let mut general_md = csl::GeneralTransactionMetadata::new();
+        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
+        let mut aux = csl::AuxiliaryData::new();
+        aux.set_metadata(&general_md);
+
+        let witness_set = csl::TransactionWitnessSet::new();
+        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
+
+        assert!(validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod").is_ok());
+
+        // Tamper network
+        assert!(validate_withdraw_intent_metadata(&tx.to_bytes(), "mainnet").is_err());
+    }
+
     /// Reject outputs that pay back to the script address (change not supported yet)
     #[test]
     fn test_reject_change_output_to_script() {
@@ -1386,6 +1518,54 @@ mod tests {
         assert!(format!("{:?}", err).contains("network_id 1"));
     }
 
+    #[test]
+    fn test_intent_metadata_missing() {
+        let tx = minimal_tx_with_values(1_000_000, 170_000);
+        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod").unwrap_err();
+        assert!(format!("{:?}", err).contains("auxiliary data"));
+    }
+
+    #[test]
+    fn test_intent_metadata_hash_mismatch() {
+        let tx = tx_with_intent_metadata("preprod", Some("00".repeat(32)));
+        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod").unwrap_err();
+        assert!(format!("{:?}", err).contains("tx_body_hash mismatch"));
+    }
+
+    #[test]
+    fn test_intent_metadata_network_mismatch() {
+        let tx = tx_with_intent_metadata("preprod", None);
+        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "mainnet").unwrap_err();
+        assert!(format!("{:?}", err).contains("network mismatch"));
+    }
+
+    #[test]
+    fn test_multiasset_imbalance_rejected() {
+        // Inputs: 1 ADA + 5 tokens; Outputs: 1 ADA + 6 tokens -> should fail
+        let policy_hex = "00".repeat(28); // 28-byte script hash in hex
+        let asset_hex = "746f6b656e"; // "token"
+        let tx = tx_with_multiasset_output(1_000_000, &[(&policy_hex, asset_hex, 6)]);
+        let tx_cbor = tx.to_bytes();
+        let mut inputs = HashMap::new();
+        inputs.insert("lovelace".to_string(), 1_000_000u128);
+        inputs.insert(format!("{}{}", policy_hex, asset_hex), 5u128);
+        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_multiasset_phantom_asset_rejected() {
+        // Inputs: only ADA; Outputs: ADA + new token -> should fail
+        let policy_hex = "00".repeat(28);
+        let asset_hex = "746f6b656e";
+        let tx = tx_with_multiasset_output(1_000_000, &[(&policy_hex, asset_hex, 1)]);
+        let tx_cbor = tx.to_bytes();
+        let mut inputs = HashMap::new();
+        inputs.insert("lovelace".to_string(), 1_100_000u128); // cover fee + output
+        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
+        assert!(res.is_err());
+    }
+
     fn minimal_tx_with_required_signer(
         signer_hash_hex: &str,
         witness_set: Option<csl::TransactionWitnessSet>,
@@ -1433,6 +1613,87 @@ mod tests {
         outputs.add(&output);
 
         let fee = csl::Coin::from_str(&fee.to_string()).unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        csl::Transaction::new(&body, &witness_set, None)
+    }
+
+    fn tx_with_intent_metadata(network: &str, override_hash: Option<String>) -> csl::Transaction {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+
+        let body_hash_hex = if let Some(h) = override_hash {
+            h
+        } else {
+            type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+            let h = Blake2b256::digest(&body.to_bytes());
+            hex::encode(h)
+        };
+
+        let mut md_map = csl::MetadataMap::new();
+        let md_network = csl::TransactionMetadatum::new_text(network.to_string()).unwrap();
+        let md_hash = csl::TransactionMetadatum::new_text(body_hash_hex).unwrap();
+        md_map.insert_str("network", &md_network).unwrap();
+        md_map.insert_str("tx_body_hash", &md_hash).unwrap();
+        let metadatum = csl::TransactionMetadatum::new_map(&md_map);
+        let mut general_md = csl::GeneralTransactionMetadata::new();
+        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
+        let mut aux = csl::AuxiliaryData::new();
+        aux.set_metadata(&general_md);
+
+        let witness_set = csl::TransactionWitnessSet::new();
+        csl::Transaction::new(&body, &witness_set, Some(aux))
+    }
+
+    fn tx_with_multiasset_output(
+        lovelace: u64,
+        assets: &[(&str, &str, u64)], // (policy_hex, asset_name_hex, qty)
+    ) -> csl::Transaction {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str(&lovelace.to_string()).unwrap();
+        let mut value = csl::Value::new(&coin);
+
+        if !assets.is_empty() {
+            let mut ma = csl::MultiAsset::new();
+            for (policy_hex, asset_hex, qty) in assets {
+                let policy = csl::ScriptHash::from_hex(policy_hex).unwrap();
+                let mut assets_map = ma.get(&policy).unwrap_or_else(csl::Assets::new);
+                let name_bytes = hex::decode(asset_hex).unwrap();
+                let name = csl::AssetName::new(name_bytes).unwrap();
+                assets_map.insert(&name, &csl::BigNum::from_str(&qty.to_string()).unwrap());
+                ma.insert(&policy, &assets_map);
+            }
+            value.set_multiasset(&ma);
+        }
+
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("0").unwrap(); // fee handled separately in tests
         let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
         let witness_set = csl::TransactionWitnessSet::new();
         csl::Transaction::new(&body, &witness_set, None)
