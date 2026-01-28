@@ -316,39 +316,145 @@ impl BlockfrostProvider {
 }
 
 impl MaestroProvider {
-    async fn get_utxo(&self, _tx_hash: &str, _output_index: u16) -> Result<Option<UtxoInfo>> {
-        // TODO: Implement Maestro API
-        Err(color_eyre::eyre::eyre!(
-            "Maestro provider not yet implemented"
-        ))
+    async fn get_utxo(&self, tx_hash: &str, output_index: u16) -> Result<Option<UtxoInfo>> {
+        let url = format!(
+            "{}/transactions/{}/outputs/{}?order=desc",
+            self.base_url, tx_hash, output_index
+        );
+
+        let response: MaestroTxOutput = self
+            .client
+            .get(&url)
+            .header("api-key", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch UTxO from Maestro")?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
+
+        Ok(Some(UtxoInfo {
+            tx_hash: tx_hash.to_string(),
+            output_index,
+            address: response.address,
+            amount: response
+                .assets
+                .into_iter()
+                .map(|a| AssetAmount {
+                    unit: a.unit,
+                    quantity: a.quantity,
+                })
+                .collect(),
+            datum_hash: response.datum_hash,
+            datum: response.datum,
+            script_ref: response.reference_script_hash,
+        }))
     }
 
-    async fn get_address_utxos(&self, _address: &str) -> Result<Vec<UtxoInfo>> {
-        // TODO: Implement Maestro API
-        Err(color_eyre::eyre::eyre!(
-            "Maestro provider not yet implemented"
-        ))
+    async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
+        let url = format!("{}/addresses/{}/utxos", self.base_url, address);
+
+        let response: Vec<MaestroAddressUtxo> = self
+            .client
+            .get(&url)
+            .header("api-key", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch address UTxOs from Maestro")?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
+
+        Ok(response
+            .into_iter()
+            .map(|u| UtxoInfo {
+                tx_hash: u.tx_hash,
+                output_index: u.tx_index as u16,
+                address: address.to_string(),
+                amount: u
+                    .assets
+                    .into_iter()
+                    .map(|a| AssetAmount {
+                        unit: a.unit,
+                        quantity: a.quantity,
+                    })
+                    .collect(),
+                datum_hash: u.datum_hash,
+                datum: None,
+                script_ref: u.reference_script_hash,
+            })
+            .collect())
     }
 
-    async fn submit_tx(&self, _tx_cbor: &[u8]) -> Result<SubmitResponse> {
-        // TODO: Implement Maestro API
-        Err(color_eyre::eyre::eyre!(
-            "Maestro provider not yet implemented"
-        ))
+    async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
+        let url = format!("{}/transactions", self.base_url);
+
+        let response: MaestroSubmitResponse = self
+            .client
+            .post(&url)
+            .header("api-key", &self.api_key)
+            .header("Content-Type", "application/cbor")
+            .body(tx_cbor.to_vec())
+            .send()
+            .await
+            .context("Failed to submit transaction to Maestro")?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
+
+        Ok(SubmitResponse {
+            tx_hash: response.hash,
+        })
     }
 
     async fn get_tip(&self) -> Result<ChainTip> {
-        // TODO: Implement Maestro API
-        Err(color_eyre::eyre::eyre!(
-            "Maestro provider not yet implemented"
-        ))
+        let url = format!("{}/blocks/latest", self.base_url);
+
+        let response: MaestroBlock = self
+            .client
+            .get(&url)
+            .header("api-key", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch tip from Maestro")?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
+
+        Ok(ChainTip {
+            slot: response.slot,
+            hash: response.hash,
+            block_height: response.height,
+        })
     }
 
     async fn get_protocol_params(&self) -> Result<ProtocolParams> {
-        // TODO: Implement Maestro API
-        Err(color_eyre::eyre::eyre!(
-            "Maestro provider not yet implemented"
-        ))
+        let url = format!("{}/protocol-params", self.base_url);
+
+        let response: MaestroProtocolParams = self
+            .client
+            .get(&url)
+            .header("api-key", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch protocol params from Maestro")?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
+
+        Ok(ProtocolParams {
+            min_fee_a: response.min_fee_a.parse().unwrap_or(44),
+            min_fee_b: response.min_fee_b.parse().unwrap_or(155381),
+            max_tx_size: response.max_tx_size.parse().unwrap_or(16384),
+            max_val_size: response.max_val_size.parse().unwrap_or(5000),
+            key_deposit: response.key_deposit.parse().unwrap_or(2000000),
+            pool_deposit: response.pool_deposit.parse().unwrap_or(500000000),
+            price_mem: response.price_mem.parse().unwrap_or(0.0577),
+            price_step: response.price_step.parse().unwrap_or(0.0000721),
+            max_tx_ex_mem: response.max_tx_ex_mem.parse().unwrap_or(14000000),
+            max_tx_ex_steps: response.max_tx_ex_steps.parse().unwrap_or(10000000000),
+            coins_per_utxo_byte: response.coins_per_utxo_byte.parse().unwrap_or(4310),
+        })
     }
 }
 
@@ -405,6 +511,58 @@ struct BlockfrostEpochParams {
     coins_per_utxo_size: String,
 }
 
+// Maestro API response types
+#[derive(Debug, Deserialize)]
+struct MaestroTxOutput {
+    address: String,
+    assets: Vec<MaestroAssetAmount>,
+    datum_hash: Option<String>,
+    datum: Option<String>,
+    reference_script_hash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroAssetAmount {
+    unit: String,
+    quantity: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroAddressUtxo {
+    tx_hash: String,
+    tx_index: i32,
+    assets: Vec<MaestroAssetAmount>,
+    datum_hash: Option<String>,
+    reference_script_hash: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroSubmitResponse {
+    hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroBlock {
+    hash: String,
+    height: u64,
+    slot: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroProtocolParams {
+    min_fee_a: String,
+    min_fee_b: String,
+    max_tx_size: String,
+    max_val_size: String,
+    key_deposit: String,
+    pool_deposit: String,
+    price_mem: String,
+    price_step: String,
+    max_tx_ex_mem: String,
+    max_tx_ex_steps: String,
+    coins_per_utxo_byte: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,6 +571,17 @@ mod tests {
     fn test_provider_creation() {
         let provider = Provider::new(
             "blockfrost",
+            "test_key".to_string(),
+            "preprod".to_string(),
+            None,
+        );
+        assert!(provider.is_ok());
+    }
+
+    #[test]
+    fn test_maestro_provider_creation() {
+        let provider = Provider::new(
+            "maestro",
             "test_key".to_string(),
             "preprod".to_string(),
             None,

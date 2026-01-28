@@ -23,6 +23,7 @@ pub use withdraw::*;
 
 use crate::{
     cardano::setup_cardano_wallet,
+    config::Config,
     database::{CARDANO_WALLET, Database},
     deposit_monitor::{DepositMonitor, DepositMonitorConfig},
     provider::Provider,
@@ -32,32 +33,39 @@ use crate::{
 pub struct Context {
     keypair: Keypair,
     database: Arc<Database>,
+    config: Config,
 }
 
-pub async fn router(keypair: Keypair) -> Result<Router, Error> {
+pub async fn router(config: Config) -> Result<Router, Error> {
     let database = Arc::new(Database::setup("./db")?);
 
     // Run database migrations
     database.migrate()?;
 
     // Initialize Cardano wallet on startup
-    initialize_cardano_wallet(&database).await?;
+    initialize_cardano_wallet(&config, &database).await?;
 
     // Start deposit monitor background task
-    start_deposit_monitor(database.clone()).await?;
+    start_deposit_monitor(&config, database.clone()).await?;
+
+    let keypair = config.keypair()?;
 
     let router = Router::new()
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .route("/health", get(health))
         .route("/rpc", post(rpc))
-        .with_state(Context { database, keypair });
+        .with_state(Context {
+            database,
+            keypair,
+            config,
+        });
 
     Ok(router)
 }
 
 /// Initialize Cardano wallet on startup
 /// Loads existing wallet or creates a new one with compiled validator
-async fn initialize_cardano_wallet(database: &Database) -> Result<(), Error> {
+async fn initialize_cardano_wallet(config: &Config, database: &Database) -> Result<(), Error> {
     // Check if wallet already exists
     {
         let read_tx = database.read()?;
@@ -70,9 +78,9 @@ async fn initialize_cardano_wallet(database: &Database) -> Result<(), Error> {
 
     tracing::info!("Initializing Cardano wallet...");
 
-    // TODO: Get network and optional payment key from config
-    let network = std::env::var("CARDANO_NETWORK").unwrap_or_else(|_| "preprod".to_string());
-    let payment_sk = std::env::var("CARDANO_PAYMENT_SK").ok();
+    // Get network and optional payment key from config
+    let network = config.network();
+    let payment_sk = config.payment_sk();
 
     // Create or load wallet
     let wallet = setup_cardano_wallet(&network, payment_sk.as_deref())
@@ -98,38 +106,28 @@ async fn initialize_cardano_wallet(database: &Database) -> Result<(), Error> {
 }
 
 /// Start the deposit monitor background task
-async fn start_deposit_monitor(database: Arc<Database>) -> Result<(), Error> {
-    // Create provider for the monitor
-    // TODO: Get provider config from environment or config file
+async fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Result<(), Error> {
+    // Create provider for the monitor using config
     let provider = Provider::new(
-        "blockfrost",
-        std::env::var("BLOCKFROST_API_KEY").unwrap_or_else(|_| "test_key".to_string()),
-        "preprod".to_string(),
-        None,
+        &config.provider_type(),
+        config.provider_api_key(),
+        config.network(),
+        config.provider_url(),
     )
     .map_err(|e| Error::Internal {
         reason: format!("Failed to create provider for deposit monitor: {}", e),
     })?;
 
-    // Create monitor configuration
-    let config = DepositMonitorConfig {
-        confirm_depth: std::env::var("DEPOSIT_CONFIRM_DEPTH")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(15),
-        expiration_blocks: std::env::var("DEPOSIT_EXPIRATION_BLOCKS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1440),
-        min_deposit_value: std::env::var("MIN_DEPOSIT_VALUE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1_000_000),
+    // Create monitor configuration from config
+    let monitor_config = DepositMonitorConfig {
+        confirm_depth: config.deposit_confirm_depth(),
+        expiration_blocks: config.deposit_expiration_blocks(),
+        min_deposit_value: config.min_deposit_value(),
         revalidation_interval: 60, // 1 minute
     };
 
     // Create and start monitor
-    let monitor = DepositMonitor::new(config, database, provider);
+    let monitor = DepositMonitor::new(monitor_config, database, provider);
 
     // Spawn the monitor as a background task
     tokio::spawn(async move {

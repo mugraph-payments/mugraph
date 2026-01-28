@@ -86,20 +86,102 @@ impl DepositMonitor {
                 reason: format!("Failed to get chain tip: {}", e),
             })?;
 
-        // TODO: Implement deposit monitoring
-        // redb doesn't support full table iteration efficiently
-        // We need to either:
-        // 1. Use a secondary index for pending deposits
-        // 2. Store pending deposits in a separate table
-        // 3. Accept that we'll scan the entire table
-
-        // For now, just log that monitoring is running
         tracing::debug!(
             "Deposit monitor running at block {} (checking pending deposits)",
             tip.block_height
         );
 
+        // Get current timestamp
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Scan all deposits and check pending ones
+        // Note: This scans the entire table. For large deployments, consider:
+        // 1. A separate index table for pending deposits only
+        // 2. Range queries if implementing a time-based key structure
+        let pending_deposits = self.get_pending_deposits()?;
+
+        tracing::info!("Found {} pending deposits to check", pending_deposits.len());
+
+        for (utxo_ref, record) in pending_deposits {
+            // Check expiration first
+            if now > record.expires_at && !record.spent {
+                tracing::info!(
+                    "Deposit {} expired (expired at {}, now {})",
+                    hex::encode(&utxo_ref.tx_hash[..8]),
+                    record.expires_at,
+                    now
+                );
+
+                // Mark as expired by setting spent flag
+                // This prevents the deposit from being claimed
+                self.mark_deposit_spent(&utxo_ref)?;
+                continue;
+            }
+
+            // Skip if already confirmed (we only re-check young deposits)
+            let blocks_elapsed = tip.block_height.saturating_sub(record.block_height);
+            if blocks_elapsed >= self.config.confirm_depth {
+                // Deposit is confirmed, no need to re-check
+                continue;
+            }
+
+            // Re-validate UTxO exists on chain (reorg check)
+            match self.validate_utxo_on_chain(&utxo_ref, &record).await {
+                Ok(true) => {
+                    // UTxO still exists, deposit is valid
+                    tracing::debug!(
+                        "Deposit {} still valid at block {}",
+                        hex::encode(&utxo_ref.tx_hash[..8]),
+                        record.block_height
+                    );
+                }
+                Ok(false) => {
+                    // UTxO no longer exists - was spent or reorged
+                    tracing::warn!(
+                        "Deposit {} no longer exists on chain (possible reorg or spend)",
+                        hex::encode(&utxo_ref.tx_hash[..8])
+                    );
+
+                    // Mark as spent/invalid
+                    self.mark_deposit_spent(&utxo_ref)?;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to validate deposit {}: {}",
+                        hex::encode(&utxo_ref.tx_hash[..8]),
+                        e
+                    );
+                    // Don't mark as spent on error, will retry next interval
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    /// Get all pending (unspent) deposits from the database
+    fn get_pending_deposits(&self) -> Result<Vec<(UtxoRef, DepositRecord)>, Error> {
+        let read_tx = self.database.read()?;
+        let table = read_tx.open_table(DEPOSITS)?;
+
+        let mut pending = Vec::new();
+
+        // Iterate over all deposits
+        // Note: redb's iterator is efficient for small-to-medium datasets
+        for item in table.iter()? {
+            let (k, v) = item?;
+            let utxo_ref = k.value();
+            let record = v.value();
+
+            if !record.spent {
+                pending.push((utxo_ref, record));
+            }
+        }
+
+        Ok(pending)
     }
 
     /// Validate that a UTxO still exists on chain
@@ -112,8 +194,10 @@ impl DepositMonitor {
 
         match self.provider.get_utxo(&tx_hash, utxo_ref.index).await {
             Ok(Some(utxo_info)) => {
-                // UTxO exists - check if it's still at our script
-                // TODO: Compare with expected script address from wallet
+                // UTxO exists - verify it still has assets (not emptied)
+                // NOTE: Additional verification could compare utxo_info.address
+                // with the expected script address from the wallet to ensure
+                // the UTxO is still at our script address.
                 Ok(!utxo_info.amount.is_empty())
             }
             Ok(None) => {

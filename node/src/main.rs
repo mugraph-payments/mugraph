@@ -8,10 +8,10 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
     let config = Config::new();
-    let keypair = config.keypair()?;
 
     match &config {
         Config::GenerateKey => {
+            let keypair = config.keypair()?;
             info!(
                 secret_key = %keypair.secret_key,
                 public_key = %keypair.public_key,
@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
         Config::Server {
             addr, secret_key, ..
         } => {
+            let keypair = config.keypair()?;
             if secret_key.is_none() {
                 info!(
                     secret_key = %keypair.secret_key,
@@ -31,7 +32,7 @@ async fn main() -> Result<()> {
 
             info!(addr = %addr, public_key = %keypair.public_key, "Starting server");
 
-            start(*addr, keypair).await?;
+            start(*addr, config).await?;
         }
     }
 

@@ -29,3 +29,4 @@ ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { workspace = true }
 blake3 = { workspace = true }
+minicbor = { version = "0.25.1", features = ["std"] }

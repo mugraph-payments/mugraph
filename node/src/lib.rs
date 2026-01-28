@@ -10,12 +10,12 @@ pub mod provider;
 pub mod routes;
 pub mod tx_signer;
 
-use mugraph_core::types::Keypair;
+use config::Config;
 
-pub async fn start(addr: SocketAddr, keypair: Keypair) -> Result<()> {
+pub async fn start(addr: SocketAddr, config: Config) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, routes::router(keypair).await?).await?;
+    axum::serve(listener, routes::router(config).await?).await?;
 
     Ok(())
 }

@@ -57,6 +57,10 @@ pub enum Config {
         /// Maximum transaction size in bytes for withdrawal CBOR (default: 16384)
         #[clap(long, env = "MAX_TX_SIZE", default_value = "16384")]
         max_tx_size: usize,
+
+        /// Maximum withdrawal fee in lovelace (default: 2_000_000)
+        #[clap(long, env = "MAX_WITHDRAWAL_FEE", default_value = "2000000")]
+        max_withdrawal_fee: u64,
     },
     #[command(about)]
     GenerateKey,
@@ -71,6 +75,117 @@ impl Default for Config {
 impl Config {
     pub fn new() -> Self {
         Self::parse()
+    }
+
+    /// Get the Cardano network
+    pub fn network(&self) -> String {
+        match self {
+            Self::Server {
+                cardano_network, ..
+            } => cardano_network.clone(),
+            _ => "preprod".to_string(),
+        }
+    }
+
+    /// Get the network byte (0 for testnets, 1 for mainnet)
+    pub fn network_byte(&self) -> u8 {
+        match self.network().as_str() {
+            "mainnet" => 1,
+            _ => 0,
+        }
+    }
+
+    /// Get the provider type
+    pub fn provider_type(&self) -> String {
+        match self {
+            Self::Server {
+                cardano_provider, ..
+            } => cardano_provider.clone(),
+            _ => "blockfrost".to_string(),
+        }
+    }
+
+    /// Get the provider API key
+    pub fn provider_api_key(&self) -> String {
+        match self {
+            Self::Server {
+                cardano_api_key, ..
+            } => cardano_api_key
+                .clone()
+                .unwrap_or_else(|| "test_key".to_string()),
+            _ => "test_key".to_string(),
+        }
+    }
+
+    /// Get the provider URL
+    pub fn provider_url(&self) -> Option<String> {
+        match self {
+            Self::Server {
+                cardano_provider_url,
+                ..
+            } => cardano_provider_url.clone(),
+            _ => None,
+        }
+    }
+
+    /// Get the optional payment signing key
+    pub fn payment_sk(&self) -> Option<String> {
+        match self {
+            Self::Server {
+                cardano_payment_sk, ..
+            } => cardano_payment_sk.clone(),
+            _ => None,
+        }
+    }
+
+    /// Get deposit confirmation depth
+    pub fn deposit_confirm_depth(&self) -> u64 {
+        match self {
+            Self::Server {
+                deposit_confirm_depth,
+                ..
+            } => *deposit_confirm_depth,
+            _ => 15,
+        }
+    }
+
+    /// Get deposit expiration blocks
+    pub fn deposit_expiration_blocks(&self) -> u64 {
+        match self {
+            Self::Server {
+                deposit_expiration_blocks,
+                ..
+            } => *deposit_expiration_blocks,
+            _ => 1440,
+        }
+    }
+
+    /// Get minimum deposit value
+    pub fn min_deposit_value(&self) -> u64 {
+        match self {
+            Self::Server {
+                min_deposit_value, ..
+            } => min_deposit_value.unwrap_or(1_000_000),
+            _ => 1_000_000,
+        }
+    }
+
+    /// Get maximum withdrawal fee
+    pub fn max_withdrawal_fee(&self) -> u64 {
+        match self {
+            Self::Server {
+                max_withdrawal_fee, ..
+            } => *max_withdrawal_fee,
+            _ => 2_000_000,
+        }
+    }
+
+    /// Get maximum transaction size
+    pub fn max_tx_size(&self) -> usize {
+        match self {
+            Self::Server { max_tx_size, .. } => *max_tx_size,
+            _ => 16384,
+        }
     }
 
     pub fn keypair(&self) -> Result<Keypair, Error> {
