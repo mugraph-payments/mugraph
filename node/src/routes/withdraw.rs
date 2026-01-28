@@ -68,29 +68,32 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
         ctx.config.fee_tolerance_pct(),
     )?;
 
-    // 4. Parse transaction and validate inputs
-    // Use whisky-csl to parse and validate the transaction
-    // let tx = whisky_csl::Transaction::from_bytes(&tx_bytes)
-    //     .map_err(|e| Error::InvalidInput { reason: format!("Invalid transaction CBOR: {}", e) })?;
+    // 4. Load wallet needed for validations and signing
+    let wallet = load_wallet(ctx).await?;
 
-    // 4. Verify provided hash matches recomputed hash
-    // let computed_hash = tx.hash();
-    // if hex::encode(&computed_hash) != request.tx_hash {
-    //     return Err(Error::InvalidInput { reason: "Transaction hash mismatch".to_string() });
-    // }
+    // 5. Verify provided hash matches recomputed hash
+    let computed_hash = hex::encode(crate::tx_signer::compute_tx_hash(&tx_bytes).map_err(|e| {
+        Error::InvalidInput {
+            reason: format!("Failed to compute tx hash: {}", e),
+        }
+    })?);
+    if computed_hash != request.tx_hash {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Transaction hash mismatch: computed {}, provided {}",
+                computed_hash, request.tx_hash
+            ),
+        });
+    }
 
-    // 5. Ensure all inputs reference script UTxOs
-    // validate_script_inputs(&tx, &wallet.script_address).await?;
+    // 6. Ensure all inputs reference script UTxOs
+    validate_script_inputs(&tx_bytes, &wallet.script_address, Some(&provider)).await?;
 
-    // 6. Validate user witnesses correspond to input addresses
-    // validate_user_witnesses(&tx, &request.notes).await?;
-
-    // 7. Check outputs match burned notes minus fees
-    // let change_notes = validate_withdrawal_amounts(&tx, &request.notes)?;
+    // 7. Validate user witnesses (basic count check)
+    validate_user_witnesses(&tx_bytes, &request.notes, &wallet).await?;
 
     // 8. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
-    let wallet = load_wallet(ctx).await?;
 
     // Node signature is attached to the transaction witness set
     // The validator checks that the transaction is properly signed (off-chain verification)
@@ -506,19 +509,18 @@ fn parse_fee_from_body(body_cbor: &[u8]) -> Result<u64, Error> {
 
 /// Validate that all inputs reference the script address
 ///
-/// # Implementation Note
-/// This is a best-effort implementation that extracts transaction inputs from CBOR
-/// and validates them against the expected script address. A full implementation
-/// would query the blockchain to verify each input's address.
+/// Queries the blockchain provider to verify each input's address matches
+/// the expected script address. This ensures no mixed inputs from non-script
+/// addresses are present in the transaction.
 ///
 /// # Arguments
 /// * `tx_cbor` - The transaction CBOR bytes
 /// * `script_address` - The expected script address
-/// * `provider` - Optional provider to verify addresses on-chain
+/// * `provider` - Provider to verify addresses on-chain
 async fn validate_script_inputs(
     tx_cbor: &[u8],
     script_address: &str,
-    _provider: Option<&Provider>,
+    provider: Option<&Provider>,
 ) -> Result<(), Error> {
     // Parse transaction inputs from CBOR
     let inputs = extract_transaction_inputs(tx_cbor)?;
@@ -531,34 +533,50 @@ async fn validate_script_inputs(
 
     tracing::info!("Validating {} script inputs", inputs.len());
 
-    // For each input, we need to verify it comes from the script address
-    // In a full implementation, we would query the provider for each input
-    // to get its address and verify it matches the script address.
-    //
-    // NOTE: On-chain address verification is not yet enabled. To enable:
-    // 1. Uncomment the provider query below
-    // 2. Verify each input's address matches the script address
-    // 3. Handle errors appropriately
-    //
-    // This adds an additional security check but requires reliable provider access.
+    // Verify each input comes from the script address
     for (i, (tx_hash, index)) in inputs.iter().enumerate() {
         tracing::debug!("Input {}: {}#{}", i, hex::encode(tx_hash), index);
 
-        // ON-CHAIN VERIFICATION (disabled by default):
-        // if let Some(provider) = provider {
-        //     let utxo_info = provider.get_utxo(&hex::encode(tx_hash), *index).await?;
-        //     if utxo_info.address != script_address {
-        //         return Err(Error::InvalidInput {
-        //             reason: format!("Input {} is not from script address", i),
-        //         });
-        //     }
-        // }
+        if let Some(provider) = provider {
+            match provider
+                .get_utxo(&hex::encode(tx_hash), *index as u16)
+                .await
+            {
+                Ok(Some(utxo_info)) => {
+                    if utxo_info.address != script_address {
+                        return Err(Error::InvalidInput {
+                            reason: format!(
+                                "Input {} ({}:{}) is not from script address. Expected {}, got {}",
+                                i,
+                                hex::encode(&tx_hash[..8]),
+                                index,
+                                script_address,
+                                utxo_info.address
+                            ),
+                        });
+                    }
+                    tracing::debug!("Input {} verified at script address", i);
+                }
+                Ok(None) => {
+                    return Err(Error::InvalidInput {
+                        reason: format!(
+                            "Input {} ({}:{}) not found on chain",
+                            i,
+                            hex::encode(&tx_hash[..8]),
+                            index
+                        ),
+                    });
+                }
+                Err(e) => {
+                    return Err(Error::NetworkError {
+                        reason: format!("Failed to verify input {}: {}", i, e),
+                    });
+                }
+            }
+        }
     }
 
-    tracing::info!(
-        "All {} inputs validated (address verification pending)",
-        inputs.len()
-    );
+    tracing::info!("All {} inputs validated at script address", inputs.len());
     Ok(())
 }
 
