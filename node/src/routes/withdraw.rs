@@ -94,13 +94,19 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
         });
     }
 
-    // 6. Ensure all inputs reference script UTxOs
-    validate_script_inputs(&tx_bytes, &wallet.script_address, Some(&provider)).await?;
+    // 6. Ensure all inputs reference script UTxOs and validate deposit state
+    let input_values =
+        validate_script_inputs_with_deposits(&tx_bytes, &wallet.script_address, ctx, &provider)
+            .await?;
 
     // 7. Validate user witnesses (basic count check)
     validate_user_witnesses(&tx_bytes, &request.notes, &wallet).await?;
 
-    // 8. Create signed transaction (without burning notes yet)
+    // 8. Validate transaction value balance
+    let total_input: u64 = input_values.iter().map(|(_, amount)| amount).sum();
+    validate_transaction_balance(&tx_bytes, total_input, ctx.config.max_withdrawal_fee())?;
+
+    // 9. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
 
     // Node signature is attached to the transaction witness set
@@ -1246,4 +1252,232 @@ fn parse_output_map(decoder: &mut minicbor::Decoder) -> Result<(String, u64), Er
             reason: "Missing address or amount in output".to_string(),
         }),
     }
+}
+
+/// Validate script inputs and check deposit state
+///
+/// This function:
+/// 1. Extracts inputs from the transaction
+/// 2. Queries the blockchain to verify each input is at the script address
+/// 3. Checks the DEPOSITS table to ensure deposits are valid (not already spent, not expired)
+/// 4. Returns the total value of inputs being spent
+///
+/// # Arguments
+/// * `tx_cbor` - The transaction CBOR bytes
+/// * `script_address` - The expected script address
+/// * `ctx` - The request context (for database access)
+/// * `provider` - The blockchain provider
+///
+/// # Returns
+/// A vector of (tx_hash, amount) tuples for each valid input
+async fn validate_script_inputs_with_deposits(
+    tx_cbor: &[u8],
+    script_address: &str,
+    ctx: &Context,
+    provider: &Provider,
+) -> Result<Vec<(String, u64)>, Error> {
+    use mugraph_core::types::UtxoRef;
+
+    use crate::database::DEPOSITS;
+
+    let inputs = extract_transaction_inputs(tx_cbor)?;
+
+    if inputs.is_empty() {
+        return Err(Error::InvalidInput {
+            reason: "Transaction has no inputs".to_string(),
+        });
+    }
+
+    let mut input_values: Vec<(String, u64)> = Vec::new();
+    let read_tx = ctx.database.read()?;
+    let deposits_table = read_tx.open_table(DEPOSITS)?;
+
+    for (i, (tx_hash_bytes, index)) in inputs.iter().enumerate() {
+        let tx_hash = hex::encode(tx_hash_bytes);
+
+        tracing::debug!("Validating input {}: {}:{}", i, &tx_hash[..16], index);
+
+        // Query blockchain to verify input is at script address
+        match provider.get_utxo(&tx_hash, *index as u16).await {
+            Ok(Some(utxo_info)) => {
+                if utxo_info.address != script_address {
+                    return Err(Error::InvalidInput {
+                        reason: format!(
+                            "Input {} ({}:{}) is not from script address. Expected {}, got {}",
+                            i,
+                            &tx_hash[..16],
+                            index,
+                            script_address,
+                            utxo_info.address
+                        ),
+                    });
+                }
+
+                // Calculate total value of this UTxO
+                let total_value: u64 = utxo_info
+                    .amount
+                    .iter()
+                    .filter_map(|asset| asset.quantity.parse::<u64>().ok())
+                    .sum();
+
+                // Check deposit state in our database
+                let tx_hash_array: [u8; 32] =
+                    tx_hash_bytes
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| Error::InvalidInput {
+                            reason: format!("Invalid tx_hash length for input {}", i),
+                        })?;
+                let utxo_ref = UtxoRef::new(tx_hash_array, *index as u16);
+
+                match deposits_table.get(&utxo_ref)? {
+                    Some(deposit) => {
+                        let deposit_record = deposit.value();
+                        if deposit_record.spent {
+                            return Err(Error::InvalidInput {
+                                reason: format!(
+                                    "Input {} ({}:{}) deposit already spent",
+                                    i,
+                                    &tx_hash[..16],
+                                    index
+                                ),
+                            });
+                        }
+
+                        // Check if expired
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+                        if now > deposit_record.expires_at {
+                            return Err(Error::InvalidInput {
+                                reason: format!(
+                                    "Input {} ({}:{}) deposit expired at {}",
+                                    i,
+                                    &tx_hash[..16],
+                                    index,
+                                    deposit_record.expires_at
+                                ),
+                            });
+                        }
+
+                        tracing::info!(
+                            "Input {}: deposit valid (block {}, expires {}), value: {} lovelace",
+                            i,
+                            deposit_record.block_height,
+                            deposit_record.expires_at,
+                            total_value
+                        );
+                    }
+                    None => {
+                        // Deposit not in our database - might be a fresh deposit not yet recorded
+                        // or an invalid input. For security, we should reject unknown deposits.
+                        tracing::warn!(
+                            "Input {} ({}:{}) not found in DEPOSITS table",
+                            i,
+                            &tx_hash[..16],
+                            index
+                        );
+                        return Err(Error::InvalidInput {
+                            reason: format!(
+                                "Input {} ({}:{}) deposit not found. Deposits must be recorded before withdrawal.",
+                                i,
+                                &tx_hash[..16],
+                                index
+                            ),
+                        });
+                    }
+                }
+
+                input_values.push((tx_hash, total_value));
+            }
+            Ok(None) => {
+                return Err(Error::InvalidInput {
+                    reason: format!(
+                        "Input {} ({}:{}) not found on chain",
+                        i,
+                        &tx_hash[..16],
+                        index
+                    ),
+                });
+            }
+            Err(e) => {
+                return Err(Error::NetworkError {
+                    reason: format!("Failed to verify input {}: {}", i, e),
+                });
+            }
+        }
+    }
+
+    tracing::info!(
+        "All {} inputs validated. Total input value: {} lovelace",
+        inputs.len(),
+        input_values.iter().map(|(_, v)| v).sum::<u64>()
+    );
+
+    Ok(input_values)
+}
+
+/// Validate transaction balance
+///
+/// Verifies that: inputs - fee = outputs (within tolerance)
+/// This ensures the transaction conserves value properly.
+///
+/// # Arguments
+/// * `tx_cbor` - The transaction CBOR bytes
+/// * `total_input` - Total value of all inputs (from deposits)
+/// * `max_fee` - Maximum acceptable fee
+///
+/// # Returns
+/// Ok if the balance is valid, Err otherwise
+fn validate_transaction_balance(tx_cbor: &[u8], total_input: u64, max_fee: u64) -> Result<(), Error> {
+    // Extract fee from transaction
+    let fee = extract_transaction_fee(tx_cbor)?;
+
+    // Extract outputs from transaction
+    let outputs = extract_transaction_outputs(tx_cbor)?;
+    let total_output: u64 = outputs.iter().map(|(_, amount)| amount).sum();
+
+    tracing::info!(
+        "Balance check: inputs={}, outputs={}, fee={}",
+        total_input,
+        total_output,
+        fee
+    );
+
+    // Validate fee is within bounds
+    if fee > max_fee {
+        return Err(Error::InvalidInput {
+            reason: format!("Fee {} lovelace exceeds maximum {} lovelace", fee, max_fee),
+        });
+    }
+
+    // Validate conservation of value: inputs = outputs + fee
+    let expected_input = total_output + fee;
+
+    // Allow small tolerance for rounding/errors (0.1%)
+    let tolerance = expected_input / 1000;
+    let diff = if total_input > expected_input {
+        total_input - expected_input
+    } else {
+        expected_input - total_input
+    };
+
+    if diff > tolerance {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Transaction balance invalid. Inputs: {}, Expected (outputs + fee): {}, Difference: {} exceeds tolerance {}",
+                total_input, expected_input, diff, tolerance
+            ),
+        });
+    }
+
+    tracing::info!(
+        "Transaction balance valid. Inputs: {}, Outputs: {}, Fee: {}",
+        total_input,
+        total_output,
+        fee
+    );
+
+    Ok(())
 }

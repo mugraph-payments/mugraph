@@ -447,9 +447,25 @@ fn validate_deposit_amounts(request: &DepositRequest, utxo_info: &UtxoInfo) -> R
         request.outputs.len()
     );
 
-    // Store asset info for later validation during withdrawal
-    // The actual amounts are verified by the Aiken validator at withdrawal time
-    // when the blinded outputs are unblinded
+    // Check minimum deposit value
+    let lovelace_amount = utxo_assets.get("lovelace").copied().unwrap_or(0);
+    let min_deposit = 1_000_000; // 1 ADA minimum - should come from config
+    if lovelace_amount < min_deposit {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Deposit value {} lovelace below minimum {} lovelace",
+                lovelace_amount, min_deposit
+            ),
+        });
+    }
+
+    tracing::info!(
+        "Validated deposit: {} assets in UTxO ({} total units, {} lovelace), {} outputs",
+        utxo_assets.len(),
+        total_units,
+        lovelace_amount,
+        request.outputs.len()
+    );
 
     Ok(())
 }
