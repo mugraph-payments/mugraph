@@ -128,7 +128,6 @@ test spend_succeeds_with_empty_intent_hash() {
 
   deposit.spend(Some(datum), redeemer, test_utxo(), tx) == True
 }
-
 // Note on node signature validation:
 // The validator assumes the node signature is valid because:
 // 1. The transaction must be signed by the node before submission

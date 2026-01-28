@@ -1,20 +1,7 @@
+use aiken/builtin
 use aiken/collection/list
-use aiken/crypto
 use cardano/transaction.{OutputReference, Transaction}
 use types.{DepositDatum, SpendRedeemer}
-
-pub fn find_matching_witness(
-  witnesses: List<(ByteArray, ByteArray)>,
-  expected_hash: ByteArray,
-) -> Option<(ByteArray, ByteArray)> {
-  list.find(
-    witnesses,
-    fn(witness) {
-      let (pubkey, _signature) = witness
-      crypto.blake2b_224(pubkey) == expected_hash
-    },
-  )
-}
 
 validator deposit {
   spend(
@@ -25,6 +12,12 @@ validator deposit {
   ) {
     when datum is {
       Some(d) -> {
+        trace @"Checking datum key hash lengths"
+        let valid_hash_lengths =
+          builtin.length_of_bytearray(d.user_pubkey_hash) == 28 && builtin.length_of_bytearray(
+            d.node_pubkey_hash,
+          ) == 28
+
         trace @"Verifying user signature"
         let user_signed =
           list.any(
@@ -33,7 +26,7 @@ validator deposit {
           )
 
         trace @"Checking validations pass"
-        user_signed
+        valid_hash_lengths && user_signed
       }
       None -> {
         trace @"Missing datum"
