@@ -229,9 +229,29 @@ impl BlockfrostProvider {
             .await
             .context("Failed to parse Blockfrost response")?;
 
-        Ok(response
-            .into_iter()
-            .map(|u| UtxoInfo {
+        // Fetch block heights for entries missing it
+        let mut results = Vec::with_capacity(response.len());
+        for u in response {
+            let block_height = match u.block_height {
+                Some(h) => Some(h),
+                None => {
+                    // Fetch tx info to get block height
+                    let tx_url = format!("{}/txs/{}", self.base_url, u.tx_hash);
+                    let tx_info: BlockfrostTxInfo = self
+                        .client
+                        .get(&tx_url)
+                        .header("project_id", &self.api_key)
+                        .send()
+                        .await
+                        .context("Failed to fetch transaction info from Blockfrost")?
+                        .json()
+                        .await
+                        .context("Failed to parse Blockfrost transaction response")?;
+                    Some(tx_info.block_height)
+                }
+            };
+
+            results.push(UtxoInfo {
                 tx_hash: u.tx_hash,
                 output_index: u.output_index as u16,
                 address: address.to_string(),
@@ -246,9 +266,11 @@ impl BlockfrostProvider {
                 datum_hash: u.data_hash,
                 datum: None,
                 script_ref: u.reference_script_hash,
-                block_height: None, // Would need separate query for each tx
-            })
-            .collect())
+                block_height,
+            });
+        }
+
+        Ok(results)
     }
 
     async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
@@ -498,24 +520,18 @@ struct BlockfrostAssetAmount {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct BlockfrostAddressUtxo {
     tx_hash: String,
-    tx_index: i32,
     output_index: i32,
     amount: Vec<BlockfrostAssetAmount>,
     data_hash: Option<String>,
     reference_script_hash: Option<String>,
+    block_height: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct BlockfrostTxInfo {
-    hash: String,
-    block: String,
     block_height: u64,
-    slot: u64,
-    index: u32,
 }
 
 #[derive(Debug, Deserialize)]

@@ -339,36 +339,7 @@ async fn rollback_withdrawal(
     Ok(())
 }
 
-#[allow(dead_code)]
 /// Mark withdrawal as failed for recovery
-async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
-    let write_tx = ctx.database.write()?;
-
-    {
-        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
-
-        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
-        let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
-
-        // Update record to mark as failed
-        let record = WithdrawalRecord::failed();
-        withdrawals_table.insert(key, &record)?;
-    }
-
-    write_tx.commit()?;
-
-    tracing::warn!("Marked withdrawal {} as failed", tx_hash);
-
-    Ok(())
-}
-
 /// Mark withdrawal as completed after successful submission
 async fn mark_withdrawal_completed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
     let write_tx = ctx.database.write()?;
