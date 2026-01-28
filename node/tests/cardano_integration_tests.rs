@@ -56,6 +56,7 @@ fn test_utxo_info_serialization() {
         datum_hash: None,
         datum: None,
         script_ref: None,
+        block_height: Some(12345),
     };
 
     let json = serde_json::to_string(&utxo).unwrap();

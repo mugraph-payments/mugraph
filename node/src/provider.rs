@@ -38,6 +38,8 @@ pub struct UtxoInfo {
     pub datum_hash: Option<String>,
     pub datum: Option<String>,
     pub script_ref: Option<String>,
+    /// Block height where this UTxO was created (for confirm depth checks)
+    pub block_height: Option<u64>,
 }
 
 /// Asset amount (ADA or other tokens)
@@ -165,6 +167,7 @@ pub struct ProtocolParams {
 
 impl BlockfrostProvider {
     async fn get_utxo(&self, tx_hash: &str, output_index: u16) -> Result<Option<UtxoInfo>> {
+        // Fetch UTxO details
         let url = format!("{}/txs/{}/utxos", self.base_url, tx_hash);
 
         let response: BlockfrostTxUtxos = self
@@ -177,6 +180,19 @@ impl BlockfrostProvider {
             .json()
             .await
             .context("Failed to parse Blockfrost response")?;
+
+        // Fetch transaction info to get block height
+        let tx_url = format!("{}/txs/{}", self.base_url, tx_hash);
+        let tx_response: BlockfrostTxInfo = self
+            .client
+            .get(&tx_url)
+            .header("project_id", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch transaction info from Blockfrost")?
+            .json()
+            .await
+            .context("Failed to parse Blockfrost transaction response")?;
 
         Ok(response
             .outputs
@@ -197,6 +213,7 @@ impl BlockfrostProvider {
                 datum_hash: o.data_hash,
                 datum: None, // Would need separate call to get datum
                 script_ref: o.reference_script_hash,
+                block_height: Some(tx_response.block_height),
             }))
     }
 
@@ -231,6 +248,7 @@ impl BlockfrostProvider {
                 datum_hash: u.data_hash,
                 datum: None,
                 script_ref: u.reference_script_hash,
+                block_height: None, // Would need separate query for each tx
             })
             .collect())
     }
@@ -348,6 +366,7 @@ impl MaestroProvider {
             datum_hash: response.datum_hash,
             datum: response.datum,
             script_ref: response.reference_script_hash,
+            block_height: response.block_height, // Assuming Maestro provides this
         }))
     }
 
@@ -382,6 +401,7 @@ impl MaestroProvider {
                 datum_hash: u.datum_hash,
                 datum: None,
                 script_ref: u.reference_script_hash,
+                block_height: None, // Would need separate query for each tx
             })
             .collect())
     }
@@ -490,6 +510,15 @@ struct BlockfrostAddressUtxo {
 }
 
 #[derive(Debug, Deserialize)]
+struct BlockfrostTxInfo {
+    hash: String,
+    block: String,
+    block_height: u64,
+    slot: u64,
+    index: u32,
+}
+
+#[derive(Debug, Deserialize)]
 struct BlockfrostBlock {
     slot: u64,
     hash: String,
@@ -519,6 +548,7 @@ struct MaestroTxOutput {
     datum_hash: Option<String>,
     datum: Option<String>,
     reference_script_hash: Option<String>,
+    block_height: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

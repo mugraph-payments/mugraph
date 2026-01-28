@@ -379,6 +379,62 @@ async fn fetch_and_validate_utxo(
         });
     }
 
+    // Verify confirm depth (reorg safety)
+    // Get current chain tip
+    let tip = provider.get_tip().await.map_err(|e| Error::NetworkError {
+        reason: format!("Failed to get chain tip for confirm depth check: {}", e),
+    })?;
+
+    // Get confirm depth from config
+    let confirm_depth = ctx.config.deposit_confirm_depth();
+
+    // Check if UTxO has block height info
+    match utxo_info.block_height {
+        Some(utxo_block_height) => {
+            let current_height = tip.block_height;
+            let blocks_confirmed = current_height.saturating_sub(utxo_block_height);
+
+            tracing::info!(
+                "UTxO {}:{} at block {} ({} blocks confirmed, need {})",
+                &request.utxo.tx_hash[..16],
+                request.utxo.index,
+                utxo_block_height,
+                blocks_confirmed,
+                confirm_depth
+            );
+
+            if blocks_confirmed < confirm_depth {
+                return Err(Error::InvalidInput {
+                    reason: format!(
+                        "UTxO not sufficiently confirmed. Block height: {}, Current: {}, Confirmed: {} blocks, Required: {} blocks",
+                        utxo_block_height, current_height, blocks_confirmed, confirm_depth
+                    ),
+                });
+            }
+
+            tracing::info!(
+                "UTxO {}:{} confirmed with {} blocks (required: {})",
+                &request.utxo.tx_hash[..16],
+                request.utxo.index,
+                blocks_confirmed,
+                confirm_depth
+            );
+        }
+        None => {
+            // Block height not available from provider
+            // This shouldn't happen with Blockfrost since we now fetch tx info
+            tracing::warn!(
+                "UTxO {}:{} block height not available from provider. Cannot verify confirm depth.",
+                &request.utxo.tx_hash[..16],
+                request.utxo.index
+            );
+            return Err(Error::InvalidInput {
+                reason: "Cannot verify UTxO confirmation depth: block height not available"
+                    .to_string(),
+            });
+        }
+    }
+
     Ok(utxo_info)
 }
 

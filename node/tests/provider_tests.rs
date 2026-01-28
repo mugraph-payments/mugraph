@@ -130,6 +130,7 @@ fn test_utxo_info_structure() {
         datum_hash: Some("datum_hash".to_string()),
         datum: None,
         script_ref: None,
+        block_height: Some(67890),
     };
 
     assert_eq!(utxo.tx_hash, "deadbeef");
