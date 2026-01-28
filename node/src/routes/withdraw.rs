@@ -106,6 +106,9 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // 8. Validate transaction value balance
     validate_transaction_balance(&tx_bytes, &input_totals, ctx.config.max_withdrawal_fee())?;
 
+    // 9. Enforce network consistency and reject change back to the script
+    validate_network_and_change_outputs(&tx_bytes, &wallet)?;
+
     // 9. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
 
@@ -1144,6 +1147,54 @@ fn validate_transaction_balance(
     Ok(())
 }
 
+/// Validate that outputs stay on the same network and do not return change to the script.
+fn validate_network_and_change_outputs(
+    tx_cbor: &[u8],
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<(), Error> {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid transaction CBOR: {}", e),
+    })?;
+
+    let expected_network_id = match wallet.network.as_str() {
+        "mainnet" => 1u8,
+        _ => 0u8, // preprod/preview/testnet
+    };
+
+    for (idx, output) in (&tx.body().outputs()).into_iter().enumerate() {
+        let addr = output.address();
+
+        // Network guard
+        let net_id = addr.network_id().map_err(|e| Error::InvalidInput {
+            reason: format!("Failed to read network id for output {}: {}", idx, e),
+        })?;
+        if net_id != expected_network_id {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Output {} has network_id {} but wallet is {}",
+                    idx, net_id, wallet.network
+                ),
+            });
+        }
+
+        // Reject change back to the script until change notes are implemented
+        let bech32 = addr.to_bech32(None).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid output address: {}", e),
+        })?;
+
+        if bech32 == wallet.script_address {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Output {} pays back to script address (change). Change notes not yet supported.",
+                    idx
+                ),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use ed25519_dalek::SigningKey;
@@ -1233,6 +1284,89 @@ mod tests {
 
         let res = validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet).await;
         assert!(res.is_ok());
+    }
+
+    /// Reject outputs that pay back to the script address (change not supported yet)
+    #[test]
+    fn test_reject_change_output_to_script() {
+        // Build tx with output to script address
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        // Build a valid testnet enterprise address to reuse as script address
+        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![1u8; 28]).unwrap();
+        let cred = csl::Credential::from_keyhash(&key_hash);
+        let addr = csl::EnterpriseAddress::new(0, &cred).to_address();
+        let script_addr = addr.to_bech32(None).unwrap();
+
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        let tx = csl::Transaction::new(&body, &witness_set, None);
+
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr.to_string(),
+            "preprod".to_string(),
+        );
+
+        let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet).unwrap_err();
+        assert!(format!("{:?}", err).contains("Change notes not yet supported"));
+    }
+
+    /// Reject outputs on wrong network
+    #[test]
+    fn test_reject_output_wrong_network() {
+        // Build tx with mainnet address while wallet is preprod
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        // mainnet enterprise address (network id 1)
+        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![2u8; 28]).unwrap();
+        let cred = csl::Credential::from_keyhash(&key_hash);
+        let addr = csl::EnterpriseAddress::new(1, &cred).to_address();
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        let tx = csl::Transaction::new(&body, &witness_set, None);
+
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            {
+                let key_hash = csl::Ed25519KeyHash::from_bytes(vec![3u8; 28]).unwrap();
+                let cred = csl::Credential::from_keyhash(&key_hash);
+                csl::EnterpriseAddress::new(0, &cred)
+                    .to_address()
+                    .to_bech32(None)
+                    .unwrap()
+            },
+            "preprod".to_string(),
+        );
+
+        let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet).unwrap_err();
+        assert!(format!("{:?}", err).contains("network_id 1"));
     }
 
     fn minimal_tx_with_required_signer(
