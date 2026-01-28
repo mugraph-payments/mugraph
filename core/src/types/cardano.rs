@@ -37,12 +37,23 @@ pub struct DepositRecord {
     pub intent_hash: [u8; 32],
 }
 
+/// Withdrawal status for tracking state machine
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WithdrawalStatus {
+    /// Withdrawal is pending (notes burned, not yet submitted)
+    Pending,
+    /// Withdrawal completed successfully
+    Completed,
+    /// Withdrawal failed (submission failed after notes burned)
+    Failed,
+}
+
 /// Withdrawal record for idempotent signing
 /// Key is network[1] + tx_hash[32]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithdrawalRecord {
-    /// Whether withdrawal has been processed
-    pub processed: bool,
+    /// Withdrawal status
+    pub status: WithdrawalStatus,
     /// Timestamp when withdrawal was recorded
     pub timestamp: u64,
 }
@@ -99,14 +110,26 @@ impl DepositRecord {
 }
 
 impl WithdrawalRecord {
-    pub fn new(processed: bool) -> Self {
+    pub fn new(status: WithdrawalStatus) -> Self {
         Self {
-            processed,
+            status,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
         }
+    }
+
+    pub fn pending() -> Self {
+        Self::new(WithdrawalStatus::Pending)
+    }
+
+    pub fn completed() -> Self {
+        Self::new(WithdrawalStatus::Completed)
+    }
+
+    pub fn failed() -> Self {
+        Self::new(WithdrawalStatus::Failed)
     }
 }
 

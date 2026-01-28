@@ -1,7 +1,15 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{BlindSignature, Response, Signature, WithdrawRequest, WithdrawalKey, WithdrawalRecord},
+    types::{
+        BlindSignature,
+        Response,
+        Signature,
+        WithdrawRequest,
+        WithdrawalKey,
+        WithdrawalRecord,
+        WithdrawalStatus,
+    },
 };
 use redb::ReadableTable;
 
@@ -113,25 +121,50 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // Calculate change notes before any state changes
     let change_notes = calculate_change_notes(request, &tx_bytes, &wallet)?;
 
-    // 9. Submit transaction to provider FIRST
-    // Only after successful submission do we update state
+    // 9. Update state atomically BEFORE submitting to provider
+    // This ensures we only submit if we can properly track the withdrawal
+    let pending_tx_hash = request.tx_hash.clone();
+    match atomic_burn_and_record_pending(request, ctx, &pending_tx_hash).await {
+        Ok(()) => {
+            tracing::info!("Notes burned and withdrawal recorded as pending");
+        }
+        Err(e) => {
+            tracing::error!("Failed to prepare withdrawal state: {}", e);
+            return Err(e);
+        }
+    }
+
+    // 10. Submit transaction to provider
     let submit_response = match submit_transaction(&signed_cbor_hex, &provider).await {
         Ok(response) => response,
         Err(e) => {
+            // CRITICAL: Submission failed but notes are already burned
+            // We need to handle this failure case properly
             tracing::error!(
-                "Transaction submission failed, no state changes made: {}",
+                "CRITICAL: Transaction submission failed after notes were burned: {}",
                 e
             );
+
+            // Mark withdrawal as failed in database for manual recovery
+            if let Err(recovery_err) = mark_withdrawal_failed(ctx, &pending_tx_hash).await {
+                tracing::error!(
+                    "Failed to mark withdrawal as failed: {}. Manual recovery required for tx {}",
+                    recovery_err,
+                    pending_tx_hash
+                );
+            }
+
             return Err(Error::NetworkError {
-                reason: format!("Transaction submission failed: {}", e),
+                reason: format!(
+                    "Transaction submission failed: {}. Notes have been burned but transaction was not submitted. Manual recovery required.",
+                    e
+                ),
             });
         }
     };
 
-    // 10. Transaction submitted successfully - now update state atomically
-    // This is the critical section where we burn notes and record the withdrawal
-    // Both operations happen in a single database transaction
-    match atomic_burn_and_record(request, ctx, &submit_response.tx_hash).await {
+    // 11. Mark withdrawal as completed
+    match mark_withdrawal_completed(ctx, &submit_response.tx_hash).await {
         Ok(()) => {
             tracing::info!(
                 "Withdrawal completed successfully: {}",
@@ -145,21 +178,15 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
             })
         }
         Err(e) => {
-            // CRITICAL: The transaction was submitted to the blockchain but
-            // we failed to update our local state. This is a serious inconsistency
-            // that requires manual intervention or a recovery process.
+            // CRITICAL: Transaction was submitted but we failed to mark as completed
             tracing::error!(
-                "CRITICAL: Transaction {} was submitted but state update failed: {}",
+                "CRITICAL: Transaction {} was submitted but marking as completed failed: {}. Manual reconciliation required.",
                 submit_response.tx_hash,
                 e
             );
 
-            // In production, you would:
-            // 1. Log this to a dead letter queue
-            // 2. Alert operators
-            // 3. Implement a reconciliation process
-            // For now, we still return success since the blockchain transaction succeeded
-            // but include a warning
+            // Still return success since blockchain transaction succeeded
+            // but log the inconsistency for manual recovery
             Ok(Response::Withdraw {
                 signed_tx_cbor: signed_cbor_hex,
                 tx_hash: submit_response.tx_hash,
@@ -199,10 +226,19 @@ async fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(
     let key = WithdrawalKey::new(network_byte, tx_hash_array);
 
     if let Some(record) = table.get(key)? {
-        if record.value().processed {
+        let record = record.value();
+        // Check if already completed (pending or failed can be retried)
+        if record.status == WithdrawalStatus::Completed {
             return Err(Error::InvalidInput {
-                reason: "Withdrawal already processed".to_string(),
+                reason: "Withdrawal already completed".to_string(),
             });
+        }
+        // Log warning if retrying a failed withdrawal
+        if record.status == WithdrawalStatus::Failed {
+            tracing::warn!(
+                "Retrying previously failed withdrawal for tx {}",
+                request.tx_hash
+            );
         }
     }
 
@@ -284,7 +320,7 @@ async fn atomic_burn_and_record(
         let network_byte = ctx.config.network_byte();
         let key = WithdrawalKey::new(network_byte, tx_hash_array);
 
-        let record = WithdrawalRecord::new(true);
+        let record = WithdrawalRecord::completed();
         withdrawals_table.insert(key, &record)?;
     }
 
@@ -296,6 +332,121 @@ async fn atomic_burn_and_record(
         request.notes.len(),
         &submitted_tx_hash[..std::cmp::min(16, submitted_tx_hash.len())]
     );
+
+    Ok(())
+}
+
+/// Atomically burn notes and record withdrawal as pending
+///
+/// This is the first step in the withdrawal process.
+/// Notes are burned and withdrawal is recorded before submission.
+async fn atomic_burn_and_record_pending(
+    request: &WithdrawRequest,
+    ctx: &Context,
+    tx_hash: &str,
+) -> Result<(), Error> {
+    let write_tx = ctx.database.write()?;
+
+    {
+        // 1. Burn notes
+        let mut notes_table = write_tx.open_table(NOTES)?;
+
+        for note in &request.notes {
+            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
+            let signature = Signature::from(*sig_bytes);
+
+            // Check if note is already spent
+            if notes_table.get(signature)?.is_some() {
+                return Err(Error::AlreadySpent { signature });
+            }
+
+            // Mark note as spent
+            notes_table.insert(signature, true)?;
+        }
+
+        // 2. Record withdrawal as pending
+        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+
+        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid tx_hash hex: {}", e),
+        })?;
+        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
+            reason: "tx_hash must be 32 bytes".to_string(),
+        })?;
+
+        let network_byte = ctx.config.network_byte();
+        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+
+        // Create pending record
+        let record = WithdrawalRecord::pending();
+        withdrawals_table.insert(key, &record)?;
+    }
+
+    write_tx.commit()?;
+
+    tracing::info!(
+        "Burned {} notes and recorded pending withdrawal {}",
+        request.notes.len(),
+        &tx_hash[..std::cmp::min(16, tx_hash.len())]
+    );
+
+    Ok(())
+}
+
+/// Mark withdrawal as failed for recovery
+async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
+    let write_tx = ctx.database.write()?;
+
+    {
+        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+
+        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid tx_hash hex: {}", e),
+        })?;
+        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
+            reason: "tx_hash must be 32 bytes".to_string(),
+        })?;
+
+        let network_byte = ctx.config.network_byte();
+        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+
+        // Update record to mark as failed
+        let record = WithdrawalRecord::failed();
+        withdrawals_table.insert(key, &record)?;
+    }
+
+    write_tx.commit()?;
+
+    tracing::warn!("Marked withdrawal {} as failed", tx_hash);
+
+    Ok(())
+}
+
+/// Mark withdrawal as completed after successful submission
+async fn mark_withdrawal_completed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
+    let write_tx = ctx.database.write()?;
+
+    {
+        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+
+        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid tx_hash hex: {}", e),
+        })?;
+        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
+            reason: "tx_hash must be 32 bytes".to_string(),
+        })?;
+
+        let network_byte = ctx.config.network_byte();
+        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+
+        // Update record to mark as completed
+        let record = WithdrawalRecord::completed();
+        withdrawals_table.insert(key, &record)?;
+    }
+
+    write_tx.commit()?;
+
+    tracing::info!("Marked withdrawal {} as completed", tx_hash);
 
     Ok(())
 }
@@ -384,7 +535,7 @@ async fn record_withdrawal(request: &WithdrawRequest, ctx: &Context) -> Result<(
         let network_byte = ctx.config.network_byte();
         let key = WithdrawalKey::new(network_byte, tx_hash_array);
 
-        let record = WithdrawalRecord::new(true);
+        let record = WithdrawalRecord::completed();
         table.insert(key, &record)?;
     }
     write_tx.commit()?;
