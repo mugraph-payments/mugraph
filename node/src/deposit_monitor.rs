@@ -129,7 +129,7 @@ impl DepositMonitor {
             }
 
             // Re-validate UTxO exists on chain (reorg check)
-            match self.validate_utxo_on_chain(&utxo_ref, &record).await {
+            match self.validate_utxo_on_chain(&utxo_ref).await {
                 Ok(true) => {
                     // UTxO still exists, deposit is valid
                     tracing::debug!(
@@ -185,11 +185,7 @@ impl DepositMonitor {
     }
 
     /// Validate that a UTxO still exists on chain
-    async fn validate_utxo_on_chain(
-        &self,
-        utxo_ref: &UtxoRef,
-        record: &DepositRecord,
-    ) -> Result<bool, Error> {
+    async fn validate_utxo_on_chain(&self, utxo_ref: &UtxoRef) -> Result<bool, Error> {
         let tx_hash = hex::encode(utxo_ref.tx_hash);
 
         match self.provider.get_utxo(&tx_hash, utxo_ref.index).await {

@@ -261,6 +261,117 @@ fn verify_cip8_cose_signature(request: &DepositRequest, payload: &[u8]) -> Resul
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU8, Ordering};
+
+    use coset::{CoseSign1, CoseSign1Builder, Header, ProtectedHeader, TaggedCborSerializable, iana};
+    use ed25519_dalek::{Signer, SigningKey};
+    use mugraph_core::types::UtxoReference;
+
+    use super::*;
+
+    static SEED_COUNTER: AtomicU8 = AtomicU8::new(1);
+
+    fn gen_key() -> (SigningKey, Vec<u8>) {
+        let seed_byte = SEED_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let seed = [seed_byte; 32];
+        let sk = SigningKey::from_bytes(&seed);
+        let pk = sk.verifying_key().to_bytes().to_vec();
+        (sk, pk)
+    }
+
+    fn build_cip8_signature(sk: &SigningKey, payload: &[u8]) -> Vec<u8> {
+        let header = Header {
+            alg: Some(coset::RegisteredLabelWithPrivate::Assigned(
+                iana::Algorithm::EdDSA,
+            )),
+            ..Default::default()
+        };
+        let unprotected = Header::default();
+        let tbs = CoseSign1 {
+            protected: ProtectedHeader {
+                original_data: None,
+                header: header.clone(),
+            },
+            unprotected,
+            payload: Some(payload.to_vec()),
+            signature: vec![],
+        }
+        .tbs_data(&[]);
+        let sig = sk.sign(&tbs);
+
+        let cose = CoseSign1Builder::new()
+            .protected(header)
+            .payload(payload.to_vec())
+            .signature(sig.to_vec())
+            .build();
+
+        cose.to_tagged_vec().unwrap()
+    }
+
+    #[test]
+    fn test_cip8_verification_succeeds() {
+        let (sk, pk_bytes) = gen_key();
+        let mut request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.clone().try_into().unwrap()),
+            "addr_test1...",
+        );
+        let sig = build_cip8_signature(&sk, &payload);
+        request.signature = sig;
+
+        assert!(verify_cip8_cose_signature(&request, &payload).is_ok());
+    }
+
+    #[test]
+    fn test_cip8_verification_fails_on_payload_mismatch() {
+        let (sk, pk_bytes) = gen_key();
+        let mut request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.clone().try_into().unwrap()),
+            "addr_test1...",
+        );
+        let sig = build_cip8_signature(&sk, &payload);
+
+        // mutate payload by changing network after signing
+        request.network = "mainnet".to_string();
+        request.signature = sig;
+        let bad_payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.try_into().unwrap()),
+            "addr_test1...",
+        );
+
+        let res = verify_cip8_cose_signature(&request, &bad_payload);
+        assert!(res.is_err());
+    }
+}
+
 /// Verify raw Ed25519 signature
 fn verify_raw_ed25519_signature(request: &DepositRequest, payload: &[u8]) -> Result<(), Error> {
     use ed25519_dalek::{Signature, Verifier, VerifyingKey};

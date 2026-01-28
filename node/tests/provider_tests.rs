@@ -47,19 +47,19 @@ fn test_maestro_provider_creation() {
 /// Test provider with custom URL
 #[test]
 fn test_provider_custom_url() {
-    let custom_url = Some("https://custom.blockfrost.io/api/v0".to_string());
+    let custom_url = "https://custom.blockfrost.io/api/v0".to_string();
     let provider = Provider::new(
         "blockfrost",
         "test_key".to_string(),
         "preprod".to_string(),
-        custom_url.clone(),
+        Some(custom_url.clone()),
     );
 
     assert!(provider.is_ok());
 
     match provider.unwrap() {
         Provider::Blockfrost(p) => {
-            assert_eq!(p.base_url, custom_url.unwrap());
+            assert_eq!(p.base_url, custom_url);
         }
         _ => panic!("Expected Blockfrost provider"),
     }

@@ -498,6 +498,7 @@ struct BlockfrostAssetAmount {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct BlockfrostAddressUtxo {
     tx_hash: String,
     tx_index: i32,
@@ -508,6 +509,7 @@ struct BlockfrostAddressUtxo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct BlockfrostTxInfo {
     hash: String,
     block: String,

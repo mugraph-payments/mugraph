@@ -9,6 +9,7 @@ use mugraph_core::{
 use rand::{Rng, SeedableRng, rng};
 use rand_chacha::ChaCha20Rng;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Parser)]
 pub enum Config {
     #[command(about)]

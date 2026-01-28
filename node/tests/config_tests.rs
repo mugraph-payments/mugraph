@@ -1,7 +1,5 @@
 //! Tests for node configuration
 
-use std::net::SocketAddr;
-
 use mugraph_node::config::Config;
 
 /// Test configuration parsing with defaults

@@ -197,5 +197,5 @@ fn test_confirm_depth_various_thresholds() {
     assert!(current_height - utxo_block_height >= 100);
 
     // Test with threshold 101 (should fail)
-    assert!(!(current_height - utxo_block_height >= 101));
+    assert!(current_height - utxo_block_height < 101);
 }

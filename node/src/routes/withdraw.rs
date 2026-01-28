@@ -339,6 +339,7 @@ async fn rollback_withdrawal(
     Ok(())
 }
 
+#[allow(dead_code)]
 /// Mark withdrawal as failed for recovery
 async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
     let write_tx = ctx.database.write()?;
@@ -932,4 +933,143 @@ fn validate_transaction_balance(tx_cbor: &[u8], total_input: u64, max_fee: u64) 
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use ed25519_dalek::SigningKey;
+
+    use super::*;
+
+    #[test]
+    fn test_validate_transaction_balance() {
+        let tx = minimal_tx_with_values(1_000_000, 1_000_000); // output 1ADA, fee 1ADA
+        let tx_cbor = tx.to_bytes();
+        let total_input = 2_000_000;
+        let max_fee = 1_100_000;
+
+        assert!(validate_transaction_balance(&tx_cbor, total_input, max_fee).is_ok());
+
+        // Fee too high
+        let max_fee = 500_000;
+        assert!(validate_transaction_balance(&tx_cbor, total_input, max_fee).is_err());
+    }
+
+    /// required_signers present but missing matching witness => reject
+    #[tokio::test]
+    async fn test_required_signer_missing_witness() {
+        let sk = SigningKey::from_bytes(&[1u8; 32]);
+        let pk = sk.verifying_key();
+        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes())
+            .unwrap()
+            .hash()
+            .to_hex();
+
+        let tx = minimal_tx_with_required_signer(&pk_hash, None);
+        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test...".to_string(),
+            "preprod".to_string(),
+        );
+
+        let res = validate_user_witnesses(&tx.to_bytes(), &notes, &wallet).await;
+        assert!(res.is_err());
+    }
+
+    /// required_signers present and matching witness => ok
+    #[tokio::test]
+    async fn test_required_signer_with_witness() {
+        let sk = SigningKey::from_bytes(&[2u8; 32]);
+        let pk = sk.verifying_key();
+        let pk_csl = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap();
+        let pk_hash = pk_csl.hash().to_hex();
+
+        let tx_body_only = minimal_tx_with_required_signer(&pk_hash, None).body();
+        let body_bytes = tx_body_only.to_bytes();
+
+        // Sign body hash using CSL helper
+        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+        let tx_hash = Blake2b256::digest(&body_bytes);
+        let mut tx_hash_arr = [0u8; 32];
+        tx_hash_arr.copy_from_slice(&tx_hash);
+        let tx_hash_csl = csl::TransactionHash::from_bytes(tx_hash_arr.to_vec()).unwrap();
+        let private = csl::PrivateKey::from_normal_bytes(sk.as_bytes()).unwrap();
+        let vkey_witness = csl::make_vkey_witness(&tx_hash_csl, &private);
+
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        let mut vkeys = csl::Vkeywitnesses::new();
+        vkeys.add(&vkey_witness);
+        witness_set.set_vkeys(&vkeys);
+
+        let tx = csl::Transaction::new(&tx_body_only, &witness_set, None);
+
+        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test...".to_string(),
+            "preprod".to_string(),
+        );
+
+        let res = validate_user_witnesses(&tx.to_bytes(), &notes, &wallet).await;
+        assert!(res.is_ok());
+    }
+
+    fn minimal_tx_with_required_signer(
+        signer_hash_hex: &str,
+        witness_set: Option<csl::TransactionWitnessSet>,
+    ) -> csl::Transaction {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let signer_hash = csl::Ed25519KeyHash::from_hex(signer_hash_hex).unwrap();
+        let mut required = csl::Ed25519KeyHashes::new();
+        required.add(&signer_hash);
+        body.set_required_signers(&required);
+
+        let witness_set = witness_set.unwrap_or_else(csl::TransactionWitnessSet::new);
+        csl::Transaction::new(&body, &witness_set, None)
+    }
+
+    fn minimal_tx_with_values(output_lovelace: u64, fee: u64) -> csl::Transaction {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str(&output_lovelace.to_string()).unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str(&fee.to_string()).unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        csl::Transaction::new(&body, &witness_set, None)
+    }
 }

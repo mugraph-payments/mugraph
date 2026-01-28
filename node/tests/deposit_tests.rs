@@ -66,14 +66,14 @@ fn test_deposit_network_variations() {
 #[test]
 fn test_deposit_signature_lengths() {
     // Valid Ed25519 signature length
-    let valid_sig = vec![0u8; 64];
+    let valid_sig = [0u8; 64];
     assert_eq!(valid_sig.len(), 64);
 
     // Invalid lengths
-    let too_short = vec![0u8; 32];
+    let too_short = [0u8; 32];
     assert_ne!(too_short.len(), 64);
 
-    let too_long = vec![0u8; 128];
+    let too_long = [0u8; 128];
     assert_ne!(too_long.len(), 64);
 }
 

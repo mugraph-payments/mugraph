@@ -43,11 +43,7 @@ fn test_transaction_balance_validation() {
 
     // Test with tolerance (0.1%)
     let tolerance = expected_input / 1000;
-    let diff = if inputs > expected_input {
-        inputs - expected_input
-    } else {
-        expected_input - inputs
-    };
+    let diff = inputs.abs_diff(expected_input);
 
     assert!(diff <= tolerance, "Difference should be within tolerance");
 }
@@ -61,11 +57,7 @@ fn test_unbalanced_transaction_detection() {
 
     let expected_input = outputs + fee;
     let tolerance = expected_input / 1000;
-    let diff = if inputs > expected_input {
-        inputs - expected_input
-    } else {
-        expected_input - inputs
-    };
+    let diff = inputs.abs_diff(expected_input);
 
     // Missing 1.5 ADA - should exceed tolerance
     assert!(
@@ -258,9 +250,7 @@ fn test_intent_hash_computation() {
     // Simulate intent hash computation
     let payload = b"test_payload_for_intent";
 
-    // In real code, this would be blake2b_256
-    // Here we just verify the concept
-    assert!(!payload.is_empty(), "Payload should not be empty");
+    assert_eq!(payload.len(), b"test_payload_for_intent".len());
 }
 
 /// Test withdrawal status enum

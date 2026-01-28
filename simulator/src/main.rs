@@ -677,6 +677,7 @@ fn materialize_outputs(
     Ok(created)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn simulation_owner_loop(
     client: NodeClient,
     mut state: AppState,
