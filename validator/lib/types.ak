@@ -2,15 +2,12 @@
 pub type DepositDatum {
   user_pubkey_hash: ByteArray,
   node_pubkey_hash: ByteArray,
-  // Optional intent hash for replay protection (empty if not used)
+  // Intent hash stored for reference (verified off-chain only)
   intent_hash: ByteArray,
 }
 
-// Ed25519 signature = 64 bytes
+// Simplified redeemer - no longer used for validation
+// All validation now happens through transaction witnesses
 pub type SpendRedeemer {
-  // Full node public key; hashed on-chain to compare with the datum
-  node_pubkey: ByteArray,
-  node_signature: ByteArray,
-  // Optional intent hash that must match datum (for deposits)
-  intent_hash: ByteArray,
+  Void
 }

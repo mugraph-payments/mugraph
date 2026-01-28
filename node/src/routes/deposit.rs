@@ -314,8 +314,9 @@ fn build_canonical_payload(
 
 /// Compute intent hash from deposit request
 /// This is a blake2b-256 hash of the canonical payload
-/// Used for replay protection in the validator
-pub fn compute_intent_hash(
+/// Used for off-chain replay protection and reference in datum
+/// Note: Intent hash is verified off-chain only, not validated by the on-chain validator
+fn compute_intent_hash(
     request: &DepositRequest,
     delegate_pk: &PublicKey,
     script_address: &str,

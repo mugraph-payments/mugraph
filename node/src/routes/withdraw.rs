@@ -92,16 +92,9 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // This prepares the transaction for submission but doesn't modify state
     let wallet = load_wallet(ctx).await?;
 
-    // Extract transaction inputs and load intent hashes from deposits
-    let inputs = extract_transaction_inputs(&tx_bytes)?;
-    let intent_hashes = load_deposit_intent_hashes(ctx, &inputs).await?;
-
-    // Log intent hashes for debugging (will be used in redeemer)
-    for (i, hash) in intent_hashes.iter().enumerate() {
-        if hash != &[0u8; 32] {
-            tracing::debug!("Input {} intent hash: {:?}", i, hex::encode(&hash[..8]));
-        }
-    }
+    // Node signature is attached to the transaction witness set
+    // The validator checks that the transaction is properly signed (off-chain verification)
+    // No redeemer is needed - all validation happens through witnesses
 
     let tx_body_hash = crate::tx_signer::compute_tx_hash(&tx_bytes).map_err(|e| Error::Internal {
         reason: format!("Failed to compute tx hash: {}", e),
@@ -352,58 +345,6 @@ async fn load_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet
             reason: "Cardano wallet not initialized".to_string(),
         }),
     }
-}
-
-/// Load deposit records for given UTxO references
-/// Returns intent hashes for each deposit found
-async fn load_deposit_intent_hashes(
-    ctx: &Context,
-    utxo_refs: &[(Vec<u8>, u32)],
-) -> Result<Vec<[u8; 32]>, Error> {
-    use mugraph_core::types::UtxoRef;
-
-    use crate::database::DEPOSITS;
-
-    let read_tx = ctx.database.read()?;
-    let table = read_tx.open_table(DEPOSITS)?;
-
-    let mut intent_hashes = Vec::new();
-
-    for (tx_hash, index) in utxo_refs {
-        let tx_hash_array: [u8; 32] =
-            tx_hash
-                .as_slice()
-                .try_into()
-                .map_err(|_| Error::InvalidInput {
-                    reason: "Invalid tx_hash length".to_string(),
-                })?;
-
-        let utxo_ref = UtxoRef::new(tx_hash_array, *index as u16);
-
-        match table.get(&utxo_ref)? {
-            Some(record) => {
-                intent_hashes.push(record.value().intent_hash);
-                tracing::debug!(
-                    "Found deposit for UTxO {}:{}, intent_hash: {:?}",
-                    hex::encode(&tx_hash[..8]),
-                    index,
-                    &record.value().intent_hash[..8]
-                );
-            }
-            None => {
-                // UTxO not found in deposits - might be a new deposit or invalid
-                tracing::warn!(
-                    "UTxO {}:{} not found in deposits table",
-                    hex::encode(&tx_hash[..8]),
-                    index
-                );
-                // Push empty hash for UTxOs not in our records
-                intent_hashes.push([0u8; 32]);
-            }
-        }
-    }
-
-    Ok(intent_hashes)
 }
 
 /// Submit transaction to Cardano provider
