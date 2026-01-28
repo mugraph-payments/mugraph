@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use blake2::{Blake2b, Digest, digest::consts::U32};
 use color_eyre::eyre::Result;
 use mugraph_core::{
@@ -95,7 +97,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     }
 
     // 6. Ensure all inputs reference script UTxOs and validate deposit state
-    let input_values =
+    let input_totals =
         validate_script_inputs_with_deposits(&tx_bytes, &wallet.script_address, ctx, &provider)
             .await?;
 
@@ -103,8 +105,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     validate_user_witnesses(&tx_bytes, &request.notes, &wallet).await?;
 
     // 8. Validate transaction value balance
-    let total_input: u64 = input_values.iter().map(|(_, amount)| amount).sum();
-    validate_transaction_balance(&tx_bytes, total_input, ctx.config.max_withdrawal_fee())?;
+    validate_transaction_balance(&tx_bytes, &input_totals, ctx.config.max_withdrawal_fee())?;
 
     // 9. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
@@ -557,6 +558,32 @@ async fn validate_user_witnesses(
         });
     }
 
+    // Require witness set covers all note owners: we derive owner pubkey hash from notes' blinded sigs.
+    // BlindSignature stores a blinded Signature; we can't invert it, so we encode owner expectation
+    // via required_signers in the transaction. Enforce that required_signers are present.
+    if let Some(required) = tx.body().required_signers() {
+        let mut missing: Vec<String> = Vec::new();
+        for idx in 0..required.len() {
+            let h = required.get(idx);
+            let hex = h.to_hex();
+            if !witness_key_hashes.contains(&hex) {
+                missing.push(hex);
+            }
+        }
+        if !missing.is_empty() {
+            return Err(Error::InvalidSignature {
+                reason: format!("Missing witnesses for required_signers: {:?}", missing),
+                signature: mugraph_core::types::Signature::default(),
+            });
+        }
+    } else {
+        return Err(Error::InvalidSignature {
+            reason: "Transaction missing required_signers; cannot bind witnesses to note owners"
+                .to_string(),
+            signature: mugraph_core::types::Signature::default(),
+        });
+    }
+
     // Check required_signers, if present, are covered by witnesses
     if let Some(required) = tx.body().required_signers() {
         for (idx, signer) in required.into_iter().enumerate() {
@@ -703,7 +730,7 @@ async fn validate_script_inputs_with_deposits(
     script_address: &str,
     ctx: &Context,
     provider: &Provider,
-) -> Result<Vec<(String, u64)>, Error> {
+) -> Result<HashMap<String, u128>, Error> {
     use mugraph_core::types::UtxoRef;
 
     use crate::database::DEPOSITS;
@@ -716,7 +743,7 @@ async fn validate_script_inputs_with_deposits(
         });
     }
 
-    let mut input_values: Vec<(String, u64)> = Vec::new();
+    let mut totals: HashMap<String, u128> = HashMap::new();
     let read_tx = ctx.database.read()?;
     let deposits_table = read_tx.open_table(DEPOSITS)?;
 
@@ -742,11 +769,17 @@ async fn validate_script_inputs_with_deposits(
                 }
 
                 // Calculate total value of this UTxO
-                let total_value: u64 = utxo_info
-                    .amount
-                    .iter()
-                    .filter_map(|asset| asset.quantity.parse::<u64>().ok())
-                    .sum();
+                for asset in &utxo_info.amount {
+                    let qty: u128 =
+                        asset
+                            .quantity
+                            .parse::<u128>()
+                            .map_err(|e| Error::InvalidInput {
+                                reason: format!("Invalid asset quantity: {}", e),
+                            })?;
+                    let entry = totals.entry(asset.unit.clone()).or_insert(0);
+                    *entry = entry.saturating_add(qty);
+                }
 
                 // Check deposit state in our database
                 let tx_hash_array: [u8; 32] =
@@ -790,11 +823,10 @@ async fn validate_script_inputs_with_deposits(
                         }
 
                         tracing::info!(
-                            "Input {}: deposit valid (block {}, expires {}), value: {} lovelace",
+                            "Input {}: deposit valid (block {}, expires {})",
                             i,
                             deposit_record.block_height,
-                            deposit_record.expires_at,
-                            total_value
+                            deposit_record.expires_at
                         );
                     }
                     None => {
@@ -816,8 +848,6 @@ async fn validate_script_inputs_with_deposits(
                         });
                     }
                 }
-
-                input_values.push((tx_hash, total_value));
             }
             Ok(None) => {
                 return Err(Error::InvalidInput {
@@ -838,12 +868,15 @@ async fn validate_script_inputs_with_deposits(
     }
 
     tracing::info!(
-        "All {} inputs validated. Total input value: {} lovelace",
-        inputs.len(),
-        input_values.iter().map(|(_, v)| v).sum::<u64>()
+        "Aggregated input totals: {:?}",
+        totals
+            .iter()
+            .map(|(k, v)| format!("{}:{}", k, v))
+            .collect::<Vec<_>>()
+            .join(", ")
     );
 
-    Ok(input_values)
+    Ok(totals)
 }
 
 /// Validate transaction balance
@@ -858,50 +891,111 @@ async fn validate_script_inputs_with_deposits(
 ///
 /// # Returns
 /// Ok if the balance is valid, Err otherwise
-fn validate_transaction_balance(tx_cbor: &[u8], total_input: u64, max_fee: u64) -> Result<(), Error> {
-    // Extract fee from transaction
-    let fee = extract_transaction_fee(tx_cbor)?;
+fn validate_transaction_balance(
+    tx_cbor: &[u8],
+    input_totals: &HashMap<String, u128>,
+    max_fee: u64,
+) -> Result<(), Error> {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid transaction CBOR: {}", e),
+    })?;
 
-    // Extract outputs from transaction
-    let outputs = extract_transaction_outputs(tx_cbor)?;
-    let total_output: u64 = outputs.iter().map(|(_, amount)| amount).sum();
+    let fee_u128: u128 = tx
+        .body()
+        .fee()
+        .to_str()
+        .parse()
+        .map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid fee: {}", e),
+        })?;
 
-    tracing::info!(
-        "Balance check: inputs={}, outputs={}, fee={}",
-        total_input,
-        total_output,
-        fee
-    );
-
-    // Validate fee is within bounds
-    if fee > max_fee {
+    if fee_u128 > max_fee as u128 {
         return Err(Error::InvalidInput {
-            reason: format!("Fee {} lovelace exceeds maximum {} lovelace", fee, max_fee),
+            reason: format!("Fee {} exceeds maximum {}", fee_u128, max_fee),
         });
     }
 
-    // Validate conservation of value: inputs = outputs + fee
-    let expected_input = total_output + fee;
+    // Aggregate outputs by unit
+    let mut output_totals: HashMap<String, u128> = HashMap::new();
+    for output in &tx.body().outputs() {
+        let coin = output.amount().coin();
+        let entry = output_totals.entry("lovelace".to_string()).or_insert(0);
+        *entry =
+            entry.saturating_add(
+                coin.to_str()
+                    .parse::<u128>()
+                    .map_err(|e| Error::InvalidInput {
+                        reason: format!("Invalid lovelace amount: {}", e),
+                    })?,
+            );
 
-    // Allow small tolerance for rounding/errors (0.1%)
-    let tolerance = expected_input / 1000;
-    let diff = total_input.abs_diff(expected_input);
-
-    if diff > tolerance {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Transaction balance invalid. Inputs: {}, Expected (outputs + fee): {}, Difference: {} exceeds tolerance {}",
-                total_input, expected_input, diff, tolerance
-            ),
-        });
+        if let Some(ma) = output.amount().multiasset() {
+            let policies = ma.keys();
+            for idx in 0..policies.len() {
+                let policy = policies.get(idx);
+                if let Some(assets) = ma.get(&policy) {
+                    let names = assets.keys();
+                    for j in 0..names.len() {
+                        let asset_name = names.get(j);
+                        let qty = assets.get(&asset_name).unwrap();
+                        let unit = format!("{}{}", policy.to_hex(), asset_name.to_hex());
+                        let e = output_totals.entry(unit).or_insert(0);
+                        *e = e.saturating_add(qty.to_str().parse::<u128>().map_err(|e| {
+                            Error::InvalidInput {
+                                reason: format!("Invalid multiasset quantity: {}", e),
+                            }
+                        })?);
+                    }
+                }
+            }
+        }
     }
 
-    tracing::info!(
-        "Transaction balance valid. Inputs: {}, Outputs: {}, Fee: {}",
-        total_input,
-        total_output,
-        fee
-    );
+    // Apply fee to lovelace output total
+    let out_lovelace = output_totals.entry("lovelace".to_string()).or_insert(0);
+    *out_lovelace = out_lovelace.saturating_add(fee_u128);
+
+    // Compare per-asset
+    for (unit, in_qty) in input_totals.iter() {
+        let out_qty = output_totals.get(unit).copied().unwrap_or(0);
+        if unit == "lovelace" {
+            // Allow 0.1% tolerance on lovelace
+            let expected = out_qty;
+            let tolerance = expected / 1000;
+            let diff = (*in_qty).abs_diff(expected);
+            if diff > tolerance {
+                return Err(Error::InvalidInput {
+                    reason: format!(
+                        "Lovelace imbalance: inputs {}, outputs+fee {}, diff {}, tolerance {}",
+                        in_qty, expected, diff, tolerance
+                    ),
+                });
+            }
+        } else if *in_qty != out_qty {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Asset imbalance for {}: inputs {}, outputs {}",
+                    unit, in_qty, out_qty
+                ),
+            });
+        }
+    }
+
+    // Also ensure no extra assets are minted/appearing
+    for (unit, out_qty) in output_totals.iter() {
+        let in_qty = input_totals.get(unit).copied().unwrap_or(0);
+        if unit == "lovelace" {
+            continue; // already checked with tolerance
+        }
+        if *out_qty > in_qty {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Outputs create extra asset {}: outputs {}, inputs {}",
+                    unit, out_qty, in_qty
+                ),
+            });
+        }
+    }
 
     Ok(())
 }
@@ -916,14 +1010,15 @@ mod tests {
     fn test_validate_transaction_balance() {
         let tx = minimal_tx_with_values(1_000_000, 1_000_000); // output 1ADA, fee 1ADA
         let tx_cbor = tx.to_bytes();
-        let total_input = 2_000_000;
+        let mut totals = HashMap::new();
+        totals.insert("lovelace".to_string(), 2_000_000u128);
         let max_fee = 1_100_000;
 
-        assert!(validate_transaction_balance(&tx_cbor, total_input, max_fee).is_ok());
+        assert!(validate_transaction_balance(&tx_cbor, &totals, max_fee).is_ok());
 
         // Fee too high
         let max_fee = 500_000;
-        assert!(validate_transaction_balance(&tx_cbor, total_input, max_fee).is_err());
+        assert!(validate_transaction_balance(&tx_cbor, &totals, max_fee).is_err());
     }
 
     /// required_signers present but missing matching witness => reject
