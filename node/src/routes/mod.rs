@@ -11,6 +11,7 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, Request, Response},
 };
+use redb::ReadableTable;
 
 mod deposit;
 mod refresh;
@@ -20,7 +21,12 @@ pub use deposit::*;
 pub use refresh::*;
 pub use withdraw::*;
 
-use crate::database::Database;
+use crate::{
+    cardano::setup_cardano_wallet,
+    database::{CARDANO_WALLET, Database},
+    deposit_monitor::{DepositMonitor, DepositMonitorConfig},
+    provider::Provider,
+};
 
 #[derive(Clone)]
 pub struct Context {
@@ -28,11 +34,17 @@ pub struct Context {
     database: Arc<Database>,
 }
 
-pub fn router(keypair: Keypair) -> Result<Router, Error> {
+pub async fn router(keypair: Keypair) -> Result<Router, Error> {
     let database = Arc::new(Database::setup("./db")?);
 
     // Run database migrations
     database.migrate()?;
+
+    // Initialize Cardano wallet on startup
+    initialize_cardano_wallet(&database).await?;
+
+    // Start deposit monitor background task
+    start_deposit_monitor(database.clone()).await?;
 
     let router = Router::new()
         .layer(tower_http::trace::TraceLayer::new_for_http())
@@ -41,6 +53,92 @@ pub fn router(keypair: Keypair) -> Result<Router, Error> {
         .with_state(Context { database, keypair });
 
     Ok(router)
+}
+
+/// Initialize Cardano wallet on startup
+/// Loads existing wallet or creates a new one with compiled validator
+async fn initialize_cardano_wallet(database: &Database) -> Result<(), Error> {
+    // Check if wallet already exists
+    {
+        let read_tx = database.read()?;
+        let table = read_tx.open_table(CARDANO_WALLET)?;
+        if table.get("wallet")?.is_some() {
+            tracing::info!("Cardano wallet already initialized");
+            return Ok(());
+        }
+    }
+
+    tracing::info!("Initializing Cardano wallet...");
+
+    // TODO: Get network and optional payment key from config
+    let network = std::env::var("CARDANO_NETWORK").unwrap_or_else(|_| "preprod".to_string());
+    let payment_sk = std::env::var("CARDANO_PAYMENT_SK").ok();
+
+    // Create or load wallet
+    let wallet = setup_cardano_wallet(&network, payment_sk.as_deref())
+        .await
+        .map_err(|e| Error::Internal {
+            reason: format!("Failed to setup Cardano wallet: {}", e),
+        })?;
+
+    // Store wallet in database
+    let write_tx = database.write()?;
+    {
+        let mut table = write_tx.open_table(CARDANO_WALLET)?;
+        table.insert("wallet", &wallet)?;
+    }
+    write_tx.commit()?;
+
+    tracing::info!(
+        "Cardano wallet initialized successfully. Script address: {}",
+        wallet.script_address
+    );
+
+    Ok(())
+}
+
+/// Start the deposit monitor background task
+async fn start_deposit_monitor(database: Arc<Database>) -> Result<(), Error> {
+    // Create provider for the monitor
+    // TODO: Get provider config from environment or config file
+    let provider = Provider::new(
+        "blockfrost",
+        std::env::var("BLOCKFROST_API_KEY").unwrap_or_else(|_| "test_key".to_string()),
+        "preprod".to_string(),
+        None,
+    )
+    .map_err(|e| Error::Internal {
+        reason: format!("Failed to create provider for deposit monitor: {}", e),
+    })?;
+
+    // Create monitor configuration
+    let config = DepositMonitorConfig {
+        confirm_depth: std::env::var("DEPOSIT_CONFIRM_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(15),
+        expiration_blocks: std::env::var("DEPOSIT_EXPIRATION_BLOCKS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1440),
+        min_deposit_value: std::env::var("MIN_DEPOSIT_VALUE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1_000_000),
+        revalidation_interval: 60, // 1 minute
+    };
+
+    // Create and start monitor
+    let monitor = DepositMonitor::new(config, database, provider);
+
+    // Spawn the monitor as a background task
+    tokio::spawn(async move {
+        monitor.start().await;
+    });
+
+    tracing::info!("Deposit monitor started in background");
+
+    Ok(())
 }
 
 pub async fn health() -> &'static str {

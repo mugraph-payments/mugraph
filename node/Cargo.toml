@@ -26,3 +26,6 @@ serde_bytes = "0.11.15"
 bech32 = "0.11.0"
 blake2 = "0.10.6"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { workspace = true }
+blake3 = { workspace = true }

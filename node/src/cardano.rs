@@ -2,7 +2,7 @@ use std::{path::Path, process::Command};
 
 use color_eyre::eyre::{Context, Result};
 use mugraph_core::types::CardanoWallet;
-use rand::{RngCore, TryRngCore};
+use rand::TryRngCore;
 
 /// Generate a new Ed25519 keypair for Cardano payments
 pub fn generate_payment_keypair() -> Result<(Vec<u8>, Vec<u8>)> {
