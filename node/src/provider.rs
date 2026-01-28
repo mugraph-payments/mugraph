@@ -1,5 +1,6 @@
 use color_eyre::eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
+use tokio::time::{Duration, sleep};
 
 /// Cardano provider abstraction for UTxO queries and transaction submission
 #[derive(Debug, Clone)]
@@ -61,6 +62,10 @@ pub struct ChainTip {
     pub hash: String,
     pub block_height: u64,
 }
+
+// Basic retry policy for provider calls
+const PROVIDER_MAX_RETRIES: usize = 3;
+const PROVIDER_BACKOFF_MS: u64 = 200;
 
 impl Provider {
     /// Create a new provider based on configuration
@@ -148,6 +153,51 @@ impl Provider {
     }
 }
 
+/// Send an HTTP request with retry/backoff for transient failures (429/5xx/network).
+async fn send_with_retry<F>(make: F, context: &str) -> Result<reqwest::Response>
+where
+    F: Fn() -> reqwest::RequestBuilder,
+{
+    let mut delay = PROVIDER_BACKOFF_MS;
+    for attempt in 1..=PROVIDER_MAX_RETRIES {
+        let resp_result = make().send().await;
+        match resp_result {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() || status.as_u16() == 404 {
+                    return Ok(resp);
+                }
+
+                if attempt == PROVIDER_MAX_RETRIES
+                    || !(status.is_server_error() || status.as_u16() == 429)
+                {
+                    let text = resp.text().await.unwrap_or_default();
+                    return Err(color_eyre::eyre::eyre!(
+                        "{} (status {}): {}",
+                        context,
+                        status,
+                        text
+                    ));
+                }
+            }
+            Err(e) => {
+                if attempt == PROVIDER_MAX_RETRIES {
+                    return Err(color_eyre::eyre::eyre!(
+                        "{} (network error after {} attempts): {}",
+                        context,
+                        attempt,
+                        e
+                    ));
+                }
+            }
+        }
+
+        sleep(Duration::from_millis(delay)).await;
+        delay *= 2;
+    }
+
+    Err(color_eyre::eyre::eyre!("{}: exceeded max retries", context))
+}
 /// Protocol parameters for fee calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtocolParams {
@@ -169,29 +219,25 @@ impl BlockfrostProvider {
         // Fetch UTxO details
         let url = format!("{}/txs/{}/utxos", self.base_url, tx_hash);
 
-        let response: BlockfrostTxUtxos = self
-            .client
-            .get(&url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch UTxO from Blockfrost")?
-            .json()
-            .await
-            .context("Failed to parse Blockfrost response")?;
+        let response: BlockfrostTxUtxos = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch UTxO from Blockfrost",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Blockfrost response")?;
 
         // Fetch transaction info to get block height
         let tx_url = format!("{}/txs/{}", self.base_url, tx_hash);
-        let tx_response: BlockfrostTxInfo = self
-            .client
-            .get(&tx_url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch transaction info from Blockfrost")?
-            .json()
-            .await
-            .context("Failed to parse Blockfrost transaction response")?;
+        let tx_response: BlockfrostTxInfo = send_with_retry(
+            || self.client.get(&tx_url).header("project_id", &self.api_key),
+            "Failed to fetch transaction info from Blockfrost",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Blockfrost transaction response")?;
 
         let maybe_output = response
             .outputs
@@ -230,16 +276,14 @@ impl BlockfrostProvider {
     async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
         let url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
-        let response: Vec<BlockfrostAddressUtxo> = self
-            .client
-            .get(&url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch address UTxOs from Blockfrost")?
-            .json()
-            .await
-            .context("Failed to parse Blockfrost response")?;
+        let response: Vec<BlockfrostAddressUtxo> = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch address UTxOs from Blockfrost",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Blockfrost response")?;
 
         // Fetch block heights for entries missing it
         let mut results = Vec::with_capacity(response.len());
@@ -249,16 +293,14 @@ impl BlockfrostProvider {
                 None => {
                     // Fetch tx info to get block height
                     let tx_url = format!("{}/txs/{}", self.base_url, u.tx_hash);
-                    let tx_info: BlockfrostTxInfo = self
-                        .client
-                        .get(&tx_url)
-                        .header("project_id", &self.api_key)
-                        .send()
-                        .await
-                        .context("Failed to fetch transaction info from Blockfrost")?
-                        .json()
-                        .await
-                        .context("Failed to parse Blockfrost transaction response")?;
+                    let tx_info: BlockfrostTxInfo = send_with_retry(
+                        || self.client.get(&tx_url).header("project_id", &self.api_key),
+                        "Failed to fetch transaction info from Blockfrost",
+                    )
+                    .await?
+                    .json()
+                    .await
+                    .context("Failed to parse Blockfrost transaction response")?;
                     Some(tx_info.block_height)
                 }
             };
@@ -288,15 +330,17 @@ impl BlockfrostProvider {
     async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
         let url = format!("{}/tx/submit", self.base_url);
 
-        let response = self
-            .client
-            .post(&url)
-            .header("project_id", &self.api_key)
-            .header("Content-Type", "application/cbor")
-            .body(tx_cbor.to_vec())
-            .send()
-            .await
-            .context("Failed to submit transaction to Blockfrost")?;
+        let response = send_with_retry(
+            || {
+                self.client
+                    .post(&url)
+                    .header("project_id", &self.api_key)
+                    .header("Content-Type", "application/cbor")
+                    .body(tx_cbor.to_vec())
+            },
+            "Failed to submit transaction to Blockfrost",
+        )
+        .await?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -317,16 +361,14 @@ impl BlockfrostProvider {
     async fn get_tip(&self) -> Result<ChainTip> {
         let url = format!("{}/blocks/latest", self.base_url);
 
-        let response: BlockfrostBlock = self
-            .client
-            .get(&url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch latest block from Blockfrost")?
-            .json()
-            .await
-            .context("Failed to parse Blockfrost block response")?;
+        let response: BlockfrostBlock = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch latest block from Blockfrost",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Blockfrost block response")?;
 
         Ok(ChainTip {
             slot: response.slot,
@@ -338,16 +380,14 @@ impl BlockfrostProvider {
     async fn get_protocol_params(&self) -> Result<ProtocolParams> {
         let url = format!("{}/epochs/latest/parameters", self.base_url);
 
-        let response: BlockfrostEpochParams = self
-            .client
-            .get(&url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch protocol params from Blockfrost")?
-            .json()
-            .await
-            .context("Failed to parse protocol params response")?;
+        let response: BlockfrostEpochParams = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch protocol params from Blockfrost",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse protocol params response")?;
 
         Ok(ProtocolParams {
             min_fee_a: response.min_fee_a.parse().unwrap_or(0),
@@ -367,13 +407,11 @@ impl BlockfrostProvider {
     /// Fetch raw CBOR for a datum hash. Returns None on 404.
     async fn fetch_datum_cbor(&self, datum_hash: &str) -> Result<Option<String>> {
         let url = format!("{}/scripts/datum/{}/cbor", self.base_url, datum_hash);
-        let resp = self
-            .client
-            .get(&url)
-            .header("project_id", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch datum CBOR from Blockfrost")?;
+        let resp = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch datum CBOR from Blockfrost",
+        )
+        .await?;
 
         let status = resp.status();
 
@@ -411,16 +449,14 @@ impl MaestroProvider {
             self.base_url, tx_hash, output_index
         );
 
-        let response: MaestroTxOutput = self
-            .client
-            .get(&url)
-            .header("api-key", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch UTxO from Maestro")?
-            .json()
-            .await
-            .context("Failed to parse Maestro response")?;
+        let response: MaestroTxOutput = send_with_retry(
+            || self.client.get(&url).header("api-key", &self.api_key),
+            "Failed to fetch UTxO from Maestro",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Maestro response")?;
 
         Ok(Some(UtxoInfo {
             tx_hash: tx_hash.to_string(),
@@ -444,16 +480,14 @@ impl MaestroProvider {
     async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
         let url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
-        let response: Vec<MaestroAddressUtxo> = self
-            .client
-            .get(&url)
-            .header("api-key", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch address UTxOs from Maestro")?
-            .json()
-            .await
-            .context("Failed to parse Maestro response")?;
+        let response: Vec<MaestroAddressUtxo> = send_with_retry(
+            || self.client.get(&url).header("api-key", &self.api_key),
+            "Failed to fetch address UTxOs from Maestro",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Maestro response")?;
 
         Ok(response
             .into_iter()
@@ -480,18 +514,20 @@ impl MaestroProvider {
     async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
         let url = format!("{}/transactions", self.base_url);
 
-        let response: MaestroSubmitResponse = self
-            .client
-            .post(&url)
-            .header("api-key", &self.api_key)
-            .header("Content-Type", "application/cbor")
-            .body(tx_cbor.to_vec())
-            .send()
-            .await
-            .context("Failed to submit transaction to Maestro")?
-            .json()
-            .await
-            .context("Failed to parse Maestro response")?;
+        let response: MaestroSubmitResponse = send_with_retry(
+            || {
+                self.client
+                    .post(&url)
+                    .header("api-key", &self.api_key)
+                    .header("Content-Type", "application/cbor")
+                    .body(tx_cbor.to_vec())
+            },
+            "Failed to submit transaction to Maestro",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Maestro response")?;
 
         Ok(SubmitResponse {
             tx_hash: response.hash,
@@ -501,16 +537,14 @@ impl MaestroProvider {
     async fn get_tip(&self) -> Result<ChainTip> {
         let url = format!("{}/blocks/latest", self.base_url);
 
-        let response: MaestroBlock = self
-            .client
-            .get(&url)
-            .header("api-key", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch tip from Maestro")?
-            .json()
-            .await
-            .context("Failed to parse Maestro response")?;
+        let response: MaestroBlock = send_with_retry(
+            || self.client.get(&url).header("api-key", &self.api_key),
+            "Failed to fetch tip from Maestro",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Maestro response")?;
 
         Ok(ChainTip {
             slot: response.slot,
@@ -522,16 +556,14 @@ impl MaestroProvider {
     async fn get_protocol_params(&self) -> Result<ProtocolParams> {
         let url = format!("{}/protocol-params", self.base_url);
 
-        let response: MaestroProtocolParams = self
-            .client
-            .get(&url)
-            .header("api-key", &self.api_key)
-            .send()
-            .await
-            .context("Failed to fetch protocol params from Maestro")?
-            .json()
-            .await
-            .context("Failed to parse Maestro response")?;
+        let response: MaestroProtocolParams = send_with_retry(
+            || self.client.get(&url).header("api-key", &self.api_key),
+            "Failed to fetch protocol params from Maestro",
+        )
+        .await?
+        .json()
+        .await
+        .context("Failed to parse Maestro response")?;
 
         Ok(ProtocolParams {
             min_fee_a: response.min_fee_a.parse().unwrap_or(44),
