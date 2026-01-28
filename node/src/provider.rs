@@ -34,6 +34,7 @@ pub struct UtxoInfo {
     pub address: String,
     pub amount: Vec<AssetAmount>,
     pub datum_hash: Option<String>,
+    /// Raw CBOR hex for inline or referenced datum (if available)
     pub datum: Option<String>,
     pub script_ref: Option<String>,
     /// Block height where this UTxO was created (for confirm depth checks)
@@ -192,11 +193,19 @@ impl BlockfrostProvider {
             .await
             .context("Failed to parse Blockfrost transaction response")?;
 
-        Ok(response
+        let maybe_output = response
             .outputs
             .into_iter()
-            .find(|o| o.output_index == output_index as i32)
-            .map(|o| UtxoInfo {
+            .find(|o| o.output_index == output_index as i32);
+
+        if let Some(o) = maybe_output {
+            let datum_hex = if let Some(ref dh) = o.data_hash {
+                self.fetch_datum_cbor(dh).await?
+            } else {
+                None
+            };
+
+            Ok(Some(UtxoInfo {
                 tx_hash: tx_hash.to_string(),
                 output_index: o.output_index as u16,
                 address: o.address,
@@ -209,10 +218,13 @@ impl BlockfrostProvider {
                     })
                     .collect(),
                 datum_hash: o.data_hash,
-                datum: None, // Would need separate call to get datum
+                datum: datum_hex,
                 script_ref: o.reference_script_hash,
                 block_height: Some(tx_response.block_height),
             }))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
@@ -350,6 +362,45 @@ impl BlockfrostProvider {
             max_tx_ex_steps: response.max_tx_ex_steps.parse().unwrap_or(10000000000),
             coins_per_utxo_byte: response.coins_per_utxo_size.parse().unwrap_or(4310),
         })
+    }
+
+    /// Fetch raw CBOR for a datum hash. Returns None on 404.
+    async fn fetch_datum_cbor(&self, datum_hash: &str) -> Result<Option<String>> {
+        let url = format!("{}/scripts/datum/{}/cbor", self.base_url, datum_hash);
+        let resp = self
+            .client
+            .get(&url)
+            .header("project_id", &self.api_key)
+            .send()
+            .await
+            .context("Failed to fetch datum CBOR from Blockfrost")?;
+
+        let status = resp.status();
+
+        if status.as_u16() == 404 {
+            return Ok(None);
+        }
+
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(color_eyre::eyre::eyre!(
+                "Failed to fetch datum CBOR (status {}): {}",
+                status,
+                text
+            ));
+        }
+
+        #[derive(Deserialize)]
+        struct DatumCborResponse {
+            cbor: String,
+        }
+
+        let body: DatumCborResponse = resp
+            .json()
+            .await
+            .context("Failed to parse datum CBOR response")?;
+
+        Ok(Some(body.cbor))
     }
 }
 
