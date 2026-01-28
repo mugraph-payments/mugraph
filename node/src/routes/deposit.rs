@@ -32,7 +32,7 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
     // 1. Load or create Cardano wallet
     let wallet = load_or_create_wallet(ctx).await?;
 
-    // 2. Verify CIP-8 signature over canonical payload
+    // 2. Verify CIP-8 signature over canonical payload (strict)
     verify_deposit_signature(request, &wallet, &ctx.keypair.public_key)?;
 
     // 3. Fetch UTxO from Cardano provider and validate
@@ -129,36 +129,9 @@ fn verify_deposit_signature(
     // Payload = utxo + outputs + delegate pk + script address + nonce + network tag
     let payload = build_canonical_payload(request, delegate_pk, &wallet.script_address);
 
-    // Try to parse and verify as CIP-8/COSE format first
-    match verify_cip8_cose_signature(request, &payload) {
-        Ok(()) => {
-            tracing::info!("CIP-8/COSE signature verified successfully");
-            return Ok(());
-        }
-        Err(e) => {
-            tracing::debug!(
-                "CIP-8/COSE verification failed ({}), trying raw Ed25519...",
-                e
-            );
-            // Fall through to raw Ed25519 verification
-        }
-    }
-
-    // Fall back to raw Ed25519 signature verification
-    verify_raw_ed25519_signature(request, &payload)
+    verify_cip8_cose_signature(request, &payload)
 }
 
-/// Verify CIP-8/COSE_Sign1 signature
-///
-/// CIP-8 defines a COSE-based signing format for Cardano.
-/// The signature structure includes:
-/// - Protected header (algorithm, content type, etc.)
-/// - Unprotected header (optional fields)
-/// - Payload (the signed data)
-/// - Signature
-///
-/// This is a partial implementation that handles basic CIP-8 signatures.
-/// Full implementation would require a COSE library.
 fn verify_cip8_cose_signature(request: &DepositRequest, payload: &[u8]) -> Result<(), Error> {
     use coset::{CoseSign1, TaggedCborSerializable, iana};
     use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -370,82 +343,6 @@ mod tests {
         let res = verify_cip8_cose_signature(&request, &bad_payload);
         assert!(res.is_err());
     }
-}
-
-/// Verify raw Ed25519 signature
-fn verify_raw_ed25519_signature(request: &DepositRequest, payload: &[u8]) -> Result<(), Error> {
-    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-
-    // For now, we expect signature to be raw Ed25519 signature (64 bytes)
-    if request.signature.len() != 64 {
-        return Err(Error::InvalidSignature {
-            reason: format!(
-                "Invalid signature length: expected 64 bytes, got {}",
-                request.signature.len()
-            ),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    // Extract public key from request message
-    let message_json: serde_json::Value =
-        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid message JSON: {}", e),
-        })?;
-
-    let user_pubkey_hex = message_json
-        .get("user_pubkey")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Missing user_pubkey in message".to_string(),
-        })?;
-
-    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid user_pubkey hex: {}", e),
-    })?;
-
-    if user_pubkey_bytes.len() != 32 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "user_pubkey must be 32 bytes, got {}",
-                user_pubkey_bytes.len()
-            ),
-        });
-    }
-
-    // Clone for blake3 hash later
-    let user_pubkey_for_hash = user_pubkey_bytes.clone();
-
-    let verifying_key =
-        VerifyingKey::from_bytes(&user_pubkey_bytes.try_into().expect("Length checked above"))
-            .map_err(|e| Error::InvalidKey {
-                reason: format!("Invalid Ed25519 public key: {}", e),
-            })?;
-
-    let signature =
-        Signature::from_slice(&request.signature).map_err(|e| Error::InvalidSignature {
-            reason: format!("Invalid signature format: {}", e),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
-
-    // Verify signature over the canonical payload
-    verifying_key
-        .verify(payload, &signature)
-        .map_err(|e| Error::InvalidSignature {
-            reason: format!("Signature verification failed: {}", e),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
-
-    // Compute the user key hash for datum verification
-    let user_pubkey_hash = blake3::hash(&user_pubkey_for_hash);
-    let expected_hash_hex = hex::encode(&user_pubkey_hash.as_bytes()[..28]);
-
-    tracing::info!(
-        "Ed25519 signature verified for user key hash: {}",
-        &expected_hash_hex[..16]
-    );
-
-    Ok(())
 }
 
 /// UTXO reference for canonical payload serialization
