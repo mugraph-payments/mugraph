@@ -1,3 +1,4 @@
+use blake2::{Blake2b, Digest, digest::consts::U32};
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
@@ -12,6 +13,7 @@ use mugraph_core::{
     },
 };
 use redb::ReadableTable;
+use whisky_csl::csl;
 
 use crate::{
     database::{CARDANO_WALLET, NOTES, WITHDRAWALS},
@@ -25,7 +27,7 @@ use crate::{
 /// 1. Parse and validate the withdrawal request
 /// 2. Verify transaction CBOR and recompute hash
 /// 3. Ensure all inputs reference script UTxOs
-/// 4. Validate user signatures (CIP-8/COSE)
+/// 4. Validate user signatures (transaction witnesses via whisky-csl)
 /// 5. Check outputs match burned notes minus fees
 /// 6. Burn notes
 /// 7. Attach node witness and re-serialize
@@ -279,7 +281,7 @@ async fn burn_notes_and_sign(
 
     // Calculate change notes from transaction outputs
     let wallet = load_wallet(ctx).await?;
-    let change_notes = calculate_change_notes(request, &tx_bytes, &wallet)?;
+    let change_notes = calculate_change_notes(request, tx_bytes, &wallet)?;
 
     Ok((signed_cbor, change_notes))
 }
@@ -597,70 +599,12 @@ fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64, tolerance_pct: u8) -> Res
 
 /// Extract fee from transaction body CBOR
 fn extract_transaction_fee(tx_cbor: &[u8]) -> Result<u64, Error> {
-    let mut decoder = minicbor::Decoder::new(tx_cbor);
-
-    // Transaction is an array [body, witness_set, is_valid, auxiliary_data]
-    let tx_len = decoder.array().map_err(|e| Error::InvalidInput {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid transaction CBOR: {}", e),
     })?;
-    let tx_len = tx_len.ok_or_else(|| Error::InvalidInput {
-        reason: "Indefinite transaction length not supported".to_string(),
-    })?;
-
-    if tx_len < 1 {
-        return Err(Error::InvalidInput {
-            reason: "Transaction missing body".to_string(),
-        });
-    }
-
-    // Parse transaction body to extract fee
-    let body_start = decoder.position();
-    decoder.skip().map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to parse transaction body: {}", e),
-    })?;
-    let body_end = decoder.position();
-    let body_cbor = &tx_cbor[body_start..body_end];
-
-    // Parse fee from body
-    parse_fee_from_body(body_cbor)
-}
-
-/// Parse fee from transaction body CBOR
-fn parse_fee_from_body(body_cbor: &[u8]) -> Result<u64, Error> {
-    let mut decoder = minicbor::Decoder::new(body_cbor);
-
-    // Transaction body is a map with field indices as keys
-    let map_len = decoder.map().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction body: {}", e),
-    })?;
-
-    let map_len = match map_len {
-        Some(len) => len as usize,
-        None => usize::MAX,
-    };
-
-    for _ in 0..map_len {
-        let key_result: Result<u64, _> = decoder.u64();
-        match key_result {
-            Ok(2) => {
-                // Key 2 = fee
-                let fee = decoder.u64().map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid fee: {}", e),
-                })?;
-                return Ok(fee);
-            }
-            Ok(_) => {
-                // Skip other fields
-                decoder.skip().map_err(|e| Error::InvalidInput {
-                    reason: format!("Failed to skip field: {}", e),
-                })?;
-            }
-            Err(_) => break,
-        }
-    }
-
-    Err(Error::InvalidInput {
-        reason: "Fee not found in transaction".to_string(),
+    let fee_str = tx.body().fee().to_str();
+    fee_str.parse::<u64>().map_err(|e| Error::InvalidInput {
+        reason: format!("Failed to parse fee: {}", e),
     })
 }
 
@@ -745,106 +689,18 @@ async fn validate_script_inputs(
 /// - fee: Coin
 /// - ... other fields
 fn extract_transaction_inputs(tx_cbor: &[u8]) -> Result<Vec<(Vec<u8>, u32)>, Error> {
-    let mut decoder = minicbor::Decoder::new(tx_cbor);
-
-    // Transaction is an array [body, witness_set, is_valid, auxiliary_data]
-    let tx_len = decoder.array().map_err(|e| Error::InvalidInput {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid transaction CBOR: {}", e),
     })?;
-    let tx_len = tx_len.ok_or_else(|| Error::InvalidInput {
-        reason: "Indefinite transaction length not supported".to_string(),
-    })?;
 
-    if tx_len < 1 {
-        return Err(Error::InvalidInput {
-            reason: "Transaction missing body".to_string(),
-        });
-    }
-
-    // Parse transaction body to extract inputs
-    let body_start = decoder.position();
-    decoder.skip().map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to parse transaction body: {}", e),
-    })?;
-    let body_end = decoder.position();
-    let body_cbor = &tx_cbor[body_start..body_end];
-
-    // Parse inputs from body
-    parse_inputs_from_body(body_cbor)
-}
-
-/// Parse inputs from transaction body CBOR
-fn parse_inputs_from_body(body_cbor: &[u8]) -> Result<Vec<(Vec<u8>, u32)>, Error> {
-    let mut decoder = minicbor::Decoder::new(body_cbor);
-
-    // Transaction body is a map with field indices as keys
-    let map_len = decoder.map().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction body: {}", e),
-    })?;
-
-    let mut inputs: Vec<(Vec<u8>, u32)> = Vec::new();
-    let map_len = match map_len {
-        Some(len) => len as usize,
-        None => {
-            // Indefinite length - we'll iterate until break
-            usize::MAX
-        }
-    };
-
-    for _ in 0..map_len {
-        // Try to get the key
-        let key_result: Result<u64, _> = decoder.u64();
-        match key_result {
-            Ok(0) => {
-                // Key 0 = inputs
-                let arr_len = decoder.array().map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid inputs array: {}", e),
-                })?;
-                let arr_len = arr_len.ok_or_else(|| Error::InvalidInput {
-                    reason: "Indefinite inputs array not supported".to_string(),
-                })?;
-
-                for _ in 0..arr_len {
-                    // Each input is [transaction_id, index]
-                    let input_arr_len = decoder.array().map_err(|e| Error::InvalidInput {
-                        reason: format!("Invalid input: {}", e),
-                    })?;
-                    let input_arr_len = input_arr_len.ok_or_else(|| Error::InvalidInput {
-                        reason: "Indefinite input not supported".to_string(),
-                    })?;
-
-                    if input_arr_len != 2 {
-                        return Err(Error::InvalidInput {
-                            reason: "Input must be [transaction_id, index]".to_string(),
-                        });
-                    }
-
-                    let tx_id: Vec<u8> = decoder
-                        .bytes()
-                        .map_err(|e| Error::InvalidInput {
-                            reason: format!("Invalid transaction_id: {}", e),
-                        })?
-                        .to_vec();
-                    let index: u32 = decoder.u32().map_err(|e| Error::InvalidInput {
-                        reason: format!("Invalid input index: {}", e),
-                    })?;
-
-                    inputs.push((tx_id, index));
-                }
-                break; // Found inputs, done
-            }
-            Ok(_) => {
-                // Skip other fields
-                decoder.skip().map_err(|e| Error::InvalidInput {
-                    reason: format!("Failed to skip field: {}", e),
-                })?;
-            }
-            Err(_) => {
-                // End of map (for indefinite length) or error
-                break;
-            }
-        }
-    }
+    let inputs: Vec<(Vec<u8>, u32)> = (&tx.body().inputs())
+        .into_iter()
+        .map(|input| {
+            let tx_id = input.transaction_id().to_bytes();
+            let idx = input.index();
+            (tx_id, idx)
+        })
+        .collect();
 
     if inputs.is_empty() {
         return Err(Error::InvalidInput {
@@ -857,9 +713,9 @@ fn parse_inputs_from_body(body_cbor: &[u8]) -> Result<Vec<(Vec<u8>, u32)>, Error
 
 /// Validate user witnesses
 ///
-/// # Implementation Note
-/// This validates that the transaction contains proper user signatures.
-/// A full implementation would verify CIP-8/COSE signatures from the witness set.
+/// Uses whisky-csl (cardano-serialization-lib bindings) to parse the transaction,
+/// compute the tx body hash (BLAKE2b-256) and verify each vkey / bootstrap witness
+/// signature against that hash.
 ///
 /// # Arguments
 /// * `tx_cbor` - The transaction CBOR bytes
@@ -870,117 +726,79 @@ async fn validate_user_witnesses(
     notes: &[mugraph_core::types::BlindSignature],
     _wallet: &mugraph_core::types::CardanoWallet,
 ) -> Result<(), Error> {
-    // Extract witness set from transaction
-    let witness_set = extract_witness_set(tx_cbor)?;
+    // Parse full transaction using whisky-csl
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid transaction CBOR: {}", e),
+    })?;
 
-    // Count vkey witnesses
-    let vkey_count = count_vkey_witnesses(&witness_set)?;
+    // Compute transaction body hash (BLAKE2b-256 over body bytes)
+    let body_bytes = tx.body().to_bytes();
+    let mut hasher = Blake2b::<U32>::new();
+    hasher.update(&body_bytes);
+    let body_hash = hasher.finalize();
+    let body_hash_bytes: Vec<u8> = body_hash.to_vec();
 
-    tracing::info!(
-        "Found {} vkey witnesses for {} notes",
-        vkey_count,
-        notes.len()
-    );
+    let witness_set = tx.witness_set();
+    let mut verified_witnesses = 0usize;
 
-    // For now, we just verify there are witnesses present
-    // A full implementation would:
-    // 1. Parse each vkey witness
-    // 2. Verify the signature against the transaction hash
-    // 3. Verify the public key matches the note owner's key
-    if vkey_count == 0 {
+    // Verify vkey witnesses
+    if let Some(vkeys) = witness_set.vkeys() {
+        for (idx, witness) in (&vkeys).into_iter().enumerate() {
+            let pk: csl::PublicKey = witness.vkey().public_key();
+            let sig = witness.signature();
+            let ok = pk.verify(&body_hash_bytes, &sig);
+            if !ok {
+                return Err(Error::InvalidSignature {
+                    reason: format!("VKey witness {} signature invalid", idx),
+                    signature: mugraph_core::types::Signature::default(),
+                });
+            }
+            verified_witnesses += 1;
+        }
+    }
+
+    // Verify bootstrap witnesses (Byron-era) if present
+    if let Some(bootstraps) = witness_set.bootstraps() {
+        for (idx, witness) in (&bootstraps).into_iter().enumerate() {
+            let pk: csl::PublicKey = witness.vkey().public_key();
+            let sig = witness.signature();
+            let ok = pk.verify(&body_hash_bytes, &sig);
+            if !ok {
+                return Err(Error::InvalidSignature {
+                    reason: format!("Bootstrap witness {} signature invalid", idx),
+                    signature: mugraph_core::types::Signature::default(),
+                });
+            }
+            verified_witnesses += 1;
+        }
+    }
+
+    if verified_witnesses == 0 {
         return Err(Error::InvalidSignature {
-            reason: "No vkey witnesses found in transaction".to_string(),
+            reason: "No valid witnesses found in transaction".to_string(),
             signature: mugraph_core::types::Signature::default(),
         });
     }
 
-    // NOTE: Full CIP-8/COSE validation would require:
-    // 1. Parsing each vkey witness from the witness set
-    // 2. Verifying the signature against the transaction hash
-    // 3. Verifying the public key matches the note owner's key
-    // This requires a COSE library and additional infrastructure.
-    // For now, we verify that witnesses are present.
-
-    Ok(())
-}
-
-/// Extract witness set from transaction CBOR
-fn extract_witness_set(tx_cbor: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut decoder = minicbor::Decoder::new(tx_cbor);
-
-    // Transaction is an array [body, witness_set, is_valid, auxiliary_data]
-    let tx_len = decoder.array().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
-    let tx_len = tx_len.ok_or_else(|| Error::InvalidInput {
-        reason: "Indefinite transaction length not supported".to_string(),
-    })?;
-
-    if tx_len < 2 {
-        return Err(Error::InvalidInput {
-            reason: "Transaction missing witness set".to_string(),
+    // Basic sanity: require at least as many witnesses as notes being burned
+    if verified_witnesses < notes.len() {
+        return Err(Error::InvalidSignature {
+            reason: format!(
+                "Not enough witnesses: found {}, but {} notes are being spent",
+                verified_witnesses,
+                notes.len()
+            ),
+            signature: mugraph_core::types::Signature::default(),
         });
     }
 
-    // Skip body
-    decoder.skip().map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to skip transaction body: {}", e),
-    })?;
+    tracing::info!(
+        "Validated {} witness signatures for {} notes",
+        verified_witnesses,
+        notes.len()
+    );
 
-    // Extract witness set
-    let witness_start = decoder.position();
-    decoder.skip().map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to parse witness set: {}", e),
-    })?;
-    let witness_end = decoder.position();
-
-    Ok(tx_cbor[witness_start..witness_end].to_vec())
-}
-
-/// Count vkey witnesses in witness set
-fn count_vkey_witnesses(witness_set: &[u8]) -> Result<usize, Error> {
-    if witness_set.is_empty() || witness_set == [0xa0] {
-        // Empty map
-        return Ok(0);
-    }
-
-    let mut decoder = minicbor::Decoder::new(witness_set);
-
-    // Witness set is a map
-    let map_len = decoder.map().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid witness set: {}", e),
-    })?;
-
-    let mut vkey_count = 0;
-    let map_len = match map_len {
-        Some(len) => len as usize,
-        None => usize::MAX, // Indefinite length
-    };
-
-    for _ in 0..map_len {
-        match decoder.u64() {
-            Ok(0) => {
-                // Key 0 = vkey witnesses
-                let arr_len = decoder.array().map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid vkey witnesses: {}", e),
-                })?;
-                let arr_len = arr_len.ok_or_else(|| Error::InvalidInput {
-                    reason: "Indefinite vkey array not supported".to_string(),
-                })?;
-                vkey_count = arr_len as usize;
-                break;
-            }
-            Ok(_) => {
-                // Skip other witness types
-                decoder.skip().map_err(|e| Error::InvalidInput {
-                    reason: format!("Failed to skip witness type: {}", e),
-                })?;
-            }
-            Err(_) => break,
-        }
-    }
-
-    Ok(vkey_count)
+    Ok(())
 }
 
 /// Calculate change notes from transaction outputs
@@ -1046,212 +864,29 @@ fn calculate_change_notes(
 ///
 /// Returns a vector of (address, lovelace_amount) tuples
 fn extract_transaction_outputs(tx_cbor: &[u8]) -> Result<Vec<(String, u64)>, Error> {
-    let mut decoder = minicbor::Decoder::new(tx_cbor);
-
-    // Transaction is an array [body, witness_set, is_valid, auxiliary_data]
-    let tx_len = decoder.array().map_err(|e| Error::InvalidInput {
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
-    let tx_len = tx_len.ok_or_else(|| Error::InvalidInput {
-        reason: "Indefinite transaction length not supported".to_string(),
-    })?;
-
-    if tx_len < 1 {
-        return Err(Error::InvalidInput {
-            reason: "Transaction missing body".to_string(),
-        });
-    }
-
-    // Parse transaction body to extract outputs
-    let body_start = decoder.position();
-    decoder.skip().map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to parse transaction body: {}", e),
-    })?;
-    let body_end = decoder.position();
-    let body_cbor = &tx_cbor[body_start..body_end];
-
-    // Parse outputs from body
-    parse_outputs_from_body(body_cbor)
-}
-
-/// Parse outputs from transaction body CBOR
-fn parse_outputs_from_body(body_cbor: &[u8]) -> Result<Vec<(String, u64)>, Error> {
-    let mut decoder = minicbor::Decoder::new(body_cbor);
-
-    // Transaction body is a map with field indices as keys
-    let map_len = decoder.map().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction body: {}", e),
     })?;
 
     let mut outputs: Vec<(String, u64)> = Vec::new();
-    let map_len = match map_len {
-        Some(len) => len as usize,
-        None => usize::MAX,
-    };
-
-    for _ in 0..map_len {
-        let key_result: Result<u64, _> = decoder.u64();
-        match key_result {
-            Ok(1) => {
-                // Key 1 = outputs
-                let arr_len = decoder.array().map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid outputs array: {}", e),
-                })?;
-                let arr_len = arr_len.ok_or_else(|| Error::InvalidInput {
-                    reason: "Indefinite outputs array not supported".to_string(),
-                })?;
-
-                for _ in 0..arr_len {
-                    // Parse output (simplified - just get address and lovelace amount)
-                    match parse_output(&mut decoder) {
-                        Ok((address, amount)) => {
-                            outputs.push((address, amount));
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to parse output: {}", e);
-                            // Skip this output
-                            decoder.skip().ok();
-                        }
-                    }
-                }
-                break;
-            }
-            Ok(_) => {
-                decoder.skip().map_err(|e| Error::InvalidInput {
-                    reason: format!("Failed to skip field: {}", e),
-                })?;
-            }
-            Err(_) => break,
-        }
+    for output in &tx.body().outputs() {
+        let address = output
+            .address()
+            .to_bech32(None)
+            .map_err(|e| Error::InvalidInput {
+                reason: format!("Invalid output address: {}", e),
+            })?;
+        let coin = output.amount().coin();
+        let amount = coin
+            .to_str()
+            .parse::<u64>()
+            .map_err(|e| Error::InvalidInput {
+                reason: format!("Invalid output amount: {}", e),
+            })?;
+        outputs.push((address, amount));
     }
 
     Ok(outputs)
-}
-
-/// Parse a single transaction output
-///
-/// Returns (address, lovelace_amount)
-fn parse_output(decoder: &mut minicbor::Decoder) -> Result<(String, u64), Error> {
-    // Output is an array [address, amount, datum_hash?, script_ref?]
-    // or a map in post-Alonzo format
-
-    // Try array format first
-    match decoder.array() {
-        Ok(Some(len)) => {
-            if len < 2 {
-                return Err(Error::InvalidInput {
-                    reason: "Output must have at least address and amount".to_string(),
-                });
-            }
-
-            // Parse address (could be bytes or string depending on encoding)
-            let address = match decoder.bytes() {
-                Ok(bytes) => {
-                    // Try to decode as bech32
-                    hex::encode(bytes)
-                }
-                Err(_) => {
-                    // Try as string
-                    decoder
-                        .str()
-                        .map_err(|e| Error::InvalidInput {
-                            reason: format!("Invalid address: {}", e),
-                        })?
-                        .to_string()
-                }
-            };
-
-            // Parse amount
-            let amount = parse_amount(decoder)?;
-
-            // Skip remaining fields (datum, script ref)
-            for _ in 2..len {
-                decoder.skip().ok();
-            }
-
-            Ok((address, amount))
-        }
-        _ => {
-            // Try map format
-            parse_output_map(decoder)
-        }
-    }
-}
-
-/// Parse amount from output
-fn parse_amount(decoder: &mut minicbor::Decoder) -> Result<u64, Error> {
-    // Amount can be:
-    // - u64 for just lovelace
-    // - array [coin, multiasset] for multi-asset
-
-    match decoder.u64() {
-        Ok(amount) => Ok(amount),
-        Err(_) => {
-            // Try array format
-            match decoder.array() {
-                Ok(Some(2)) => {
-                    // [coin, multiasset]
-                    let coin = decoder.u64().map_err(|e| Error::InvalidInput {
-                        reason: format!("Invalid coin amount: {}", e),
-                    })?;
-                    // Skip multiasset
-                    decoder.skip().ok();
-                    Ok(coin)
-                }
-                _ => Err(Error::InvalidInput {
-                    reason: "Invalid amount format".to_string(),
-                }),
-            }
-        }
-    }
-}
-
-/// Parse output in map format (post-Alonzo)
-fn parse_output_map(decoder: &mut minicbor::Decoder) -> Result<(String, u64), Error> {
-    let map_len = decoder.map().map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid output map: {}", e),
-    })?;
-
-    let mut address: Option<String> = None;
-    let mut amount: Option<u64> = None;
-
-    let map_len = match map_len {
-        Some(len) => len as usize,
-        None => usize::MAX,
-    };
-
-    for _ in 0..map_len {
-        match decoder.u64() {
-            Ok(0) => {
-                // Address
-                address = Some(
-                    decoder
-                        .bytes()
-                        .map_err(|e| Error::InvalidInput {
-                            reason: format!("Invalid address: {}", e),
-                        })?
-                        .iter()
-                        .map(|b| format!("{:02x}", b))
-                        .collect(),
-                );
-            }
-            Ok(1) => {
-                // Amount
-                amount = Some(parse_amount(decoder)?);
-            }
-            Ok(_) => {
-                decoder.skip().ok();
-            }
-            Err(_) => break,
-        }
-    }
-
-    match (address, amount) {
-        (Some(addr), Some(amt)) => Ok((addr, amt)),
-        _ => Err(Error::InvalidInput {
-            reason: "Missing address or amount in output".to_string(),
-        }),
-    }
 }
 
 /// Validate script inputs and check deposit state
@@ -1457,11 +1092,7 @@ fn validate_transaction_balance(tx_cbor: &[u8], total_input: u64, max_fee: u64) 
 
     // Allow small tolerance for rounding/errors (0.1%)
     let tolerance = expected_input / 1000;
-    let diff = if total_input > expected_input {
-        total_input - expected_input
-    } else {
-        expected_input - total_input
-    };
+    let diff = total_input.abs_diff(expected_input);
 
     if diff > tolerance {
         return Err(Error::InvalidInput {

@@ -15,7 +15,6 @@ color-eyre = { workspace = true }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 hex = "0.4.3"
 metrics = { workspace = true }
-minicbor = { version = "0.25.1", features = ["std"] }
 muhex = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
@@ -27,3 +26,4 @@ tokio = { workspace = true }
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+whisky-csl = "1.0.24"

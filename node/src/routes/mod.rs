@@ -11,7 +11,6 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, Request, Response},
 };
-use redb::ReadableTable;
 
 mod deposit;
 mod refresh;

@@ -88,15 +88,13 @@ pub fn validator_artifacts_exist() -> Result<bool> {
         for entry in std::fs::read_dir(validators_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "ak") {
-                if let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified()) {
-                    if let Some(plutus_time) = plutus_modified {
-                        if source_modified > plutus_time {
-                            // Source is newer than artifact, needs rebuild
-                            return Ok(false);
-                        }
-                    }
-                }
+            if path.extension().is_some_and(|ext| ext == "ak")
+                && let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
+                && let Some(plutus_time) = plutus_modified
+                && source_modified > plutus_time
+            {
+                // Source is newer than artifact, needs rebuild
+                return Ok(false);
             }
         }
     }
