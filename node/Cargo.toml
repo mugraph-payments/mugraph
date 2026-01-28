@@ -7,26 +7,23 @@ edition = "2024"
 mugraph-core = { workspace = true }
 
 axum = { workspace = true }
+bech32 = "0.11.0"
+blake2 = "0.10.6"
+blake3 = { workspace = true }
 clap = { workspace = true }
 color-eyre = { workspace = true }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+hex = "0.4.3"
 metrics = { workspace = true }
+minicbor = { version = "0.25.1", features = ["std"] }
 muhex = { workspace = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true }
 redb = { workspace = true }
-serde_json = { workspace = true }
-tempfile = "3.12.0"
-tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tower-http = { version = "0.6.2", features = ["trace"] }
-whisky = { workspace = true }
-hex = "0.4.3"
-serde_bytes = "0.11.15"
-bech32 = "0.11.0"
-blake2 = "0.10.6"
-ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { workspace = true }
-blake3 = { workspace = true }
-minicbor = { version = "0.25.1", features = ["std"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tower-http = { version = "0.6.2", features = ["trace"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
