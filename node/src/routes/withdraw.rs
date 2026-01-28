@@ -144,27 +144,23 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let submit_response = match submit_transaction(&signed_cbor_hex, &provider).await {
         Ok(response) => response,
         Err(e) => {
-            // CRITICAL: Submission failed but notes are already burned
-            // We need to handle this failure case properly
+            // Submission failed: rollback pending record and unburn notes
             tracing::error!(
-                "CRITICAL: Transaction submission failed after notes were burned: {}",
+                "Transaction submission failed after notes were burned: {}. Rolling back.",
                 e
             );
-
-            // Mark withdrawal as failed in database for manual recovery
-            if let Err(recovery_err) = mark_withdrawal_failed(ctx, &pending_tx_hash).await {
+            if let Err(rollback_err) =
+                rollback_withdrawal(ctx, &pending_tx_hash, &request.notes).await
+            {
                 tracing::error!(
-                    "Failed to mark withdrawal as failed: {}. Manual recovery required for tx {}",
-                    recovery_err,
+                    "Rollback failed after submission error: {}. Manual recovery needed for tx {}",
+                    rollback_err,
                     pending_tx_hash
                 );
             }
 
             return Err(Error::NetworkError {
-                reason: format!(
-                    "Transaction submission failed: {}. Notes have been burned but transaction was not submitted. Manual recovery required.",
-                    e
-                ),
+                reason: format!("Transaction submission failed and was rolled back: {}", e),
             });
         }
     };
@@ -305,6 +301,41 @@ async fn atomic_burn_and_record_pending(
         &tx_hash[..std::cmp::min(16, tx_hash.len())]
     );
 
+    Ok(())
+}
+
+/// Roll back pending withdrawal and unburn notes (best-effort)
+async fn rollback_withdrawal(
+    ctx: &Context,
+    tx_hash: &str,
+    notes: &[BlindSignature],
+) -> Result<(), Error> {
+    let write_tx = ctx.database.write()?;
+
+    {
+        // 1. Unburn notes
+        let mut notes_table = write_tx.open_table(NOTES)?;
+        for note in notes {
+            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
+            let signature = Signature::from(*sig_bytes);
+            notes_table.remove(signature)?;
+        }
+
+        // 2. Remove pending withdrawal record
+        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid tx_hash hex: {}", e),
+        })?;
+        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
+            reason: "tx_hash must be 32 bytes".to_string(),
+        })?;
+        let network_byte = ctx.config.network_byte();
+        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+        withdrawals_table.remove(key)?;
+    }
+
+    write_tx.commit()?;
+    tracing::info!("Rolled back withdrawal {}", tx_hash);
     Ok(())
 }
 
@@ -511,6 +542,7 @@ async fn validate_user_witnesses(
 
     let witness_set = tx.witness_set();
     let mut verified_witnesses = 0usize;
+    let mut witness_key_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Verify vkey witnesses
     if let Some(vkeys) = witness_set.vkeys() {
@@ -524,6 +556,7 @@ async fn validate_user_witnesses(
                     signature: mugraph_core::types::Signature::default(),
                 });
             }
+            witness_key_hashes.insert(pk.hash().to_hex());
             verified_witnesses += 1;
         }
     }
@@ -540,6 +573,7 @@ async fn validate_user_witnesses(
                     signature: mugraph_core::types::Signature::default(),
                 });
             }
+            witness_key_hashes.insert(pk.hash().to_hex());
             verified_witnesses += 1;
         }
     }
@@ -549,6 +583,22 @@ async fn validate_user_witnesses(
             reason: "No valid witnesses found in transaction".to_string(),
             signature: mugraph_core::types::Signature::default(),
         });
+    }
+
+    // Check required_signers, if present, are covered by witnesses
+    if let Some(required) = tx.body().required_signers() {
+        for (idx, signer) in required.into_iter().enumerate() {
+            let signer_hex = signer.to_hex();
+            if !witness_key_hashes.contains(&signer_hex) {
+                return Err(Error::InvalidSignature {
+                    reason: format!(
+                        "Missing witness for required_signer {} (index {})",
+                        signer_hex, idx
+                    ),
+                    signature: mugraph_core::types::Signature::default(),
+                });
+            }
+        }
     }
 
     // Basic sanity: require at least as many witnesses as notes being burned

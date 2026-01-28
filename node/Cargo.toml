@@ -12,6 +12,7 @@ blake2 = "0.10.6"
 blake3 = { workspace = true }
 clap = { workspace = true }
 color-eyre = { workspace = true }
+coset = "0.4.1"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
 hex = "0.4.3"
 metrics = { workspace = true }

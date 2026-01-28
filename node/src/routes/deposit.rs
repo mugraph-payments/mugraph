@@ -160,26 +160,105 @@ fn verify_deposit_signature(
 /// This is a partial implementation that handles basic CIP-8 signatures.
 /// Full implementation would require a COSE library.
 fn verify_cip8_cose_signature(request: &DepositRequest, payload: &[u8]) -> Result<(), Error> {
-    // Check if signature looks like COSE (starts with CBOR array or map)
-    if request.signature.len() < 100 {
+    use coset::{CoseSign1, TaggedCborSerializable, iana};
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    // Parse user_pubkey from message
+    let message_json: serde_json::Value =
+        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid message JSON: {}", e),
+        })?;
+
+    let user_pubkey_hex = message_json
+        .get("user_pubkey")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Missing user_pubkey in message".to_string(),
+        })?;
+
+    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid user_pubkey hex: {}", e),
+    })?;
+
+    if user_pubkey_bytes.len() != 32 {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "user_pubkey must be 32 bytes, got {}",
+                user_pubkey_bytes.len()
+            ),
+        });
+    }
+
+    let cose: CoseSign1 =
+        CoseSign1::from_tagged_slice(&request.signature).map_err(|e| Error::InvalidSignature {
+            reason: format!("Invalid COSE_Sign1: {}", e),
+            signature: mugraph_core::types::Signature::default(),
+        })?;
+
+    // Check alg = EdDSA
+    let alg = cose
+        .protected
+        .header
+        .alg
+        .clone()
+        .or(cose.unprotected.alg.clone())
+        .ok_or_else(|| Error::InvalidSignature {
+            reason: "Missing alg in COSE header".to_string(),
+            signature: mugraph_core::types::Signature::default(),
+        })?;
+    if alg != coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA) {
         return Err(Error::InvalidSignature {
-            reason: "Signature too short for COSE format".to_string(),
+            reason: format!("Unsupported alg {:?}, expected EdDSA", alg),
             signature: mugraph_core::types::Signature::default(),
         });
     }
 
-    // TODO: Implement full COSE parsing and validation
-    // This would require:
-    // 1. Parsing the COSE_Sign1 structure from CBOR
-    // 2. Extracting the protected header and validating algorithm
-    // 3. Verifying the signature with the appropriate key
-    // 4. Checking the payload matches what we expect
-    //
-    // For now, we don't support full COSE and fall back to raw Ed25519
-    Err(Error::InvalidSignature {
-        reason: "CIP-8/COSE signatures not yet fully supported".to_string(),
+    // Payload must match
+    let cose_payload = cose
+        .payload
+        .as_ref()
+        .ok_or_else(|| Error::InvalidSignature {
+            reason: "COSE payload missing".to_string(),
+            signature: mugraph_core::types::Signature::default(),
+        })?;
+
+    if cose_payload != payload {
+        return Err(Error::InvalidSignature {
+            reason: "COSE payload does not match expected payload".to_string(),
+            signature: mugraph_core::types::Signature::default(),
+        });
+    }
+
+    let sig_bytes = &cose.signature;
+    if sig_bytes.len() != 64 {
+        return Err(Error::InvalidSignature {
+            reason: format!("COSE signature must be 64 bytes, got {}", sig_bytes.len()),
+            signature: mugraph_core::types::Signature::default(),
+        });
+    }
+
+    // Build Sig_structure bytes using coset helper
+    let to_verify = cose.tbs_data(&[]);
+
+    let verifying_key = VerifyingKey::from_bytes(
+        &user_pubkey_bytes.try_into().expect("Length checked"),
+    )
+    .map_err(|e| Error::InvalidKey {
+        reason: format!("Invalid Ed25519 public key: {}", e),
+    })?;
+    let signature = Signature::from_slice(sig_bytes).map_err(|e| Error::InvalidSignature {
+        reason: format!("Invalid signature format: {}", e),
         signature: mugraph_core::types::Signature::default(),
-    })
+    })?;
+
+    verifying_key
+        .verify(&to_verify, &signature)
+        .map_err(|e| Error::InvalidSignature {
+            reason: format!("COSE signature verification failed: {}", e),
+            signature: mugraph_core::types::Signature::default(),
+        })?;
+
+    Ok(())
 }
 
 /// Verify raw Ed25519 signature
