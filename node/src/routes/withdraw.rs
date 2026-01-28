@@ -50,7 +50,25 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // 2. Check idempotency via WITHDRAWALS table
     check_idempotency(request, ctx).await?;
 
-    // 3. Parse transaction and validate inputs
+    // 3. Validate transaction size and fee
+    if tx_bytes.len() > ctx.config.max_tx_size() {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Transaction size {} bytes exceeds maximum {} bytes",
+                tx_bytes.len(),
+                ctx.config.max_tx_size()
+            ),
+        });
+    }
+
+    // Validate fee with tolerance
+    let _fee = validate_fee(
+        &tx_bytes,
+        ctx.config.max_withdrawal_fee(),
+        ctx.config.fee_tolerance_pct(),
+    )?;
+
+    // 4. Parse transaction and validate inputs
     // Use whisky-csl to parse and validate the transaction
     // let tx = whisky_csl::Transaction::from_bytes(&tx_bytes)
     //     .map_err(|e| Error::InvalidInput { reason: format!("Invalid transaction CBOR: {}", e) })?;
@@ -73,6 +91,18 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // 8. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
     let wallet = load_wallet(ctx).await?;
+
+    // Extract transaction inputs and load intent hashes from deposits
+    let inputs = extract_transaction_inputs(&tx_bytes)?;
+    let intent_hashes = load_deposit_intent_hashes(ctx, &inputs).await?;
+
+    // Log intent hashes for debugging (will be used in redeemer)
+    for (i, hash) in intent_hashes.iter().enumerate() {
+        if hash != &[0u8; 32] {
+            tracing::debug!("Input {} intent hash: {:?}", i, hex::encode(&hash[..8]));
+        }
+    }
+
     let tx_body_hash = crate::tx_signer::compute_tx_hash(&tx_bytes).map_err(|e| Error::Internal {
         reason: format!("Failed to compute tx hash: {}", e),
     })?;
@@ -324,6 +354,58 @@ async fn load_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet
     }
 }
 
+/// Load deposit records for given UTxO references
+/// Returns intent hashes for each deposit found
+async fn load_deposit_intent_hashes(
+    ctx: &Context,
+    utxo_refs: &[(Vec<u8>, u32)],
+) -> Result<Vec<[u8; 32]>, Error> {
+    use mugraph_core::types::UtxoRef;
+
+    use crate::database::DEPOSITS;
+
+    let read_tx = ctx.database.read()?;
+    let table = read_tx.open_table(DEPOSITS)?;
+
+    let mut intent_hashes = Vec::new();
+
+    for (tx_hash, index) in utxo_refs {
+        let tx_hash_array: [u8; 32] =
+            tx_hash
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::InvalidInput {
+                    reason: "Invalid tx_hash length".to_string(),
+                })?;
+
+        let utxo_ref = UtxoRef::new(tx_hash_array, *index as u16);
+
+        match table.get(&utxo_ref)? {
+            Some(record) => {
+                intent_hashes.push(record.value().intent_hash);
+                tracing::debug!(
+                    "Found deposit for UTxO {}:{}, intent_hash: {:?}",
+                    hex::encode(&tx_hash[..8]),
+                    index,
+                    &record.value().intent_hash[..8]
+                );
+            }
+            None => {
+                // UTxO not found in deposits - might be a new deposit or invalid
+                tracing::warn!(
+                    "UTxO {}:{} not found in deposits table",
+                    hex::encode(&tx_hash[..8]),
+                    index
+                );
+                // Push empty hash for UTxOs not in our records
+                intent_hashes.push([0u8; 32]);
+            }
+        }
+    }
+
+    Ok(intent_hashes)
+}
+
 /// Submit transaction to Cardano provider
 async fn submit_transaction(
     tx_cbor: &str,
@@ -372,10 +454,11 @@ async fn record_withdrawal(request: &WithdrawRequest, ctx: &Context) -> Result<(
 /// # Arguments
 /// * `tx_cbor` - The transaction CBOR bytes
 /// * `max_fee_lovelace` - Maximum acceptable fee in lovelace
+/// * `tolerance_pct` - Fee tolerance percentage (0-100) for acceptable variance
 ///
 /// # Returns
 /// The fee amount in lovelace if valid
-fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64) -> Result<u64, Error> {
+fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64, tolerance_pct: u8) -> Result<u64, Error> {
     let fee = extract_transaction_fee(tx_cbor)?;
 
     if fee > max_fee_lovelace {
@@ -387,10 +470,26 @@ fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64) -> Result<u64, Error> {
         });
     }
 
+    // Calculate acceptable fee range with tolerance
+    // If tolerance is 5%, fee can be up to 105% of max_fee
+    let tolerance_factor = 100 + tolerance_pct as u64;
+    let max_acceptable_fee = max_fee_lovelace * tolerance_factor / 100;
+
+    if fee > max_acceptable_fee {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Fee {} lovelace exceeds acceptable maximum {} lovelace (with {}% tolerance)",
+                fee, max_acceptable_fee, tolerance_pct
+            ),
+        });
+    }
+
     tracing::info!(
-        "Transaction fee: {} lovelace (max: {})",
+        "Transaction fee: {} lovelace (max: {}, tolerance: {}%, acceptable max: {})",
         fee,
-        max_fee_lovelace
+        max_fee_lovelace,
+        tolerance_pct,
+        max_acceptable_fee
     );
     Ok(fee)
 }

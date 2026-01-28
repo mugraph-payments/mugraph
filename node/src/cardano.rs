@@ -50,9 +50,8 @@ pub fn import_payment_key(hex_sk: &str) -> Result<(Vec<u8>, Vec<u8>)> {
     Ok((sk, vk))
 }
 
-/// Compile Aiken validator and return the CBOR bytes
-/// Looks for validator in the validator/ directory relative to project root
-pub fn compile_validator() -> Result<Vec<u8>> {
+/// Path to the Aiken validator artifacts
+pub fn get_validator_dir() -> Result<std::path::PathBuf> {
     let validator_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or_else(|| color_eyre::eyre::eyre!("Failed to get parent directory"))?
@@ -65,26 +64,50 @@ pub fn compile_validator() -> Result<Vec<u8>> {
         ));
     }
 
-    // Run aiken build
-    let output = Command::new("aiken")
-        .arg("build")
-        .current_dir(&validator_dir)
-        .output()
-        .context("Failed to run 'aiken build'. Is aiken installed?")?;
+    Ok(validator_dir)
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(color_eyre::eyre::eyre!("Aiken build failed: {}", stderr));
-    }
-
-    // Read the compiled script from plutus.json
+/// Check if validator artifacts exist and are up to date
+pub fn validator_artifacts_exist() -> Result<bool> {
+    let validator_dir = get_validator_dir()?;
     let plutus_json_path = validator_dir.join("build").join("plutus.json");
+
     if !plutus_json_path.exists() {
-        return Err(color_eyre::eyre::eyre!(
-            "plutus.json not found at {:?}",
-            plutus_json_path
-        ));
+        return Ok(false);
     }
+
+    // Check if source files are newer than the artifact
+    let _build_dir = validator_dir.join("build");
+    let plutus_modified = std::fs::metadata(&plutus_json_path)
+        .and_then(|m| m.modified())
+        .ok();
+
+    // Check validators directory for .ak files
+    let validators_dir = validator_dir.join("validators");
+    if validators_dir.exists() {
+        for entry in std::fs::read_dir(validators_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "ak") {
+                if let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified()) {
+                    if let Some(plutus_time) = plutus_modified {
+                        if source_modified > plutus_time {
+                            // Source is newer than artifact, needs rebuild
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+/// Load validator CBOR from existing artifacts
+pub fn load_validator_cbor() -> Result<Vec<u8>> {
+    let validator_dir = get_validator_dir()?;
+    let plutus_json_path = validator_dir.join("build").join("plutus.json");
 
     let plutus_content =
         std::fs::read_to_string(&plutus_json_path).context("Failed to read plutus.json")?;
@@ -113,6 +136,38 @@ pub fn compile_validator() -> Result<Vec<u8>> {
     let cbor = hex::decode(compiled_code).context("Failed to decode CBOR hex")?;
 
     Ok(cbor)
+}
+
+/// Compile Aiken validator and return the CBOR bytes
+/// Looks for validator in the validator/ directory relative to project root
+/// Only compiles if artifacts don't exist or source is newer
+pub fn compile_validator() -> Result<Vec<u8>> {
+    // Check if artifacts exist and are up to date
+    if validator_artifacts_exist()? {
+        tracing::info!("Using cached validator artifacts");
+        return load_validator_cbor();
+    }
+
+    tracing::info!("Validator artifacts not found or outdated, compiling...");
+
+    let validator_dir = get_validator_dir()?;
+
+    // Run aiken build
+    let output = Command::new("aiken")
+        .arg("build")
+        .current_dir(&validator_dir)
+        .output()
+        .context("Failed to run 'aiken build'. Is aiken installed?")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(color_eyre::eyre::eyre!("Aiken build failed: {}", stderr));
+    }
+
+    tracing::info!("Validator compiled successfully");
+
+    // Load the freshly compiled validator
+    load_validator_cbor()
 }
 
 /// Compute script hash from CBOR (Blake2b-224)

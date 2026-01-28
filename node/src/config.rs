@@ -61,6 +61,10 @@ pub enum Config {
         /// Maximum withdrawal fee in lovelace (default: 2_000_000)
         #[clap(long, env = "MAX_WITHDRAWAL_FEE", default_value = "2000000")]
         max_withdrawal_fee: u64,
+
+        /// Fee tolerance percentage (0-100, default: 5%)
+        #[clap(long, env = "FEE_TOLERANCE_PCT", default_value = "5")]
+        fee_tolerance_pct: u8,
     },
     #[command(about)]
     GenerateKey,
@@ -185,6 +189,19 @@ impl Config {
         match self {
             Self::Server { max_tx_size, .. } => *max_tx_size,
             _ => 16384,
+        }
+    }
+
+    /// Get fee tolerance percentage (0-100)
+    pub fn fee_tolerance_pct(&self) -> u8 {
+        match self {
+            Self::Server {
+                fee_tolerance_pct, ..
+            } => {
+                // Ensure value is between 0 and 100
+                (*fee_tolerance_pct).min(100)
+            }
+            _ => 5,
         }
     }
 

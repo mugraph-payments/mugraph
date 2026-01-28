@@ -23,6 +23,7 @@ fn test_config_defaults() {
         min_deposit_value: Some(1000000),
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
+        fee_tolerance_pct: 5,
     };
 
     assert_eq!(config.network(), "preprod");
@@ -34,6 +35,7 @@ fn test_config_defaults() {
     assert_eq!(config.min_deposit_value(), 1000000);
     assert_eq!(config.max_withdrawal_fee(), 2000000);
     assert_eq!(config.max_tx_size(), 16384);
+    assert_eq!(config.fee_tolerance_pct(), 5);
 }
 
 /// Test mainnet configuration
@@ -53,6 +55,7 @@ fn test_config_mainnet() {
         min_deposit_value: Some(2000000),
         max_tx_size: 32768,
         max_withdrawal_fee: 3000000,
+        fee_tolerance_pct: 10,
     };
 
     assert_eq!(config.network(), "mainnet");
@@ -68,6 +71,7 @@ fn test_config_mainnet() {
     assert_eq!(config.deposit_expiration_blocks(), 2000);
     assert_eq!(config.min_deposit_value(), 2000000);
     assert_eq!(config.max_tx_size(), 32768);
+    assert_eq!(config.fee_tolerance_pct(), 10);
 }
 
 /// Test network byte for different networks
@@ -89,6 +93,7 @@ fn test_network_bytes() {
             min_deposit_value: None,
             max_tx_size: 16384,
             max_withdrawal_fee: 2000000,
+            fee_tolerance_pct: 5,
         };
         assert_eq!(
             config.network_byte(),
@@ -116,6 +121,7 @@ fn test_config_default_values() {
         min_deposit_value: None,
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
+        fee_tolerance_pct: 5,
     };
 
     // API key should default to "test_key"
@@ -126,4 +132,51 @@ fn test_config_default_values() {
 
     // payment_sk should be None
     assert!(config.payment_sk().is_none());
+
+    // fee_tolerance_pct should be 5
+    assert_eq!(config.fee_tolerance_pct(), 5);
+}
+
+/// Test fee tolerance percentage bounds
+#[test]
+fn test_fee_tolerance_bounds() {
+    // Test that values over 100 are clamped
+    let config = Config::Server {
+        addr: "0.0.0.0:9999".parse().unwrap(),
+        seed: None,
+        secret_key: None,
+        cardano_network: "preprod".to_string(),
+        cardano_provider: "blockfrost".to_string(),
+        cardano_api_key: None,
+        cardano_provider_url: None,
+        cardano_payment_sk: None,
+        deposit_confirm_depth: 15,
+        deposit_expiration_blocks: 1440,
+        min_deposit_value: None,
+        max_tx_size: 16384,
+        max_withdrawal_fee: 2000000,
+        fee_tolerance_pct: 150, // Over 100
+    };
+
+    assert_eq!(config.fee_tolerance_pct(), 100);
+
+    // Test zero tolerance
+    let config_zero = Config::Server {
+        addr: "0.0.0.0:9999".parse().unwrap(),
+        seed: None,
+        secret_key: None,
+        cardano_network: "preprod".to_string(),
+        cardano_provider: "blockfrost".to_string(),
+        cardano_api_key: None,
+        cardano_provider_url: None,
+        cardano_payment_sk: None,
+        deposit_confirm_depth: 15,
+        deposit_expiration_blocks: 1440,
+        min_deposit_value: None,
+        max_tx_size: 16384,
+        max_withdrawal_fee: 2000000,
+        fee_tolerance_pct: 0,
+    };
+
+    assert_eq!(config_zero.fee_tolerance_pct(), 0);
 }

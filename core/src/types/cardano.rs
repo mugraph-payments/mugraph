@@ -32,6 +32,9 @@ pub struct DepositRecord {
     pub created_at: u64,
     /// Unix timestamp when deposit expires
     pub expires_at: u64,
+    /// Intent hash (blake2b-256 of canonical deposit payload) for replay protection
+    /// Stored as 32 bytes, empty if not used
+    pub intent_hash: [u8; 32],
 }
 
 /// Withdrawal record for idempotent signing
@@ -75,6 +78,22 @@ impl DepositRecord {
             block_height,
             created_at,
             expires_at,
+            intent_hash: [0u8; 32],
+        }
+    }
+
+    pub fn with_intent_hash(
+        block_height: u64,
+        created_at: u64,
+        expires_at: u64,
+        intent_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            spent: false,
+            block_height,
+            created_at,
+            expires_at,
+            intent_hash,
         }
     }
 }

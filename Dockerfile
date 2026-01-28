@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y \
   pkg-config \
   libssl-dev \
   protobuf-compiler \
+  curl \
+  wget \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -25,6 +27,9 @@ RUN useradd -r -s /bin/false -m mugraph
 WORKDIR /app
 RUN mkdir -p /app/data && \
   chown -R mugraph:mugraph /app
+
+# Copy the compiled validator artifacts
+COPY --from=builder /build/validator/build /app/validator/build
 
 COPY --from=builder /tmp/mugraph-node /app/mugraph-node
 RUN chmod +x /app/mugraph-node && \

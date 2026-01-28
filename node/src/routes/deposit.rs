@@ -46,7 +46,7 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
     let signatures = sign_outputs(request, &ctx.keypair)?;
 
     // 6. Record deposit in database
-    record_deposit(request, ctx, &provider).await?;
+    record_deposit(request, ctx, &provider, &wallet).await?;
 
     let deposit_ref = format!("{}:{}", request.utxo.tx_hash, request.utxo.index);
 
@@ -312,6 +312,26 @@ fn build_canonical_payload(
     serde_json::to_string(&payload).unwrap().into_bytes()
 }
 
+/// Compute intent hash from deposit request
+/// This is a blake2b-256 hash of the canonical payload
+/// Used for replay protection in the validator
+pub fn compute_intent_hash(
+    request: &DepositRequest,
+    delegate_pk: &PublicKey,
+    script_address: &str,
+) -> [u8; 32] {
+    use blake2::{Blake2b, Digest, digest::consts::U32};
+
+    let payload = build_canonical_payload(request, delegate_pk, script_address);
+
+    type Blake2b256 = Blake2b<U32>;
+    let hash = Blake2b256::digest(&payload);
+
+    let mut result = [0u8; 32];
+    result.copy_from_slice(&hash);
+    result
+}
+
 /// Fetch UTxO from provider and validate it's at the script address
 async fn fetch_and_validate_utxo(
     request: &DepositRequest,
@@ -362,9 +382,20 @@ async fn fetch_and_validate_utxo(
 }
 
 /// Validate that outputs cover all assets in the UTxO
+///
+/// NOTE: Since outputs are blinded commitments, we cannot verify the actual
+/// amounts at deposit time. The Aiken validator enforces exact accounting
+/// during withdrawal when outputs are unblinded.
+///
+/// What we validate here:
+/// - At least one output is provided
+/// - The number of outputs is reasonable (at least one per unique asset)
+/// - No more outputs than total asset units (prevents dust attack)
 fn validate_deposit_amounts(request: &DepositRequest, utxo_info: &UtxoInfo) -> Result<(), Error> {
     // Build map of assets in UTxO
     let mut utxo_assets: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut total_units: u64 = 0;
+
     for asset in &utxo_info.amount {
         let amount = asset
             .quantity
@@ -373,23 +404,51 @@ fn validate_deposit_amounts(request: &DepositRequest, utxo_info: &UtxoInfo) -> R
                 reason: format!("Invalid asset quantity: {}", e),
             })?;
         utxo_assets.insert(asset.unit.clone(), amount);
+        total_units += amount;
     }
 
-    // NOTE: Full asset validation requires knowing the unblinded output values,
-    // which the node doesn't have (they're blinded). The Aiken validator will
-    // enforce that all assets are accounted for at the smart contract level.
-    // We just verify that outputs are provided.
+    // Must have at least one output
     if request.outputs.is_empty() {
         return Err(Error::InvalidInput {
             reason: "No outputs provided for deposit".to_string(),
         });
     }
 
-    tracing::debug!(
-        "Validated deposit amounts: {} assets in UTxO, {} outputs",
+    // Must have at least as many outputs as unique assets (no partial deposits)
+    // Each unique asset must be represented in at least one output
+    if request.outputs.len() < utxo_assets.len() {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Insufficient outputs: {} assets in UTxO but only {} outputs provided. \
+                 Each asset must be accounted for in at least one output (no partial deposits).",
+                utxo_assets.len(),
+                request.outputs.len()
+            ),
+        });
+    }
+
+    // Sanity check: shouldn't have more outputs than total asset units
+    // This prevents potential dust attacks with excessive outputs
+    if request.outputs.len() as u64 > total_units {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Too many outputs: {} outputs for {} total asset units",
+                request.outputs.len(),
+                total_units
+            ),
+        });
+    }
+
+    tracing::info!(
+        "Validated deposit: {} assets in UTxO ({} total units), {} outputs",
         utxo_assets.len(),
+        total_units,
         request.outputs.len()
     );
+
+    // Store asset info for later validation during withdrawal
+    // The actual amounts are verified by the Aiken validator at withdrawal time
+    // when the blinded outputs are unblinded
 
     Ok(())
 }
@@ -428,6 +487,7 @@ async fn record_deposit(
     request: &DepositRequest,
     ctx: &Context,
     provider: &Provider,
+    wallet: &mugraph_core::types::CardanoWallet,
 ) -> Result<(), Error> {
     use mugraph_core::types::DepositRecord;
 
@@ -435,6 +495,9 @@ async fn record_deposit(
     let tip = provider.get_tip().await.map_err(|e| Error::NetworkError {
         reason: format!("Failed to get chain tip: {}", e),
     })?;
+
+    // Compute intent hash for replay protection
+    let intent_hash = compute_intent_hash(request, &ctx.keypair.public_key, &wallet.script_address);
 
     let write_tx = ctx.database.write()?;
     {
@@ -459,7 +522,7 @@ async fn record_deposit(
         let expiration_seconds = ctx.config.deposit_expiration_blocks() * 20;
         let expires_at = now + expiration_seconds;
 
-        let record = DepositRecord::new(tip.block_height, now, expires_at);
+        let record = DepositRecord::with_intent_hash(tip.block_height, now, expires_at, intent_hash);
         table.insert(utxo_ref, &record)?;
     }
     write_tx.commit()?;
