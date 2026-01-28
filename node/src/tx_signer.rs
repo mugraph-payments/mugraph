@@ -97,6 +97,28 @@ pub fn compute_tx_hash(tx_cbor: &[u8]) -> Result<[u8; 32]> {
 mod tests {
     use super::*;
 
+    fn minimal_tx() -> csl::Transaction {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        csl::Transaction::new(&body, &witness_set, None)
+    }
+
     #[test]
     fn test_sign_transaction() {
         let (sk, vk) = crate::cardano::generate_payment_keypair().unwrap();
@@ -113,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_compute_tx_hash() {
-        let tx_cbor = vec![0x82, 0xa0, 0xa0];
+        let tx_cbor = minimal_tx().to_bytes();
         let hash = compute_tx_hash(&tx_cbor).unwrap();
         assert_eq!(hash.len(), 32);
     }
@@ -132,8 +154,7 @@ mod tests {
     fn test_attach_witness() {
         let (sk, vk) = crate::cardano::generate_payment_keypair().unwrap();
 
-        // Create a simple transaction: [empty_map, empty_map]
-        let tx_cbor = vec![0x82, 0xa0, 0xa0];
+        let tx_cbor = minimal_tx().to_bytes();
         let tx_hash = compute_tx_hash(&tx_cbor).unwrap();
 
         let wallet = mugraph_core::types::CardanoWallet::new(

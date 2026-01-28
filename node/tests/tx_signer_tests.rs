@@ -2,7 +2,6 @@
 
 use mugraph_node::tx_signer::{
     attach_witness_to_transaction,
-    build_node_witness,
     compute_tx_hash,
     sign_transaction_body,
 };
@@ -172,8 +171,10 @@ fn test_compute_tx_hash_various_sizes() {
     assert_eq!(hash1.len(), 32);
 
     // Same tx but different fee should change hash
-    let mut body2 = tx1.body();
-    body2.set_fee(&csl::Coin::from_str("200000").unwrap());
+    let inputs2 = tx1.body().inputs();
+    let outputs2 = tx1.body().outputs();
+    let fee2 = csl::Coin::from_str("200000").unwrap();
+    let body2 = csl::TransactionBody::new_tx_body(&inputs2, &outputs2, &fee2);
     let tx2 = csl::Transaction::new(&body2, &tx1.witness_set(), tx1.auxiliary_data());
 
     let hash2 = compute_tx_hash(&tx2.to_bytes()).unwrap();
@@ -232,7 +233,8 @@ fn test_witness_signature_valid() {
     let stored_sig = witness.signature().to_bytes();
 
     // Verify the signature
-    let verifying_key = VerifyingKey::from_bytes(&stored_vk).unwrap();
+    let vk_bytes: [u8; 32] = stored_vk.try_into().unwrap();
+    let verifying_key = VerifyingKey::from_bytes(&vk_bytes).unwrap();
     let signature = Signature::from_slice(&stored_sig).unwrap();
 
     assert!(verifying_key.verify(&tx_hash, &signature).is_ok());
