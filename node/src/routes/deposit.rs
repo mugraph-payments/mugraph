@@ -40,7 +40,7 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
     let utxo_info = fetch_and_validate_utxo(request, &wallet, &provider, ctx).await?;
 
     // 4. Validate outputs cover all assets in UTxO
-    validate_deposit_amounts(request, &utxo_info)?;
+    validate_deposit_amounts(request, &utxo_info, ctx.config.min_deposit_value())?;
 
     // 5. Sign blinded outputs with delegate key
     let signatures = sign_outputs(request, &ctx.keypair)?;
@@ -535,7 +535,11 @@ async fn fetch_and_validate_utxo(
 /// - At least one output is provided
 /// - The number of outputs is reasonable (at least one per unique asset)
 /// - No more outputs than total asset units (prevents dust attack)
-fn validate_deposit_amounts(request: &DepositRequest, utxo_info: &UtxoInfo) -> Result<(), Error> {
+fn validate_deposit_amounts(
+    request: &DepositRequest,
+    utxo_info: &UtxoInfo,
+    min_deposit_value: u64,
+) -> Result<(), Error> {
     // Build map of assets in UTxO
     let mut utxo_assets: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     let mut total_units: u64 = 0;
@@ -592,12 +596,11 @@ fn validate_deposit_amounts(request: &DepositRequest, utxo_info: &UtxoInfo) -> R
 
     // Check minimum deposit value
     let lovelace_amount = utxo_assets.get("lovelace").copied().unwrap_or(0);
-    let min_deposit = 1_000_000; // 1 ADA minimum - should come from config
-    if lovelace_amount < min_deposit {
+    if lovelace_amount < min_deposit_value {
         return Err(Error::InvalidInput {
             reason: format!(
                 "Deposit value {} lovelace below minimum {} lovelace",
-                lovelace_amount, min_deposit
+                lovelace_amount, min_deposit_value
             ),
         });
     }

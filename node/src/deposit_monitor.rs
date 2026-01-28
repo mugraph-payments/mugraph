@@ -103,6 +103,9 @@ impl DepositMonitor {
         // 2. Range queries if implementing a time-based key structure
         let pending_deposits = self.get_pending_deposits()?;
 
+        // Load script address once for this pass
+        let script_address = self.load_script_address()?;
+
         tracing::info!("Found {} pending deposits to check", pending_deposits.len());
 
         for (utxo_ref, record) in pending_deposits {
@@ -129,7 +132,10 @@ impl DepositMonitor {
             }
 
             // Re-validate UTxO exists on chain (reorg check)
-            match self.validate_utxo_on_chain(&utxo_ref).await {
+            match self
+                .validate_utxo_on_chain(&utxo_ref, script_address.as_deref())
+                .await
+            {
                 Ok(true) => {
                     // UTxO still exists, deposit is valid
                     tracing::debug!(
@@ -185,15 +191,28 @@ impl DepositMonitor {
     }
 
     /// Validate that a UTxO still exists on chain
-    async fn validate_utxo_on_chain(&self, utxo_ref: &UtxoRef) -> Result<bool, Error> {
+    async fn validate_utxo_on_chain(
+        &self,
+        utxo_ref: &UtxoRef,
+        script_address: Option<&str>,
+    ) -> Result<bool, Error> {
         let tx_hash = hex::encode(utxo_ref.tx_hash);
 
         match self.provider.get_utxo(&tx_hash, utxo_ref.index).await {
             Ok(Some(utxo_info)) => {
                 // UTxO exists - verify it still has assets (not emptied)
-                // NOTE: Additional verification could compare utxo_info.address
-                // with the expected script address from the wallet to ensure
-                // the UTxO is still at our script address.
+                // and is still at our script address (reorg protection)
+                if let Some(expected_addr) = script_address {
+                    if utxo_info.address != expected_addr {
+                        tracing::warn!(
+                            "UTxO {} moved from script address (was {}, now {})",
+                            tx_hash,
+                            expected_addr,
+                            utxo_info.address
+                        );
+                        return Ok(false);
+                    }
+                }
                 Ok(!utxo_info.amount.is_empty())
             }
             Ok(None) => {
@@ -207,6 +226,15 @@ impl DepositMonitor {
                 })
             }
         }
+    }
+
+    /// Load current script address from CARDANO_WALLET, if present
+    fn load_script_address(&self) -> Result<Option<String>, Error> {
+        use crate::database::CARDANO_WALLET;
+
+        let read_tx = self.database.read()?;
+        let table = read_tx.open_table(CARDANO_WALLET)?;
+        Ok(table.get("wallet")?.map(|w| w.value().script_address))
     }
 
     /// Mark a deposit as spent (called when withdrawal is processed)
