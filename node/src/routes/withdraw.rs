@@ -82,10 +82,8 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let wallet = load_wallet(ctx).await?;
 
     // 5. Verify provided hash matches recomputed hash
-    let computed_hash = hex::encode(crate::tx_signer::compute_tx_hash(&tx_bytes).map_err(|e| {
-        Error::InvalidInput {
-            reason: format!("Failed to compute tx hash: {}", e),
-        }
+    let computed_hash = hex::encode(compute_tx_hash(&tx_bytes).map_err(|e| Error::InvalidInput {
+        reason: format!("Failed to compute tx hash: {}", e),
     })?);
     if computed_hash != request.tx_hash {
         return Err(Error::InvalidInput {
@@ -119,11 +117,11 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
         reason: format!("Failed to compute tx hash: {}", e),
     })?;
     let signed_cbor =
-        crate::tx_signer::attach_witness_to_transaction(&tx_bytes, &tx_body_hash, &wallet).map_err(
-            |e| Error::Internal {
+        attach_witness_to_transaction(&tx_bytes, &tx_body_hash, &wallet).map_err(|e| {
+            Error::Internal {
                 reason: format!("Failed to sign transaction: {}", e),
-            },
-        )?;
+            }
+        })?;
     let signed_cbor_hex = hex::encode(&signed_cbor);
 
     // Calculate change notes before any state changes
@@ -253,97 +251,6 @@ async fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(
     Ok(())
 }
 
-/// Burn notes and attach node witness
-async fn burn_notes_and_sign(
-    request: &WithdrawRequest,
-    ctx: &Context,
-    tx_bytes: &[u8],
-) -> Result<(String, Vec<BlindSignature>), Error> {
-    // First, burn the notes
-    burn_notes(&request.notes, ctx).await?;
-
-    // Load wallet for signing
-    let wallet = load_wallet(ctx).await?;
-
-    // Compute transaction hash for signing
-    // This extracts the transaction body from CBOR and computes its hash
-    let tx_hash = compute_tx_hash(tx_bytes).map_err(|e| Error::Internal {
-        reason: format!("Failed to compute tx hash: {}", e),
-    })?;
-
-    // Attach node witness to transaction
-    let signed_tx =
-        attach_witness_to_transaction(tx_bytes, &tx_hash, &wallet).map_err(|e| Error::Internal {
-            reason: format!("Failed to sign transaction: {}", e),
-        })?;
-
-    let signed_cbor = hex::encode(&signed_tx);
-
-    // Calculate change notes from transaction outputs
-    let wallet = load_wallet(ctx).await?;
-    let change_notes = calculate_change_notes(request, tx_bytes, &wallet)?;
-
-    Ok((signed_cbor, change_notes))
-}
-
-/// Atomically burn notes and record withdrawal in a single database transaction
-///
-/// This ensures both operations succeed or both fail, maintaining consistency
-/// between the NOTES table and WITHDRAWALS table.
-async fn atomic_burn_and_record(
-    request: &WithdrawRequest,
-    ctx: &Context,
-    submitted_tx_hash: &str,
-) -> Result<(), Error> {
-    let write_tx = ctx.database.write()?;
-
-    {
-        // 1. Burn notes
-        let mut notes_table = write_tx.open_table(NOTES)?;
-
-        for note in &request.notes {
-            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
-            let signature = Signature::from(*sig_bytes);
-
-            // Check if note is already spent
-            if notes_table.get(signature)?.is_some() {
-                return Err(Error::AlreadySpent { signature });
-            }
-
-            // Mark note as spent
-            notes_table.insert(signature, true)?;
-        }
-
-        // 2. Record withdrawal
-        let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
-
-        let tx_hash = hex::decode(submitted_tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid submitted tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
-            reason: "Submitted tx_hash must be 32 bytes".to_string(),
-        })?;
-
-        // Use network byte from config
-        let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
-
-        let record = WithdrawalRecord::completed();
-        withdrawals_table.insert(key, &record)?;
-    }
-
-    // Commit both operations atomically
-    write_tx.commit()?;
-
-    tracing::info!(
-        "Atomically burned {} notes and recorded withdrawal {}",
-        request.notes.len(),
-        &submitted_tx_hash[..std::cmp::min(16, submitted_tx_hash.len())]
-    );
-
-    Ok(())
-}
-
 /// Atomically burn notes and record withdrawal as pending
 ///
 /// This is the first step in the withdrawal process.
@@ -459,43 +366,6 @@ async fn mark_withdrawal_completed(ctx: &Context, tx_hash: &str) -> Result<(), E
     Ok(())
 }
 
-/// Burn notes by marking them as spent in the database
-/// This uses the same mechanism as the refresh system
-async fn burn_notes(notes: &[BlindSignature], ctx: &Context) -> Result<(), Error> {
-    if notes.is_empty() {
-        return Err(Error::InvalidInput {
-            reason: "No notes provided for withdrawal".to_string(),
-        });
-    }
-
-    let write_tx = ctx.database.write()?;
-    {
-        let mut table = write_tx.open_table(NOTES)?;
-
-        for note in notes {
-            // Convert BlindSignature to Signature for the table key
-            // BlindSignature contains signature: Blinded<Signature>
-            // We need to extract the inner signature
-            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
-            let signature = Signature::from(*sig_bytes);
-
-            // Check if note is already spent
-            if table.get(signature)?.is_some() {
-                return Err(Error::AlreadySpent { signature });
-            }
-
-            // Mark note as spent
-            table.insert(signature, true)?;
-
-            tracing::debug!("Burned note: {:x}", signature);
-        }
-    }
-    write_tx.commit()?;
-
-    tracing::info!("Successfully burned {} notes", notes.len());
-    Ok(())
-}
-
 /// Load Cardano wallet for signing
 async fn load_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet, Error> {
     let read_tx = ctx.database.read()?;
@@ -524,32 +394,6 @@ async fn submit_transaction(
         .map_err(|e| Error::NetworkError {
             reason: format!("Failed to submit transaction: {}", e),
         })
-}
-
-/// Record withdrawal in database for idempotency
-async fn record_withdrawal(request: &WithdrawRequest, ctx: &Context) -> Result<(), Error> {
-    let write_tx = ctx.database.write()?;
-    {
-        let mut table = write_tx.open_table(WITHDRAWALS)?;
-
-        let tx_hash = hex::decode(&request.tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
-        // Use network byte from config
-        let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
-
-        let record = WithdrawalRecord::completed();
-        table.insert(key, &record)?;
-    }
-    write_tx.commit()?;
-
-    tracing::info!("Withdrawal recorded successfully");
-    Ok(())
 }
 
 /// Validate transaction fee is within acceptable bounds
@@ -606,79 +450,6 @@ fn extract_transaction_fee(tx_cbor: &[u8]) -> Result<u64, Error> {
     fee_str.parse::<u64>().map_err(|e| Error::InvalidInput {
         reason: format!("Failed to parse fee: {}", e),
     })
-}
-
-/// Validate that all inputs reference the script address
-///
-/// Queries the blockchain provider to verify each input's address matches
-/// the expected script address. This ensures no mixed inputs from non-script
-/// addresses are present in the transaction.
-///
-/// # Arguments
-/// * `tx_cbor` - The transaction CBOR bytes
-/// * `script_address` - The expected script address
-/// * `provider` - Provider to verify addresses on-chain
-async fn validate_script_inputs(
-    tx_cbor: &[u8],
-    script_address: &str,
-    provider: Option<&Provider>,
-) -> Result<(), Error> {
-    // Parse transaction inputs from CBOR
-    let inputs = extract_transaction_inputs(tx_cbor)?;
-
-    if inputs.is_empty() {
-        return Err(Error::InvalidInput {
-            reason: "Transaction has no inputs".to_string(),
-        });
-    }
-
-    tracing::info!("Validating {} script inputs", inputs.len());
-
-    // Verify each input comes from the script address
-    for (i, (tx_hash, index)) in inputs.iter().enumerate() {
-        tracing::debug!("Input {}: {}#{}", i, hex::encode(tx_hash), index);
-
-        if let Some(provider) = provider {
-            match provider
-                .get_utxo(&hex::encode(tx_hash), *index as u16)
-                .await
-            {
-                Ok(Some(utxo_info)) => {
-                    if utxo_info.address != script_address {
-                        return Err(Error::InvalidInput {
-                            reason: format!(
-                                "Input {} ({}:{}) is not from script address. Expected {}, got {}",
-                                i,
-                                hex::encode(&tx_hash[..8]),
-                                index,
-                                script_address,
-                                utxo_info.address
-                            ),
-                        });
-                    }
-                    tracing::debug!("Input {} verified at script address", i);
-                }
-                Ok(None) => {
-                    return Err(Error::InvalidInput {
-                        reason: format!(
-                            "Input {} ({}:{}) not found on chain",
-                            i,
-                            hex::encode(&tx_hash[..8]),
-                            index
-                        ),
-                    });
-                }
-                Err(e) => {
-                    return Err(Error::NetworkError {
-                        reason: format!("Failed to verify input {}: {}", i, e),
-                    });
-                }
-            }
-        }
-    }
-
-    tracing::info!("All {} inputs validated at script address", inputs.len());
-    Ok(())
 }
 
 /// Extract transaction inputs from CBOR
