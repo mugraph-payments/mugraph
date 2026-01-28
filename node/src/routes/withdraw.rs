@@ -1098,27 +1098,39 @@ fn validate_transaction_balance(
         }
     }
 
-    // Apply fee to lovelace output total
-    let out_lovelace = output_totals.entry("lovelace".to_string()).or_insert(0);
-    *out_lovelace = out_lovelace.saturating_add(fee_u128);
+    // Strict per-asset conservation
+    // Lovelace: inputs == outputs + fee (no tolerance)
+    let in_lovelace = input_totals.get("lovelace").copied().unwrap_or(0);
+    let out_lovelace = output_totals.get("lovelace").copied().unwrap_or(0);
 
-    // Compare per-asset
+    if in_lovelace < fee_u128 {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Insufficient lovelace: inputs {} < fee {}",
+                in_lovelace, fee_u128
+            ),
+        });
+    }
+
+    if in_lovelace != out_lovelace.saturating_add(fee_u128) {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Lovelace imbalance: inputs {}, outputs {}, fee {}, expected outputs {}",
+                in_lovelace,
+                out_lovelace,
+                fee_u128,
+                in_lovelace.saturating_sub(fee_u128)
+            ),
+        });
+    }
+
+    // Other assets: exact equality
     for (unit, in_qty) in input_totals.iter() {
-        let out_qty = output_totals.get(unit).copied().unwrap_or(0);
         if unit == "lovelace" {
-            // Allow 0.1% tolerance on lovelace
-            let expected = out_qty;
-            let tolerance = expected / 1000;
-            let diff = (*in_qty).abs_diff(expected);
-            if diff > tolerance {
-                return Err(Error::InvalidInput {
-                    reason: format!(
-                        "Lovelace imbalance: inputs {}, outputs+fee {}, diff {}, tolerance {}",
-                        in_qty, expected, diff, tolerance
-                    ),
-                });
-            }
-        } else if *in_qty != out_qty {
+            continue;
+        }
+        let out_qty = output_totals.get(unit).copied().unwrap_or(0);
+        if *in_qty != out_qty {
             return Err(Error::InvalidInput {
                 reason: format!(
                     "Asset imbalance for {}: inputs {}, outputs {}",
@@ -1128,17 +1140,22 @@ fn validate_transaction_balance(
         }
     }
 
-    // Also ensure no extra assets are minted/appearing
+    // Also ensure no extra assets are minted/appearing (including lovelace)
     for (unit, out_qty) in output_totals.iter() {
         let in_qty = input_totals.get(unit).copied().unwrap_or(0);
-        if unit == "lovelace" {
-            continue; // already checked with tolerance
-        }
-        if *out_qty > in_qty {
+        if *out_qty > in_qty && unit != "lovelace" {
             return Err(Error::InvalidInput {
                 reason: format!(
                     "Outputs create extra asset {}: outputs {}, inputs {}",
                     unit, out_qty, in_qty
+                ),
+            });
+        }
+        if unit == "lovelace" && *out_qty > in_lovelace {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Outputs create extra lovelace: outputs {}, inputs {}",
+                    out_qty, in_lovelace
                 ),
             });
         }
