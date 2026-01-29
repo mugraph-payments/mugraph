@@ -1,8 +1,7 @@
 target
 /.pre-commit-config.yaml
-
-# TODO: Remove this once we reach 0.1
 proptest-regressions
 *.proptest-regressions
-
 db
+/*.skey
+/cardano-cli
