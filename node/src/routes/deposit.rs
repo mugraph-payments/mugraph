@@ -5,6 +5,7 @@ use mugraph_core::{
     types::{BlindSignature, DepositRequest, PublicKey, Response, UtxoRef},
 };
 use serde::{Deserialize, Serialize};
+use whisky_csl::csl;
 
 use crate::{
     cardano::setup_cardano_wallet,
@@ -38,6 +39,9 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
     // 3. Fetch UTxO from Cardano provider and validate
     let provider = create_provider(ctx)?;
     let utxo_info = fetch_and_validate_utxo(request, &wallet, &provider, ctx).await?;
+
+    // 3b. Validate datum matches expected user/node hashes and intent
+    validate_deposit_datum(request, &wallet, &utxo_info, &ctx.keypair.public_key)?;
 
     // 4. Validate outputs cover all assets in UTxO
     validate_deposit_amounts(request, &utxo_info, ctx.config.min_deposit_value())?;
@@ -418,6 +422,150 @@ fn compute_intent_hash(
     let mut result = [0u8; 32];
     result.copy_from_slice(&hash);
     result
+}
+
+/// Validate that the on-chain datum matches the expected user hash, node hash, and intent hash.
+fn validate_deposit_datum(
+    request: &DepositRequest,
+    wallet: &mugraph_core::types::CardanoWallet,
+    utxo_info: &UtxoInfo,
+    delegate_pk: &PublicKey,
+) -> Result<(), Error> {
+    // Datum must be present to bind deposit to identities
+    let datum_hex = utxo_info
+        .datum
+        .as_ref()
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "UTxO missing inline datum; required for deposit validation".to_string(),
+        })?;
+
+    let datum_bytes = hex::decode(datum_hex).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid datum hex: {}", e),
+    })?;
+
+    // Parse datum as constructor with three fields
+    let pd = csl::PlutusData::from_bytes(datum_bytes).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid datum CBOR: {}", e),
+    })?;
+
+    let constr = pd
+        .as_constr_plutus_data()
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Datum is not a constructor".to_string(),
+        })?;
+
+    if constr.alternative().to_str() != "0" {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Unexpected datum constructor {}, expected 0",
+                constr.alternative().to_str()
+            ),
+        });
+    }
+
+    let fields = constr.data();
+    if fields.len() != 3 {
+        return Err(Error::InvalidInput {
+            reason: format!("Datum has {} fields (expected 3)", fields.len()),
+        });
+    }
+
+    // Extract datum fields
+    let user_hash = fields
+        .get(0)
+        .as_bytes()
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Datum missing user_pubkey_hash bytes".to_string(),
+        })?;
+    let node_hash = fields
+        .get(1)
+        .as_bytes()
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Datum missing node_pubkey_hash bytes".to_string(),
+        })?;
+    let intent_hash = fields
+        .get(2)
+        .as_bytes()
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Datum missing intent_hash bytes".to_string(),
+        })?;
+
+    if user_hash.len() != 28 || node_hash.len() != 28 {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Datum key hash lengths invalid (user {}, node {}, expected 28)",
+                user_hash.len(),
+                node_hash.len()
+            ),
+        });
+    }
+    if intent_hash.len() != 32 {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Datum intent_hash length invalid ({} bytes, expected 32)",
+                intent_hash.len()
+            ),
+        });
+    }
+
+    // Compute expected hashes
+    let message_json: serde_json::Value =
+        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid message JSON: {}", e),
+        })?;
+    let user_pubkey_hex = message_json
+        .get("user_pubkey")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Missing user_pubkey in message".to_string(),
+        })?;
+    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid user_pubkey hex: {}", e),
+    })?;
+    if user_pubkey_bytes.len() != 32 {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "user_pubkey must be 32 bytes, got {}",
+                user_pubkey_bytes.len()
+            ),
+        });
+    }
+
+    let expected_user_hash = csl::PublicKey::from_bytes(&user_pubkey_bytes)
+        .map_err(|e| Error::InvalidKey {
+            reason: format!("Invalid user public key: {}", e),
+        })?
+        .hash()
+        .to_bytes();
+
+    let expected_node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+        .map_err(|e| Error::InvalidKey {
+            reason: format!("Invalid node payment_vk: {}", e),
+        })?
+        .hash()
+        .to_bytes();
+
+    let expected_intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
+
+    if user_hash != expected_user_hash.as_slice() {
+        return Err(Error::InvalidInput {
+            reason: "Datum user_pubkey_hash does not match provided user_pubkey".to_string(),
+        });
+    }
+
+    if node_hash != expected_node_hash.as_slice() {
+        return Err(Error::InvalidInput {
+            reason: "Datum node_pubkey_hash does not match this node".to_string(),
+        });
+    }
+
+    if intent_hash != expected_intent_hash.as_slice() {
+        return Err(Error::InvalidInput {
+            reason: "Datum intent_hash does not match canonical payload".to_string(),
+        });
+    }
+
+    Ok(())
 }
 
 /// Fetch UTxO from provider and validate it's at the script address
