@@ -1,7 +1,8 @@
-target
-/.pre-commit-config.yaml
-proptest-regressions
 *.proptest-regressions
-db
 /*.skey
+/.pi
+/.pre-commit-config.yaml
 /cardano-cli
+db
+proptest-regressions
+target
