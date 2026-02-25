@@ -70,31 +70,66 @@ pub fn get_validator_dir() -> Result<std::path::PathBuf> {
 /// Check if validator artifacts exist and are up to date
 pub fn validator_artifacts_exist() -> Result<bool> {
     let validator_dir = get_validator_dir()?;
-    let plutus_json_path = validator_dir.join("build").join("plutus.json");
+    let plutus_json_path = validator_dir.join("plutus.json");
 
     if !plutus_json_path.exists() {
         return Ok(false);
     }
 
     // Check if source files are newer than the artifact
-    let _build_dir = validator_dir.join("build");
     let plutus_modified = std::fs::metadata(&plutus_json_path)
         .and_then(|m| m.modified())
         .ok();
 
-    // Check validators directory for .ak files
-    let validators_dir = validator_dir.join("validators");
-    if validators_dir.exists() {
-        for entry in std::fs::read_dir(validators_dir)? {
+    // Check if any .ak source file or aiken.toml is newer than plutus.json.
+    // Scans both validators/ and lib/ recursively.
+    let dirs_to_check = [
+        validator_dir.join("validators"),
+        validator_dir.join("lib"),
+    ];
+
+    fn any_ak_newer_than(
+        dir: &Path,
+        plutus_time: Option<std::time::SystemTime>,
+    ) -> Result<bool> {
+        if !dir.exists() {
+            return Ok(false);
+        }
+        for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "ak")
-                && let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
-                && let Some(plutus_time) = plutus_modified
-                && source_modified > plutus_time
-            {
-                // Source is newer than artifact, needs rebuild
-                return Ok(false);
+            if path.is_dir() {
+                if any_ak_newer_than(&path, plutus_time)? {
+                    return Ok(true);
+                }
+            } else if path.extension().is_some_and(|ext| ext == "ak") {
+                if let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
+                {
+                    if let Some(plutus_time) = plutus_time {
+                        if source_modified > plutus_time {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    for dir in &dirs_to_check {
+        if any_ak_newer_than(dir, plutus_modified)? {
+            return Ok(false);
+        }
+    }
+
+    // Also check aiken.toml (dependency/compiler changes)
+    let aiken_toml = validator_dir.join("aiken.toml");
+    if aiken_toml.exists() {
+        if let Ok(toml_modified) = std::fs::metadata(&aiken_toml).and_then(|m| m.modified()) {
+            if let Some(plutus_time) = plutus_modified {
+                if toml_modified > plutus_time {
+                    return Ok(false);
+                }
             }
         }
     }
@@ -105,7 +140,7 @@ pub fn validator_artifacts_exist() -> Result<bool> {
 /// Load validator CBOR from existing artifacts
 pub fn load_validator_cbor() -> Result<Vec<u8>> {
     let validator_dir = get_validator_dir()?;
-    let plutus_json_path = validator_dir.join("build").join("plutus.json");
+    let plutus_json_path = validator_dir.join("plutus.json");
 
     let plutus_content =
         std::fs::read_to_string(&plutus_json_path).context("Failed to read plutus.json")?;
@@ -168,13 +203,17 @@ pub fn compile_validator() -> Result<Vec<u8>> {
     load_validator_cbor()
 }
 
-/// Compute script hash from CBOR (Blake2b-224)
+/// Compute script hash from CBOR (Blake2b-224).
+/// Per Cardano ledger rules, the hash input is: language_tag || script_cbor
+/// where language_tag is 0x03 for PlutusV3.
 pub fn compute_script_hash(cbor: &[u8]) -> Vec<u8> {
     use blake2::{Blake2b, Digest, digest::consts::U28};
 
     type Blake2b224 = Blake2b<U28>;
-    let hash = Blake2b224::digest(cbor);
-    hash.to_vec()
+    let mut hasher = Blake2b224::new();
+    hasher.update(&[0x03]); // PlutusV3 tag
+    hasher.update(cbor);
+    hasher.finalize().to_vec()
 }
 
 /// Build script address from hash and network

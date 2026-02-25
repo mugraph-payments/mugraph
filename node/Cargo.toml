@@ -28,3 +28,11 @@ tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 whisky-csl = "1.0.24"
+
+[dev-dependencies]
+uplc = "1.1.10"
+pallas-primitives = "0.31.0"
+pallas-traverse = "0.31.0"
+pallas-codec = "0.31.0"
+pallas-addresses = "0.31.0"
+pallas-crypto = "0.31.0"

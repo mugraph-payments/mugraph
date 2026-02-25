@@ -1,0 +1,5 @@
+network: preprod
+date: 2025-02-25
+era: Conway
+source: conway-genesis.json
+param_count_v3: 251
