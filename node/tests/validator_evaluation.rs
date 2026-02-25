@@ -163,7 +163,7 @@ fn build_multiasset_value(
 fn build_spend_tx_with_value(
     script_cbor: &[u8],
     script_hash: &Hash<28>,
-    datum: PlutusData,
+    datum: Option<PlutusData>,
     required_signers: Vec<Hash<28>>,
     input_tx_hash: Hash<32>,
     input_index: u64,
@@ -177,7 +177,7 @@ fn build_spend_tx_with_value(
     let script_utxo_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
         address: script_address_bytes.clone().into(),
         value: input_value,
-        datum_option: Some(DatumOption::Data(CborWrap(datum.clone()))),
+        datum_option: datum.map(|d| DatumOption::Data(CborWrap(d))),
         script_ref: None,
     });
 
@@ -285,118 +285,16 @@ fn build_spend_tx(
     input_index: u64,
     input_lovelace: u64,
 ) -> (Vec<u8>, Vec<ResolvedInput>) {
-    use pallas_primitives::conway::{PseudoTransactionBody, Tx};
-
-    let script_address_bytes = build_script_address_bytes(script_hash);
-
-    // The UTxO being spent (with inline datum)
-    let script_utxo_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: script_address_bytes.clone().into(),
-        value: Value::Coin(input_lovelace),
-        datum_option: Some(DatumOption::Data(CborWrap(datum.clone()))),
-        script_ref: None,
-    });
-
-    // Build a simple output (sending back to a dummy key address)
-    let dummy_key_hash: [u8; 28] = [0xAA; 28];
-    let change_addr = ShelleyAddress::new(
-        Network::Testnet,
-        ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
-        ShelleyDelegationPart::Null,
-    );
-    let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: change_addr.to_vec().into(),
-        value: Value::Coin(input_lovelace.saturating_sub(2_000_000)),
-        datum_option: None,
-        script_ref: None,
-    });
-
-    // Transaction input
-    let tx_input = pallas_primitives::TransactionInput {
-        transaction_id: input_tx_hash,
-        index: input_index,
-    };
-
-    // Collateral input (dummy, not validated with run_phase_one: false)
-    let collateral_input = pallas_primitives::TransactionInput {
-        transaction_id: Hash::from([0xBB; 32]),
-        index: 0,
-    };
-
-    // Redeemer: Spend at index 0 (our script input is the only/first input)
-    let redeemer = Redeemer {
-        tag: RedeemerTag::Spend,
-        index: 0,
-        data: build_void_redeemer_data(),
-        ex_units: ExUnits {
-            mem: 14_000_000,
-            steps: 10_000_000_000,
-        },
-    };
-
-    // Required signers
-    let req_signers = if required_signers.is_empty() {
-        None
-    } else {
-        NonEmptySet::from_vec(required_signers)
-    };
-
-    // Build the transaction body
-    let tx_body = PseudoTransactionBody {
-        inputs: Set::from(vec![tx_input.clone()]),
-        outputs: vec![change_output],
-        fee: 200_000,
-        ttl: Some(100_000_000),
-        certificates: None,
-        withdrawals: None,
-        auxiliary_data_hash: None,
-        validity_interval_start: None,
-        mint: None,
-        script_data_hash: None,
-        collateral: NonEmptySet::from_vec(vec![collateral_input]),
-        required_signers: req_signers,
-        network_id: None,
-        collateral_return: None,
-        total_collateral: None,
-        reference_inputs: None,
-        voting_procedures: None,
-        proposal_procedures: None,
-        treasury_value: None,
-        donation: None,
-    };
-
-    // Build the witness set with the PlutusV3 script and redeemer
-    let witness_set = WitnessSet {
-        vkeywitness: None,
-        native_script: None,
-        bootstrap_witness: None,
-        plutus_v1_script: None,
-        plutus_data: None,
-        redeemer: Some(Redeemers::List(MaybeIndefArray::Def(vec![redeemer]))),
-        plutus_v2_script: None,
-        plutus_v3_script: NonEmptySet::from_vec(vec![PlutusScript(
-            script_cbor.to_vec().into(),
-        )]),
-    };
-
-    // Build the full transaction
-    let tx = Tx {
-        transaction_body: tx_body,
-        transaction_witness_set: witness_set,
-        success: true,
-        auxiliary_data: Nullable::Null,
-    };
-
-    // Encode to CBOR
-    let tx_bytes = minicbor::to_vec(&tx).expect("Failed to encode transaction to CBOR");
-
-    // Build resolved inputs
-    let resolved_inputs = vec![ResolvedInput {
-        input: tx_input,
-        output: script_utxo_output,
-    }];
-
-    (tx_bytes, resolved_inputs)
+    build_spend_tx_with_value(
+        script_cbor,
+        script_hash,
+        Some(datum),
+        required_signers,
+        input_tx_hash,
+        input_index,
+        Value::Coin(input_lovelace),
+        Value::Coin(input_lovelace.saturating_sub(2_000_000)),
+    )
 }
 
 /// Decode CBOR bytes as a MintedTx and run eval_phase_two.
@@ -428,6 +326,54 @@ fn evaluate_tx(
         false, // run_phase_one: false (we test script logic, not ledger rules)
         |_| (),
     )
+}
+
+/// Create a properly-signed Note from a Refresh output atom.
+///
+/// This simulates the full blind-signature flow that happens between
+/// client and server during a real transfer: the output atom's commitment
+/// is blinded, signed by the node, and unblinded to produce a valid note.
+fn note_from_refresh_output(
+    refresh: &mugraph_core::types::Refresh,
+    atom_idx: usize,
+    keypair: &mugraph_core::types::Keypair,
+    rng: &mut (impl rand::RngCore + rand::CryptoRng),
+) -> mugraph_core::types::Note {
+    use mugraph_core::{
+        crypto,
+        types::{DleqProofWithBlinding, Note, Signature},
+    };
+
+    assert!(
+        refresh.is_output(atom_idx),
+        "atom at index {} is not an output",
+        atom_idx
+    );
+
+    let atom = &refresh.atoms[atom_idx];
+    let asset = &refresh.asset_ids[atom.asset_id as usize];
+
+    let mut note = Note {
+        amount: atom.amount,
+        delegate: atom.delegate,
+        policy_id: asset.policy_id,
+        asset_name: asset.asset_name,
+        nonce: atom.nonce,
+        signature: Signature::default(),
+        dleq: None,
+    };
+
+    let blind = crypto::blind_note(rng, &note);
+    let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
+    note.signature =
+        crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)
+            .expect("unblind_signature failed");
+    note.dleq = Some(DleqProofWithBlinding {
+        proof: signed.proof,
+        blinding_factor: blind.factor.into(),
+    });
+
+    note
 }
 
 /// Build a Conway-era transaction spending multiple script UTxOs.
@@ -577,12 +523,12 @@ fn eval_spend_with_valid_user_signature() {
     let script_hash = compute_script_hash(&script_cbor);
     let cost_models = load_cost_models();
 
-    // Deterministic test keys
-    let user_key = [1u8; 32];
+    // Use distinct keys from the budget tests to avoid exact duplication
+    let user_key = [5u8; 32];
     let user_hash = blake2b_224(&user_key);
-    let node_key = [2u8; 32];
+    let node_key = [6u8; 32];
     let node_hash = blake2b_224(&node_key);
-    let intent_hash = [0u8; 32];
+    let intent_hash = [0xFFu8; 32];
 
     let datum = build_deposit_datum(&user_hash, &node_hash, &intent_hash);
 
@@ -757,7 +703,8 @@ fn eval_spend_minimal_tx() {
     let script_hash = compute_script_hash(&script_cbor);
     let cost_models = load_cost_models();
 
-    // Bare minimum: valid 28-byte hashes, correct signer, 2 ADA
+    // Bare minimum: valid 28-byte hashes, correct signer, 3 ADA
+    // (3M so the change output is 1M, a realistic min-UTxO value)
     let user_hash = blake2b_224(&[10u8; 32]);
     let node_hash = blake2b_224(&[20u8; 32]);
     let datum = build_deposit_datum(&user_hash, &node_hash, &[]);
@@ -769,7 +716,7 @@ fn eval_spend_minimal_tx() {
         vec![Hash::from(user_hash)],
         Hash::from([0x05; 32]),
         0,
-        2_000_000,
+        3_000_000,
     );
 
     let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models)
@@ -785,104 +732,22 @@ fn eval_spend_minimal_tx() {
 
 #[test]
 fn eval_spend_no_datum() {
-    use pallas_primitives::conway::{PseudoTransactionBody, Tx};
-
     let script_cbor = load_validator_cbor();
     let script_hash = compute_script_hash(&script_cbor);
     let cost_models = load_cost_models();
 
     let user_hash = blake2b_224(&[1u8; 32]);
-    let script_address_bytes = build_script_address_bytes(&script_hash);
 
-    // UTxO WITHOUT datum
-    let tx_input = pallas_primitives::TransactionInput {
-        transaction_id: Hash::from([0x06; 32]),
-        index: 0,
-    };
-
-    let script_utxo_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: script_address_bytes.into(),
-        value: Value::Coin(5_000_000),
-        datum_option: None, // no datum
-        script_ref: None,
-    });
-
-    let dummy_key_hash: [u8; 28] = [0xAA; 28];
-    let change_addr = ShelleyAddress::new(
-        Network::Testnet,
-        ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
-        ShelleyDelegationPart::Null,
+    let (tx_bytes, utxos) = build_spend_tx_with_value(
+        &script_cbor,
+        &script_hash,
+        None, // no datum
+        vec![Hash::from(user_hash)],
+        Hash::from([0x06; 32]),
+        0,
+        Value::Coin(5_000_000),
+        Value::Coin(3_000_000),
     );
-    let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: change_addr.to_vec().into(),
-        value: Value::Coin(3_000_000),
-        datum_option: None,
-        script_ref: None,
-    });
-
-    let collateral_input = pallas_primitives::TransactionInput {
-        transaction_id: Hash::from([0xBB; 32]),
-        index: 0,
-    };
-
-    let redeemer = Redeemer {
-        tag: RedeemerTag::Spend,
-        index: 0,
-        data: build_void_redeemer_data(),
-        ex_units: ExUnits {
-            mem: 14_000_000,
-            steps: 10_000_000_000,
-        },
-    };
-
-    let tx_body = PseudoTransactionBody {
-        inputs: Set::from(vec![tx_input.clone()]),
-        outputs: vec![change_output],
-        fee: 200_000,
-        ttl: Some(100_000_000),
-        certificates: None,
-        withdrawals: None,
-        auxiliary_data_hash: None,
-        validity_interval_start: None,
-        mint: None,
-        script_data_hash: None,
-        collateral: NonEmptySet::from_vec(vec![collateral_input]),
-        required_signers: NonEmptySet::from_vec(vec![Hash::from(user_hash)]),
-        network_id: None,
-        collateral_return: None,
-        total_collateral: None,
-        reference_inputs: None,
-        voting_procedures: None,
-        proposal_procedures: None,
-        treasury_value: None,
-        donation: None,
-    };
-
-    let witness_set = WitnessSet {
-        vkeywitness: None,
-        native_script: None,
-        bootstrap_witness: None,
-        plutus_v1_script: None,
-        plutus_data: None,
-        redeemer: Some(Redeemers::List(MaybeIndefArray::Def(vec![redeemer]))),
-        plutus_v2_script: None,
-        plutus_v3_script: NonEmptySet::from_vec(vec![PlutusScript(
-            script_cbor.to_vec().into(),
-        )]),
-    };
-
-    let tx = Tx {
-        transaction_body: tx_body,
-        transaction_witness_set: witness_set,
-        success: true,
-        auxiliary_data: Nullable::Null,
-    };
-
-    let tx_bytes = minicbor::to_vec(&tx).expect("Failed to encode tx");
-    let utxos = vec![ResolvedInput {
-        input: tx_input,
-        output: script_utxo_output,
-    }];
 
     let result = evaluate_tx(&tx_bytes, &utxos, &cost_models);
     assert!(
@@ -1103,7 +968,7 @@ fn eval_spend_with_native_tokens() {
     let (tx_bytes, utxos) = build_spend_tx_with_value(
         &script_cbor,
         &script_hash,
-        datum,
+        Some(datum),
         vec![Hash::from(user_hash)],
         Hash::from([0x10; 32]),
         0,
@@ -1133,14 +998,18 @@ fn eval_spend_with_native_tokens() {
 ///
 /// 1. **Deposit**: Construct a UTxO at the script address (on-chain deposit)
 /// 2. **Off-chain transfers**: Use the mugraph blind-signature note system
-///    to move value between users via Refresh operations
+///    to move value between users via Refresh operations. Each transfer's
+///    output notes are materialized through the full blind-sign-unblind
+///    protocol and fed as inputs to the next transfer, exercising the
+///    actual signature chain.
 /// 3. **Withdrawal**: Build a spend tx for the original UTxO and evaluate
 ///    it through the on-chain validator
 ///
 /// The on-chain validator only cares about the spend (withdrawal) phase —
 /// it checks that the user's pubkey hash is in extra_signatories. The
 /// off-chain transfers don't affect on-chain state but this test verifies
-/// the full system flow works end-to-end.
+/// the full blind-signature chain works end-to-end and that the on-chain
+/// UTxO remains spendable after arbitrary off-chain activity.
 #[test]
 fn eval_lifecycle_deposit_transfer_withdraw() {
     use mugraph_core::{builder::RefreshBuilder, crypto, types::Keypair};
@@ -1152,114 +1021,127 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     // --- Phase 0: Setup identities ---
     let user_key = [1u8; 32];
     let user_hash = blake2b_224(&user_key);
-    let node_key = [2u8; 32];
-    let node_hash = blake2b_224(&node_key);
+    let node_hash = blake2b_224(&[2u8; 32]);
     let intent_hash = [0u8; 32];
 
     // Node keypair for blind signatures (off-chain)
     let node_keypair = Keypair::random(&mut rand::rng());
+    let mut rng = rand::rng();
+
+    let ada_policy = mugraph_core::types::PolicyId::zero();
+    let ada_name = mugraph_core::types::AssetName::empty();
 
     // --- Phase 1: Deposit (on-chain UTxO creation) ---
     let deposit_lovelace = 10_000_000u64; // 10 ADA
     let datum = build_deposit_datum(&user_hash, &node_hash, &intent_hash);
 
-    // Simulate the node issuing a signed note after confirming the deposit.
-    // In the real system, the user blinds the note commitment and the node
-    // signs it; here we use emit_note as a shortcut.
-    let mut rng = rand::rng();
+    // Node issues a signed note after confirming the deposit on-chain.
     let note_a = mugraph_node::routes::emit_note(
         &node_keypair,
-        mugraph_core::types::PolicyId::zero(), // ADA has zero policy_id
-        mugraph_core::types::AssetName::empty(),
+        ada_policy,
+        ada_name,
         deposit_lovelace,
         &mut rng,
     )
     .expect("Failed to emit deposit note");
 
-    // Verify the note is valid
     assert!(
-        crypto::verify(&node_keypair.public_key, note_a.commitment().as_ref(), note_a.signature)
-            .expect("verify failed"),
+        crypto::verify(
+            &node_keypair.public_key,
+            note_a.commitment().as_ref(),
+            note_a.signature
+        )
+        .expect("verify failed"),
         "Emitted note signature should be valid"
     );
 
     // --- Phase 2: Off-chain transfers via Refresh ---
+    // Each transfer's outputs are materialized through the full
+    // blind-sign-unblind protocol and become inputs to the next transfer.
+
     // Transfer 1: split 10 ADA → 6 ADA + 4 ADA
     let refresh_1 = RefreshBuilder::new()
-        .input(note_a.clone())
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            6_000_000,
-        )
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            4_000_000,
-        )
+        .input(note_a)
+        .output(ada_policy, ada_name, 6_000_000)
+        .output(ada_policy, ada_name, 4_000_000)
         .build()
-        .expect("Failed to build refresh 1");
+        .expect("build refresh_1");
+    refresh_1.verify().expect("refresh_1 balanced");
 
-    refresh_1.verify().expect("Refresh 1 should be balanced");
+    // Materialize outputs: node signs the output commitments via blind signatures
+    let n_inputs_1 = refresh_1.input_mask.count_ones() as usize;
+    let note_b = note_from_refresh_output(&refresh_1, n_inputs_1, &node_keypair, &mut rng);
+    let note_c = note_from_refresh_output(&refresh_1, n_inputs_1 + 1, &node_keypair, &mut rng);
 
-    // Transfer 2: merge 6 ADA + 4 ADA → 10 ADA (re-merge)
-    // Simulate output notes from refresh 1 (in real system the node signs these)
-    let note_b = mugraph_node::routes::emit_note(
-        &node_keypair,
-        mugraph_core::types::PolicyId::zero(),
-        mugraph_core::types::AssetName::empty(),
-        6_000_000,
-        &mut rng,
-    )
-    .expect("Failed to emit note_b");
-    let note_c = mugraph_node::routes::emit_note(
-        &node_keypair,
-        mugraph_core::types::PolicyId::zero(),
-        mugraph_core::types::AssetName::empty(),
-        4_000_000,
-        &mut rng,
-    )
-    .expect("Failed to emit note_c");
+    // Verify chained signatures are valid
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_b.commitment().as_ref(),
+            note_b.signature
+        )
+        .expect("verify note_b"),
+    );
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_c.commitment().as_ref(),
+            note_c.signature
+        )
+        .expect("verify note_c"),
+    );
+    assert_eq!(note_b.amount + note_c.amount, deposit_lovelace);
 
+    // Transfer 2: merge 6 ADA + 4 ADA → 10 ADA
     let refresh_2 = RefreshBuilder::new()
         .input(note_b)
         .input(note_c)
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            10_000_000,
-        )
+        .output(ada_policy, ada_name, 10_000_000)
         .build()
-        .expect("Failed to build refresh 2");
+        .expect("build refresh_2");
+    refresh_2.verify().expect("refresh_2 balanced");
 
-    refresh_2.verify().expect("Refresh 2 should be balanced");
+    let n_inputs_2 = refresh_2.input_mask.count_ones() as usize;
+    let note_d = note_from_refresh_output(&refresh_2, n_inputs_2, &node_keypair, &mut rng);
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_d.commitment().as_ref(),
+            note_d.signature
+        )
+        .expect("verify note_d"),
+    );
+    assert_eq!(note_d.amount, deposit_lovelace);
 
     // Transfer 3: partial spend — 10 ADA → 7 ADA + 3 ADA
-    let note_d = mugraph_node::routes::emit_note(
-        &node_keypair,
-        mugraph_core::types::PolicyId::zero(),
-        mugraph_core::types::AssetName::empty(),
-        10_000_000,
-        &mut rng,
-    )
-    .expect("Failed to emit note_d");
-
     let refresh_3 = RefreshBuilder::new()
         .input(note_d)
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            7_000_000,
-        )
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            3_000_000,
-        )
+        .output(ada_policy, ada_name, 7_000_000)
+        .output(ada_policy, ada_name, 3_000_000)
         .build()
-        .expect("Failed to build refresh 3");
+        .expect("build refresh_3");
+    refresh_3.verify().expect("refresh_3 balanced");
 
-    refresh_3.verify().expect("Refresh 3 should be balanced");
+    let n_inputs_3 = refresh_3.input_mask.count_ones() as usize;
+    let note_e = note_from_refresh_output(&refresh_3, n_inputs_3, &node_keypair, &mut rng);
+    let note_f = note_from_refresh_output(&refresh_3, n_inputs_3 + 1, &node_keypair, &mut rng);
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_e.commitment().as_ref(),
+            note_e.signature
+        )
+        .expect("verify note_e"),
+    );
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_f.commitment().as_ref(),
+            note_f.signature
+        )
+        .expect("verify note_f"),
+    );
+    assert_eq!(note_e.amount + note_f.amount, deposit_lovelace);
 
     // --- Phase 3: Withdrawal (on-chain spend) ---
     // The user withdraws the original 10 ADA UTxO from the script address.
@@ -1297,61 +1179,65 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
 /// then a single transaction withdrawing both UTxOs.
 ///
 /// This exercises the multi-input spend path that a node would use
-/// for batch processing, combined with multiasset UTxOs.
+/// for batch processing, combined with multiasset UTxOs. Off-chain
+/// transfers use the full blind-sign-unblind chain.
 #[test]
 fn eval_lifecycle_batch_withdrawal() {
-    use mugraph_core::builder::RefreshBuilder;
+    use mugraph_core::{builder::RefreshBuilder, crypto};
 
     let script_cbor = load_validator_cbor();
     let script_hash = compute_script_hash(&script_cbor);
     let cost_models = load_cost_models();
 
-    // Shared user — both deposits belong to the same user
-    let user_key = [1u8; 32];
-    let user_hash = blake2b_224(&user_key);
+    let user_hash = blake2b_224(&[1u8; 32]);
     let node_hash = blake2b_224(&[2u8; 32]);
 
     let node_keypair = mugraph_core::types::Keypair::random(&mut rand::rng());
     let mut rng = rand::rng();
 
-    // --- Deposit 1: 5 ADA (plain) ---
-    let intent_hash_1 = [0x01u8; 32];
-    let datum_1 = build_deposit_datum(&user_hash, &node_hash, &intent_hash_1);
+    let ada_policy = mugraph_core::types::PolicyId::zero();
+    let ada_name = mugraph_core::types::AssetName::empty();
 
-    // Simulate off-chain: emit note, do a transfer, done
+    // --- Deposit 1: 5 ADA (plain) ---
+    let datum_1 = build_deposit_datum(&user_hash, &node_hash, &[0x01u8; 32]);
+
     let note_1 = mugraph_node::routes::emit_note(
         &node_keypair,
-        mugraph_core::types::PolicyId::zero(),
-        mugraph_core::types::AssetName::empty(),
+        ada_policy,
+        ada_name,
         5_000_000,
         &mut rng,
     )
     .expect("emit note_1");
 
+    // Off-chain transfer with chained signatures
     let refresh_1 = RefreshBuilder::new()
         .input(note_1)
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            3_000_000,
-        )
-        .output(
-            mugraph_core::types::PolicyId::zero(),
-            mugraph_core::types::AssetName::empty(),
-            2_000_000,
-        )
+        .output(ada_policy, ada_name, 3_000_000)
+        .output(ada_policy, ada_name, 2_000_000)
         .build()
         .expect("build refresh_1");
     refresh_1.verify().expect("refresh_1 balanced");
 
+    let n_in_1 = refresh_1.input_mask.count_ones() as usize;
+    let note_1a = note_from_refresh_output(&refresh_1, n_in_1, &node_keypair, &mut rng);
+    let note_1b = note_from_refresh_output(&refresh_1, n_in_1 + 1, &node_keypair, &mut rng);
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_1a.commitment().as_ref(),
+            note_1a.signature
+        )
+        .expect("verify note_1a"),
+    );
+    assert_eq!(note_1a.amount + note_1b.amount, 5_000_000);
+
     // --- Deposit 2: 8 ADA + native tokens ---
-    let intent_hash_2 = [0x02u8; 32];
-    let datum_2 = build_deposit_datum(&user_hash, &node_hash, &intent_hash_2);
+    let datum_2 = build_deposit_datum(&user_hash, &node_hash, &[0x02u8; 32]);
 
     let token_policy = mugraph_core::types::PolicyId([0xDD; 28]);
     let token_name = mugraph_core::types::AssetName::new(b"HOSKY").unwrap();
 
-    // Simulate off-chain token transfer
     let note_token = mugraph_node::routes::emit_note(
         &node_keypair,
         token_policy,
@@ -1361,6 +1247,7 @@ fn eval_lifecycle_batch_withdrawal() {
     )
     .expect("emit token note");
 
+    // Off-chain token transfer with chained signatures
     let refresh_2 = RefreshBuilder::new()
         .input(note_token)
         .output(token_policy, token_name, 300)
@@ -1369,27 +1256,26 @@ fn eval_lifecycle_batch_withdrawal() {
         .expect("build refresh_2");
     refresh_2.verify().expect("refresh_2 balanced");
 
-    // --- Batch withdrawal: spend both UTxOs in one transaction ---
-    // Deposit 2 is multiasset on-chain
-    let pallas_token_policy: Hash<28> = Hash::from([0xDD; 28]);
-    let input_value_2 = build_multiasset_value(
-        8_000_000,
-        pallas_token_policy,
-        b"HOSKY",
-        500,
+    let n_in_2 = refresh_2.input_mask.count_ones() as usize;
+    let note_2a = note_from_refresh_output(&refresh_2, n_in_2, &node_keypair, &mut rng);
+    let note_2b = note_from_refresh_output(&refresh_2, n_in_2 + 1, &node_keypair, &mut rng);
+    assert!(
+        crypto::verify(
+            &node_keypair.public_key,
+            note_2a.commitment().as_ref(),
+            note_2a.signature
+        )
+        .expect("verify note_2a"),
     );
+    assert_eq!(note_2a.amount + note_2b.amount, 500);
 
-    let datums = vec![datum_1, datum_2];
-
-    // Build multi-spend tx with mixed values
-    // We need a custom build since build_multi_spend_tx only supports Coin values.
-    // Use a dedicated build for this test.
+    // --- Batch withdrawal: spend both on-chain UTxOs in one transaction ---
     {
         use pallas_primitives::conway::{PseudoTransactionBody, Tx};
 
         let script_address_bytes = build_script_address_bytes(&script_hash);
+        let pallas_token_policy: Hash<28> = Hash::from([0xDD; 28]);
 
-        // Input 1: 5 ADA (plain)
         let tx_input_1 = pallas_primitives::TransactionInput {
             transaction_id: Hash::from([0x01; 32]),
             index: 0,
@@ -1397,48 +1283,34 @@ fn eval_lifecycle_batch_withdrawal() {
         let utxo_1 = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
             address: script_address_bytes.clone().into(),
             value: Value::Coin(5_000_000),
-            datum_option: Some(DatumOption::Data(CborWrap(datums[0].clone()))),
+            datum_option: Some(DatumOption::Data(CborWrap(datum_1))),
             script_ref: None,
         });
 
-        // Input 2: 8 ADA + 500 HOSKY
         let tx_input_2 = pallas_primitives::TransactionInput {
             transaction_id: Hash::from([0x02; 32]),
             index: 0,
         };
         let utxo_2 = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
             address: script_address_bytes.clone().into(),
-            value: input_value_2,
-            datum_option: Some(DatumOption::Data(CborWrap(datums[1].clone()))),
+            value: build_multiasset_value(8_000_000, pallas_token_policy, b"HOSKY", 500),
+            datum_option: Some(DatumOption::Data(CborWrap(datum_2))),
             script_ref: None,
         });
 
-        // Sort inputs by tx_id (0x01 < 0x02, already sorted)
-        let mut inputs = vec![tx_input_1.clone(), tx_input_2.clone()];
-        let mut resolved = vec![
+        // Inputs are already sorted (0x01 < 0x02)
+        let inputs = vec![tx_input_1.clone(), tx_input_2.clone()];
+        let resolved = vec![
             ResolvedInput {
-                input: tx_input_1.clone(),
+                input: tx_input_1,
                 output: utxo_1,
             },
             ResolvedInput {
-                input: tx_input_2.clone(),
+                input: tx_input_2,
                 output: utxo_2,
             },
         ];
 
-        inputs.sort_by(|a, b| {
-            a.transaction_id
-                .cmp(&b.transaction_id)
-                .then(a.index.cmp(&b.index))
-        });
-        resolved.sort_by(|a, b| {
-            a.input
-                .transaction_id
-                .cmp(&b.input.transaction_id)
-                .then(a.input.index.cmp(&b.input.index))
-        });
-
-        // One redeemer per input
         let redeemers_list: Vec<Redeemer> = (0..2)
             .map(|i| Redeemer {
                 tag: RedeemerTag::Spend,
@@ -1451,22 +1323,15 @@ fn eval_lifecycle_batch_withdrawal() {
             })
             .collect();
 
-        // Change output: combined value (13 ADA - fee + 500 HOSKY)
         let dummy_key_hash: [u8; 28] = [0xAA; 28];
         let change_addr = ShelleyAddress::new(
             Network::Testnet,
             ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
             ShelleyDelegationPart::Null,
         );
-        let change_value = build_multiasset_value(
-            13_000_000u64.saturating_sub(2_000_000),
-            pallas_token_policy,
-            b"HOSKY",
-            500,
-        );
         let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
             address: change_addr.to_vec().into(),
-            value: change_value,
+            value: build_multiasset_value(11_000_000, pallas_token_policy, b"HOSKY", 500),
             datum_option: None,
             script_ref: None,
         });
@@ -1526,7 +1391,10 @@ fn eval_lifecycle_batch_withdrawal() {
 
         assert_eq!(redeemers.len(), 2, "Expected 2 redeemer results for batch");
         for (i, r) in redeemers.iter().enumerate() {
-            assert!(r.ex_units.steps > 0, "CPU steps should be nonzero for input {i}");
+            assert!(
+                r.ex_units.steps > 0,
+                "CPU steps should be nonzero for input {i}"
+            );
             assert!(r.ex_units.mem > 0, "Memory should be nonzero for input {i}");
         }
 
@@ -1538,7 +1406,6 @@ fn eval_lifecycle_batch_withdrawal() {
             total_cpu, total_mem
         );
 
-        // Budget sanity: batch of 2 should be ≤ 2x single-spend limit
         assert!(
             total_cpu <= SINGLE_SPEND_CPU_LIMIT * 2,
             "Batch CPU {} exceeds 2x single limit {}",
@@ -1552,4 +1419,103 @@ fn eval_lifecycle_batch_withdrawal() {
             SINGLE_SPEND_MEM_LIMIT * 2
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Missing coverage: short node hash, long user hash, multiple signatories
+// ---------------------------------------------------------------------------
+
+#[test]
+fn eval_spend_short_node_hash() {
+    let script_cbor = load_validator_cbor();
+    let script_hash = compute_script_hash(&script_cbor);
+    let cost_models = load_cost_models();
+
+    let user_hash = blake2b_224(&[1u8; 32]);
+    let short_node_hash = [0xBBu8; 20]; // 20 bytes instead of 28
+    let datum = build_deposit_datum(&user_hash, &short_node_hash, &[0u8; 32]);
+
+    let (tx_bytes, utxos) = build_spend_tx(
+        &script_cbor,
+        &script_hash,
+        datum,
+        vec![Hash::from(user_hash)],
+        Hash::from([0x09; 32]),
+        0,
+        5_000_000,
+    );
+
+    let result = evaluate_tx(&tx_bytes, &utxos, &cost_models);
+    assert!(
+        result.is_err(),
+        "Expected script evaluation to fail with short node hash in datum"
+    );
+}
+
+#[test]
+fn eval_spend_long_user_hash() {
+    let script_cbor = load_validator_cbor();
+    let script_hash = compute_script_hash(&script_cbor);
+    let cost_models = load_cost_models();
+
+    // 32-byte user hash instead of 28
+    let long_user_hash = [0xAAu8; 32];
+    let node_hash = blake2b_224(&[2u8; 32]);
+    let datum = build_deposit_datum(&long_user_hash, &node_hash, &[0u8; 32]);
+
+    // Include the long hash as signer — the validator should still reject
+    // because the length check fails before the signer check.
+    // We need a 28-byte hash for required_signers (Cardano constraint),
+    // so we truncate. This means the signer won't match either, but the
+    // primary failure is the length check.
+    let signer_hash: [u8; 28] = long_user_hash[..28].try_into().unwrap();
+
+    let (tx_bytes, utxos) = build_spend_tx(
+        &script_cbor,
+        &script_hash,
+        datum,
+        vec![Hash::from(signer_hash)],
+        Hash::from([0x0A; 32]),
+        0,
+        5_000_000,
+    );
+
+    let result = evaluate_tx(&tx_bytes, &utxos, &cost_models);
+    assert!(
+        result.is_err(),
+        "Expected script evaluation to fail with 32-byte user hash in datum"
+    );
+}
+
+#[test]
+fn eval_spend_with_multiple_signatories() {
+    let script_cbor = load_validator_cbor();
+    let script_hash = compute_script_hash(&script_cbor);
+    let cost_models = load_cost_models();
+
+    let user_hash = blake2b_224(&[1u8; 32]);
+    let node_hash = blake2b_224(&[2u8; 32]);
+    let other_hash = blake2b_224(&[3u8; 32]);
+    let datum = build_deposit_datum(&user_hash, &node_hash, &[0u8; 32]);
+
+    // Transaction has multiple required signers — the correct user is among them
+    let (tx_bytes, utxos) = build_spend_tx(
+        &script_cbor,
+        &script_hash,
+        datum,
+        vec![
+            Hash::from(other_hash),
+            Hash::from(user_hash),
+            Hash::from(node_hash),
+        ],
+        Hash::from([0x0B; 32]),
+        0,
+        5_000_000,
+    );
+
+    let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models)
+        .expect("Script evaluation should succeed when correct user is among multiple signers");
+
+    assert_eq!(redeemers.len(), 1);
+    assert!(redeemers[0].ex_units.steps > 0);
 }
