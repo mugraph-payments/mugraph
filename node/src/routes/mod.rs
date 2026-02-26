@@ -202,25 +202,29 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
                 }),
             }
         }
-        Request::CrossNodeTransferCreate(request) => match cross_node::handle_create(&request) {
-            Ok(response) => Json(response),
-            Err(e) => Json(Response::Error {
-                reason: e.to_string(),
-            }),
-        },
-        Request::CrossNodeTransferNotify(request) => match cross_node::handle_notify(&request) {
-            Ok(response) => Json(response),
-            Err(e) => Json(Response::Error {
-                reason: e.to_string(),
-            }),
-        },
+        Request::CrossNodeTransferCreate(request) => {
+            match cross_node::handle_create(&request, &ctx) {
+                Ok(response) => Json(response),
+                Err(e) => Json(Response::Error {
+                    reason: e.to_string(),
+                }),
+            }
+        }
+        Request::CrossNodeTransferNotify(request) => {
+            match cross_node::handle_notify(&request, &ctx) {
+                Ok(response) => Json(response),
+                Err(e) => Json(Response::Error {
+                    reason: e.to_string(),
+                }),
+            }
+        }
         Request::CrossNodeTransferStatus(request) => match cross_node::handle_status(&request) {
             Ok(response) => Json(response),
             Err(e) => Json(Response::Error {
                 reason: e.to_string(),
             }),
         },
-        Request::CrossNodeTransferAck(request) => match cross_node::handle_ack(&request) {
+        Request::CrossNodeTransferAck(request) => match cross_node::handle_ack(&request, &ctx) {
             Ok(response) => Json(response),
             Err(e) => Json(Response::Error {
                 reason: e.to_string(),
@@ -247,6 +251,7 @@ fn load_cardano_script_address(database: &Database) -> Result<String, Error> {
 #[cfg(test)]
 mod tests {
     use axum::{Json, extract::State};
+    use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::{
         Request, TransferNoticePayload, TransferNoticeStage, XNodeAuth, XNodeEnvelope,
         XNodeMessageType,
@@ -254,7 +259,7 @@ mod tests {
 
     use super::*;
 
-    fn test_config() -> Config {
+    fn test_config(xnode_peer_registry_file: Option<String>) -> Config {
         Config::Server {
             addr: "127.0.0.1:9999".parse().unwrap(),
             seed: Some(42),
@@ -264,7 +269,7 @@ mod tests {
             cardano_api_key: Some("test".to_string()),
             cardano_provider_url: None,
             cardano_payment_sk: None,
-            xnode_peer_registry_file: None,
+            xnode_peer_registry_file,
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
             min_deposit_value: Some(1_000_000),
@@ -272,6 +277,30 @@ mod tests {
             max_withdrawal_fee: 2_000_000,
             fee_tolerance_pct: 5,
         }
+    }
+
+    fn write_registry(pk: &SigningKey) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "mugraph-peer-registry-{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let json = format!(
+            r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":false}}]}}"#,
+            muhex::encode(pk.verifying_key().to_bytes())
+        );
+        std::fs::write(&path, json).unwrap();
+        path.display().to_string()
+    }
+
+    fn sign_notice(mut env: XNodeEnvelope<TransferNoticePayload>, sk: &SigningKey) -> XNodeEnvelope<TransferNoticePayload> {
+        let mut canonical = env.clone();
+        canonical.auth.sig.clear();
+        let payload = serde_json::to_vec(&canonical).unwrap();
+        env.auth.sig = muhex::encode(sk.sign(&payload).to_bytes());
+        env
     }
 
     fn test_context() -> Context {
@@ -286,7 +315,9 @@ mod tests {
         let database = Arc::new(Database::setup(db_path).unwrap());
         database.migrate().unwrap();
 
-        let config = test_config();
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_path = write_registry(&signer);
+        let config = test_config(Some(registry_path));
         let keypair = config.keypair().unwrap();
 
         Context {
@@ -299,7 +330,8 @@ mod tests {
     #[tokio::test]
     async fn rpc_dispatches_cross_node_transfer_notify() {
         let ctx = test_context();
-        let request = Request::CrossNodeTransferNotify(XNodeEnvelope {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let notice = XNodeEnvelope {
             m: "xnode".to_string(),
             version: "3.0".to_string(),
             message_type: XNodeMessageType::TransferNotice,
@@ -319,9 +351,10 @@ mod tests {
             auth: XNodeAuth {
                 alg: "Ed25519".to_string(),
                 kid: "k1".to_string(),
-                sig: "sig".to_string(),
+                sig: String::new(),
             },
-        });
+        };
+        let request = Request::CrossNodeTransferNotify(sign_notice(notice, &signer));
 
         let Json(response) = rpc(State(ctx), Json(request)).await;
         assert!(matches!(
