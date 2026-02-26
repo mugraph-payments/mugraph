@@ -161,6 +161,42 @@ pub fn materialize_outputs(
     Ok(created)
 }
 
+fn apply_successful_tx(state: &mut AppState, pending: &PendingTx, notes: Vec<(usize, Note)>) {
+    for (owner, note) in notes {
+        let key = Asset {
+            policy_id: note.policy_id,
+            asset_name: note.asset_name,
+        };
+        state.wallets[owner].notes.entry(key).or_default().push(note);
+    }
+
+    state.wallets[pending.sender_id].sent += 1;
+    state.wallets[pending.receiver_id].received += 1;
+    state.total_ok += 1;
+    state.log(format!(
+        "tx {} ok sender={} receiver={} amount={}",
+        pending.id, pending.sender_id, pending.receiver_id, pending.spend_amount
+    ));
+}
+
+fn record_sender_failure(
+    state: &mut AppState,
+    sender_id: usize,
+    asset: Asset,
+    input_note: Note,
+    message: String,
+) {
+    state.last_failure = Some(message.clone());
+    state.total_err += 1;
+    state.wallets[sender_id].failures += 1;
+    state.wallets[sender_id]
+        .notes
+        .entry(asset)
+        .or_default()
+        .push(input_note);
+    state.log(message);
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn simulation_owner_loop(
     client: NodeClient,
@@ -229,15 +265,13 @@ pub async fn simulation_owner_loop(
                 ) {
                     Ok(res) => res,
                     Err(e) => {
-                        state.wallets[sender_id]
-                            .notes
-                            .entry(asset)
-                            .or_default()
-                            .push(input_note);
-                        state.last_failure = Some(e.to_string());
-                        state.total_err += 1;
-                        state.wallets[sender_id].failures += 1;
-                        state.log(format!("failed to build refresh: {e:#}"));
+                        record_sender_failure(
+                            &mut state,
+                            sender_id,
+                            asset,
+                            input_note,
+                            format!("failed to build refresh: {e:#}"),
+                        );
                         let _ = snapshot_tx.send(state.snapshot());
                         continue;
                     }
@@ -296,50 +330,26 @@ pub async fn simulation_owner_loop(
                                 state.delegate_pk,
                             ) {
                                 Ok(notes) => {
-                                    for (owner, note) in notes {
-                                        let key = Asset {
-                                            policy_id: note.policy_id,
-                                            asset_name: note.asset_name,
-                                        };
-                                        state.wallets[owner]
-                                            .notes
-                                            .entry(key)
-                                            .or_default()
-                                            .push(note);
-                                    }
-                                    state.wallets[pending.sender_id].sent += 1;
-                                    state.wallets[pending.receiver_id].received += 1;
-                                    state.total_ok += 1;
-                                    state.log(format!(
-                                        "tx {} ok sender={} receiver={} amount={}",
-                                        pending.id, pending.sender_id, pending.receiver_id, pending.spend_amount
-                                    ));
+                                    apply_successful_tx(&mut state, &pending, notes);
                                 }
                                 Err(e) => {
-                                    state.last_failure = Some(e.to_string());
-                                    state.total_err += 1;
-                                    state.wallets[pending.sender_id].failures += 1;
-                                    state.wallets[pending.sender_id]
-                                        .notes
-                                        .entry(pending.asset)
-                                        .or_default()
-                                        .push(pending.input_note);
-                                    state.log(format!(
-                                        "tx {} materialization failed: {e:#}",
-                                        pending.id
-                                    ));
+                                    record_sender_failure(
+                                        &mut state,
+                                        pending.sender_id,
+                                        pending.asset,
+                                        pending.input_note,
+                                        format!("tx {} materialization failed: {e:#}", pending.id),
+                                    );
                                 }
                             },
                             Err(reason) => {
-                                state.last_failure = Some(reason.clone());
-                                state.total_err += 1;
-                                state.wallets[pending.sender_id].failures += 1;
-                                state.wallets[pending.sender_id]
-                                    .notes
-                                    .entry(pending.asset)
-                                    .or_default()
-                                    .push(pending.input_note);
-                                state.log(format!("tx {} failed: {}", pending.id, reason));
+                                record_sender_failure(
+                                    &mut state,
+                                    pending.sender_id,
+                                    pending.asset,
+                                    pending.input_note,
+                                    format!("tx {} failed: {}", pending.id, reason),
+                                );
                             }
                         }
                         let _ = snapshot_tx.send(state.snapshot());
