@@ -93,6 +93,22 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                     let exhausted_after_increment = message.attempt_count >= policy.max_attempts;
                     messages.insert(message.message_id.as_str(), &message)?;
 
+                    metrics::counter!(
+                        "mugraph_m3_message_retries_total",
+                        "message_type" => message.message_type.clone(),
+                        "reason" => if exhausted_after_increment { "exhausted".to_string() } else { "scheduled".to_string() }
+                    )
+                    .increment(1);
+
+                    tracing::info!(
+                        transfer_id = %message.transfer_id,
+                        message_id = %message.message_id,
+                        message_type = %message.message_type,
+                        attempt_no = message.attempt_count,
+                        state = if exhausted_after_increment { "exhausted" } else { "retry_scheduled" },
+                        "transfer.reconcile"
+                    );
+
                     if exhausted_after_increment {
                         handle_exhaustion(&message, now, &mut transfers, &mut audits)?;
                     } else {
@@ -109,12 +125,19 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                     }
                 }
                 RetryAction::Exhausted(message) => {
+                    metrics::counter!(
+                        "mugraph_m3_message_retries_total",
+                        "message_type" => message.message_type.clone(),
+                        "reason" => "already_exhausted".to_string()
+                    )
+                    .increment(1);
                     handle_exhaustion(&message, now, &mut transfers, &mut audits)?;
                 }
             }
         }
     }
     write_tx.commit()?;
+    emit_stuck_transfer_gauges(database)?;
 
     Ok(())
 }
@@ -127,6 +150,14 @@ fn handle_exhaustion(
 ) -> Result<(), Error> {
     // Lost ACK is advisory and must not block convergence.
     if message.message_type == "transfer_ack" {
+        tracing::warn!(
+            transfer_id = %message.transfer_id,
+            message_id = %message.message_id,
+            message_type = %message.message_type,
+            attempt_no = message.attempt_count,
+            error_code = "ACK_EXHAUSTED",
+            "transfer.reconcile"
+        );
         return write_audit(
             audits,
             &message.transfer_id,
@@ -151,6 +182,22 @@ fn handle_exhaustion(
         transfers.insert(message.transfer_id.as_str(), &transfer)?;
     }
 
+    metrics::counter!(
+        "mugraph_m3_transfers_terminal_total",
+        "terminal_state" => "manual_review".to_string()
+    )
+    .increment(1);
+
+    tracing::warn!(
+        transfer_id = %message.transfer_id,
+        message_id = %message.message_id,
+        message_type = %message.message_type,
+        attempt_no = message.attempt_count,
+        error_code = "RETRY_EXHAUSTED",
+        state = "manual_review",
+        "transfer.reconcile"
+    );
+
     write_audit(
         audits,
         &message.transfer_id,
@@ -161,6 +208,29 @@ fn handle_exhaustion(
         ),
         now,
     )
+}
+
+fn emit_stuck_transfer_gauges(database: &Database) -> Result<(), Error> {
+    let read_tx = database.read()?;
+    let transfers = read_tx.open_table(CROSS_NODE_TRANSFERS)?;
+
+    let mut held = 0u64;
+    let mut invalidated = 0u64;
+
+    for row in transfers.iter()? {
+        let (_k, v) = row?;
+        let transfer = v.value();
+        if transfer.credit_state == "held" {
+            held += 1;
+        }
+        if transfer.chain_state == "invalidated" {
+            invalidated += 1;
+        }
+    }
+
+    metrics::gauge!("mugraph_m3_stuck_transfers_gauge", "state" => "held".to_string()).set(held as f64);
+    metrics::gauge!("mugraph_m3_stuck_transfers_gauge", "state" => "invalidated".to_string()).set(invalidated as f64);
+    Ok(())
 }
 
 fn write_audit(

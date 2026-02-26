@@ -7,6 +7,7 @@ pub mod config;
 pub mod database;
 pub mod deposit_monitor;
 pub mod lifecycle;
+pub mod observability;
 pub mod peer_registry;
 pub mod provider;
 pub mod reconciler;

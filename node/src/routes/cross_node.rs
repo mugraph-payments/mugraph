@@ -36,14 +36,78 @@ fn protocol_reject(code: &str, detail: impl Into<String>) -> Error {
     }
 }
 
+fn error_code(reason: &str) -> &str {
+    reason.split(':').next().unwrap_or("INTERNAL_ERROR")
+}
+
+fn emit_receive_metrics(message_type: &str, result: &str) {
+    metrics::counter!(
+        "mugraph_m3_message_send_total",
+        "message_type" => message_type.to_string(),
+        "result" => result.to_string()
+    )
+    .increment(1);
+}
+
+fn reject_audit_event(code: &str) -> &'static str {
+    match code {
+        "IDEMPOTENCY_CONFLICT" => "transfer.idempotency_conflict",
+        "REPLAY_DETECTED" => "transfer.replay_rejected",
+        _ => "transfer.replay_rejected",
+    }
+}
+
 pub fn handle_create(
     request: &XNodeEnvelope<mugraph_core::types::TransferInitPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    if let Err(e) = enforce_command_security(request, XNodeMessageType::TransferInit, ctx) {
-        let _ = audit_reject(ctx, &request.transfer_id, "create_rejected", e.to_string());
-        return Err(e);
+    let decision = match enforce_command_security(request, XNodeMessageType::TransferInit, ctx) {
+        Ok(d) => d,
+        Err(e) => {
+            let mut event = "transfer.replay_rejected";
+            if let Error::InvalidInput { reason } = &e {
+                let code = error_code(reason);
+                event = reject_audit_event(code);
+                if code == "REPLAY_DETECTED" {
+                    metrics::counter!("mugraph_m3_replay_rejections_total", "message_type" => "transfer_init".to_string()).increment(1);
+                }
+                if code == "IDEMPOTENCY_CONFLICT" {
+                    metrics::counter!("mugraph_m3_idempotency_conflicts_total", "operation" => "transfer_init".to_string()).increment(1);
+                }
+                tracing::warn!(
+                    transfer_id = %request.transfer_id,
+                    message_id = %request.message_id,
+                    message_type = "transfer_init",
+                    idempotency_key = %request.idempotency_key,
+                    error_code = code,
+                    "transfer.message.receive"
+                );
+            }
+            emit_receive_metrics("transfer_init", "rejected");
+            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            return Err(e);
+        }
+    };
+
+    if decision == IdempotencyDecision::New {
+        metrics::counter!("mugraph_m3_transfers_initiated_total").increment(1);
+        let _ = audit_event(ctx, request, "transfer.initiated", "accepted create command".to_string());
+    } else {
+        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_init".to_string()).increment(1);
     }
+
+    emit_receive_metrics("transfer_init", "accepted");
+    tracing::info!(
+        transfer_id = %request.transfer_id,
+        origin_node_id = %request.origin_node_id,
+        destination_node_id = %request.destination_node_id,
+        protocol_version = %request.version,
+        state = "accepted",
+        message_id = %request.message_id,
+        message_type = "transfer_init",
+        idempotency_key = %request.idempotency_key,
+        "transfer.message.receive"
+    );
 
     Ok(Response::CrossNodeTransferCreate {
         transfer_id: request.transfer_id.clone(),
@@ -55,10 +119,46 @@ pub fn handle_notify(
     request: &XNodeEnvelope<mugraph_core::types::TransferNoticePayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    if let Err(e) = enforce_command_security(request, XNodeMessageType::TransferNotice, ctx) {
-        let _ = audit_reject(ctx, &request.transfer_id, "notify_rejected", e.to_string());
-        return Err(e);
+    let decision = match enforce_command_security(request, XNodeMessageType::TransferNotice, ctx) {
+        Ok(d) => d,
+        Err(e) => {
+            let mut event = "transfer.replay_rejected";
+            if let Error::InvalidInput { reason } = &e {
+                let code = error_code(reason);
+                event = reject_audit_event(code);
+                tracing::warn!(
+                    transfer_id = %request.transfer_id,
+                    message_id = %request.message_id,
+                    message_type = "transfer_notice",
+                    idempotency_key = %request.idempotency_key,
+                    error_code = code,
+                    "transfer.message.receive"
+                );
+            }
+            emit_receive_metrics("transfer_notice", "rejected");
+            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            return Err(e);
+        }
+    };
+
+    if decision == IdempotencyDecision::DuplicateSameRequest {
+        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_notice".to_string()).increment(1);
+    } else {
+        let _ = audit_event(ctx, request, "transfer.notice.accepted", "notice accepted".to_string());
     }
+
+    emit_receive_metrics("transfer_notice", "accepted");
+    tracing::info!(
+        transfer_id = %request.transfer_id,
+        origin_node_id = %request.origin_node_id,
+        destination_node_id = %request.destination_node_id,
+        protocol_version = %request.version,
+        state = "accepted",
+        message_id = %request.message_id,
+        message_type = "transfer_notice",
+        idempotency_key = %request.idempotency_key,
+        "transfer.message.receive"
+    );
 
     Ok(Response::CrossNodeTransferNotify { accepted: true })
 }
@@ -79,6 +179,28 @@ pub fn handle_status(
             .ok_or_else(|| protocol_reject("TRANSFER_NOT_FOUND", "transfer not found"))?
     };
 
+    let payload = status_payload_from_record(&transfer);
+    metrics::histogram!("mugraph_m3_chain_confirmation_depth").record(payload.confirmations_observed as f64);
+    if payload.chain_state == TransferChainState::Invalidated {
+        metrics::counter!("mugraph_m3_reorg_events_total", "severity" => "deep".to_string()).increment(1);
+    }
+    if matches!(payload.settlement_state, TransferSettlementState::Confirmed | TransferSettlementState::Invalidated | TransferSettlementState::ManualReview) {
+        metrics::counter!("mugraph_m3_transfers_terminal_total", "terminal_state" => format!("{:?}", payload.settlement_state).to_lowercase()).increment(1);
+    }
+
+    tracing::info!(
+        transfer_id = %request.transfer_id,
+        origin_node_id = %request.origin_node_id,
+        destination_node_id = %request.destination_node_id,
+        protocol_version = %request.version,
+        state = %payload.source_state,
+        message_id = %request.message_id,
+        message_type = "transfer_status_query",
+        tx_hash = ?payload.tx_hash,
+        confirmations_observed = payload.confirmations_observed,
+        "transfer.chain.confirmation_poll"
+    );
+
     Ok(Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
         m: "xnode".to_string(),
         version: request.version.clone(),
@@ -91,7 +213,7 @@ pub fn handle_status(
         destination_node_id: request.origin_node_id.clone(),
         sent_at: request.sent_at.clone(),
         expires_at: None,
-        payload: status_payload_from_record(&transfer),
+        payload,
         auth: request.auth.clone(),
     })))
 }
@@ -100,10 +222,33 @@ pub fn handle_ack(
     request: &XNodeEnvelope<mugraph_core::types::TransferAckPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    if let Err(e) = enforce_command_security(request, XNodeMessageType::TransferAck, ctx) {
-        let _ = audit_reject(ctx, &request.transfer_id, "ack_rejected", e.to_string());
-        return Err(e);
+    let decision = match enforce_command_security(request, XNodeMessageType::TransferAck, ctx) {
+        Ok(d) => d,
+        Err(e) => {
+            let mut event = "transfer.replay_rejected";
+            if let Error::InvalidInput { reason } = &e {
+                let code = error_code(reason);
+                event = reject_audit_event(code);
+                tracing::warn!(
+                    transfer_id = %request.transfer_id,
+                    message_id = %request.message_id,
+                    message_type = "transfer_ack",
+                    idempotency_key = %request.idempotency_key,
+                    error_code = code,
+                    "transfer.message.receive"
+                );
+            }
+            emit_receive_metrics("transfer_ack", "rejected");
+            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            return Err(e);
+        }
+    };
+
+    if decision == IdempotencyDecision::DuplicateSameRequest {
+        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_ack".to_string()).increment(1);
     }
+
+    emit_receive_metrics("transfer_ack", "accepted");
 
     Ok(Response::CrossNodeTransferAck { accepted: true })
 }
@@ -339,6 +484,11 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
         let mut idempotency = write_tx.open_table(IDEMPOTENCY_KEYS)?;
 
         if messages.get(request.message_id.as_str())?.is_some() {
+            metrics::counter!(
+                "mugraph_m3_replay_rejections_total",
+                "message_type" => message_type.to_string()
+            )
+            .increment(1);
             return Err(protocol_reject(
                 "REPLAY_DETECTED",
                 "duplicate message_id",
@@ -350,6 +500,11 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
             if existing.request_hash == request_hash {
                 IdempotencyDecision::DuplicateSameRequest
             } else {
+                metrics::counter!(
+                    "mugraph_m3_idempotency_conflicts_total",
+                    "operation" => message_type.to_string()
+                )
+                .increment(1);
                 return Err(protocol_reject("IDEMPOTENCY_CONFLICT", "idempotency conflict"));
             }
         } else {
@@ -414,6 +569,40 @@ fn canonical_idempotency_payload<T: Serialize + Clone>(
     canonical.expires_at = None;
     canonical.auth.sig.clear();
     Ok(serde_json::to_vec(&canonical)?)
+}
+
+fn audit_event<T>(
+    ctx: &Context,
+    request: &XNodeEnvelope<T>,
+    event_type: &str,
+    reason: String,
+) -> Result<(), Error> {
+    let write_tx = ctx.database.write()?;
+    {
+        let mut table = write_tx.open_table(TRANSFER_AUDIT_LOG)?;
+        let event_id = format!("{}:{}:{}", request.transfer_id, event_type, now_nanos());
+        table.insert(
+            event_id.clone().as_str(),
+            &TransferAuditEvent {
+                event_id,
+                transfer_id: request.transfer_id.clone(),
+                event_type: event_type.to_string(),
+                reason: format!(
+                    "{} | origin={} destination={} protocol={} message_id={} message_type={} idempotency_key={}",
+                    reason,
+                    request.origin_node_id,
+                    request.destination_node_id,
+                    request.version,
+                    request.message_id,
+                    message_type_key(&request.message_type),
+                    request.idempotency_key
+                ),
+                created_at: now_secs(),
+            },
+        )?;
+    }
+    write_tx.commit()?;
+    Ok(())
 }
 
 fn audit_reject(ctx: &Context, transfer_id: &str, event_type: &str, reason: String) -> Result<(), Error> {
