@@ -29,6 +29,7 @@ use crate::{
     deposit_monitor::{DepositMonitor, DepositMonitorConfig},
     peer_registry::PeerRegistry,
     provider::Provider,
+    reconciler::{RetryPolicy, reconciler_loop},
 };
 
 #[derive(Clone)]
@@ -60,6 +61,9 @@ pub async fn router(config: Config) -> Result<Router, Error> {
 
     // Start deposit monitor background task
     start_deposit_monitor(&config, database.clone()).await?;
+
+    // Start cross-node reconciler worker for retry/recovery convergence
+    start_cross_node_reconciler(database.clone()).await?;
 
     let keypair = config.keypair()?;
 
@@ -149,6 +153,15 @@ async fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Resu
 
     tracing::info!("Deposit monitor started in background");
 
+    Ok(())
+}
+
+async fn start_cross_node_reconciler(database: Arc<Database>) -> Result<(), Error> {
+    tokio::spawn(async move {
+        reconciler_loop(database, std::time::Duration::from_secs(5), RetryPolicy::default()).await;
+    });
+
+    tracing::info!("Cross-node reconciler started in background");
     Ok(())
 }
 

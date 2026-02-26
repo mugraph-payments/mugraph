@@ -9,6 +9,7 @@ pub mod deposit_monitor;
 pub mod lifecycle;
 pub mod peer_registry;
 pub mod provider;
+pub mod reconciler;
 pub mod routes;
 pub mod tx_signer;
 
