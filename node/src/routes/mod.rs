@@ -270,6 +270,7 @@ mod tests {
             cardano_provider_url: None,
             cardano_payment_sk: None,
             xnode_peer_registry_file,
+            xnode_node_id: "node://b".to_string(),
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
             min_deposit_value: Some(1_000_000),
@@ -295,10 +296,20 @@ mod tests {
         path.display().to_string()
     }
 
-    fn sign_notice(mut env: XNodeEnvelope<TransferNoticePayload>, sk: &SigningKey) -> XNodeEnvelope<TransferNoticePayload> {
+    fn now_rfc3339_offset(secs: i64) -> String {
+        (chrono::Utc::now() + chrono::Duration::seconds(secs)).to_rfc3339()
+    }
+
+    fn sign_notice(
+        mut env: XNodeEnvelope<TransferNoticePayload>,
+        sk: &SigningKey,
+    ) -> XNodeEnvelope<TransferNoticePayload> {
         let mut canonical = env.clone();
         canonical.auth.sig.clear();
-        let payload = serde_json::to_vec(&canonical).unwrap();
+        let body = serde_json::to_vec(&canonical).unwrap();
+        let mut payload = Vec::with_capacity("mugraph_xnode_auth_v1".len() + body.len());
+        payload.extend_from_slice(b"mugraph_xnode_auth_v1");
+        payload.extend_from_slice(&body);
         env.auth.sig = muhex::encode(sk.sign(&payload).to_bytes());
         env
     }
@@ -341,8 +352,8 @@ mod tests {
             correlation_id: "corr-1".to_string(),
             origin_node_id: "node://a".to_string(),
             destination_node_id: "node://b".to_string(),
-            sent_at: "2026-02-26T18:00:00Z".to_string(),
-            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: Some(now_rfc3339_offset(120)),
             payload: TransferNoticePayload {
                 notice_stage: TransferNoticeStage::Confirmed,
                 tx_hash: "abcd".to_string(),

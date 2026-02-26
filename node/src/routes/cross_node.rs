@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use blake3::Hasher;
+use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use mugraph_core::{
     error::Error,
@@ -19,10 +20,20 @@ use crate::{
     routes::Context,
 };
 
+const MAX_CLOCK_SKEW_SECS: i64 = 300;
+const MAX_COMMAND_EXPIRY_HORIZON_SECS: i64 = 900;
+const AUTH_DOMAIN_SEP: &[u8] = b"mugraph_xnode_auth_v1";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum IdempotencyDecision {
     New,
     DuplicateSameRequest,
+}
+
+fn protocol_reject(code: &str, detail: impl Into<String>) -> Error {
+    Error::InvalidInput {
+        reason: format!("{code}: {}", detail.into()),
+    }
 }
 
 pub fn handle_create(
@@ -96,53 +107,82 @@ fn enforce_command_security<T: Serialize + Clone>(
     ctx: &Context,
 ) -> Result<IdempotencyDecision, Error> {
     validate_envelope_basics(request, expected_message_type.clone(), 3).map_err(Error::from)?;
-    validate_freshness(&request.sent_at, request.expires_at.as_deref())?;
-    validate_destination_binding(request)?;
+    validate_freshness(&request.sent_at, request.expires_at.as_deref(), now_secs() as i64)?;
+    validate_destination_binding(request, &ctx.config.xnode_node_id())?;
     validate_auth_signature(request, ctx)?;
-    check_replay_and_idempotency(request, &format!("{:?}", expected_message_type), ctx)
+    check_replay_and_idempotency(request, message_type_key(&expected_message_type), ctx)
 }
 
-fn validate_freshness(sent_at: &str, expires_at: Option<&str>) -> Result<(), Error> {
-    if sent_at.is_empty() || !sent_at.ends_with('Z') {
-        return Err(Error::InvalidInput {
-            reason: "invalid sent_at timestamp format".to_string(),
-        });
+fn message_type_key(message_type: &XNodeMessageType) -> &'static str {
+    match message_type {
+        XNodeMessageType::TransferInit => "transfer_init",
+        XNodeMessageType::TransferNotice => "transfer_notice",
+        XNodeMessageType::TransferStatusQuery => "transfer_status_query",
+        XNodeMessageType::TransferStatus => "transfer_status",
+        XNodeMessageType::TransferAck => "transfer_ack",
     }
+}
 
-    let Some(expires_at) = expires_at else {
-        return Err(Error::InvalidInput {
-            reason: "expires_at is required for command envelopes".to_string(),
-        });
-    };
+fn validate_freshness(sent_at: &str, expires_at: Option<&str>, now: i64) -> Result<(), Error> {
+    let sent_at = DateTime::parse_from_rfc3339(sent_at)
+        .map_err(|e| protocol_reject("SCHEMA_VALIDATION_FAILED", format!("invalid sent_at timestamp format: {e}")))?
+        .with_timezone(&Utc)
+        .timestamp();
 
-    if expires_at.is_empty() || !expires_at.ends_with('Z') {
-        return Err(Error::InvalidInput {
-            reason: "invalid expires_at timestamp format".to_string(),
-        });
-    }
+    let expires_at = expires_at
+        .ok_or_else(|| protocol_reject("SCHEMA_VALIDATION_FAILED", "expires_at is required for command envelopes"))?;
+    let expires_at = DateTime::parse_from_rfc3339(expires_at)
+        .map_err(|e| protocol_reject("SCHEMA_VALIDATION_FAILED", format!("invalid expires_at timestamp format: {e}")))?
+        .with_timezone(&Utc)
+        .timestamp();
 
     if expires_at <= sent_at {
-        return Err(Error::InvalidInput {
-            reason: "expired command envelope".to_string(),
-        });
+        return Err(protocol_reject("REPLAY_DETECTED", "expired command envelope"));
+    }
+
+    if (now - sent_at).abs() > MAX_CLOCK_SKEW_SECS {
+        return Err(protocol_reject("REPLAY_DETECTED", "sent_at outside allowed clock skew"));
+    }
+
+    if expires_at < now {
+        return Err(protocol_reject("REPLAY_DETECTED", "command envelope already expired"));
+    }
+
+    if expires_at - sent_at > MAX_COMMAND_EXPIRY_HORIZON_SECS {
+        return Err(protocol_reject(
+            "SCHEMA_VALIDATION_FAILED",
+            "command expiry horizon exceeds policy",
+        ));
     }
 
     Ok(())
 }
 
-fn validate_destination_binding<T>(request: &XNodeEnvelope<T>) -> Result<(), Error> {
+fn validate_destination_binding<T>(
+    request: &XNodeEnvelope<T>,
+    local_node_id: &str,
+) -> Result<(), Error> {
     if request.origin_node_id == request.destination_node_id {
-        return Err(Error::InvalidInput {
-            reason: "origin and destination nodes must differ".to_string(),
-        });
+        return Err(protocol_reject(
+            "AUTHZ_DENIED",
+            "origin and destination nodes must differ",
+        ));
     }
 
     if !request.origin_node_id.starts_with("node://")
         || !request.destination_node_id.starts_with("node://")
     {
-        return Err(Error::InvalidInput {
-            reason: "origin/destination node ids must use node:// scheme".to_string(),
-        });
+        return Err(protocol_reject(
+            "SCHEMA_VALIDATION_FAILED",
+            "origin/destination node ids must use node:// scheme",
+        ));
+    }
+
+    if request.destination_node_id != local_node_id {
+        return Err(protocol_reject(
+            "AUTHZ_DENIED",
+            "destination_node_id does not match local node id",
+        ));
     }
 
     Ok(())
@@ -153,15 +193,14 @@ fn validate_auth_signature<T: Serialize + Clone>(
     ctx: &Context,
 ) -> Result<(), Error> {
     if request.auth.alg != "Ed25519" {
-        return Err(Error::InvalidInput {
-            reason: "unsupported auth.alg".to_string(),
-        });
+        return Err(protocol_reject("AUTHZ_DENIED", "unsupported auth.alg"));
     }
 
     let Some(path) = ctx.config.xnode_peer_registry_file() else {
-        return Err(Error::InvalidInput {
-            reason: "xnode peer registry is required for cross-node command auth".to_string(),
-        });
+        return Err(protocol_reject(
+            "AUTHZ_DENIED",
+            "xnode peer registry is required for cross-node command auth",
+        ));
     };
 
     let registry = PeerRegistry::load(path)?;
@@ -176,36 +215,27 @@ fn validate_auth_signature<T: Serialize + Clone>(
                 && p.kid == request.auth.kid
                 && p.auth_alg == request.auth.alg
         })
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "untrusted origin node or key id".to_string(),
-        })?;
+        .ok_or_else(|| protocol_reject("UNKNOWN_KEY_ID", "untrusted origin node or key id"))?;
 
-    let pubkey = muhex::decode(&peer.public_key_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("invalid trusted peer public key hex: {e}"),
-    })?;
+    let pubkey = muhex::decode(&peer.public_key_hex)
+        .map_err(|e| protocol_reject("SCHEMA_VALIDATION_FAILED", format!("invalid trusted peer public key hex: {e}")))?;
     let verifying_key = VerifyingKey::from_bytes(
         &pubkey
             .as_slice()
             .try_into()
-            .map_err(|_| Error::InvalidInput {
-                reason: "trusted peer public key must be 32 bytes".to_string(),
-            })?,
+            .map_err(|_| protocol_reject("SCHEMA_VALIDATION_FAILED", "trusted peer public key must be 32 bytes"))?,
     )
-    .map_err(|e| Error::InvalidInput {
-        reason: format!("invalid trusted peer public key: {e}"),
-    })?;
+    .map_err(|e| protocol_reject("SCHEMA_VALIDATION_FAILED", format!("invalid trusted peer public key: {e}")))?;
 
-    let sig_bytes = muhex::decode(&request.auth.sig).map_err(|e| Error::InvalidInput {
-        reason: format!("invalid auth signature hex: {e}"),
-    })?;
-    let sig = Signature::try_from(sig_bytes.as_slice()).map_err(|e| Error::InvalidInput {
-        reason: format!("invalid auth signature bytes: {e}"),
-    })?;
+    let sig_bytes = muhex::decode(&request.auth.sig)
+        .map_err(|e| protocol_reject("INVALID_SIGNATURE", format!("invalid auth signature hex: {e}")))?;
+    let sig = Signature::try_from(sig_bytes.as_slice())
+        .map_err(|e| protocol_reject("INVALID_SIGNATURE", format!("invalid auth signature bytes: {e}")))?;
 
     let payload = canonical_auth_payload(request)?;
-    verifying_key.verify(&payload, &sig).map_err(|e| Error::InvalidInput {
-        reason: format!("invalid auth signature: {e}"),
-    })?;
+    verifying_key
+        .verify(&payload, &sig)
+        .map_err(|e| protocol_reject("INVALID_SIGNATURE", format!("invalid auth signature: {e}")))?;
 
     Ok(())
 }
@@ -217,6 +247,10 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
 ) -> Result<IdempotencyDecision, Error> {
     let request_hash = request_hash(request)?;
     let now = now_secs();
+    let tuple_key = format!(
+        "{}::{}::{}::{}",
+        request.origin_node_id, request.transfer_id, message_type, request.idempotency_key
+    );
 
     let write_tx = ctx.database.write()?;
     let decision = {
@@ -224,26 +258,22 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
         let mut idempotency = write_tx.open_table(IDEMPOTENCY_KEYS)?;
 
         if messages.get(request.message_id.as_str())?.is_some() {
-            return Err(Error::InvalidInput {
-                reason: "replay detected: duplicate message_id".to_string(),
-            });
+            return Err(protocol_reject(
+                "REPLAY_DETECTED",
+                "duplicate message_id",
+            ));
         }
 
-        let decision = if let Some(existing) = idempotency.get(request.idempotency_key.as_str())? {
+        let decision = if let Some(existing) = idempotency.get(tuple_key.as_str())? {
             let existing = existing.value();
-            if existing.transfer_id == request.transfer_id
-                && existing.message_type == message_type
-                && existing.request_hash == request_hash
-            {
+            if existing.request_hash == request_hash {
                 IdempotencyDecision::DuplicateSameRequest
             } else {
-                return Err(Error::InvalidInput {
-                    reason: "idempotency conflict".to_string(),
-                });
+                return Err(protocol_reject("IDEMPOTENCY_CONFLICT", "idempotency conflict"));
             }
         } else {
             idempotency.insert(
-                request.idempotency_key.as_str(),
+                tuple_key.as_str(),
                 &IdempotencyRecord {
                     idempotency_key: request.idempotency_key.clone(),
                     transfer_id: request.transfer_id.clone(),
@@ -286,7 +316,12 @@ fn request_hash<T: Serialize + Clone>(request: &XNodeEnvelope<T>) -> Result<Stri
 fn canonical_auth_payload<T: Serialize + Clone>(request: &XNodeEnvelope<T>) -> Result<Vec<u8>, Error> {
     let mut canonical = request.clone();
     canonical.auth.sig.clear();
-    Ok(serde_json::to_vec(&canonical)?)
+
+    let body = serde_json::to_vec(&canonical)?;
+    let mut payload = Vec::with_capacity(AUTH_DOMAIN_SEP.len() + body.len());
+    payload.extend_from_slice(AUTH_DOMAIN_SEP);
+    payload.extend_from_slice(&body);
+    Ok(payload)
 }
 
 fn canonical_idempotency_payload<T: Serialize + Clone>(
@@ -336,6 +371,7 @@ fn now_nanos() -> u128 {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use ed25519_dalek::{Signer, SigningKey};
     use proptest::prelude::*;
     use tempfile::TempDir;
@@ -361,6 +397,7 @@ mod tests {
             cardano_provider_url: None,
             cardano_payment_sk: None,
             xnode_peer_registry_file: Some(path.to_string()),
+            xnode_node_id: "node://b".to_string(),
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
             min_deposit_value: None,
@@ -407,10 +444,17 @@ mod tests {
         }
     }
 
+    fn now_rfc3339_offset(secs: i64) -> String {
+        (Utc::now() + chrono::Duration::seconds(secs)).to_rfc3339()
+    }
+
     fn sign_envelope<T: Serialize + Clone>(env: &mut XNodeEnvelope<T>, sk: &SigningKey) {
         let mut canonical = env.clone();
         canonical.auth.sig.clear();
-        let payload = serde_json::to_vec(&canonical).unwrap();
+        let body = serde_json::to_vec(&canonical).unwrap();
+        let mut payload = Vec::with_capacity(AUTH_DOMAIN_SEP.len() + body.len());
+        payload.extend_from_slice(AUTH_DOMAIN_SEP);
+        payload.extend_from_slice(&body);
         let sig = sk.sign(&payload);
         env.auth.sig = muhex::encode(sig.to_bytes());
     }
@@ -426,8 +470,8 @@ mod tests {
             correlation_id: "corr-1".to_string(),
             origin_node_id: "node://a".to_string(),
             destination_node_id: "node://b".to_string(),
-            sent_at: "2026-02-26T18:00:00Z".to_string(),
-            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: Some(now_rfc3339_offset(120)),
             payload: TransferInitPayload {
                 asset: "lovelace".to_string(),
                 amount: "1".to_string(),
@@ -480,7 +524,7 @@ mod tests {
         let second = handle_create(&request, &ctx).unwrap_err();
         match second {
             Error::InvalidInput { reason } => {
-                assert!(reason.contains("replay detected"));
+                assert!(reason.contains("REPLAY_DETECTED"));
             }
             _ => panic!("expected InvalidInput replay error"),
         }
@@ -504,8 +548,64 @@ mod tests {
 
         let err = handle_create(&request_b, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("idempotency conflict")),
+            Error::InvalidInput { reason } => assert!(reason.contains("IDEMPOTENCY_CONFLICT")),
             _ => panic!("expected InvalidInput conflict"),
+        }
+    }
+
+    #[test]
+    fn create_rejects_destination_binding_mismatch() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut request = create_request();
+        request.destination_node_id = "node://other".to_string();
+        sign_envelope(&mut request, &signer);
+
+        let err = handle_create(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => assert!(reason.contains("AUTHZ_DENIED")),
+            _ => panic!("expected InvalidInput authz error"),
+        }
+    }
+
+    #[test]
+    fn create_rejects_sent_at_outside_clock_skew_window() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut request = create_request();
+        request.sent_at = now_rfc3339_offset(-MAX_CLOCK_SKEW_SECS - 30);
+        request.expires_at = Some(now_rfc3339_offset(60));
+        sign_envelope(&mut request, &signer);
+
+        let err = handle_create(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => assert!(reason.contains("REPLAY_DETECTED")),
+            _ => panic!("expected InvalidInput replay error"),
+        }
+    }
+
+    #[test]
+    fn create_rejects_expiry_horizon_above_policy() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut request = create_request();
+        request.sent_at = now_rfc3339_offset(0);
+        request.expires_at = Some(now_rfc3339_offset(MAX_COMMAND_EXPIRY_HORIZON_SECS + 60));
+        sign_envelope(&mut request, &signer);
+
+        let err = handle_create(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => assert!(reason.contains("SCHEMA_VALIDATION_FAILED")),
+            _ => panic!("expected InvalidInput schema error"),
         }
     }
 
@@ -556,8 +656,8 @@ mod tests {
             correlation_id: "corr".to_string(),
             origin_node_id: "node://a".to_string(),
             destination_node_id: "node://b".to_string(),
-            sent_at: "2026-02-26T18:00:00Z".to_string(),
-            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: Some(now_rfc3339_offset(120)),
             payload: TransferAckPayload {
                 ack_for_message_id: "mid2".to_string(),
                 ack_status: TransferAckStatus::Processed,

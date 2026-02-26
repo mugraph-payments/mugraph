@@ -47,6 +47,10 @@ pub enum Config {
         #[clap(long, env = "XNODE_PEER_REGISTRY_FILE")]
         xnode_peer_registry_file: Option<String>,
 
+        /// Local node identifier for cross-node destination binding checks
+        #[clap(long, env = "XNODE_NODE_ID", default_value = "node://local")]
+        xnode_node_id: String,
+
         /// Number of blocks for deposit confirmation depth (default: 15)
         #[clap(long, env = "DEPOSIT_CONFIRM_DEPTH", default_value = "15")]
         deposit_confirm_depth: u64,
@@ -155,6 +159,14 @@ impl Config {
                 ..
             } => xnode_peer_registry_file.clone(),
             _ => None,
+        }
+    }
+
+    /// Get local node id used for destination binding checks
+    pub fn xnode_node_id(&self) -> String {
+        match self {
+            Self::Server { xnode_node_id, .. } => xnode_node_id.clone(),
+            _ => "node://local".to_string(),
         }
     }
 
