@@ -56,14 +56,18 @@ pub async fn router(config: Config) -> Result<Router, Error> {
         );
     }
 
-    // Initialize Cardano wallet on startup
-    initialize_cardano_wallet(&config, &database).await?;
+    if config.dev_mode() {
+        tracing::warn!("dev mode enabled — skipping Cardano wallet, deposit monitor, and reconciler");
+    } else {
+        // Initialize Cardano wallet on startup
+        initialize_cardano_wallet(&config, &database).await?;
 
-    // Start deposit monitor background task
-    start_deposit_monitor(&config, database.clone()).await?;
+        // Start deposit monitor background task
+        start_deposit_monitor(&config, database.clone()).await?;
 
-    // Start cross-node reconciler worker for retry/recovery convergence
-    start_cross_node_reconciler(database.clone()).await?;
+        // Start cross-node reconciler worker for retry/recovery convergence
+        start_cross_node_reconciler(database.clone()).await?;
+    }
 
     let keypair = config.keypair()?;
 
@@ -158,7 +162,12 @@ async fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Resu
 
 async fn start_cross_node_reconciler(database: Arc<Database>) -> Result<(), Error> {
     tokio::spawn(async move {
-        reconciler_loop(database, std::time::Duration::from_secs(5), RetryPolicy::default()).await;
+        reconciler_loop(
+            database,
+            std::time::Duration::from_secs(5),
+            RetryPolicy::default(),
+        )
+        .await;
     });
 
     tracing::info!("Cross-node reconciler started in background");
@@ -268,7 +277,11 @@ mod tests {
     use axum::{Json, extract::State};
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::{
-        Request, TransferNoticePayload, TransferNoticeStage, XNodeAuth, XNodeEnvelope,
+        Request,
+        TransferNoticePayload,
+        TransferNoticeStage,
+        XNodeAuth,
+        XNodeEnvelope,
         XNodeMessageType,
     };
 
@@ -292,6 +305,7 @@ mod tests {
             max_tx_size: 16384,
             max_withdrawal_fee: 2_000_000,
             fee_tolerance_pct: 5,
+            dev_mode: false,
         }
     }
 
@@ -417,6 +431,9 @@ mod tests {
         });
 
         let Json(response) = rpc(State(ctx), Json(request)).await;
-        assert!(matches!(response, mugraph_core::types::Response::Error { .. }));
+        assert!(matches!(
+            response,
+            mugraph_core::types::Response::Error { .. }
+        ));
     }
 }

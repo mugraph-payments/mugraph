@@ -24,6 +24,7 @@ fn test_config_defaults() {
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
         fee_tolerance_pct: 5,
+        dev_mode: false,
     };
 
     assert_eq!(config.network(), "preprod");
@@ -58,6 +59,7 @@ fn test_config_mainnet() {
         max_tx_size: 32768,
         max_withdrawal_fee: 3000000,
         fee_tolerance_pct: 10,
+        dev_mode: false,
     };
 
     assert_eq!(config.network(), "mainnet");
@@ -94,7 +96,7 @@ fn test_network_bytes() {
             cardano_api_key: None,
             cardano_provider_url: None,
             cardano_payment_sk: None,
-        xnode_peer_registry_file: None,
+            xnode_peer_registry_file: None,
             xnode_node_id: "node://local".to_string(),
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
@@ -102,6 +104,7 @@ fn test_network_bytes() {
             max_tx_size: 16384,
             max_withdrawal_fee: 2000000,
             fee_tolerance_pct: 5,
+            dev_mode: false,
         };
         assert_eq!(
             config.network_byte(),
@@ -132,6 +135,7 @@ fn test_config_default_values() {
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
         fee_tolerance_pct: 5,
+        dev_mode: false,
     };
 
     // API key should default to "test_key"
@@ -168,6 +172,7 @@ fn test_fee_tolerance_bounds() {
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
         fee_tolerance_pct: 150, // Over 100
+        dev_mode: false,
     };
 
     assert_eq!(config.fee_tolerance_pct(), 100);
@@ -190,6 +195,7 @@ fn test_fee_tolerance_bounds() {
         max_tx_size: 16384,
         max_withdrawal_fee: 2000000,
         fee_tolerance_pct: 0,
+        dev_mode: false,
     };
 
     assert_eq!(config_zero.fee_tolerance_pct(), 0);

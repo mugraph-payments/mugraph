@@ -74,6 +74,10 @@ pub enum Config {
         /// Fee tolerance percentage (0-100, default: 5%)
         #[clap(long, env = "FEE_TOLERANCE_PCT", default_value = "5")]
         fee_tolerance_pct: u8,
+
+        /// Dev mode: skip Cardano chain dependencies (wallet, deposit monitor, reconciler)
+        #[clap(long, env = "DEV_MODE", default_value = "false")]
+        dev_mode: bool,
     },
     #[command(about)]
     GenerateKey,
@@ -230,6 +234,14 @@ impl Config {
                 (*fee_tolerance_pct).min(100)
             }
             _ => 5,
+        }
+    }
+
+    /// Whether dev mode is enabled (skips chain dependencies)
+    pub fn dev_mode(&self) -> bool {
+        match self {
+            Self::Server { dev_mode, .. } => *dev_mode,
+            _ => false,
         }
     }
 

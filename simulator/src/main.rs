@@ -52,6 +52,13 @@ async fn main() -> Result<()> {
         });
     }
 
+    if nodes.len() > 1 {
+        info!(
+            "{} nodes connected — cross-node transfers will be exercised",
+            nodes.len()
+        );
+    }
+
     let delegates: Vec<_> = nodes.iter().map(|n| n.delegate_pk).collect();
 
     let assets = generate_assets(args.assets, &mut rng);

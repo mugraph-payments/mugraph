@@ -116,6 +116,24 @@ fn render_ui(
                     Style::default().fg(Color::Red),
                 ),
                 Span::raw(" err"),
+                if snapshot.cross_node_ok > 0 {
+                    Span::raw("  ")
+                } else {
+                    Span::raw("")
+                },
+                if snapshot.cross_node_ok > 0 {
+                    Span::styled(
+                        format!("{}", snapshot.cross_node_ok),
+                        Style::default().fg(Color::Cyan),
+                    )
+                } else {
+                    Span::raw("")
+                },
+                if snapshot.cross_node_ok > 0 {
+                    Span::raw(" xnode")
+                } else {
+                    Span::raw("")
+                },
                 if let Some(ref last_err) = snapshot.last_failure {
                     Span::styled(
                         format!("   last: {last_err}"),

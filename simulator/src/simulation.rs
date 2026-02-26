@@ -165,6 +165,43 @@ pub fn materialize_outputs(
     Ok(created)
 }
 
+/// Execute a cross-node transfer: emit on destination, optionally refresh for change on source.
+///
+/// The input note (signed by source node) is consumed. The destination node emits a fresh note
+/// for `spend_amount`. If there's change (`input.amount > spend_amount`), we emit the change
+/// on the source node as well (since we can't refresh a note we're "burning").
+async fn cross_node_transfer(
+    source_node: &SimNode,
+    dest_node: &SimNode,
+    input_note: &Note,
+    asset: Asset,
+    spend_amount: u64,
+) -> Result<CrossNodeResult> {
+    // Emit the transfer amount on the destination node
+    let receiver_note = dest_node
+        .client
+        .emit(asset.policy_id, asset.asset_name, spend_amount)
+        .await?;
+
+    // If there's change, emit it back on the source node
+    let change_note = if input_note.amount > spend_amount {
+        let change_amount = input_note.amount - spend_amount;
+        Some(
+            source_node
+                .client
+                .emit(asset.policy_id, asset.asset_name, change_amount)
+                .await?,
+        )
+    } else {
+        None
+    };
+
+    Ok(CrossNodeResult {
+        receiver_note,
+        change_note,
+    })
+}
+
 fn apply_successful_tx(state: &mut AppState, pending: &PendingTx, notes: Vec<(usize, Note)>) {
     for (owner, note) in notes {
         let key = Asset {
@@ -281,76 +318,131 @@ pub async fn simulation_owner_loop(
                     .min(input_note.amount);
 
                 let input_amount = input_note.amount;
-
-                let (refresh, owners) = match build_refresh(
-                    sender_id,
-                    receiver_id,
-                    asset,
-                    input_note.clone(),
-                    spend_amount,
-                ) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        record_sender_failure(
-                            &mut state,
-                            sender_id,
-                            asset,
-                            input_note,
-                            format!("failed to build refresh: {e:#}"),
-                        );
-                        oracle.assert_conservation(
-                            &state,
-                            &inflight_amounts,
-                            &format!("after build_refresh failure (tx_id={})", tx_id + 1),
-                        );
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
-                        continue;
-                    }
-                };
-
-                // Track the reserved note's amount as inflight
-                *inflight_amounts.entry(asset).or_default() += input_amount as u128;
-
-                oracle.assert_conservation(
-                    &state,
-                    &inflight_amounts,
-                    &format!("after reserve (tx_id={})", tx_id + 1),
-                );
-
-                // Route to the node that signed this note
                 let note_delegate = input_note.delegate;
-                let node = nodes
-                    .iter()
-                    .find(|n| n.delegate_pk == note_delegate)
-                    .unwrap_or(&nodes[0]);
 
-                tx_id += 1;
-                let pending = PendingTx {
-                    id: tx_id,
-                    sender_id,
-                    receiver_id,
-                    asset,
-                    input_amount,
-                    input_note,
-                    spend_amount,
-                    refresh,
-                    owners,
-                    delegate: note_delegate,
-                };
+                // Determine if this is a cross-node transfer
+                let receiver_home = state.wallets[receiver_idx].home_node;
+                let receiver_delegate = nodes[receiver_home].delegate_pk;
+                let is_cross_node = note_delegate != receiver_delegate && nodes.len() > 1;
 
-                state.inflight += 1;
-                state.total_sent += 1;
-                let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                if is_cross_node {
+                    // Cross-node transfer: emit on destination, optionally refresh for change on source
+                    *inflight_amounts.entry(asset).or_default() += input_amount as u128;
 
-                let client_clone = node.client.clone();
-                let event_tx_clone = event_tx.clone();
-                tokio::spawn(async move {
-                    let result = match client_clone.refresh(&pending.refresh).await {
-                        Ok(outputs) => Ok(outputs),
-                        Err(e) => Err(e.to_string()),
+                    oracle.assert_conservation(
+                        &state,
+                        &inflight_amounts,
+                        &format!("after cross-node reserve (tx_id={})", tx_id + 1),
+                    );
+
+                    tx_id += 1;
+                    state.inflight += 1;
+                    state.total_sent += 1;
+                    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+
+                    let source_node = nodes
+                        .iter()
+                        .find(|n| n.delegate_pk == note_delegate)
+                        .unwrap_or(&nodes[0])
+                        .clone();
+                    let dest_node = nodes[receiver_home].clone();
+                    let event_tx_clone = event_tx.clone();
+                    let current_tx_id = tx_id;
+
+                    tokio::spawn(async move {
+                        let result = cross_node_transfer(
+                            &source_node,
+                            &dest_node,
+                            &input_note,
+                            asset,
+                            spend_amount,
+                        )
+                        .await;
+
+                        let _ = event_tx_clone.send(SimEvent::CrossNodeTxFinished(Box::new(
+                            CrossNodeTxEvent {
+                                id: current_tx_id,
+                                sender_id,
+                                receiver_id,
+                                asset,
+                                input_amount,
+                                input_note,
+                                spend_amount,
+                                result: result.map_err(|e| e.to_string()),
+                            },
+                        )));
+                    });
+                } else {
+                    // Same-node transfer: refresh as before
+                    let (refresh, owners) = match build_refresh(
+                        sender_id,
+                        receiver_id,
+                        asset,
+                        input_note.clone(),
+                        spend_amount,
+                    ) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            record_sender_failure(
+                                &mut state,
+                                sender_id,
+                                asset,
+                                input_note,
+                                format!("failed to build refresh: {e:#}"),
+                            );
+                            oracle.assert_conservation(
+                                &state,
+                                &inflight_amounts,
+                                &format!("after build_refresh failure (tx_id={})", tx_id + 1),
+                            );
+                            let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                            continue;
+                        }
                     };
-                    let _ = event_tx_clone.send(SimEvent::TxFinished { pending, result });
-                });
+
+                    // Track the reserved note's amount as inflight
+                    *inflight_amounts.entry(asset).or_default() += input_amount as u128;
+
+                    oracle.assert_conservation(
+                        &state,
+                        &inflight_amounts,
+                        &format!("after reserve (tx_id={})", tx_id + 1),
+                    );
+
+                    // Route to the node that signed this note
+                    let node = nodes
+                        .iter()
+                        .find(|n| n.delegate_pk == note_delegate)
+                        .unwrap_or(&nodes[0]);
+
+                    tx_id += 1;
+                    let pending = PendingTx {
+                        id: tx_id,
+                        sender_id,
+                        receiver_id,
+                        asset,
+                        input_amount,
+                        input_note,
+                        spend_amount,
+                        refresh,
+                        owners,
+                        delegate: note_delegate,
+                    };
+
+                    state.inflight += 1;
+                    state.total_sent += 1;
+                    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+
+                    let client_clone = node.client.clone();
+                    let event_tx_clone = event_tx.clone();
+                    tokio::spawn(async move {
+                        let result = match client_clone.refresh(&pending.refresh).await {
+                            Ok(outputs) => Ok(outputs),
+                            Err(e) => Err(e.to_string()),
+                        };
+                        let _ = event_tx_clone.send(SimEvent::TxFinished { pending: Box::new(pending), result });
+                    });
+                }
             }
             Some(cmd) = cmd_rx.recv() => {
                 match cmd {
@@ -424,6 +516,82 @@ pub async fn simulation_owner_loop(
                                     &state,
                                     &inflight_amounts,
                                     &format!("after rpc failure tx {}", pending.id),
+                                );
+                            }
+                        }
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                    }
+                    SimEvent::CrossNodeTxFinished(ev) => {
+                        let CrossNodeTxEvent {
+                            id,
+                            sender_id,
+                            receiver_id,
+                            asset,
+                            input_amount,
+                            input_note,
+                            spend_amount,
+                            result,
+                        } = *ev;
+                        state.inflight = state.inflight.saturating_sub(1);
+
+                        let entry = inflight_amounts.entry(asset).or_default();
+                        *entry = entry.saturating_sub(input_amount as u128);
+
+                        match result {
+                            Ok(xnode_result) => {
+                                throughput.record_ok();
+
+                                // Give receiver the emitted note from destination node
+                                let recv_key = Asset {
+                                    policy_id: xnode_result.receiver_note.policy_id,
+                                    asset_name: xnode_result.receiver_note.asset_name,
+                                };
+                                state.wallets[receiver_id]
+                                    .notes
+                                    .entry(recv_key)
+                                    .or_default()
+                                    .push(xnode_result.receiver_note);
+
+                                // Give sender the change note (if any) from source node
+                                if let Some(change_note) = xnode_result.change_note {
+                                    let change_key = Asset {
+                                        policy_id: change_note.policy_id,
+                                        asset_name: change_note.asset_name,
+                                    };
+                                    state.wallets[sender_id]
+                                        .notes
+                                        .entry(change_key)
+                                        .or_default()
+                                        .push(change_note);
+                                }
+
+                                state.wallets[sender_id].sent += 1;
+                                state.wallets[receiver_id].received += 1;
+                                state.total_ok += 1;
+                                state.cross_node_ok += 1;
+                                state.log(format!(
+                                    "xnode tx {id} ok sender={sender_id} receiver={receiver_id} amount={spend_amount}"
+                                ));
+
+                                oracle.assert_conservation(
+                                    &state,
+                                    &inflight_amounts,
+                                    &format!("after successful cross-node tx {id}"),
+                                );
+                            }
+                            Err(reason) => {
+                                throughput.record_err();
+                                record_sender_failure(
+                                    &mut state,
+                                    sender_id,
+                                    asset,
+                                    input_note,
+                                    format!("xnode tx {id} failed: {reason}"),
+                                );
+                                oracle.assert_conservation(
+                                    &state,
+                                    &inflight_amounts,
+                                    &format!("after cross-node failure tx {id}"),
                                 );
                             }
                         }

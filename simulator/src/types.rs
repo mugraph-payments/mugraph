@@ -66,6 +66,7 @@ pub struct AppState {
     pub total_sent: u64,
     pub total_ok: u64,
     pub total_err: u64,
+    pub cross_node_ok: u64,
     pub last_failure: Option<String>,
     pub paused: bool,
     pub shutdown: bool,
@@ -164,6 +165,7 @@ impl AppState {
             total_sent: self.total_sent,
             total_ok: self.total_ok,
             total_err: self.total_err,
+            cross_node_ok: self.cross_node_ok,
             last_failure: self.last_failure.clone(),
             paused: self.paused,
             shutdown: self.shutdown,
@@ -201,6 +203,7 @@ pub struct AppSnapshot {
     pub total_sent: u64,
     pub total_ok: u64,
     pub total_err: u64,
+    pub cross_node_ok: u64,
     pub last_failure: Option<String>,
     pub paused: bool,
     pub shutdown: bool,
@@ -420,9 +423,30 @@ pub struct PendingTx {
 #[derive(Debug)]
 pub enum SimEvent {
     TxFinished {
-        pending: PendingTx,
+        pending: Box<PendingTx>,
         result: std::result::Result<Vec<BlindSignature>, String>,
     },
+    CrossNodeTxFinished(Box<CrossNodeTxEvent>),
+}
+
+#[derive(Debug)]
+pub struct CrossNodeTxEvent {
+    pub id: u64,
+    pub sender_id: usize,
+    pub receiver_id: usize,
+    pub asset: Asset,
+    pub input_amount: u64,
+    pub input_note: Note,
+    pub spend_amount: u64,
+    pub result: std::result::Result<CrossNodeResult, String>,
+}
+
+#[derive(Debug)]
+pub struct CrossNodeResult {
+    /// Note emitted on the destination node for the receiver
+    pub receiver_note: Note,
+    /// Optional change note from refreshing on the source node (when input > spend)
+    pub change_note: Option<Note>,
 }
 
 #[derive(Debug, Clone, Copy)]
