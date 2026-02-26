@@ -100,4 +100,25 @@ mod tests {
         assert_eq!(value["r"]["payload"]["chain_state"], "confirming");
         assert_eq!(value["r"]["payload"]["credit_state"], "eligible");
     }
+
+    #[test]
+    fn test_cross_node_response_contract_shapes() {
+        let create = Response::CrossNodeTransferCreate {
+            transfer_id: "tr-1".to_string(),
+            accepted: true,
+        };
+        let notify = Response::CrossNodeTransferNotify { accepted: true };
+        let ack = Response::CrossNodeTransferAck { accepted: true };
+
+        let c = serde_json::to_value(&create).unwrap();
+        let n = serde_json::to_value(&notify).unwrap();
+        let a = serde_json::to_value(&ack).unwrap();
+
+        assert_eq!(c["m"], "cross_node_transfer_create");
+        assert_eq!(c["r"]["accepted"], true);
+        assert_eq!(n["m"], "cross_node_transfer_notify");
+        assert_eq!(n["r"]["accepted"], true);
+        assert_eq!(a["m"], "cross_node_transfer_ack");
+        assert_eq!(a["r"]["accepted"], true);
+    }
 }

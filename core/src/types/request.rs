@@ -97,8 +97,9 @@ mod tests {
     use serde_json::Value;
 
     use crate::types::{
-        Refresh, Request, TransferNoticePayload, TransferNoticeStage, XNodeAuth, XNodeEnvelope,
-        XNodeMessageType,
+        Refresh, Request, TransferAckPayload, TransferAckStatus, TransferInitPayload,
+        TransferNoticePayload, TransferNoticeStage, TransferQueryType, TransferStatusQueryPayload,
+        XNodeAuth, XNodeEnvelope, XNodeMessageType,
     };
 
     #[test]
@@ -167,5 +168,84 @@ mod tests {
         assert_eq!(value["m"], "cross_node_transfer_notify");
         assert_eq!(value["p"]["message_type"], "transfer_notice");
         assert_eq!(value["p"]["payload"]["tx_hash"], "abcd");
+    }
+
+    #[test]
+    fn test_cross_node_request_contract_shapes() {
+        let auth = XNodeAuth {
+            alg: "Ed25519".to_string(),
+            kid: "k1".to_string(),
+            sig: "sig".to_string(),
+        };
+
+        let create = Request::CrossNodeTransferCreate(XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.7".to_string(),
+            message_type: XNodeMessageType::TransferInit,
+            message_id: "mid-c".to_string(),
+            transfer_id: "tr-c".to_string(),
+            idempotency_key: "ik-c".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferInitPayload {
+                asset: "lovelace".to_string(),
+                amount: "10".to_string(),
+                destination_account_ref: "acct".to_string(),
+                source_intent_hash: "h".to_string(),
+            },
+            auth: auth.clone(),
+        });
+
+        let status = Request::CrossNodeTransferStatus(XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.7".to_string(),
+            message_type: XNodeMessageType::TransferStatusQuery,
+            message_id: "mid-s".to_string(),
+            transfer_id: "tr-c".to_string(),
+            idempotency_key: "ik-s".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: None,
+            payload: TransferStatusQueryPayload {
+                query_type: TransferQueryType::Current,
+            },
+            auth: auth.clone(),
+        });
+
+        let ack = Request::CrossNodeTransferAck(XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.7".to_string(),
+            message_type: XNodeMessageType::TransferAck,
+            message_id: "mid-a".to_string(),
+            transfer_id: "tr-c".to_string(),
+            idempotency_key: "ik-a".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferAckPayload {
+                ack_for_message_id: "mid-c".to_string(),
+                ack_status: TransferAckStatus::Processed,
+                ack_at: "2026-02-26T18:00:01Z".to_string(),
+            },
+            auth,
+        });
+
+        let c = serde_json::to_value(&create).unwrap();
+        let s = serde_json::to_value(&status).unwrap();
+        let a = serde_json::to_value(&ack).unwrap();
+
+        assert_eq!(c["m"], "cross_node_transfer_create");
+        assert_eq!(c["p"]["message_type"], "transfer_init");
+        assert_eq!(s["m"], "cross_node_transfer_status");
+        assert_eq!(s["p"]["payload"]["query_type"], "current");
+        assert_eq!(a["m"], "cross_node_transfer_ack");
+        assert_eq!(a["p"]["payload"]["ack_status"], "processed");
     }
 }

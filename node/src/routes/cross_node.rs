@@ -249,6 +249,59 @@ mod tests {
         assert!(matches!(err, Error::InvalidInput { .. }));
     }
 
+    #[test]
+    fn create_rejects_missing_expires_at() {
+        let request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferInit,
+            message_id: "mid".to_string(),
+            transfer_id: "tr".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: None,
+            payload: TransferInitPayload {
+                asset: "lovelace".to_string(),
+                amount: "1".to_string(),
+                destination_account_ref: "acct".to_string(),
+                source_intent_hash: "hash".to_string(),
+            },
+            auth: auth(),
+        };
+
+        let err = handle_create(&request).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn ack_rejects_missing_expires_at() {
+        let request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferAck,
+            message_id: "mid".to_string(),
+            transfer_id: "tr".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: None,
+            payload: TransferAckPayload {
+                ack_for_message_id: "mid2".to_string(),
+                ack_status: TransferAckStatus::Processed,
+                ack_at: "2026-02-26T18:00:01Z".to_string(),
+            },
+            auth: auth(),
+        };
+
+        let err = handle_ack(&request).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
+    }
+
     proptest! {
         #[test]
         fn prop_duplicate_notify_is_idempotent(

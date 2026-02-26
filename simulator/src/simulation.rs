@@ -366,6 +366,7 @@ pub async fn simulation_owner_loop(
 #[cfg(test)]
 mod tests {
     use mugraph_core::types::{AssetName, Hash, PolicyId, Signature};
+    use proptest::prelude::*;
 
     use super::*;
 
@@ -377,6 +378,18 @@ mod tests {
             asset_name: AssetName::empty(),
             nonce: Hash([5u8; 32]),
             signature: Signature([signature_byte; 32]),
+            dleq: None,
+        }
+    }
+
+    fn note_with_amount(amount: u64) -> Note {
+        Note {
+            amount,
+            delegate: PublicKey([9u8; 32]),
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+            nonce: Hash([5u8; 32]),
+            signature: Signature([1u8; 32]),
             dleq: None,
         }
     }
@@ -411,5 +424,75 @@ mod tests {
             notes.push(other);
         }
         assert_eq!(notes.len(), 2);
+    }
+
+    proptest! {
+        #[test]
+        fn prop_build_refresh_conserves_total_amount(
+            input_amount in 1u64..=1_000_000,
+            spend_amount in 1u64..=1_000_000,
+            sender in 0usize..16,
+            receiver in 0usize..16,
+        ) {
+            prop_assume!(spend_amount <= input_amount);
+            let asset = Asset {
+                policy_id: PolicyId([7u8; 28]),
+                asset_name: AssetName::empty(),
+            };
+            let input_note = note_with_amount(input_amount);
+
+            let (refresh, owners) = build_refresh(
+                sender,
+                receiver,
+                asset,
+                input_note,
+                spend_amount,
+            ).unwrap();
+
+            let output_total: u64 = refresh
+                .atoms
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| !refresh.is_input(*idx))
+                .map(|(_, atom)| atom.amount)
+                .sum();
+
+            prop_assert_eq!(output_total, input_amount);
+
+            if spend_amount < input_amount {
+                prop_assert_eq!(owners.len(), 2);
+                prop_assert_eq!(owners[0], receiver);
+                prop_assert_eq!(owners[1], sender);
+            } else {
+                prop_assert_eq!(owners.len(), 1);
+                prop_assert_eq!(owners[0], receiver);
+            }
+        }
+
+        #[test]
+        fn prop_build_refresh_outputs_never_exceed_input(
+            input_amount in 1u64..=500_000,
+            spend_amount in 1u64..=500_000,
+        ) {
+            prop_assume!(spend_amount <= input_amount);
+            let asset = Asset {
+                policy_id: PolicyId([7u8; 28]),
+                asset_name: AssetName::empty(),
+            };
+
+            let (refresh, _owners) = build_refresh(
+                1,
+                2,
+                asset,
+                note_with_amount(input_amount),
+                spend_amount,
+            ).unwrap();
+
+            for (idx, atom) in refresh.atoms.iter().enumerate() {
+                if !refresh.is_input(idx) {
+                    prop_assert!(atom.amount <= input_amount);
+                }
+            }
+        }
     }
 }

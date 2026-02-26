@@ -1935,6 +1935,7 @@ dependencies = [
  "crossterm 0.29.0",
  "mugraph-core",
  "muhex",
+ "proptest",
  "rand 0.9.2",
  "ratatui",
  "reqwest",
