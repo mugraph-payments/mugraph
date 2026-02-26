@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
     builder::RefreshBuilder,
@@ -200,10 +202,16 @@ pub async fn simulation_owner_loop(
         snapshot_tx,
     } = channels;
 
+    let mut oracle = ConservationOracle::new();
+    oracle.seal(&state);
+
+    // Track per-asset amounts currently in-flight (removed from wallets, not yet returned)
+    let mut inflight_amounts: HashMap<Asset, u128> = HashMap::new();
+
     let mut ticker = interval(config.tick);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let _ = snapshot_tx.send(state.snapshot());
+    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
 
     let mut tx_id: u64 = 0;
 
@@ -246,6 +254,8 @@ pub async fn simulation_owner_loop(
                     .random_range(config.amount_range.0..=config.amount_range.1)
                     .min(input_note.amount);
 
+                let input_amount = input_note.amount;
+
                 let (refresh, owners) = match build_refresh(
                     sender_id,
                     receiver_id,
@@ -262,10 +272,24 @@ pub async fn simulation_owner_loop(
                             input_note,
                             format!("failed to build refresh: {e:#}"),
                         );
-                        let _ = snapshot_tx.send(state.snapshot());
+                        oracle.assert_conservation(
+                            &state,
+                            &inflight_amounts,
+                            &format!("after build_refresh failure (tx_id={})", tx_id + 1),
+                        );
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
                         continue;
                     }
                 };
+
+                // Track the reserved note's amount as inflight
+                *inflight_amounts.entry(asset).or_default() += input_amount as u128;
+
+                oracle.assert_conservation(
+                    &state,
+                    &inflight_amounts,
+                    &format!("after reserve (tx_id={})", tx_id + 1),
+                );
 
                 tx_id += 1;
                 let pending = PendingTx {
@@ -273,6 +297,7 @@ pub async fn simulation_owner_loop(
                     sender_id,
                     receiver_id,
                     asset,
+                    input_amount,
                     input_note,
                     spend_amount,
                     refresh,
@@ -281,7 +306,7 @@ pub async fn simulation_owner_loop(
 
                 state.inflight += 1;
                 state.total_sent += 1;
-                let _ = snapshot_tx.send(state.snapshot());
+                let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
 
                 let client_clone = client.clone();
                 let event_tx_clone = event_tx.clone();
@@ -298,12 +323,15 @@ pub async fn simulation_owner_loop(
                     SimCommand::TogglePause => {
                         state.paused = !state.paused;
                         state.log(format!("paused set to {}", state.paused));
-                        let _ = snapshot_tx.send(state.snapshot());
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
                     }
                     SimCommand::Quit => {
                         state.shutdown = true;
-                        state.log("shutting down");
-                        let _ = snapshot_tx.send(state.snapshot());
+                        state.log(format!(
+                            "shutting down — conservation checks passed: {}",
+                            oracle.checks_passed(),
+                        ));
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
                         break;
                     }
                 }
@@ -312,6 +340,11 @@ pub async fn simulation_owner_loop(
                 match event {
                     SimEvent::TxFinished { pending, result } => {
                         state.inflight = state.inflight.saturating_sub(1);
+
+                        // Remove inflight tracking for this tx
+                        let entry = inflight_amounts.entry(pending.asset).or_default();
+                        *entry = entry.saturating_sub(pending.input_amount as u128);
+
                         match result {
                             Ok(outputs) => match materialize_outputs(
                                 &pending.refresh,
@@ -321,6 +354,11 @@ pub async fn simulation_owner_loop(
                             ) {
                                 Ok(notes) => {
                                     apply_successful_tx(&mut state, &pending, notes);
+                                    oracle.assert_conservation(
+                                        &state,
+                                        &inflight_amounts,
+                                        &format!("after successful tx {}", pending.id),
+                                    );
                                 }
                                 Err(e) => {
                                     record_sender_failure(
@@ -329,6 +367,11 @@ pub async fn simulation_owner_loop(
                                         pending.asset,
                                         pending.input_note,
                                         format!("tx {} materialization failed: {e:#}", pending.id),
+                                    );
+                                    oracle.assert_conservation(
+                                        &state,
+                                        &inflight_amounts,
+                                        &format!("after materialization failure tx {}", pending.id),
                                     );
                                 }
                             },
@@ -340,9 +383,14 @@ pub async fn simulation_owner_loop(
                                     pending.input_note,
                                     format!("tx {} failed: {}", pending.id, reason),
                                 );
+                                oracle.assert_conservation(
+                                    &state,
+                                    &inflight_amounts,
+                                    &format!("after rpc failure tx {}", pending.id),
+                                );
                             }
                         }
-                        let _ = snapshot_tx.send(state.snapshot());
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
                     }
                 }
             }
@@ -350,7 +398,7 @@ pub async fn simulation_owner_loop(
     }
 
     state.shutdown = true;
-    let _ = snapshot_tx.send(state.snapshot());
+    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
 }
 
 #[cfg(test)]

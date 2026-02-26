@@ -78,7 +78,7 @@ impl AppState {
         }
     }
 
-    pub fn snapshot(&self) -> AppSnapshot {
+    pub fn snapshot(&self, conservation_checks: u64) -> AppSnapshot {
         let wallets = self
             .wallets
             .iter()
@@ -119,6 +119,7 @@ impl AppState {
             last_failure: self.last_failure.clone(),
             paused: self.paused,
             shutdown: self.shutdown,
+            conservation_checks,
         }
     }
 }
@@ -151,12 +152,133 @@ pub struct AppSnapshot {
     pub last_failure: Option<String>,
     pub paused: bool,
     pub shutdown: bool,
+    pub conservation_checks: u64,
 }
 
 pub struct SimConfig {
     pub amount_range: (u64, u64),
     pub tick: Duration,
     pub max_inflight: usize,
+}
+
+/// Tracks expected per-asset supply and asserts conservation after every state change.
+///
+/// Once `seal()` is called (after bootstrap), the expected supply is frozen.
+/// Every call to `assert_conservation()` sums all wallet balances plus inflight
+/// amounts and panics with a full diagnosis if the totals don't match.
+pub struct ConservationOracle {
+    expected_supply: HashMap<Asset, u128>,
+    sealed: bool,
+    checks_passed: u64,
+}
+
+impl ConservationOracle {
+    pub fn new() -> Self {
+        Self {
+            expected_supply: HashMap::new(),
+            sealed: false,
+            checks_passed: 0,
+        }
+    }
+
+    /// Snapshot the current wallet totals as the expected supply. After this,
+    /// any deviation is a bug.
+    pub fn seal(&mut self, state: &AppState) {
+        self.expected_supply.clear();
+        for wallet in &state.wallets {
+            for (asset, notes) in &wallet.notes {
+                let total: u128 = notes.iter().map(|n| n.amount as u128).sum();
+                *self.expected_supply.entry(*asset).or_default() += total;
+            }
+        }
+        self.sealed = true;
+    }
+
+    /// Assert that the total supply across all wallets plus inflight amounts
+    /// equals the expected supply. Panics with full diagnosis on violation.
+    pub fn assert_conservation(
+        &mut self,
+        state: &AppState,
+        inflight_amounts: &HashMap<Asset, u128>,
+        context: &str,
+    ) {
+        if !self.sealed {
+            return;
+        }
+
+        let mut actual: HashMap<Asset, u128> = HashMap::new();
+        for wallet in &state.wallets {
+            for (asset, notes) in &wallet.notes {
+                let total: u128 = notes.iter().map(|n| n.amount as u128).sum();
+                *actual.entry(*asset).or_default() += total;
+            }
+        }
+
+        // Add inflight amounts
+        for (asset, amount) in inflight_amounts {
+            *actual.entry(*asset).or_default() += amount;
+        }
+
+        for (asset, &expected) in &self.expected_supply {
+            let got = actual.get(asset).copied().unwrap_or(0);
+            if got != expected {
+                let wallet_detail: Vec<String> = state
+                    .wallets
+                    .iter()
+                    .filter_map(|w| {
+                        w.notes.get(asset).map(|notes| {
+                            let total: u64 = notes.iter().map(|n| n.amount).sum();
+                            format!(
+                                "  wallet {}: {} notes, total {}",
+                                w.id,
+                                notes.len(),
+                                total,
+                            )
+                        })
+                    })
+                    .collect();
+
+                let inflight = inflight_amounts.get(asset).copied().unwrap_or(0);
+
+                panic!(
+                    "\n\n=== CONSERVATION VIOLATION ===\n\
+                     context: {context}\n\
+                     asset: {asset:?}\n\
+                     expected supply: {expected}\n\
+                     actual (wallets + inflight): {got}\n\
+                     delta: {}\n\
+                     inflight for asset: {inflight}\n\
+                     checks passed before failure: {}\n\
+                     wallet breakdown:\n{}\n\
+                     ==============================\n",
+                    got as i128 - expected as i128,
+                    self.checks_passed,
+                    wallet_detail.join("\n"),
+                );
+            }
+        }
+
+        // Check for unexpected new assets
+        for (asset, &amount) in &actual {
+            if amount > 0 && !self.expected_supply.contains_key(asset) {
+                panic!(
+                    "\n\n=== CONSERVATION VIOLATION ===\n\
+                     context: {context}\n\
+                     unexpected asset appeared: {asset:?}\n\
+                     amount: {amount}\n\
+                     checks passed before failure: {}\n\
+                     ==============================\n",
+                    self.checks_passed,
+                );
+            }
+        }
+
+        self.checks_passed += 1;
+    }
+
+    pub fn checks_passed(&self) -> u64 {
+        self.checks_passed
+    }
 }
 
 pub struct SimChannels {
@@ -178,6 +300,7 @@ pub struct PendingTx {
     pub sender_id: usize,
     pub receiver_id: usize,
     pub asset: Asset,
+    pub input_amount: u64,
     pub input_note: Note,
     pub spend_amount: u64,
     pub refresh: Refresh,

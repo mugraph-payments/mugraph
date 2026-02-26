@@ -61,6 +61,11 @@ pub fn render_ui(
                     snapshot.inflight.to_string(),
                     Style::default().fg(Color::Yellow),
                 ),
+                Span::raw("  Invariant: "),
+                Span::styled(
+                    format!("{} ok", snapshot.conservation_checks),
+                    Style::default().fg(Color::Green),
+                ),
                 Span::raw("  Last err: "),
                 Span::styled(
                     snapshot.last_failure.as_deref().unwrap_or("-"),
