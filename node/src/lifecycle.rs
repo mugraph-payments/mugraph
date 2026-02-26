@@ -92,12 +92,7 @@ impl TransferLifecycle {
                 }
             }
             LifecycleEvent::DestinationNoticeReceived => {
-                if self.destination == DestinationLaneState::NoticeReceived {
-                    return;
-                }
-                if self.destination != DestinationLaneState::Invalidated {
-                    self.destination = DestinationLaneState::NoticeReceived;
-                }
+                // Notice delivery is idempotent and must never regress state.
             }
             LifecycleEvent::ChainObserved {
                 tx_hash,
@@ -236,6 +231,24 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_notice_does_not_regress_credited_outcome() {
+        let mut lifecycle = TransferLifecycle::new();
+
+        lifecycle.apply(LifecycleEvent::SourceSubmitted);
+        lifecycle.apply(LifecycleEvent::ChainObserved {
+            tx_hash: "abc",
+            confirmations: 12,
+            confirmed: true,
+        });
+        lifecycle.apply(LifecycleEvent::DestinationCredited);
+        let before = lifecycle.clone();
+
+        lifecycle.apply(LifecycleEvent::DestinationNoticeReceived);
+
+        assert_eq!(lifecycle, before);
+    }
+
+    #[test]
     fn deep_reorg_forces_invalidated_path_deterministically() {
         let mut lifecycle = TransferLifecycle::new();
 
@@ -254,6 +267,30 @@ mod tests {
         assert_eq!(lifecycle.chain, TransferChainState::Invalidated);
         assert_eq!(lifecycle.settlement, TransferSettlementState::Invalidated);
         assert_eq!(lifecycle.credit, TransferCreditState::Reversed);
+    }
+
+    #[derive(Debug, Clone)]
+    enum Op {
+        Notice,
+        Ack,
+        ObserveConfirming(u32),
+        ObserveConfirmed(u32),
+        Credit,
+        Invalidate,
+    }
+
+    fn op_sequence() -> impl Strategy<Value = Vec<Op>> {
+        prop::collection::vec(
+            prop_oneof![
+                Just(Op::Notice),
+                Just(Op::Ack),
+                (0u32..=32).prop_map(Op::ObserveConfirming),
+                (1u32..=64).prop_map(Op::ObserveConfirmed),
+                Just(Op::Credit),
+                Just(Op::Invalidate),
+            ],
+            0..64,
+        )
     }
 
     proptest! {
@@ -276,6 +313,73 @@ mod tests {
             lifecycle.apply(LifecycleEvent::AckReceived);
 
             prop_assert_eq!(lifecycle, before);
+        }
+
+        #[test]
+        fn prop_lifecycle_invariants_hold_across_event_sequences(
+            ops in op_sequence(),
+        ) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+
+            for op in ops {
+                let before = lifecycle.clone();
+
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(confirmations) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc",
+                        confirmations,
+                        confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(confirmations) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc",
+                        confirmations,
+                        confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+
+                if matches!(op, Op::Ack | Op::Notice)
+                    && before.source == SourceLaneState::Confirmed
+                    && before.chain == TransferChainState::Confirmed
+                {
+                    prop_assert_eq!(lifecycle.clone(), before);
+                }
+
+                if lifecycle.source != SourceLaneState::Confirmed {
+                    prop_assert_ne!(lifecycle.destination, DestinationLaneState::Credited);
+                    prop_assert_ne!(
+                        lifecycle.credit.clone(),
+                        TransferCreditState::Credited
+                    );
+                }
+
+                if lifecycle.credit == TransferCreditState::Credited {
+                    prop_assert_eq!(lifecycle.source, SourceLaneState::Confirmed);
+                    prop_assert_eq!(lifecycle.destination, DestinationLaneState::Credited);
+                    prop_assert_eq!(lifecycle.chain.clone(), TransferChainState::Confirmed);
+                    prop_assert_eq!(
+                        lifecycle.settlement.clone(),
+                        TransferSettlementState::Confirmed
+                    );
+                }
+
+                if lifecycle.settlement == TransferSettlementState::Invalidated {
+                    prop_assert_eq!(lifecycle.source, SourceLaneState::Invalidated);
+                    prop_assert_eq!(lifecycle.destination, DestinationLaneState::Invalidated);
+                    prop_assert_eq!(
+                        lifecycle.chain.clone(),
+                        TransferChainState::Invalidated
+                    );
+                    prop_assert!(
+                        lifecycle.credit == TransferCreditState::None
+                            || lifecycle.credit == TransferCreditState::Reversed
+                    );
+                }
+            }
         }
     }
 }
