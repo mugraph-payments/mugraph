@@ -16,6 +16,7 @@ fn test_config_defaults() {
         cardano_api_key: Some("test_key".to_string()),
         cardano_provider_url: None,
         cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
         deposit_confirm_depth: 15,
         deposit_expiration_blocks: 1440,
         min_deposit_value: Some(1000000),
@@ -48,6 +49,7 @@ fn test_config_mainnet() {
         cardano_api_key: Some("maestro_key".to_string()),
         cardano_provider_url: Some("https://custom.api.com".to_string()),
         cardano_payment_sk: Some("deadbeef".to_string()),
+        xnode_peer_registry_file: Some("/tmp/peers.json".to_string()),
         deposit_confirm_depth: 20,
         deposit_expiration_blocks: 2000,
         min_deposit_value: Some(2000000),
@@ -65,6 +67,10 @@ fn test_config_mainnet() {
         Some("https://custom.api.com".to_string())
     );
     assert_eq!(config.payment_sk(), Some("deadbeef".to_string()));
+    assert_eq!(
+        config.xnode_peer_registry_file(),
+        Some("/tmp/peers.json".to_string())
+    );
     assert_eq!(config.deposit_confirm_depth(), 20);
     assert_eq!(config.deposit_expiration_blocks(), 2000);
     assert_eq!(config.min_deposit_value(), 2000000);
@@ -86,6 +92,7 @@ fn test_network_bytes() {
             cardano_api_key: None,
             cardano_provider_url: None,
             cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
             min_deposit_value: None,
@@ -114,6 +121,7 @@ fn test_config_default_values() {
         cardano_api_key: None,
         cardano_provider_url: None,
         cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
         deposit_confirm_depth: 15,
         deposit_expiration_blocks: 1440,
         min_deposit_value: None,
@@ -148,6 +156,7 @@ fn test_fee_tolerance_bounds() {
         cardano_api_key: None,
         cardano_provider_url: None,
         cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
         deposit_confirm_depth: 15,
         deposit_expiration_blocks: 1440,
         min_deposit_value: None,
@@ -168,6 +177,7 @@ fn test_fee_tolerance_bounds() {
         cardano_api_key: None,
         cardano_provider_url: None,
         cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
         deposit_confirm_depth: 15,
         deposit_expiration_blocks: 1440,
         min_deposit_value: None,

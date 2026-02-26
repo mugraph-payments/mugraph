@@ -43,6 +43,10 @@ pub enum Config {
         #[clap(long, env = "CARDANO_PAYMENT_SK")]
         cardano_payment_sk: Option<String>,
 
+        /// Path to trusted peer registry JSON for cross-node authn/authz
+        #[clap(long, env = "XNODE_PEER_REGISTRY_FILE")]
+        xnode_peer_registry_file: Option<String>,
+
         /// Number of blocks for deposit confirmation depth (default: 15)
         #[clap(long, env = "DEPOSIT_CONFIRM_DEPTH", default_value = "15")]
         deposit_confirm_depth: u64,
@@ -139,6 +143,17 @@ impl Config {
             Self::Server {
                 cardano_payment_sk, ..
             } => cardano_payment_sk.clone(),
+            _ => None,
+        }
+    }
+
+    /// Get optional trusted peer registry file path
+    pub fn xnode_peer_registry_file(&self) -> Option<String> {
+        match self {
+            Self::Server {
+                xnode_peer_registry_file,
+                ..
+            } => xnode_peer_registry_file.clone(),
             _ => None,
         }
     }

@@ -22,6 +22,7 @@ Control split:
 - Trusted peer registry: `node_id -> allowed kid(s) + validity + revocation`.
 - Verify app-layer signatures on all command messages.
 - Enforce destination binding (`destination_node_id == local_node_id`).
+- Registry format reference: `docs/specs/milestone-3-peer-registry-format.md`.
 
 ### Replay/idempotency
 For command messages (`transfer_init`, `transfer_notice`, `transfer_ack` when used):

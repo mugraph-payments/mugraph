@@ -27,6 +27,7 @@ use crate::{
     config::Config,
     database::{CARDANO_WALLET, Database},
     deposit_monitor::{DepositMonitor, DepositMonitorConfig},
+    peer_registry::PeerRegistry,
     provider::Provider,
 };
 
@@ -42,6 +43,17 @@ pub async fn router(config: Config) -> Result<Router, Error> {
 
     // Run database migrations
     database.migrate()?;
+
+    // Validate trusted peer registry when configured
+    if let Some(path) = config.xnode_peer_registry_file() {
+        let registry = PeerRegistry::load(&path)?;
+        registry.validate()?;
+        tracing::info!(
+            peers = registry.peers.len(),
+            path = %path,
+            "loaded trusted peer registry"
+        );
+    }
 
     // Initialize Cardano wallet on startup
     initialize_cardano_wallet(&config, &database).await?;
@@ -252,6 +264,7 @@ mod tests {
             cardano_api_key: Some("test".to_string()),
             cardano_provider_url: None,
             cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
             deposit_confirm_depth: 15,
             deposit_expiration_blocks: 1440,
             min_deposit_value: Some(1_000_000),
