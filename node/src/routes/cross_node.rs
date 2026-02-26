@@ -76,6 +76,10 @@ pub fn handle_create(
                 }
                 tracing::warn!(
                     transfer_id = %request.transfer_id,
+                    origin_node_id = %request.origin_node_id,
+                    destination_node_id = %request.destination_node_id,
+                    protocol_version = %request.version,
+                    state = "rejected",
                     message_id = %request.message_id,
                     message_type = "transfer_init",
                     idempotency_key = %request.idempotency_key,
@@ -128,6 +132,10 @@ pub fn handle_notify(
                 event = reject_audit_event(code);
                 tracing::warn!(
                     transfer_id = %request.transfer_id,
+                    origin_node_id = %request.origin_node_id,
+                    destination_node_id = %request.destination_node_id,
+                    protocol_version = %request.version,
+                    state = "rejected",
                     message_id = %request.message_id,
                     message_type = "transfer_notice",
                     idempotency_key = %request.idempotency_key,
@@ -180,13 +188,8 @@ pub fn handle_status(
     };
 
     let payload = status_payload_from_record(&transfer);
-    metrics::histogram!("mugraph_m3_chain_confirmation_depth").record(payload.confirmations_observed as f64);
-    if payload.chain_state == TransferChainState::Invalidated {
-        metrics::counter!("mugraph_m3_reorg_events_total", "severity" => "deep".to_string()).increment(1);
-    }
-    if matches!(payload.settlement_state, TransferSettlementState::Confirmed | TransferSettlementState::Invalidated | TransferSettlementState::ManualReview) {
-        metrics::counter!("mugraph_m3_transfers_terminal_total", "terminal_state" => format!("{:?}", payload.settlement_state).to_lowercase()).increment(1);
-    }
+    emit_chain_metrics(&transfer, &payload);
+    let _ = audit_status_events(ctx, request, &payload);
 
     tracing::info!(
         transfer_id = %request.transfer_id,
@@ -231,6 +234,10 @@ pub fn handle_ack(
                 event = reject_audit_event(code);
                 tracing::warn!(
                     transfer_id = %request.transfer_id,
+                    origin_node_id = %request.origin_node_id,
+                    destination_node_id = %request.destination_node_id,
+                    protocol_version = %request.version,
+                    state = "rejected",
                     message_id = %request.message_id,
                     message_type = "transfer_ack",
                     idempotency_key = %request.idempotency_key,
@@ -347,6 +354,48 @@ fn parse_credit_state(value: &str) -> TransferCreditState {
         "reversed" => TransferCreditState::Reversed,
         _ => TransferCreditState::None,
     }
+}
+
+fn emit_chain_metrics(record: &CrossNodeTransferRecord, payload: &TransferStatusPayload) {
+    metrics::histogram!("mugraph_m3_chain_confirmation_depth").record(payload.confirmations_observed as f64);
+    metrics::histogram!("mugraph_m3_settlement_latency_seconds")
+        .record(record.updated_at.saturating_sub(record.created_at) as f64);
+
+    let result = if record.tx_hash.is_some() { "observed" } else { "missing" };
+    metrics::counter!(
+        "mugraph_m3_chain_submission_total",
+        "result" => result.to_string(),
+        "provider" => "local_store".to_string()
+    )
+    .increment(1);
+
+    if payload.chain_state == TransferChainState::Invalidated {
+        metrics::counter!("mugraph_m3_reorg_events_total", "severity" => "deep".to_string()).increment(1);
+    }
+    if matches!(payload.settlement_state, TransferSettlementState::Confirmed | TransferSettlementState::Invalidated | TransferSettlementState::ManualReview) {
+        metrics::counter!("mugraph_m3_transfers_terminal_total", "terminal_state" => format!("{:?}", payload.settlement_state).to_lowercase()).increment(1);
+    }
+}
+
+fn audit_status_events<T>(
+    ctx: &Context,
+    request: &XNodeEnvelope<T>,
+    payload: &TransferStatusPayload,
+) -> Result<(), Error> {
+    if payload.credit_state == TransferCreditState::Credited {
+        let _ = audit_event(ctx, request, "transfer.credited", "credit observed in status".to_string());
+    }
+    if payload.settlement_state == TransferSettlementState::Confirmed {
+        let _ = audit_event(ctx, request, "transfer.confirmed", "confirmed in status".to_string());
+    }
+    if payload.chain_state == TransferChainState::Invalidated {
+        let _ = audit_event(ctx, request, "transfer.invalidated", "invalidated in status".to_string());
+    }
+    if payload.settlement_state == TransferSettlementState::ManualReview {
+        let _ = audit_event(ctx, request, "transfer.manual_override", "manual-review state observed".to_string());
+    }
+
+    Ok(())
 }
 
 fn validate_freshness(sent_at: &str, expires_at: Option<&str>, now: i64) -> Result<(), Error> {
@@ -653,7 +702,10 @@ mod tests {
         TransferQueryType, TransferStatusQueryPayload, XNodeAuth,
     };
 
-    use crate::{config::Config, database::{CROSS_NODE_TRANSFERS, Database}};
+    use crate::{
+        config::Config,
+        database::{CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG},
+    };
 
     use super::*;
 
@@ -961,6 +1013,54 @@ mod tests {
         assert_eq!(payload.settlement_state, TransferSettlementState::ManualReview);
         assert_eq!(payload.chain_state, TransferChainState::Invalidated);
         assert_eq!(payload.credit_state, TransferCreditState::Held);
+    }
+
+    #[test]
+    fn status_query_emits_required_audit_events() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        seed_transfer(&ctx, "tr-status", "confirmed", "credited");
+
+        let request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferStatusQuery,
+            message_id: "mid-status".to_string(),
+            transfer_id: "tr-status".to_string(),
+            idempotency_key: "ik-status".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: None,
+            payload: TransferStatusQueryPayload {
+                query_type: TransferQueryType::Current,
+            },
+            auth: auth(),
+        };
+
+        let _ = handle_status(&request, &ctx).unwrap();
+
+        let read = ctx.database.read().unwrap();
+        let table = read.open_table(TRANSFER_AUDIT_LOG).unwrap();
+        let mut confirmed = false;
+        let mut credited = false;
+        for row in table.iter().unwrap() {
+            let (_k, v) = row.unwrap();
+            let evt = v.value();
+            if evt.transfer_id == "tr-status" && evt.event_type == "transfer.confirmed" {
+                confirmed = true;
+            }
+            if evt.transfer_id == "tr-status" && evt.event_type == "transfer.credited" {
+                credited = true;
+            }
+        }
+
+        assert!(confirmed);
+        assert!(credited);
     }
 
     #[test]
