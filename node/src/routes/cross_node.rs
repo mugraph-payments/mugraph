@@ -6,17 +6,10 @@ use mugraph_core::{
     },
 };
 
-fn validate_envelope<T>(
-    envelope: &XNodeEnvelope<T>,
-    expected_message_type: XNodeMessageType,
-) -> Result<(), Error> {
-    validate_envelope_basics(envelope, expected_message_type, 3).map_err(Error::from)
-}
-
 pub fn handle_create(
     request: &XNodeEnvelope<mugraph_core::types::TransferInitPayload>,
 ) -> Result<Response, Error> {
-    validate_envelope(request, XNodeMessageType::TransferInit)?;
+    validate_envelope_basics(request, XNodeMessageType::TransferInit, 3).map_err(Error::from)?;
 
     Ok(Response::CrossNodeTransferCreate {
         transfer_id: request.transfer_id.clone(),
@@ -27,7 +20,7 @@ pub fn handle_create(
 pub fn handle_notify(
     request: &XNodeEnvelope<mugraph_core::types::TransferNoticePayload>,
 ) -> Result<Response, Error> {
-    validate_envelope(request, XNodeMessageType::TransferNotice)?;
+    validate_envelope_basics(request, XNodeMessageType::TransferNotice, 3).map_err(Error::from)?;
 
     Ok(Response::CrossNodeTransferNotify { accepted: true })
 }
@@ -35,7 +28,8 @@ pub fn handle_notify(
 pub fn handle_status(
     request: &XNodeEnvelope<mugraph_core::types::TransferStatusQueryPayload>,
 ) -> Result<Response, Error> {
-    validate_envelope(request, XNodeMessageType::TransferStatusQuery)?;
+    validate_envelope_basics(request, XNodeMessageType::TransferStatusQuery, 3)
+        .map_err(Error::from)?;
 
     Ok(Response::CrossNodeTransferStatus(XNodeEnvelope {
         m: "xnode".to_string(),
@@ -66,7 +60,7 @@ pub fn handle_status(
 pub fn handle_ack(
     request: &XNodeEnvelope<mugraph_core::types::TransferAckPayload>,
 ) -> Result<Response, Error> {
-    validate_envelope(request, XNodeMessageType::TransferAck)?;
+    validate_envelope_basics(request, XNodeMessageType::TransferAck, 3).map_err(Error::from)?;
 
     Ok(Response::CrossNodeTransferAck { accepted: true })
 }
