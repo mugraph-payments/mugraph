@@ -30,6 +30,7 @@ tracing-subscriber = { workspace = true }
 whisky-csl = "1.0.24"
 
 [dev-dependencies]
+proptest = { workspace = true }
 uplc = "1.1.10"
 pallas-primitives = "0.31.0"
 pallas-traverse = "0.31.0"

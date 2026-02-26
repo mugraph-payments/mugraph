@@ -8,24 +8,53 @@
 //! Run with: cargo test -p mugraph-node --test validator_evaluation
 
 use blake2::{Blake2b, Digest, digest::consts::U28};
-use pallas_addresses::{Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart};
+use mugraph_core::types::{Keypair, Refresh};
+use pallas_addresses::{
+    Network,
+    ShelleyAddress,
+    ShelleyDelegationPart,
+    ShelleyPaymentPart,
+};
 use pallas_codec::{
     minicbor,
-    utils::{CborWrap, MaybeIndefArray, NonEmptyKeyValuePairs, NonEmptySet, Nullable, PositiveCoin, Set},
+    utils::{
+        CborWrap,
+        MaybeIndefArray,
+        NonEmptyKeyValuePairs,
+        NonEmptySet,
+        Nullable,
+        PositiveCoin,
+        Set,
+    },
 };
 use pallas_crypto::hash::Hash;
 use pallas_primitives::{
-    BoundedBytes, Constr,
+    BoundedBytes,
+    Constr,
     conway::{
-        CostModels, DatumOption, ExUnits, Multiasset, MintedTx, PlutusData, PlutusScript,
-        PostAlonzoTransactionOutput, Redeemer, RedeemerTag, Redeemers,
-        TransactionOutput, Value, WitnessSet,
+        CostModels,
+        DatumOption,
+        ExUnits,
+        MintedTx,
+        Multiasset,
+        PlutusData,
+        PlutusScript,
+        PostAlonzoTransactionOutput,
+        Redeemer,
+        RedeemerTag,
+        Redeemers,
+        TransactionOutput,
+        Value,
+        WitnessSet,
     },
 };
 use pallas_traverse::{Era, MultiEraTx};
 use uplc::{
     machine::cost_model::ExBudget,
-    tx::{eval_phase_two, script_context::ResolvedInput, script_context::SlotConfig},
+    tx::{
+        eval_phase_two,
+        script_context::{ResolvedInput, SlotConfig},
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -46,7 +75,7 @@ fn blake2b_224(data: &[u8]) -> [u8; 28] {
 /// PlutusV3 scripts are hashed with a 0x03 prefix tag.
 fn compute_script_hash(script_cbor: &[u8]) -> Hash<28> {
     let mut hasher = Blake2b224::new();
-    hasher.update(&[0x03]);
+    hasher.update([0x03]);
     hasher.update(script_cbor);
     let hash = hasher.finalize();
     let mut out = [0u8; 28];
@@ -93,8 +122,9 @@ fn build_void_redeemer_data() -> PlutusData {
 
 /// Load the compiled validator CBOR from the Aiken build artifacts.
 fn load_validator_cbor() -> Vec<u8> {
-    mugraph_node::cardano::compile_validator()
-        .expect("Failed to compile validator. Is `aiken` installed and on $PATH?")
+    mugraph_node::cardano::compile_validator().expect(
+        "Failed to compile validator. Is `aiken` installed and on $PATH?",
+    )
 }
 
 /// Load PlutusV3 cost models from the JSON fixture.
@@ -150,7 +180,8 @@ fn build_multiasset_value(
     let inner: NonEmptyKeyValuePairs<pallas_codec::utils::Bytes, PositiveCoin> =
         NonEmptyKeyValuePairs::Def(vec![(
             asset_name.to_vec().into(),
-            PositiveCoin::try_from(token_amount).expect("token amount must be > 0"),
+            PositiveCoin::try_from(token_amount)
+                .expect("token amount must be > 0"),
         )]);
     let multiasset: Multiasset<PositiveCoin> =
         NonEmptyKeyValuePairs::Def(vec![(policy_id, inner)]);
@@ -174,12 +205,13 @@ fn build_spend_tx_with_value(
 
     let script_address_bytes = build_script_address_bytes(script_hash);
 
-    let script_utxo_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: script_address_bytes.clone().into(),
-        value: input_value,
-        datum_option: datum.map(|d| DatumOption::Data(CborWrap(d))),
-        script_ref: None,
-    });
+    let script_utxo_output =
+        TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+            address: script_address_bytes.clone().into(),
+            value: input_value,
+            datum_option: datum.map(|d| DatumOption::Data(CborWrap(d))),
+            script_ref: None,
+        });
 
     let dummy_key_hash: [u8; 28] = [0xAA; 28];
     let change_addr = ShelleyAddress::new(
@@ -187,12 +219,13 @@ fn build_spend_tx_with_value(
         ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
         ShelleyDelegationPart::Null,
     );
-    let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: change_addr.to_vec().into(),
-        value: output_value,
-        datum_option: None,
-        script_ref: None,
-    });
+    let change_output =
+        TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+            address: change_addr.to_vec().into(),
+            value: output_value,
+            datum_option: None,
+            script_ref: None,
+        });
 
     let tx_input = pallas_primitives::TransactionInput {
         transaction_id: input_tx_hash,
@@ -263,7 +296,8 @@ fn build_spend_tx_with_value(
         auxiliary_data: Nullable::Null,
     };
 
-    let tx_bytes = minicbor::to_vec(&tx).expect("Failed to encode transaction to CBOR");
+    let tx_bytes =
+        minicbor::to_vec(&tx).expect("Failed to encode transaction to CBOR");
 
     let resolved_inputs = vec![ResolvedInput {
         input: tx_input,
@@ -334,10 +368,10 @@ fn evaluate_tx(
 /// client and server during a real transfer: the output atom's commitment
 /// is blinded, signed by the node, and unblinded to produce a valid note.
 fn note_from_refresh_output(
-    refresh: &mugraph_core::types::Refresh,
+    refresh: &Refresh,
     atom_idx: usize,
-    keypair: &mugraph_core::types::Keypair,
-    rng: &mut (impl rand::RngCore + rand::CryptoRng),
+    keypair: &Keypair,
+    rng: &mut impl rand::CryptoRng,
 ) -> mugraph_core::types::Note {
     use mugraph_core::{
         crypto,
@@ -365,9 +399,12 @@ fn note_from_refresh_output(
 
     let blind = crypto::blind_note(rng, &note);
     let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
-    note.signature =
-        crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)
-            .expect("unblind_signature failed");
+    note.signature = crypto::unblind_signature(
+        &signed.signature,
+        &blind.factor,
+        &keypair.public_key,
+    )
+    .expect("unblind_signature failed");
     note.dleq = Some(DleqProofWithBlinding {
         proof: signed.proof,
         blinding_factor: blind.factor.into(),
@@ -400,12 +437,13 @@ fn build_multi_spend_tx(
             index: 0,
         };
 
-        let utxo_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-            address: script_address_bytes.clone().into(),
-            value: Value::Coin(input_lovelace_each),
-            datum_option: Some(DatumOption::Data(CborWrap(datum.clone()))),
-            script_ref: None,
-        });
+        let utxo_output =
+            TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+                address: script_address_bytes.clone().into(),
+                value: Value::Coin(input_lovelace_each),
+                datum_option: Some(DatumOption::Data(CborWrap(datum.clone()))),
+                script_ref: None,
+            });
 
         resolved.push(ResolvedInput {
             input: tx_input.clone(),
@@ -448,12 +486,13 @@ fn build_multi_spend_tx(
         ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
         ShelleyDelegationPart::Null,
     );
-    let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-        address: change_addr.to_vec().into(),
-        value: Value::Coin(total_lovelace.saturating_sub(2_000_000)),
-        datum_option: None,
-        script_ref: None,
-    });
+    let change_output =
+        TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+            address: change_addr.to_vec().into(),
+            value: Value::Coin(total_lovelace.saturating_sub(2_000_000)),
+            datum_option: None,
+            script_ref: None,
+        });
 
     let collateral_input = pallas_primitives::TransactionInput {
         transaction_id: Hash::from([0xBB; 32]),
@@ -509,7 +548,8 @@ fn build_multi_spend_tx(
         auxiliary_data: Nullable::Null,
     };
 
-    let tx_bytes = minicbor::to_vec(&tx).expect("Failed to encode transaction to CBOR");
+    let tx_bytes =
+        minicbor::to_vec(&tx).expect("Failed to encode transaction to CBOR");
     (tx_bytes, resolved)
 }
 
@@ -682,14 +722,24 @@ fn eval_spend_with_multiple_inputs() {
 
     assert_eq!(redeemers.len(), 3, "Expected 3 redeemer results");
     for (i, r) in redeemers.iter().enumerate() {
-        assert!(r.ex_units.steps > 0, "CPU steps should be nonzero for input {i}");
-        assert!(r.ex_units.mem > 0, "Memory units should be nonzero for input {i}");
+        assert!(
+            r.ex_units.steps > 0,
+            "CPU steps should be nonzero for input {i}"
+        );
+        assert!(
+            r.ex_units.mem > 0,
+            "Memory units should be nonzero for input {i}"
+        );
     }
 
     println!(
         "eval_spend_with_multiple_inputs: per-input CPU=[{}, {}, {}], Mem=[{}, {}, {}]",
-        redeemers[0].ex_units.steps, redeemers[1].ex_units.steps, redeemers[2].ex_units.steps,
-        redeemers[0].ex_units.mem, redeemers[1].ex_units.mem, redeemers[2].ex_units.mem,
+        redeemers[0].ex_units.steps,
+        redeemers[1].ex_units.steps,
+        redeemers[2].ex_units.steps,
+        redeemers[0].ex_units.mem,
+        redeemers[1].ex_units.mem,
+        redeemers[2].ex_units.mem,
     );
 }
 
@@ -810,11 +860,7 @@ fn eval_script_hash_matches() {
     // Compute via the canonical method (PlutusV3 tag + blake2b-224)
     let canonical_hash = compute_script_hash(&script_cbor);
 
-    assert_eq!(
-        node_hash.len(),
-        28,
-        "Node script hash should be 28 bytes"
-    );
+    assert_eq!(node_hash.len(), 28, "Node script hash should be 28 bytes");
     assert_eq!(
         &node_hash,
         canonical_hash.as_ref(),
@@ -1070,8 +1116,18 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
 
     // Materialize outputs: node signs the output commitments via blind signatures
     let n_inputs_1 = refresh_1.input_mask.count_ones() as usize;
-    let note_b = note_from_refresh_output(&refresh_1, n_inputs_1, &node_keypair, &mut rng);
-    let note_c = note_from_refresh_output(&refresh_1, n_inputs_1 + 1, &node_keypair, &mut rng);
+    let note_b = note_from_refresh_output(
+        &refresh_1,
+        n_inputs_1,
+        &node_keypair,
+        &mut rng,
+    );
+    let note_c = note_from_refresh_output(
+        &refresh_1,
+        n_inputs_1 + 1,
+        &node_keypair,
+        &mut rng,
+    );
 
     // Verify chained signatures are valid
     assert!(
@@ -1102,7 +1158,12 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     refresh_2.verify().expect("refresh_2 balanced");
 
     let n_inputs_2 = refresh_2.input_mask.count_ones() as usize;
-    let note_d = note_from_refresh_output(&refresh_2, n_inputs_2, &node_keypair, &mut rng);
+    let note_d = note_from_refresh_output(
+        &refresh_2,
+        n_inputs_2,
+        &node_keypair,
+        &mut rng,
+    );
     assert!(
         crypto::verify(
             &node_keypair.public_key,
@@ -1123,8 +1184,18 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     refresh_3.verify().expect("refresh_3 balanced");
 
     let n_inputs_3 = refresh_3.input_mask.count_ones() as usize;
-    let note_e = note_from_refresh_output(&refresh_3, n_inputs_3, &node_keypair, &mut rng);
-    let note_f = note_from_refresh_output(&refresh_3, n_inputs_3 + 1, &node_keypair, &mut rng);
+    let note_e = note_from_refresh_output(
+        &refresh_3,
+        n_inputs_3,
+        &node_keypair,
+        &mut rng,
+    );
+    let note_f = note_from_refresh_output(
+        &refresh_3,
+        n_inputs_3 + 1,
+        &node_keypair,
+        &mut rng,
+    );
     assert!(
         crypto::verify(
             &node_keypair.public_key,
@@ -1157,8 +1228,9 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
         deposit_lovelace,
     );
 
-    let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models)
-        .expect("Withdrawal script evaluation failed after off-chain transfers");
+    let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models).expect(
+        "Withdrawal script evaluation failed after off-chain transfers",
+    );
 
     assert_eq!(redeemers.len(), 1);
     let r = &redeemers[0];
@@ -1192,7 +1264,7 @@ fn eval_lifecycle_batch_withdrawal() {
     let user_hash = blake2b_224(&[1u8; 32]);
     let node_hash = blake2b_224(&[2u8; 32]);
 
-    let node_keypair = mugraph_core::types::Keypair::random(&mut rand::rng());
+    let node_keypair = Keypair::random(&mut rand::rng());
     let mut rng = rand::rng();
 
     let ada_policy = mugraph_core::types::PolicyId::zero();
@@ -1220,8 +1292,14 @@ fn eval_lifecycle_batch_withdrawal() {
     refresh_1.verify().expect("refresh_1 balanced");
 
     let n_in_1 = refresh_1.input_mask.count_ones() as usize;
-    let note_1a = note_from_refresh_output(&refresh_1, n_in_1, &node_keypair, &mut rng);
-    let note_1b = note_from_refresh_output(&refresh_1, n_in_1 + 1, &node_keypair, &mut rng);
+    let note_1a =
+        note_from_refresh_output(&refresh_1, n_in_1, &node_keypair, &mut rng);
+    let note_1b = note_from_refresh_output(
+        &refresh_1,
+        n_in_1 + 1,
+        &node_keypair,
+        &mut rng,
+    );
     assert!(
         crypto::verify(
             &node_keypair.public_key,
@@ -1257,8 +1335,14 @@ fn eval_lifecycle_batch_withdrawal() {
     refresh_2.verify().expect("refresh_2 balanced");
 
     let n_in_2 = refresh_2.input_mask.count_ones() as usize;
-    let note_2a = note_from_refresh_output(&refresh_2, n_in_2, &node_keypair, &mut rng);
-    let note_2b = note_from_refresh_output(&refresh_2, n_in_2 + 1, &node_keypair, &mut rng);
+    let note_2a =
+        note_from_refresh_output(&refresh_2, n_in_2, &node_keypair, &mut rng);
+    let note_2b = note_from_refresh_output(
+        &refresh_2,
+        n_in_2 + 1,
+        &node_keypair,
+        &mut rng,
+    );
     assert!(
         crypto::verify(
             &node_keypair.public_key,
@@ -1280,23 +1364,30 @@ fn eval_lifecycle_batch_withdrawal() {
             transaction_id: Hash::from([0x01; 32]),
             index: 0,
         };
-        let utxo_1 = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-            address: script_address_bytes.clone().into(),
-            value: Value::Coin(5_000_000),
-            datum_option: Some(DatumOption::Data(CborWrap(datum_1))),
-            script_ref: None,
-        });
+        let utxo_1 =
+            TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+                address: script_address_bytes.clone().into(),
+                value: Value::Coin(5_000_000),
+                datum_option: Some(DatumOption::Data(CborWrap(datum_1))),
+                script_ref: None,
+            });
 
         let tx_input_2 = pallas_primitives::TransactionInput {
             transaction_id: Hash::from([0x02; 32]),
             index: 0,
         };
-        let utxo_2 = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-            address: script_address_bytes.clone().into(),
-            value: build_multiasset_value(8_000_000, pallas_token_policy, b"HOSKY", 500),
-            datum_option: Some(DatumOption::Data(CborWrap(datum_2))),
-            script_ref: None,
-        });
+        let utxo_2 =
+            TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+                address: script_address_bytes.clone().into(),
+                value: build_multiasset_value(
+                    8_000_000,
+                    pallas_token_policy,
+                    b"HOSKY",
+                    500,
+                ),
+                datum_option: Some(DatumOption::Data(CborWrap(datum_2))),
+                script_ref: None,
+            });
 
         // Inputs are already sorted (0x01 < 0x02)
         let inputs = vec![tx_input_1.clone(), tx_input_2.clone()];
@@ -1329,12 +1420,18 @@ fn eval_lifecycle_batch_withdrawal() {
             ShelleyPaymentPart::Key(Hash::from(dummy_key_hash)),
             ShelleyDelegationPart::Null,
         );
-        let change_output = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-            address: change_addr.to_vec().into(),
-            value: build_multiasset_value(11_000_000, pallas_token_policy, b"HOSKY", 500),
-            datum_option: None,
-            script_ref: None,
-        });
+        let change_output =
+            TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+                address: change_addr.to_vec().into(),
+                value: build_multiasset_value(
+                    11_000_000,
+                    pallas_token_policy,
+                    b"HOSKY",
+                    500,
+                ),
+                datum_option: None,
+                script_ref: None,
+            });
 
         let collateral_input = pallas_primitives::TransactionInput {
             transaction_id: Hash::from([0xBB; 32]),
@@ -1353,7 +1450,9 @@ fn eval_lifecycle_batch_withdrawal() {
             mint: None,
             script_data_hash: None,
             collateral: NonEmptySet::from_vec(vec![collateral_input]),
-            required_signers: NonEmptySet::from_vec(vec![Hash::from(user_hash)]),
+            required_signers: NonEmptySet::from_vec(vec![Hash::from(
+                user_hash,
+            )]),
             network_id: None,
             collateral_return: None,
             total_collateral: None,
@@ -1370,7 +1469,9 @@ fn eval_lifecycle_batch_withdrawal() {
             bootstrap_witness: None,
             plutus_v1_script: None,
             plutus_data: None,
-            redeemer: Some(Redeemers::List(MaybeIndefArray::Def(redeemers_list))),
+            redeemer: Some(Redeemers::List(MaybeIndefArray::Def(
+                redeemers_list,
+            ))),
             plutus_v2_script: None,
             plutus_v3_script: NonEmptySet::from_vec(vec![PlutusScript(
                 script_cbor.to_vec().into(),
@@ -1384,7 +1485,8 @@ fn eval_lifecycle_batch_withdrawal() {
             auxiliary_data: Nullable::Null,
         };
 
-        let tx_bytes = minicbor::to_vec(&tx).expect("Failed to encode batch tx");
+        let tx_bytes =
+            minicbor::to_vec(&tx).expect("Failed to encode batch tx");
 
         let redeemers = evaluate_tx(&tx_bytes, &resolved, &cost_models)
             .expect("Batch withdrawal evaluation failed");
@@ -1395,7 +1497,10 @@ fn eval_lifecycle_batch_withdrawal() {
                 r.ex_units.steps > 0,
                 "CPU steps should be nonzero for input {i}"
             );
-            assert!(r.ex_units.mem > 0, "Memory should be nonzero for input {i}");
+            assert!(
+                r.ex_units.mem > 0,
+                "Memory should be nonzero for input {i}"
+            );
         }
 
         let total_cpu: u64 = redeemers.iter().map(|r| r.ex_units.steps).sum();

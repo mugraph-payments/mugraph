@@ -1641,7 +1641,7 @@ mod tests {
             h
         } else {
             type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-            let h = Blake2b256::digest(&body.to_bytes());
+            let h = Blake2b256::digest(body.to_bytes());
             hex::encode(h)
         };
 
@@ -1680,7 +1680,7 @@ mod tests {
             let mut ma = csl::MultiAsset::new();
             for (policy_hex, asset_hex, qty) in assets {
                 let policy = csl::ScriptHash::from_hex(policy_hex).unwrap();
-                let mut assets_map = ma.get(&policy).unwrap_or_else(csl::Assets::new);
+                let mut assets_map = ma.get(&policy).unwrap_or_default();
                 let name_bytes = hex::decode(asset_hex).unwrap();
                 let name = csl::AssetName::new(name_bytes).unwrap();
                 assets_map.insert(&name, &csl::BigNum::from_str(&qty.to_string()).unwrap());

@@ -102,16 +102,12 @@ pub fn validator_artifacts_exist() -> Result<bool> {
                 if any_ak_newer_than(&path, plutus_time)? {
                     return Ok(true);
                 }
-            } else if path.extension().is_some_and(|ext| ext == "ak") {
-                if let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
-                {
-                    if let Some(plutus_time) = plutus_time {
-                        if source_modified > plutus_time {
+            } else if path.extension().is_some_and(|ext| ext == "ak")
+                && let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
+                    && let Some(plutus_time) = plutus_time
+                        && source_modified > plutus_time {
                             return Ok(true);
                         }
-                    }
-                }
-            }
         }
         Ok(false)
     }
@@ -124,15 +120,12 @@ pub fn validator_artifacts_exist() -> Result<bool> {
 
     // Also check aiken.toml (dependency/compiler changes)
     let aiken_toml = validator_dir.join("aiken.toml");
-    if aiken_toml.exists() {
-        if let Ok(toml_modified) = std::fs::metadata(&aiken_toml).and_then(|m| m.modified()) {
-            if let Some(plutus_time) = plutus_modified {
-                if toml_modified > plutus_time {
+    if aiken_toml.exists()
+        && let Ok(toml_modified) = std::fs::metadata(&aiken_toml).and_then(|m| m.modified())
+            && let Some(plutus_time) = plutus_modified
+                && toml_modified > plutus_time {
                     return Ok(false);
                 }
-            }
-        }
-    }
 
     Ok(true)
 }
@@ -211,7 +204,7 @@ pub fn compute_script_hash(cbor: &[u8]) -> Vec<u8> {
 
     type Blake2b224 = Blake2b<U28>;
     let mut hasher = Blake2b224::new();
-    hasher.update(&[0x03]); // PlutusV3 tag
+    hasher.update([0x03]); // PlutusV3 tag
     hasher.update(cbor);
     hasher.finalize().to_vec()
 }

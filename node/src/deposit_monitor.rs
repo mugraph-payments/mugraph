@@ -202,8 +202,8 @@ impl DepositMonitor {
             Ok(Some(utxo_info)) => {
                 // UTxO exists - verify it still has assets (not emptied)
                 // and is still at our script address (reorg protection)
-                if let Some(expected_addr) = script_address {
-                    if utxo_info.address != expected_addr {
+                if let Some(expected_addr) = script_address
+                    && utxo_info.address != expected_addr {
                         tracing::warn!(
                             "UTxO {} moved from script address (was {}, now {})",
                             tx_hash,
@@ -212,7 +212,6 @@ impl DepositMonitor {
                         );
                         return Ok(false);
                     }
-                }
                 Ok(!utxo_info.amount.is_empty())
             }
             Ok(None) => {

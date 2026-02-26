@@ -225,6 +225,8 @@ pub fn validate_envelope_basics<T>(
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -330,5 +332,21 @@ mod tests {
     fn validate_version_accepts_supported_minor() {
         let result = validate_version("3.42", 3);
         assert!(result.is_ok());
+    }
+
+    proptest! {
+        #[test]
+        fn prop_validate_version_accepts_any_minor(minor in 0u16..=u16::MAX) {
+            let version = format!("3.{minor}");
+            prop_assert!(validate_version(&version, 3).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_version_rejects_other_majors(major in 0u16..=10, minor in 0u16..=1000) {
+            prop_assume!(major != 3);
+            let version = format!("{major}.{minor}");
+            let err = validate_version(&version, 3).unwrap_err();
+            prop_assert_eq!(err.code, XNodeProtocolErrorCode::UnsupportedVersion);
+        }
     }
 }
