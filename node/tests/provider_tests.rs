@@ -263,4 +263,70 @@ proptest! {
 
         prop_assert!(b.confirmations >= a.confirmations);
     }
+
+    #[test]
+    fn prop_missing_tx_state_depends_on_previous_canonical(
+        tip_height in 1u64..=10_000_000,
+        previously_canonical in any::<bool>(),
+    ) {
+        let obs = evaluate_tx_observation("tx1", None, tip_height, 12, 6, previously_canonical);
+        let expected = if previously_canonical {
+            TxSettlementState::Invalidated
+        } else {
+            TxSettlementState::NotFound
+        };
+
+        prop_assert_eq!(obs.state, expected);
+        prop_assert_eq!(obs.confirmations, 0);
+    }
+
+    #[test]
+    fn prop_pre_finality_observation_stays_confirming(
+        block_height in 1u64..=1_000_000,
+        finality_target in 2u64..=500,
+        confirmations_below in 0u64..=499,
+    ) {
+        prop_assume!(confirmations_below + 1 < finality_target);
+
+        let tip_height = block_height + confirmations_below;
+        let obs = evaluate_tx_observation(
+            "tx1",
+            Some(block_height),
+            tip_height,
+            finality_target,
+            6,
+            false,
+        );
+
+        prop_assert_eq!(obs.state, TxSettlementState::Confirming);
+        prop_assert!(obs.confirmations < finality_target);
+    }
+
+    #[test]
+    fn prop_observation_is_deterministic_for_same_inputs(
+        block_height in proptest::option::of(1u64..=1_000_000),
+        tip_height in 1u64..=1_000_000,
+        finality_target in 1u64..=500,
+        reorg_tolerance in 1u64..=500,
+        previously_canonical in any::<bool>(),
+    ) {
+        let a = evaluate_tx_observation(
+            "tx1",
+            block_height,
+            tip_height,
+            finality_target,
+            reorg_tolerance,
+            previously_canonical,
+        );
+        let b = evaluate_tx_observation(
+            "tx1",
+            block_height,
+            tip_height,
+            finality_target,
+            reorg_tolerance,
+            previously_canonical,
+        );
+
+        prop_assert_eq!(a, b);
+    }
 }
