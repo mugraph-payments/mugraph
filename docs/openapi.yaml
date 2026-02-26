@@ -94,6 +94,10 @@ paths:
               oneOf:
                 - $ref: "#/components/schemas/RefreshRequest"
                 - $ref: "#/components/schemas/InfoRequest"
+                - $ref: "#/components/schemas/CrossNodeTransferCreateRequest"
+                - $ref: "#/components/schemas/CrossNodeTransferNotifyRequest"
+                - $ref: "#/components/schemas/CrossNodeTransferStatusRequest"
+                - $ref: "#/components/schemas/CrossNodeTransferAckRequest"
             examples:
               info:
                 summary: Fetch the node public key
@@ -132,6 +136,10 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/RefreshResponse"
                   - $ref: "#/components/schemas/InfoResponse"
+                  - $ref: "#/components/schemas/CrossNodeTransferCreateResponse"
+                  - $ref: "#/components/schemas/CrossNodeTransferNotifyResponse"
+                  - $ref: "#/components/schemas/CrossNodeTransferStatusResponse"
+                  - $ref: "#/components/schemas/CrossNodeTransferAckResponse"
                   - $ref: "#/components/schemas/ErrorResponse"
             examples:
               infoResponse:
@@ -253,11 +261,17 @@ components:
       additionalProperties: false
       description: >
         Error response returned for any failed operation. The `reason` field provides
-        details about why the operation failed. Common reasons include:
-        - "Note has already been spent"
-        - "Invalid signature"
-        - "Zero signature"
-        - "Atom is input but unsigned"
+        details about why the operation failed. For cross-node M3 envelopes, reason strings
+        are prefixed with canonical error codes, for example:
+        - `UNSUPPORTED_VERSION`
+        - `UNSUPPORTED_MESSAGE_TYPE`
+        - `SCHEMA_VALIDATION_FAILED`
+        - `INVALID_SIGNATURE`
+        - `UNKNOWN_KEY_ID`
+        - `AUTHZ_DENIED`
+        - `REPLAY_DETECTED`
+        - `IDEMPOTENCY_CONFLICT`
+        - `TRANSFER_NOT_FOUND`
 
     # Domain models ----------------------------------------------------------
     Refresh:
@@ -580,3 +594,274 @@ components:
       externalDocs:
         description: RFC 4648: The Base16, Base32, and Base64 Data Encodings
         url: https://datatracker.ietf.org/doc/html/rfc4648
+
+    # Cross-node M3 schemas -------------------------------------------------
+    XNodeAuth:
+      type: object
+      required: [alg, kid, sig]
+      properties:
+        alg:
+          type: string
+          enum: [Ed25519]
+        kid:
+          type: string
+        sig:
+          type: string
+      additionalProperties: false
+
+    XNodeEnvelopeTransferInit:
+      type: object
+      required:
+        - m
+        - version
+        - message_type
+        - message_id
+        - transfer_id
+        - idempotency_key
+        - correlation_id
+        - origin_node_id
+        - destination_node_id
+        - sent_at
+        - expires_at
+        - payload
+        - auth
+      properties:
+        m:
+          type: string
+          enum: [xnode]
+        version:
+          type: string
+          example: "3.0"
+        message_type:
+          type: string
+          enum: [transfer_init]
+        message_id:
+          type: string
+        transfer_id:
+          type: string
+        idempotency_key:
+          type: string
+        correlation_id:
+          type: string
+        origin_node_id:
+          type: string
+          pattern: "^node://"
+        destination_node_id:
+          type: string
+          pattern: "^node://"
+        sent_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        payload:
+          $ref: "#/components/schemas/TransferInitPayload"
+        auth:
+          $ref: "#/components/schemas/XNodeAuth"
+      additionalProperties: false
+
+    XNodeEnvelopeTransferNotice:
+      allOf:
+        - $ref: "#/components/schemas/XNodeEnvelopeTransferInit"
+        - type: object
+          properties:
+            message_type:
+              type: string
+              enum: [transfer_notice]
+            payload:
+              $ref: "#/components/schemas/TransferNoticePayload"
+
+    XNodeEnvelopeTransferStatusQuery:
+      allOf:
+        - $ref: "#/components/schemas/XNodeEnvelopeTransferInit"
+        - type: object
+          required: [m, version, message_type, message_id, transfer_id, idempotency_key, correlation_id, origin_node_id, destination_node_id, sent_at, payload, auth]
+          properties:
+            message_type:
+              type: string
+              enum: [transfer_status_query]
+            expires_at:
+              type: ["string", "null"]
+            payload:
+              $ref: "#/components/schemas/TransferStatusQueryPayload"
+
+    XNodeEnvelopeTransferAck:
+      allOf:
+        - $ref: "#/components/schemas/XNodeEnvelopeTransferInit"
+        - type: object
+          properties:
+            message_type:
+              type: string
+              enum: [transfer_ack]
+            payload:
+              $ref: "#/components/schemas/TransferAckPayload"
+
+    TransferInitPayload:
+      type: object
+      required: [asset, amount, destination_account_ref, source_intent_hash]
+      properties:
+        asset: { type: string }
+        amount: { type: string }
+        destination_account_ref: { type: string }
+        source_intent_hash: { type: string }
+      additionalProperties: false
+
+    TransferNoticePayload:
+      type: object
+      required: [notice_stage, tx_hash]
+      properties:
+        notice_stage:
+          type: string
+          enum: [submitted, confirmed, finalized]
+        tx_hash:
+          type: string
+        confirmations:
+          type: ["integer", "null"]
+          minimum: 0
+      additionalProperties: false
+
+    TransferStatusQueryPayload:
+      type: object
+      required: [query_type]
+      properties:
+        query_type:
+          type: string
+          enum: [current, history]
+      additionalProperties: false
+
+    TransferStatusPayload:
+      type: object
+      required:
+        - source_state
+        - destination_state
+        - settlement_state
+        - chain_state
+        - credit_state
+        - confirmations_observed
+        - updated_at
+      properties:
+        source_state: { type: string }
+        destination_state: { type: string }
+        settlement_state:
+          type: string
+          enum: [not_submitted, submitted, confirming, confirmed, invalidated, manual_review]
+        chain_state:
+          type: string
+          enum: [unknown, submitted, confirming, confirmed, invalidated]
+        credit_state:
+          type: string
+          enum: [none, eligible, credited, held, reversed]
+        tx_hash:
+          type: ["string", "null"]
+        confirmations_observed:
+          type: integer
+          minimum: 0
+        updated_at:
+          type: string
+      additionalProperties: false
+
+    TransferAckPayload:
+      type: object
+      required: [ack_for_message_id, ack_status, ack_at]
+      properties:
+        ack_for_message_id: { type: string }
+        ack_status:
+          type: string
+          enum: [processed, duplicate, deferred, rejected]
+        ack_at:
+          type: string
+      additionalProperties: false
+
+    CrossNodeTransferCreateRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_create] }
+        p: { $ref: "#/components/schemas/XNodeEnvelopeTransferInit" }
+      additionalProperties: false
+
+    CrossNodeTransferNotifyRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_notify] }
+        p: { $ref: "#/components/schemas/XNodeEnvelopeTransferNotice" }
+      additionalProperties: false
+
+    CrossNodeTransferStatusRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_status] }
+        p: { $ref: "#/components/schemas/XNodeEnvelopeTransferStatusQuery" }
+      additionalProperties: false
+
+    CrossNodeTransferAckRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_ack] }
+        p: { $ref: "#/components/schemas/XNodeEnvelopeTransferAck" }
+      additionalProperties: false
+
+    CrossNodeTransferCreateResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_create] }
+        r:
+          type: object
+          required: [transfer_id, accepted]
+          properties:
+            transfer_id: { type: string }
+            accepted: { type: boolean }
+          additionalProperties: false
+      additionalProperties: false
+
+    CrossNodeTransferNotifyResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_notify] }
+        r:
+          type: object
+          required: [accepted]
+          properties:
+            accepted: { type: boolean }
+          additionalProperties: false
+      additionalProperties: false
+
+    CrossNodeTransferStatusResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_status] }
+        r: { $ref: "#/components/schemas/XNodeEnvelopeTransferStatus" }
+      additionalProperties: false
+
+    XNodeEnvelopeTransferStatus:
+      allOf:
+        - $ref: "#/components/schemas/XNodeEnvelopeTransferStatusQuery"
+        - type: object
+          properties:
+            message_type:
+              type: string
+              enum: [transfer_status]
+            expires_at:
+              type: ["string", "null"]
+            payload:
+              $ref: "#/components/schemas/TransferStatusPayload"
+
+    CrossNodeTransferAckResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [cross_node_transfer_ack] }
+        r:
+          type: object
+          required: [accepted]
+          properties:
+            accepted: { type: boolean }
+          additionalProperties: false
+      additionalProperties: false
