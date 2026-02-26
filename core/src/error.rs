@@ -186,6 +186,11 @@ impl From<crate::types::XNodeProtocolError> for Error {
                     message_type: value.detail,
                 }
             }
+            crate::types::XNodeProtocolErrorCode::SchemaValidationFailed => {
+                Self::InvalidInput {
+                    reason: value.detail,
+                }
+            }
         }
     }
 }

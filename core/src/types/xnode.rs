@@ -134,6 +134,7 @@ pub struct TransferAckPayload {
 pub enum XNodeProtocolErrorCode {
     UnsupportedVersion,
     UnsupportedMessageType,
+    SchemaValidationFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -181,6 +182,47 @@ pub fn parse_message_type(value: &str) -> Result<XNodeMessageType, XNodeProtocol
     }
 }
 
+pub fn validate_envelope_basics<T>(
+    envelope: &XNodeEnvelope<T>,
+    expected_message_type: XNodeMessageType,
+    supported_major: u16,
+) -> Result<(), XNodeProtocolError> {
+    if envelope.m != "xnode" {
+        return Err(XNodeProtocolError {
+            code: XNodeProtocolErrorCode::SchemaValidationFailed,
+            detail: "xnode envelope discriminator (m) must be 'xnode'".to_string(),
+        });
+    }
+
+    validate_version(&envelope.version, supported_major)?;
+
+    if envelope.message_type != expected_message_type {
+        return Err(XNodeProtocolError {
+            code: XNodeProtocolErrorCode::UnsupportedMessageType,
+            detail: format!(
+                "expected {:?}, got {:?}",
+                expected_message_type, envelope.message_type
+            ),
+        });
+    }
+
+    let requires_expiry = matches!(
+        envelope.message_type,
+        XNodeMessageType::TransferInit
+            | XNodeMessageType::TransferNotice
+            | XNodeMessageType::TransferAck
+    );
+
+    if requires_expiry && envelope.expires_at.is_none() {
+        return Err(XNodeProtocolError {
+            code: XNodeProtocolErrorCode::SchemaValidationFailed,
+            detail: "expires_at is required for command envelopes".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +261,74 @@ mod tests {
         let value = serde_json::to_value(&payload).unwrap();
         assert_eq!(value["chain_state"], "confirming");
         assert_eq!(value["credit_state"], "eligible");
+    }
+
+    #[test]
+    fn validate_envelope_basics_rejects_non_xnode_discriminator() {
+        let env = XNodeEnvelope {
+            m: "rpc".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferInit,
+            message_id: "m1".to_string(),
+            transfer_id: "t1".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "c1".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferInitPayload {
+                asset: "lovelace".to_string(),
+                amount: "1".to_string(),
+                destination_account_ref: "acct".to_string(),
+                source_intent_hash: "h".to_string(),
+            },
+            auth: XNodeAuth {
+                alg: "Ed25519".to_string(),
+                kid: "k1".to_string(),
+                sig: "sig".to_string(),
+            },
+        };
+
+        let err = validate_envelope_basics(&env, XNodeMessageType::TransferInit, 3)
+            .unwrap_err();
+        assert_eq!(err.code, XNodeProtocolErrorCode::SchemaValidationFailed);
+    }
+
+    #[test]
+    fn validate_envelope_basics_rejects_missing_expiry_for_command() {
+        let env = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "m1".to_string(),
+            transfer_id: "t1".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "c1".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: None,
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Submitted,
+                tx_hash: "abcd".to_string(),
+                confirmations: None,
+            },
+            auth: XNodeAuth {
+                alg: "Ed25519".to_string(),
+                kid: "k1".to_string(),
+                sig: "sig".to_string(),
+            },
+        };
+
+        let err = validate_envelope_basics(&env, XNodeMessageType::TransferNotice, 3)
+            .unwrap_err();
+        assert_eq!(err.code, XNodeProtocolErrorCode::SchemaValidationFailed);
+    }
+
+    #[test]
+    fn validate_version_accepts_supported_minor() {
+        let result = validate_version("3.42", 3);
+        assert!(result.is_ok());
     }
 }

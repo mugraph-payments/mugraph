@@ -2,7 +2,7 @@ use mugraph_core::{
     error::Error,
     types::{
         Response, TransferChainState, TransferCreditState, TransferSettlementState,
-        TransferStatusPayload, XNodeEnvelope, XNodeMessageType, validate_version,
+        TransferStatusPayload, XNodeEnvelope, XNodeMessageType, validate_envelope_basics,
     },
 };
 
@@ -10,24 +10,7 @@ fn validate_envelope<T>(
     envelope: &XNodeEnvelope<T>,
     expected_message_type: XNodeMessageType,
 ) -> Result<(), Error> {
-    if envelope.m != "xnode" {
-        return Err(Error::InvalidInput {
-            reason: "xnode envelope discriminator (m) must be 'xnode'".to_string(),
-        });
-    }
-
-    validate_version(&envelope.version, 3).map_err(Error::from)?;
-
-    if envelope.message_type != expected_message_type {
-        return Err(Error::UnsupportedMessageType {
-            message_type: format!(
-                "expected {:?}, got {:?}",
-                expected_message_type, envelope.message_type
-            ),
-        });
-    }
-
-    Ok(())
+    validate_envelope_basics(envelope, expected_message_type, 3).map_err(Error::from)
 }
 
 pub fn handle_create(
@@ -215,5 +198,58 @@ mod tests {
             response,
             Response::CrossNodeTransferAck { accepted: true }
         ));
+    }
+
+    #[test]
+    fn create_rejects_non_xnode_discriminator() {
+        let request = XNodeEnvelope {
+            m: "rpc".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferInit,
+            message_id: "mid".to_string(),
+            transfer_id: "tr".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferInitPayload {
+                asset: "lovelace".to_string(),
+                amount: "1".to_string(),
+                destination_account_ref: "acct".to_string(),
+                source_intent_hash: "hash".to_string(),
+            },
+            auth: auth(),
+        };
+
+        let err = handle_create(&request).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn notice_rejects_missing_expires_at() {
+        let request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid".to_string(),
+            transfer_id: "tr".to_string(),
+            idempotency_key: "ik".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: None,
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(1),
+            },
+            auth: auth(),
+        };
+
+        let err = handle_notify(&request).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
     }
 }

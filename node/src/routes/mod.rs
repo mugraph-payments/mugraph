@@ -231,3 +231,120 @@ fn load_cardano_script_address(database: &Database) -> Result<String, Error> {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{Json, extract::State};
+    use mugraph_core::types::{
+        Request, TransferNoticePayload, TransferNoticeStage, XNodeAuth, XNodeEnvelope,
+        XNodeMessageType,
+    };
+
+    use super::*;
+
+    fn test_config() -> Config {
+        Config::Server {
+            addr: "127.0.0.1:9999".parse().unwrap(),
+            seed: Some(42),
+            secret_key: None,
+            cardano_network: "preprod".to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: Some("test".to_string()),
+            cardano_provider_url: None,
+            cardano_payment_sk: None,
+            deposit_confirm_depth: 15,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: Some(1_000_000),
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2_000_000,
+            fee_tolerance_pct: 5,
+        }
+    }
+
+    fn test_context() -> Context {
+        let db_path = std::env::temp_dir().join(format!(
+            "mugraph-rpc-test-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let database = Arc::new(Database::setup(db_path).unwrap());
+        database.migrate().unwrap();
+
+        let config = test_config();
+        let keypair = config.keypair().unwrap();
+
+        Context {
+            keypair,
+            database,
+            config,
+        }
+    }
+
+    #[tokio::test]
+    async fn rpc_dispatches_cross_node_transfer_notify() {
+        let ctx = test_context();
+        let request = Request::CrossNodeTransferNotify(XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid-1".to_string(),
+            transfer_id: "tr-1".to_string(),
+            idempotency_key: "ik-1".to_string(),
+            correlation_id: "corr-1".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(6),
+            },
+            auth: XNodeAuth {
+                alg: "Ed25519".to_string(),
+                kid: "k1".to_string(),
+                sig: "sig".to_string(),
+            },
+        });
+
+        let Json(response) = rpc(State(ctx), Json(request)).await;
+        assert!(matches!(
+            response,
+            mugraph_core::types::Response::CrossNodeTransferNotify { accepted: true }
+        ));
+    }
+
+    #[tokio::test]
+    async fn rpc_returns_error_for_invalid_cross_node_envelope() {
+        let ctx = test_context();
+        let request = Request::CrossNodeTransferNotify(XNodeEnvelope {
+            m: "rpc".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid-1".to_string(),
+            transfer_id: "tr-1".to_string(),
+            idempotency_key: "ik-1".to_string(),
+            correlation_id: "corr-1".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(6),
+            },
+            auth: XNodeAuth {
+                alg: "Ed25519".to_string(),
+                kid: "k1".to_string(),
+                sig: "sig".to_string(),
+            },
+        });
+
+        let Json(response) = rpc(State(ctx), Json(request)).await;
+        assert!(matches!(response, mugraph_core::types::Response::Error { .. }));
+    }
+}
