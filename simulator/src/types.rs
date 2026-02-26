@@ -1,16 +1,19 @@
-use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::{Duration, Instant},
+};
 
 use clap::Parser;
-
 use mugraph_core::types::{Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh};
 use reqwest::Url;
 
+use crate::client::NodeClient;
+
 #[derive(Debug, Parser)]
 pub struct Args {
-    /// Node base URL (e.g. http://127.0.0.1:9999)
-    #[arg(long, default_value = "http://127.0.0.1:9999")]
-    pub node_url: Url,
+    /// Node base URLs (e.g. http://127.0.0.1:9999); repeat for multi-node
+    #[arg(long = "node-url", default_value = "http://127.0.0.1:9999")]
+    pub node_urls: Vec<Url>,
     /// Number of simulated wallets
     #[arg(long, default_value_t = 6)]
     pub wallets: usize,
@@ -40,17 +43,24 @@ pub struct Args {
 #[derive(Debug, Default, Clone)]
 pub struct Wallet {
     pub id: usize,
+    pub home_node: usize,
     pub notes: HashMap<Asset, Vec<Note>>,
     pub sent: u64,
     pub received: u64,
     pub failures: u64,
 }
 
+#[derive(Clone)]
+pub struct SimNode {
+    pub client: NodeClient,
+    pub delegate_pk: PublicKey,
+}
+
 #[derive(Debug, Default)]
 pub struct AppState {
     pub wallets: Vec<Wallet>,
     pub assets: Vec<SimAsset>,
-    pub delegate_pk: PublicKey,
+    pub delegates: Vec<PublicKey>,
     pub logs: VecDeque<String>,
     pub inflight: usize,
     pub total_sent: u64,
@@ -90,6 +100,7 @@ impl AppState {
             .iter()
             .map(|wallet| WalletSnapshot {
                 id: wallet.id,
+                home_node: wallet.home_node,
                 balances: self
                     .assets
                     .iter()
@@ -146,7 +157,7 @@ impl AppState {
         AppSnapshot {
             wallets,
             asset_summaries,
-            delegate_pk: self.delegate_pk,
+            node_count: self.delegates.len(),
             logs: self.logs.clone(),
             inflight: self.inflight,
             max_inflight,
@@ -172,6 +183,7 @@ pub struct WalletBalance {
 #[derive(Debug, Clone)]
 pub struct WalletSnapshot {
     pub id: usize,
+    pub home_node: usize,
     pub balances: Vec<WalletBalance>,
     pub sent: u64,
     pub received: u64,
@@ -182,7 +194,7 @@ pub struct WalletSnapshot {
 pub struct AppSnapshot {
     pub wallets: Vec<WalletSnapshot>,
     pub asset_summaries: Vec<AssetSummary>,
-    pub delegate_pk: PublicKey,
+    pub node_count: usize,
     pub logs: VecDeque<String>,
     pub inflight: usize,
     pub max_inflight: usize,
@@ -270,12 +282,7 @@ impl ConservationOracle {
                     .filter_map(|w| {
                         w.notes.get(asset).map(|notes| {
                             let total: u64 = notes.iter().map(|n| n.amount).sum();
-                            format!(
-                                "  wallet {}: {} notes, total {}",
-                                w.id,
-                                notes.len(),
-                                total,
-                            )
+                            format!("  wallet {}: {} notes, total {}", w.id, notes.len(), total,)
                         })
                     })
                     .collect();
@@ -407,6 +414,7 @@ pub struct PendingTx {
     pub spend_amount: u64,
     pub refresh: Refresh,
     pub owners: Vec<usize>,
+    pub delegate: PublicKey,
 }
 
 #[derive(Debug)]

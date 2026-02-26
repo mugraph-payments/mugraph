@@ -30,20 +30,19 @@ fn render_ui(
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(3),  // Conservation banner
-                Constraint::Length(4),  // Health metrics
+                Constraint::Length(3), // Conservation banner
+                Constraint::Length(4), // Health metrics
                 Constraint::Min(5),    // Main body (assets or wallets)
-                Constraint::Length(6),  // Log tail
-                Constraint::Length(1),  // Controls
+                Constraint::Length(6), // Log tail
+                Constraint::Length(1), // Controls
             ])
             .split(f.area());
 
         // === Conservation banner ===
-        let delegate_str = format!("{}", snapshot.delegate_pk);
-        let delegate_short = if delegate_str.len() > 16 {
-            &delegate_str[..16]
+        let node_label = if snapshot.node_count == 1 {
+            "1 node".to_string()
         } else {
-            &delegate_str
+            format!("{} nodes", snapshot.node_count)
         };
 
         let conservation_line = Line::from(vec![
@@ -59,11 +58,8 @@ fn render_ui(
                 format!("{}", snapshot.conservation_checks),
                 Style::default().fg(Color::Green),
             ),
-            Span::raw(" checks passed   delegate: "),
-            Span::styled(
-                format!("{delegate_short}.."),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::raw(" checks   "),
+            Span::styled(node_label, Style::default().fg(Color::Cyan)),
         ]);
 
         let conservation = Paragraph::new(conservation_line)
@@ -77,7 +73,9 @@ fn render_ui(
                 Span::raw(" tx/s: "),
                 Span::styled(
                     format!("{:.1}", snapshot.tx_per_sec),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw("   ok: "),
                 Span::styled(
@@ -179,6 +177,7 @@ fn render_ui(
                         let total_notes: usize = w.balances.iter().map(|b| b.notes).sum();
                         Row::new([
                             format!("{}", w.id),
+                            format!("N{}", w.home_node),
                             format!("{total_balance}"),
                             format!("{total_notes}"),
                             format!("{}", w.sent),
@@ -193,6 +192,7 @@ fn render_ui(
                     rows,
                     [
                         Constraint::Length(4),
+                        Constraint::Length(6),
                         Constraint::Length(12),
                         Constraint::Length(8),
                         Constraint::Length(8),
@@ -201,7 +201,7 @@ fn render_ui(
                     ],
                 )
                 .header(
-                    Row::new(["id", "balance", "notes", "sent", "recv", "fail"])
+                    Row::new(["id", "home", "balance", "notes", "sent", "recv", "fail"])
                         .style(Style::default().add_modifier(Modifier::BOLD)),
                 )
                 .block(Block::default().borders(Borders::ALL).title("Wallets"))

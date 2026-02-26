@@ -16,7 +16,7 @@ use crate::{
     assets::generate_assets,
     client::NodeClient,
     simulation::{bootstrap_wallets, simulation_owner_loop},
-    types::{AppState, Args, SimChannels, SimCommand, SimConfig},
+    types::{AppState, Args, SimChannels, SimCommand, SimConfig, SimNode},
     ui::ui_loop,
 };
 
@@ -34,27 +34,35 @@ async fn main() -> Result<()> {
         }
     };
 
-    let client = NodeClient::new(&args.node_url)?;
-    client.health().await.wrap_err("node health check failed")?;
-    let node_pk = client
-        .public_key()
-        .await
-        .wrap_err("fetch node public key")?;
+    let mut nodes = Vec::new();
+    for url in &args.node_urls {
+        let client = NodeClient::new(url)?;
+        client
+            .health()
+            .await
+            .wrap_err_with(|| format!("health check failed for {url}"))?;
+        let delegate_pk = client
+            .public_key()
+            .await
+            .wrap_err_with(|| format!("fetch public key from {url}"))?;
+        info!("connected to node {url} (delegate pk {delegate_pk})");
+        nodes.push(SimNode {
+            client,
+            delegate_pk,
+        });
+    }
 
-    info!(
-        "connected to node {} (delegate pk {})",
-        args.node_url, node_pk
-    );
+    let delegates: Vec<_> = nodes.iter().map(|n| n.delegate_pk).collect();
 
     let assets = generate_assets(args.assets, &mut rng);
     let mut state = AppState {
         assets: assets.clone(),
-        delegate_pk: node_pk,
+        delegates,
         ..Default::default()
     };
 
     bootstrap_wallets(
-        &client,
+        &nodes,
         &mut state,
         &assets,
         args.wallets,
@@ -71,8 +79,7 @@ async fn main() -> Result<()> {
         max_inflight: args.max_inflight,
     };
 
-    let (snapshot_tx, snapshot_rx) =
-        watch::channel(state.snapshot(0, args.max_inflight, 0.0, 100.0));
+    let (snapshot_tx, snapshot_rx) = watch::channel(state.snapshot(0, args.max_inflight, 0.0, 100.0));
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
 
@@ -83,8 +90,7 @@ async fn main() -> Result<()> {
         snapshot_tx,
     };
 
-    let mut owner_handle =
-        tokio::spawn(simulation_owner_loop(client, state, rng, config, channels));
+    let mut owner_handle = tokio::spawn(simulation_owner_loop(nodes, state, rng, config, channels));
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();

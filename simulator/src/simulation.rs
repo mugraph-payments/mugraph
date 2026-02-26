@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
@@ -10,10 +9,10 @@ use mugraph_core::{
 use rand::{Rng, rngs::StdRng};
 use tokio::time::{MissedTickBehavior, interval};
 
-use crate::{client::NodeClient, types::*};
+use crate::types::*;
 
 pub async fn bootstrap_wallets(
-    client: &NodeClient,
+    nodes: &[SimNode],
     state: &mut AppState,
     assets: &[SimAsset],
     wallets: usize,
@@ -24,18 +23,25 @@ pub async fn bootstrap_wallets(
     state.wallets = (0..wallets)
         .map(|id| Wallet {
             id,
+            home_node: id % nodes.len(),
             ..Default::default()
         })
         .collect();
 
     for wallet_id in 0..wallets {
+        let node = &nodes[wallet_id % nodes.len()];
         for asset in assets.iter() {
             for _ in 0..notes_per_wallet {
                 let amount = rng.random_range(amount_range.0..=amount_range.1);
-                let note = client.emit(asset.policy_id, asset.asset_name, amount).await?;
+                let note = node
+                    .client
+                    .emit(asset.policy_id, asset.asset_name, amount)
+                    .await?;
                 state.log(format!(
-                    "emit via node wallet={} asset={} amount={amount}",
-                    wallet_id, asset.name
+                    "emit node={} wallet={} asset={} amount={amount}",
+                    wallet_id % nodes.len(),
+                    wallet_id,
+                    asset.name
                 ));
 
                 let w = &mut state.wallets[wallet_id];
@@ -80,14 +86,20 @@ pub fn build_refresh(
     input_note: Note,
     amount: u64,
 ) -> Result<(Refresh, Vec<usize>)> {
-    let mut builder = RefreshBuilder::new()
-        .input(input_note.clone())
-        .output(asset.policy_id, asset.asset_name, amount);
+    let mut builder = RefreshBuilder::new().input(input_note.clone()).output(
+        asset.policy_id,
+        asset.asset_name,
+        amount,
+    );
 
     let mut owners = vec![output_owner];
 
     if input_note.amount > amount {
-        builder = builder.output(asset.policy_id, asset.asset_name, input_note.amount - amount);
+        builder = builder.output(
+            asset.policy_id,
+            asset.asset_name,
+            input_note.amount - amount,
+        );
         owners.push(input_owner);
     }
 
@@ -159,7 +171,11 @@ fn apply_successful_tx(state: &mut AppState, pending: &PendingTx, notes: Vec<(us
             policy_id: note.policy_id,
             asset_name: note.asset_name,
         };
-        state.wallets[owner].notes.entry(key).or_default().push(note);
+        state.wallets[owner]
+            .notes
+            .entry(key)
+            .or_default()
+            .push(note);
     }
 
     state.wallets[pending.sender_id].sent += 1;
@@ -190,7 +206,7 @@ fn record_sender_failure(
 }
 
 pub async fn simulation_owner_loop(
-    client: NodeClient,
+    nodes: Vec<SimNode>,
     mut state: AppState,
     mut rng: StdRng,
     config: SimConfig,
@@ -301,6 +317,13 @@ pub async fn simulation_owner_loop(
                     &format!("after reserve (tx_id={})", tx_id + 1),
                 );
 
+                // Route to the node that signed this note
+                let note_delegate = input_note.delegate;
+                let node = nodes
+                    .iter()
+                    .find(|n| n.delegate_pk == note_delegate)
+                    .unwrap_or(&nodes[0]);
+
                 tx_id += 1;
                 let pending = PendingTx {
                     id: tx_id,
@@ -312,13 +335,14 @@ pub async fn simulation_owner_loop(
                     spend_amount,
                     refresh,
                     owners,
+                    delegate: note_delegate,
                 };
 
                 state.inflight += 1;
                 state.total_sent += 1;
                 let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
 
-                let client_clone = client.clone();
+                let client_clone = node.client.clone();
                 let event_tx_clone = event_tx.clone();
                 tokio::spawn(async move {
                     let result = match client_clone.refresh(&pending.refresh).await {
@@ -360,7 +384,7 @@ pub async fn simulation_owner_loop(
                                 &pending.refresh,
                                 outputs,
                                 &pending.owners,
-                                state.delegate_pk,
+                                pending.delegate,
                             ) {
                                 Ok(notes) => {
                                     throughput.record_ok();
@@ -411,7 +435,12 @@ pub async fn simulation_owner_loop(
     }
 
     state.shutdown = true;
-    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+    let _ = snapshot_tx.send(state.snapshot(
+        oracle.checks_passed(),
+        max_inflight,
+        throughput.tx_per_sec(),
+        throughput.success_rate(),
+    ));
 }
 
 #[cfg(test)]
