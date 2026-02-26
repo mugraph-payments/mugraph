@@ -12,10 +12,12 @@ use mugraph_core::{
     types::{Keypair, Request, Response},
 };
 
+mod cross_node;
 mod deposit;
 mod refresh;
 mod withdraw;
 
+pub use cross_node::*;
 pub use deposit::*;
 pub use refresh::*;
 pub use withdraw::*;
@@ -188,6 +190,30 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
                 }),
             }
         }
+        Request::CrossNodeTransferCreate(request) => match cross_node::handle_create(&request) {
+            Ok(response) => Json(response),
+            Err(e) => Json(Response::Error {
+                reason: e.to_string(),
+            }),
+        },
+        Request::CrossNodeTransferNotify(request) => match cross_node::handle_notify(&request) {
+            Ok(response) => Json(response),
+            Err(e) => Json(Response::Error {
+                reason: e.to_string(),
+            }),
+        },
+        Request::CrossNodeTransferStatus(request) => match cross_node::handle_status(&request) {
+            Ok(response) => Json(response),
+            Err(e) => Json(Response::Error {
+                reason: e.to_string(),
+            }),
+        },
+        Request::CrossNodeTransferAck(request) => match cross_node::handle_ack(&request) {
+            Ok(response) => Json(response),
+            Err(e) => Json(Response::Error {
+                reason: e.to_string(),
+            }),
+        },
     }
 }
 
