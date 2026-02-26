@@ -68,7 +68,52 @@ Minimal handoff by phase:
 - destination credit applied -> only after chain threshold
 - terminal success -> only after chain confirmation policy
 
-## 5) Lifecycle (simplified)
+## 5) Canonical on-chain settlement artifact (design freeze)
+
+A cross-node transfer is represented on-chain by a **single settlement transaction** identified by `tx_hash`.
+
+Required transaction evidence (normative):
+1. transaction is on the expected Cardano network.
+2. transaction includes metadata label `673` with fields:
+   - `transfer_id`
+   - `source_node_id`
+   - `destination_node_id`
+   - `asset`
+   - `amount`
+3. transaction includes at least one output controlled by destination node settlement address/policy.
+4. one output must match (`asset`, `amount`) for the transfer intent.
+
+Required persisted settlement evidence in `CROSS_NODE_TRANSFERS`:
+- `tx_hash`
+- `network`
+- `settlement_output_index`
+- `asset`
+- `amount`
+- `confirmations_observed`
+- `canonical_inclusion` (bool)
+- `observed_block_height`
+- `last_canonical_height_checked`
+
+### 5.1 Destination verification algorithm (deterministic)
+
+On `transfer_notice(tx_hash, transfer_id, ...)`, destination MUST:
+1. fetch tx by `tx_hash` from provider.
+2. fail soft (retry path) if tx not yet visible.
+3. verify metadata label `673` exists and matches transfer tuple.
+4. verify destination-controlled output exists with required `asset` + `amount`.
+5. bind `settlement_output_index` and set `chain_state=submitted|confirming`.
+6. advance to credit eligibility only when confirmations `>= credit_target`.
+
+If any hard check fails (metadata mismatch, wrong destination, amount mismatch), mark deterministic failure (`TRANSFER_STATE_CONFLICT` / `SCHEMA_VALIDATION_FAILED`) and do not credit.
+
+### 5.2 Reorg invalidation criteria (explicit)
+
+- **Shallow reorg** (`depth <= reorg_tolerance`): remain in `confirming`, continue polling.
+- **Deep reorg** (`depth > reorg_tolerance`) OR tx disappears from canonical chain for more than `reorg_tolerance` consecutive checks: set `chain_state=invalidated`.
+- If tx returns canonically with matching evidence, transition `invalidated -> confirming`.
+- If not recoverable within retry budget/SLA, transition to `ManualReview` (destination may `held` or `reversed` per policy).
+
+## 6) Lifecycle (simplified)
 
 ### Source
 `Requested -> Submitted -> Confirming -> Confirmed`
@@ -87,7 +132,7 @@ Rules:
 - final success is chain-gated (`finality_target`)
 - duplicates are idempotent no-ops
 
-## 6) Persistence
+## 7) Persistence
 
 Primary table:
 - `CROSS_NODE_TRANSFERS` (authoritative transfer row)
@@ -101,7 +146,7 @@ Canonical enums:
 - `chain_state`: `unknown|submitted|confirming|confirmed|invalidated`
 - `credit_state`: `none|eligible|credited|held|reversed`
 
-## 7) Recovery policy
+## 8) Recovery policy
 
 Recovery order:
 1. chain evidence
@@ -113,13 +158,13 @@ Implications:
 - lost notice recovered by retry/status query
 - deep reorg follows invalidated path deterministically
 
-## 8) Compatibility
+## 9) Compatibility
 
 - Existing RPC methods remain (`cross_node_transfer_*`).
 - Older peers: `unsupported_method:cross_node_transfer_*`.
 - Unsupported legacy message types: `UNSUPPORTED_MESSAGE_TYPE` with no state mutation.
 
-## 9) Normative references
+## 10) Normative references
 
 - Glossary/defaults: `milestone-3-glossary-and-defaults.md`
 - Protocol contract: `milestone-3-inter-node-protocol-messages.md`
@@ -127,9 +172,8 @@ Implications:
 - Observability/tests: `milestone-3-observability-test-plan.md`
 - Implementation backlog: `milestone-3-implementation-backlog.md`
 
-## 10) Open decisions
+## 11) Open decisions
 
 - Network-specific values for `credit_target`, `finality_target`, `reorg_tolerance`.
-- Final on-chain settlement transaction format for cross-node transfers (minimum observable artifacts: `tx_hash`, network, confirmation depth, canonical inclusion).
 - Destination invalidation policy default (`held` vs `reversed`).
 - Operator quorum for manual-review closure.
