@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
+use std::time::{Duration, Instant};
 
 use clap::Parser;
-use std::time::Duration;
 
 use mugraph_core::types::{Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh};
 use reqwest::Url;
@@ -78,8 +78,14 @@ impl AppState {
         }
     }
 
-    pub fn snapshot(&self, conservation_checks: u64) -> AppSnapshot {
-        let wallets = self
+    pub fn snapshot(
+        &self,
+        conservation_checks: u64,
+        max_inflight: usize,
+        tx_per_sec: f64,
+        success_rate: f64,
+    ) -> AppSnapshot {
+        let wallets: Vec<WalletSnapshot> = self
             .wallets
             .iter()
             .map(|wallet| WalletSnapshot {
@@ -107,12 +113,43 @@ impl AppState {
             })
             .collect();
 
+        let asset_summaries = self
+            .assets
+            .iter()
+            .map(|sim_asset| {
+                let key = Asset {
+                    policy_id: sim_asset.policy_id,
+                    asset_name: sim_asset.asset_name,
+                };
+                let mut total_supply: u64 = 0;
+                let mut total_notes: usize = 0;
+                let mut wallets_holding: usize = 0;
+                for wallet in &self.wallets {
+                    if let Some(notes) = wallet.notes.get(&key)
+                        && !notes.is_empty()
+                    {
+                        wallets_holding += 1;
+                        total_notes += notes.len();
+                        total_supply += notes.iter().map(|n| n.amount).sum::<u64>();
+                    }
+                }
+                AssetSummary {
+                    name: sim_asset.name,
+                    policy_id_hex: sim_asset.policy_id_hex,
+                    total_supply,
+                    total_notes,
+                    wallets_holding,
+                }
+            })
+            .collect();
+
         AppSnapshot {
             wallets,
-            assets: self.assets.clone(),
+            asset_summaries,
             delegate_pk: self.delegate_pk,
             logs: self.logs.clone(),
             inflight: self.inflight,
+            max_inflight,
             total_sent: self.total_sent,
             total_ok: self.total_ok,
             total_err: self.total_err,
@@ -120,6 +157,8 @@ impl AppState {
             paused: self.paused,
             shutdown: self.shutdown,
             conservation_checks,
+            tx_per_sec,
+            success_rate,
         }
     }
 }
@@ -142,10 +181,11 @@ pub struct WalletSnapshot {
 #[derive(Debug, Clone)]
 pub struct AppSnapshot {
     pub wallets: Vec<WalletSnapshot>,
-    pub assets: Vec<SimAsset>,
+    pub asset_summaries: Vec<AssetSummary>,
     pub delegate_pk: PublicKey,
     pub logs: VecDeque<String>,
     pub inflight: usize,
+    pub max_inflight: usize,
     pub total_sent: u64,
     pub total_ok: u64,
     pub total_err: u64,
@@ -153,6 +193,8 @@ pub struct AppSnapshot {
     pub paused: bool,
     pub shutdown: bool,
     pub conservation_checks: u64,
+    pub tx_per_sec: f64,
+    pub success_rate: f64,
 }
 
 pub struct SimConfig {
@@ -279,6 +321,66 @@ impl ConservationOracle {
     pub fn checks_passed(&self) -> u64 {
         self.checks_passed
     }
+}
+
+pub struct ThroughputTracker {
+    window: Duration,
+    ok_times: VecDeque<Instant>,
+    err_times: VecDeque<Instant>,
+}
+
+impl ThroughputTracker {
+    pub fn new(window: Duration) -> Self {
+        Self {
+            window,
+            ok_times: VecDeque::new(),
+            err_times: VecDeque::new(),
+        }
+    }
+
+    pub fn record_ok(&mut self) {
+        self.ok_times.push_back(Instant::now());
+        self.prune();
+    }
+
+    pub fn record_err(&mut self) {
+        self.err_times.push_back(Instant::now());
+        self.prune();
+    }
+
+    fn prune(&mut self) {
+        let cutoff = Instant::now() - self.window;
+        while self.ok_times.front().is_some_and(|t| *t < cutoff) {
+            self.ok_times.pop_front();
+        }
+        while self.err_times.front().is_some_and(|t| *t < cutoff) {
+            self.err_times.pop_front();
+        }
+    }
+
+    pub fn tx_per_sec(&mut self) -> f64 {
+        self.prune();
+        let total = self.ok_times.len() + self.err_times.len();
+        total as f64 / self.window.as_secs_f64()
+    }
+
+    pub fn success_rate(&mut self) -> f64 {
+        self.prune();
+        let total = self.ok_times.len() + self.err_times.len();
+        if total == 0 {
+            return 100.0;
+        }
+        self.ok_times.len() as f64 / total as f64 * 100.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AssetSummary {
+    pub name: &'static str,
+    pub policy_id_hex: &'static str,
+    pub total_supply: u64,
+    pub total_notes: usize,
+    pub wallets_holding: usize,
 }
 
 pub struct SimChannels {

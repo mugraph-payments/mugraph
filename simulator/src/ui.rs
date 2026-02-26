@@ -7,143 +7,235 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
 use tokio::sync::{mpsc, watch};
 
 use crate::types::{AppSnapshot, SimCommand};
 
-pub fn render_ui(
+#[derive(Clone, Copy, PartialEq)]
+enum ViewState {
+    Dashboard,
+    Wallets,
+}
+
+fn render_ui(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     snapshot: &AppSnapshot,
+    view: ViewState,
 ) -> Result<()> {
-    let paused = snapshot.paused;
-
     terminal.draw(|f| {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints(
-                [
-                    Constraint::Length(3),
-                    Constraint::Min(5),
-                    Constraint::Length(10),
-                ]
-                .as_ref(),
-            )
+            .constraints([
+                Constraint::Length(3),  // Conservation banner
+                Constraint::Length(4),  // Health metrics
+                Constraint::Min(5),    // Main body (assets or wallets)
+                Constraint::Length(6),  // Log tail
+                Constraint::Length(1),  // Controls
+            ])
             .split(f.area());
 
-        let header = Paragraph::new(vec![
+        // === Conservation banner ===
+        let delegate_str = format!("{}", snapshot.delegate_pk);
+        let delegate_short = if delegate_str.len() > 16 {
+            &delegate_str[..16]
+        } else {
+            &delegate_str
+        };
+
+        let conservation_line = Line::from(vec![
+            Span::styled(
+                " CONSERVED ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                format!("{}", snapshot.conservation_checks),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw(" checks passed   delegate: "),
+            Span::styled(
+                format!("{delegate_short}.."),
+                Style::default().fg(Color::Cyan),
+            ),
+        ]);
+
+        let conservation = Paragraph::new(conservation_line)
+            .block(Block::default().borders(Borders::ALL).title("Conservation"));
+        f.render_widget(conservation, layout[0]);
+
+        // === Health metrics ===
+        let paused = snapshot.paused;
+        let health = Paragraph::new(vec![
             Line::from(vec![
-                Span::raw("Delegate: "),
+                Span::raw(" tx/s: "),
                 Span::styled(
-                    format!("{}", snapshot.delegate_pk),
-                    Style::default().fg(Color::Cyan),
+                    format!("{:.1}", snapshot.tx_per_sec),
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("  Paused: "),
+                Span::raw("   ok: "),
                 Span::styled(
-                    format!("{}", paused),
+                    format!("{:.1}%", snapshot.success_rate),
+                    Style::default().fg(if snapshot.success_rate >= 95.0 {
+                        Color::Green
+                    } else if snapshot.success_rate >= 80.0 {
+                        Color::Yellow
+                    } else {
+                        Color::Red
+                    }),
+                ),
+                Span::raw("   inflight: "),
+                Span::styled(
+                    format!("{}/{}", snapshot.inflight, snapshot.max_inflight),
+                    Style::default().fg(Color::Yellow),
+                ),
+                Span::raw("   paused: "),
+                Span::styled(
+                    format!("{paused}"),
                     Style::default().fg(if paused { Color::Yellow } else { Color::Green }),
                 ),
             ]),
             Line::from(vec![
-                Span::raw("Tx sent/ok/err: "),
+                Span::raw(" total: "),
                 Span::styled(
-                    format!(
-                        "{}/{}/{}",
-                        snapshot.total_sent, snapshot.total_ok, snapshot.total_err
-                    ),
+                    format!("{}", snapshot.total_sent),
                     Style::default().fg(Color::Magenta),
                 ),
-                Span::raw("  Inflight: "),
+                Span::raw(" sent  "),
                 Span::styled(
-                    snapshot.inflight.to_string(),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw("  Invariant: "),
-                Span::styled(
-                    format!("{} ok", snapshot.conservation_checks),
+                    format!("{}", snapshot.total_ok),
                     Style::default().fg(Color::Green),
                 ),
-                Span::raw("  Last err: "),
+                Span::raw(" ok  "),
                 Span::styled(
-                    snapshot.last_failure.as_deref().unwrap_or("-"),
+                    format!("{}", snapshot.total_err),
                     Style::default().fg(Color::Red),
                 ),
+                Span::raw(" err"),
+                if let Some(ref last_err) = snapshot.last_failure {
+                    Span::styled(
+                        format!("   last: {last_err}"),
+                        Style::default().fg(Color::Red),
+                    )
+                } else {
+                    Span::raw("")
+                },
             ]),
         ])
-        .block(Block::default().borders(Borders::ALL).title("Status"));
-        f.render_widget(header, layout[0]);
+        .block(Block::default().borders(Borders::ALL).title("Health"));
+        f.render_widget(health, layout[1]);
 
-        let body_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-            .split(layout[1]);
+        // === Main body ===
+        match view {
+            ViewState::Dashboard => {
+                let wallet_count = snapshot.wallets.len();
+                let rows: Vec<Row> = snapshot
+                    .asset_summaries
+                    .iter()
+                    .map(|a| {
+                        let short_policy = &a.policy_id_hex[..8];
+                        Row::new([
+                            a.name.to_string(),
+                            short_policy.to_string(),
+                            format!("{}", a.total_supply),
+                            format!("{}", a.total_notes),
+                            format!("{}/{}", a.wallets_holding, wallet_count),
+                        ])
+                    })
+                    .collect();
 
-        let mut rows = Vec::new();
-        for wallet in snapshot.wallets.iter() {
-            let row_style = Style::default().fg(wallet_color(wallet.id));
-            let mut balance_lines = Vec::new();
-            for (asset, balance) in snapshot.assets.iter().zip(wallet.balances.iter()) {
-                let short_policy = &asset.policy_id_hex[0..8];
-                balance_lines.push(Line::from(vec![
-                    Span::styled(asset.name, Style::default().add_modifier(Modifier::BOLD)),
-                    Span::raw(format!(
-                        " ({short_policy}) bal={} notes={}",
-                        balance.balance, balance.notes
-                    )),
-                ]));
+                let table = Table::new(
+                    rows,
+                    [
+                        Constraint::Length(18),
+                        Constraint::Length(10),
+                        Constraint::Length(12),
+                        Constraint::Length(8),
+                        Constraint::Length(10),
+                    ],
+                )
+                .header(
+                    Row::new(["name", "policy", "supply", "notes", "wallets"])
+                        .style(Style::default().add_modifier(Modifier::BOLD)),
+                )
+                .block(Block::default().borders(Borders::ALL).title("Assets"))
+                .column_spacing(2);
+
+                f.render_widget(table, layout[2]);
             }
+            ViewState::Wallets => {
+                let rows: Vec<Row> = snapshot
+                    .wallets
+                    .iter()
+                    .enumerate()
+                    .map(|(i, w)| {
+                        let total_balance: u64 = w.balances.iter().map(|b| b.balance).sum();
+                        let total_notes: usize = w.balances.iter().map(|b| b.notes).sum();
+                        Row::new([
+                            format!("{}", w.id),
+                            format!("{total_balance}"),
+                            format!("{total_notes}"),
+                            format!("{}", w.sent),
+                            format!("{}", w.received),
+                            format!("{}", w.failures),
+                        ])
+                        .style(Style::default().fg(wallet_color(i)))
+                    })
+                    .collect();
 
-            let balances_cell = Cell::from(Text::from(balance_lines.clone()));
-            let height = balance_lines.len().max(1) as u16;
+                let table = Table::new(
+                    rows,
+                    [
+                        Constraint::Length(4),
+                        Constraint::Length(12),
+                        Constraint::Length(8),
+                        Constraint::Length(8),
+                        Constraint::Length(8),
+                        Constraint::Length(8),
+                    ],
+                )
+                .header(
+                    Row::new(["id", "balance", "notes", "sent", "recv", "fail"])
+                        .style(Style::default().add_modifier(Modifier::BOLD)),
+                )
+                .block(Block::default().borders(Borders::ALL).title("Wallets"))
+                .column_spacing(2);
 
-            rows.push(
-                Row::new(vec![
-                    Cell::from(wallet.id.to_string()),
-                    balances_cell,
-                    Cell::from(wallet.sent.to_string()),
-                    Cell::from(wallet.received.to_string()),
-                    Cell::from(wallet.failures.to_string()),
-                ])
-                .style(row_style)
-                .height(height),
-            );
+                f.render_widget(table, layout[2]);
+            }
         }
 
-        let table = Table::new(
-            rows,
-            [
-                Constraint::Length(6),
-                Constraint::Min(10),
-                Constraint::Length(6),
-                Constraint::Length(9),
-                Constraint::Length(8),
-            ],
-        )
-        .header(Row::new(["id", "balances", "sent", "received", "fail"]))
-        .block(Block::default().borders(Borders::ALL).title("Wallets"))
-        .column_spacing(2);
-
-        f.render_widget(table, body_chunks[0]);
-
+        // === Log tail ===
         let logs: Vec<ListItem> = snapshot
             .logs
             .iter()
+            .take(4)
             .map(|l| ListItem::new(l.clone()))
             .collect();
-        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Logs"));
-        f.render_widget(log_block, body_chunks[1]);
+        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Log"));
+        f.render_widget(log_block, layout[3]);
 
-        let footer = Paragraph::new(Line::from(vec![
+        // === Controls (single line, no border) ===
+        let toggle_label = match view {
+            ViewState::Dashboard => "wallets",
+            ViewState::Wallets => "dashboard",
+        };
+        let controls = Paragraph::new(Line::from(vec![
+            Span::raw(" "),
             Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(": quit  "),
             Span::styled("p", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(": pause/resume"),
-        ]))
-        .block(Block::default().borders(Borders::ALL).title("Controls"));
-        f.render_widget(footer, layout[2]);
+            Span::raw(": pause  "),
+            Span::styled("w", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(format!(": {toggle_label}")),
+        ]));
+        f.render_widget(controls, layout[4]);
     })?;
 
     Ok(())
@@ -168,13 +260,15 @@ pub fn ui_loop(
     cmd_tx: mpsc::UnboundedSender<SimCommand>,
     mut terminal: Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<()> {
+    let mut view = ViewState::Dashboard;
+
     loop {
         let snapshot = snapshot_rx.borrow().clone();
         if snapshot.shutdown {
             break;
         }
 
-        render_ui(&mut terminal, &snapshot)?;
+        render_ui(&mut terminal, &snapshot, view)?;
 
         if crossterm::event::poll(Duration::from_millis(100))? {
             match crossterm::event::read()? {
@@ -190,6 +284,15 @@ pub fn ui_loop(
                     ..
                 }) => {
                     let _ = cmd_tx.send(SimCommand::TogglePause);
+                }
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('w'),
+                    ..
+                }) => {
+                    view = match view {
+                        ViewState::Dashboard => ViewState::Wallets,
+                        ViewState::Wallets => ViewState::Dashboard,
+                    };
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('c'),

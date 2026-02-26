@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
@@ -208,10 +209,19 @@ pub async fn simulation_owner_loop(
     // Track per-asset amounts currently in-flight (removed from wallets, not yet returned)
     let mut inflight_amounts: HashMap<Asset, u128> = HashMap::new();
 
+    let mut throughput = ThroughputTracker::new(Duration::from_secs(5));
+
     let mut ticker = interval(config.tick);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+    let max_inflight = config.max_inflight;
+
+    let _ = snapshot_tx.send(state.snapshot(
+        oracle.checks_passed(),
+        max_inflight,
+        throughput.tx_per_sec(),
+        throughput.success_rate(),
+    ));
 
     let mut tx_id: u64 = 0;
 
@@ -277,7 +287,7 @@ pub async fn simulation_owner_loop(
                             &inflight_amounts,
                             &format!("after build_refresh failure (tx_id={})", tx_id + 1),
                         );
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
                         continue;
                     }
                 };
@@ -306,7 +316,7 @@ pub async fn simulation_owner_loop(
 
                 state.inflight += 1;
                 state.total_sent += 1;
-                let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+                let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
 
                 let client_clone = client.clone();
                 let event_tx_clone = event_tx.clone();
@@ -323,7 +333,7 @@ pub async fn simulation_owner_loop(
                     SimCommand::TogglePause => {
                         state.paused = !state.paused;
                         state.log(format!("paused set to {}", state.paused));
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
                     }
                     SimCommand::Quit => {
                         state.shutdown = true;
@@ -331,7 +341,7 @@ pub async fn simulation_owner_loop(
                             "shutting down — conservation checks passed: {}",
                             oracle.checks_passed(),
                         ));
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
                         break;
                     }
                 }
@@ -353,6 +363,7 @@ pub async fn simulation_owner_loop(
                                 state.delegate_pk,
                             ) {
                                 Ok(notes) => {
+                                    throughput.record_ok();
                                     apply_successful_tx(&mut state, &pending, notes);
                                     oracle.assert_conservation(
                                         &state,
@@ -361,6 +372,7 @@ pub async fn simulation_owner_loop(
                                     );
                                 }
                                 Err(e) => {
+                                    throughput.record_err();
                                     record_sender_failure(
                                         &mut state,
                                         pending.sender_id,
@@ -376,6 +388,7 @@ pub async fn simulation_owner_loop(
                                 }
                             },
                             Err(reason) => {
+                                throughput.record_err();
                                 record_sender_failure(
                                     &mut state,
                                     pending.sender_id,
@@ -390,7 +403,7 @@ pub async fn simulation_owner_loop(
                                 );
                             }
                         }
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
                     }
                 }
             }
@@ -398,7 +411,7 @@ pub async fn simulation_owner_loop(
     }
 
     state.shutdown = true;
-    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed()));
+    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
 }
 
 #[cfg(test)]

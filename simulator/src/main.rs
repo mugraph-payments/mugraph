@@ -71,7 +71,8 @@ async fn main() -> Result<()> {
         max_inflight: args.max_inflight,
     };
 
-    let (snapshot_tx, snapshot_rx) = watch::channel(state.snapshot(0));
+    let (snapshot_tx, snapshot_rx) =
+        watch::channel(state.snapshot(0, args.max_inflight, 0.0, 100.0));
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
 
