@@ -6,8 +6,9 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use mugraph_core::{
     error::Error,
     types::{
-        CrossNodeMessageRecord, IdempotencyRecord, Response, TransferAuditEvent, XNodeEnvelope,
-        XNodeMessageType, validate_envelope_basics,
+        CrossNodeMessageRecord, CrossNodeTransferRecord, IdempotencyRecord, Response,
+        TransferAuditEvent, TransferChainState, TransferCreditState, TransferSettlementState,
+        TransferStatusPayload, XNodeEnvelope, XNodeMessageType, validate_envelope_basics,
     },
 };
 use redb::ReadableTable;
@@ -15,7 +16,6 @@ use serde::Serialize;
 
 use crate::{
     database::{CROSS_NODE_MESSAGES, IDEMPOTENCY_KEYS, TRANSFER_AUDIT_LOG},
-    lifecycle::{LifecycleEvent, TransferLifecycle},
     peer_registry::PeerRegistry,
     routes::Context,
 };
@@ -65,12 +65,19 @@ pub fn handle_notify(
 
 pub fn handle_status(
     request: &XNodeEnvelope<mugraph_core::types::TransferStatusQueryPayload>,
+    ctx: &Context,
 ) -> Result<Response, Error> {
     validate_envelope_basics(request, XNodeMessageType::TransferStatusQuery, 3)
         .map_err(Error::from)?;
 
-    let mut lifecycle = TransferLifecycle::new();
-    lifecycle.apply(LifecycleEvent::SourceSubmitted);
+    let transfer = {
+        let read_tx = ctx.database.read()?;
+        let table = read_tx.open_table(crate::database::CROSS_NODE_TRANSFERS)?;
+        table
+            .get(request.transfer_id.as_str())?
+            .map(|v| v.value())
+            .ok_or_else(|| protocol_reject("TRANSFER_NOT_FOUND", "transfer not found"))?
+    };
 
     Ok(Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
         m: "xnode".to_string(),
@@ -84,7 +91,7 @@ pub fn handle_status(
         destination_node_id: request.origin_node_id.clone(),
         sent_at: request.sent_at.clone(),
         expires_at: None,
-        payload: lifecycle.to_status_payload(request.sent_at.clone()),
+        payload: status_payload_from_record(&transfer),
         auth: request.auth.clone(),
     })))
 }
@@ -120,6 +127,80 @@ fn message_type_key(message_type: &XNodeMessageType) -> &'static str {
         XNodeMessageType::TransferStatusQuery => "transfer_status_query",
         XNodeMessageType::TransferStatus => "transfer_status",
         XNodeMessageType::TransferAck => "transfer_ack",
+    }
+}
+
+/// Deterministic internal->external status mapping for M3 status contract.
+fn status_payload_from_record(record: &CrossNodeTransferRecord) -> TransferStatusPayload {
+    let chain_state = parse_chain_state(&record.chain_state);
+    let credit_state = parse_credit_state(&record.credit_state);
+
+    let source_state = match chain_state {
+        TransferChainState::Unknown => "requested",
+        TransferChainState::Submitted => "submitted",
+        TransferChainState::Confirming => "confirming",
+        TransferChainState::Confirmed => "confirmed",
+        TransferChainState::Invalidated => "invalidated",
+    }
+    .to_string();
+
+    let destination_state = match (chain_state.clone(), credit_state.clone()) {
+        (_, TransferCreditState::Credited) => "credited",
+        (_, TransferCreditState::Eligible) => "credit_eligible",
+        (TransferChainState::Invalidated, _) => "invalidated",
+        (TransferChainState::Submitted | TransferChainState::Confirming | TransferChainState::Confirmed, _) => {
+            "chain_observed"
+        }
+        (TransferChainState::Unknown, _) => "notice_received",
+    }
+    .to_string();
+
+    let settlement_state = match chain_state {
+        TransferChainState::Unknown => TransferSettlementState::NotSubmitted,
+        TransferChainState::Submitted => TransferSettlementState::Submitted,
+        TransferChainState::Confirming => TransferSettlementState::Confirming,
+        TransferChainState::Confirmed => match credit_state {
+            TransferCreditState::Held => TransferSettlementState::ManualReview,
+            _ => TransferSettlementState::Confirmed,
+        },
+        TransferChainState::Invalidated => {
+            if credit_state == TransferCreditState::Held {
+                TransferSettlementState::ManualReview
+            } else {
+                TransferSettlementState::Invalidated
+            }
+        }
+    };
+
+    TransferStatusPayload {
+        source_state,
+        destination_state,
+        settlement_state,
+        chain_state,
+        credit_state,
+        tx_hash: record.tx_hash.clone(),
+        confirmations_observed: record.confirmations_observed,
+        updated_at: record.updated_at.to_string(),
+    }
+}
+
+fn parse_chain_state(value: &str) -> TransferChainState {
+    match value {
+        "submitted" => TransferChainState::Submitted,
+        "confirming" => TransferChainState::Confirming,
+        "confirmed" => TransferChainState::Confirmed,
+        "invalidated" => TransferChainState::Invalidated,
+        _ => TransferChainState::Unknown,
+    }
+}
+
+fn parse_credit_state(value: &str) -> TransferCreditState {
+    match value {
+        "eligible" => TransferCreditState::Eligible,
+        "credited" => TransferCreditState::Credited,
+        "held" => TransferCreditState::Held,
+        "reversed" => TransferCreditState::Reversed,
+        _ => TransferCreditState::None,
     }
 }
 
@@ -377,12 +458,13 @@ mod tests {
     use tempfile::TempDir;
 
     use mugraph_core::types::{
-        TransferAckPayload, TransferAckStatus, TransferChainState, TransferCreditState,
-        TransferInitPayload, TransferNoticePayload, TransferNoticeStage, TransferQueryType,
-        TransferStatusQueryPayload, XNodeAuth,
+        CrossNodeTransferRecord, TransferAckPayload, TransferAckStatus, TransferChainState,
+        TransferCreditState, TransferInitPayload, TransferNoticePayload, TransferNoticeStage,
+        TransferSettlementState,
+        TransferQueryType, TransferStatusQueryPayload, XNodeAuth,
     };
 
-    use crate::{config::Config, database::Database};
+    use crate::{config::Config, database::{CROSS_NODE_TRANSFERS, Database}};
 
     use super::*;
 
@@ -480,6 +562,29 @@ mod tests {
             },
             auth: auth(),
         }
+    }
+
+    fn seed_transfer(ctx: &Context, transfer_id: &str, chain_state: &str, credit_state: &str) {
+        let w = ctx.database.write().unwrap();
+        {
+            let mut table = w.open_table(CROSS_NODE_TRANSFERS).unwrap();
+            table.insert(
+                transfer_id,
+                &CrossNodeTransferRecord {
+                    transfer_id: transfer_id.to_string(),
+                    source_node_id: "node://a".to_string(),
+                    destination_node_id: "node://b".to_string(),
+                    tx_hash: Some("txhash".to_string()),
+                    chain_state: chain_state.to_string(),
+                    credit_state: credit_state.to_string(),
+                    confirmations_observed: 7,
+                    created_at: 1,
+                    updated_at: 2,
+                },
+            )
+            .unwrap();
+        }
+        w.commit().unwrap();
     }
 
     #[test]
@@ -611,6 +716,12 @@ mod tests {
 
     #[test]
     fn status_response_contains_chain_and_credit_state() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+        seed_transfer(&ctx, "tr", "submitted", "none");
+
         let request = XNodeEnvelope {
             m: "xnode".to_string(),
             version: "3.0".to_string(),
@@ -621,7 +732,7 @@ mod tests {
             correlation_id: "corr".to_string(),
             origin_node_id: "node://a".to_string(),
             destination_node_id: "node://b".to_string(),
-            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            sent_at: now_rfc3339_offset(0),
             expires_at: None,
             payload: TransferStatusQueryPayload {
                 query_type: TransferQueryType::Current,
@@ -629,14 +740,38 @@ mod tests {
             auth: auth(),
         };
 
-        let response = handle_status(&request).unwrap();
+        let response = handle_status(&request, &ctx).unwrap();
         match response {
             Response::CrossNodeTransferStatus(env) => {
+                assert_eq!(env.payload.source_state, "submitted");
+                assert_eq!(env.payload.destination_state, "chain_observed");
                 assert_eq!(env.payload.chain_state, TransferChainState::Submitted);
                 assert_eq!(env.payload.credit_state, TransferCreditState::None);
             }
             _ => panic!("unexpected response variant"),
         }
+    }
+
+    #[test]
+    fn status_mapping_invalidated_held_maps_to_manual_review() {
+        let record = CrossNodeTransferRecord {
+            transfer_id: "tr".to_string(),
+            source_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            tx_hash: Some("h".to_string()),
+            chain_state: "invalidated".to_string(),
+            credit_state: "held".to_string(),
+            confirmations_observed: 3,
+            created_at: 1,
+            updated_at: 2,
+        };
+
+        let payload = status_payload_from_record(&record);
+        assert_eq!(payload.source_state, "invalidated");
+        assert_eq!(payload.destination_state, "invalidated");
+        assert_eq!(payload.settlement_state, TransferSettlementState::ManualReview);
+        assert_eq!(payload.chain_state, TransferChainState::Invalidated);
+        assert_eq!(payload.credit_state, TransferCreditState::Held);
     }
 
     #[test]
@@ -672,6 +807,27 @@ mod tests {
             response,
             Response::CrossNodeTransferAck { accepted: true }
         ));
+    }
+
+    fn chain_rank(chain: &TransferChainState) -> u8 {
+        match chain {
+            TransferChainState::Unknown => 0,
+            TransferChainState::Submitted => 1,
+            TransferChainState::Confirming => 2,
+            TransferChainState::Confirmed => 3,
+            TransferChainState::Invalidated => 4,
+        }
+    }
+
+    fn settlement_rank(settlement: &TransferSettlementState) -> u8 {
+        match settlement {
+            TransferSettlementState::NotSubmitted => 0,
+            TransferSettlementState::Submitted => 1,
+            TransferSettlementState::Confirming => 2,
+            TransferSettlementState::Confirmed => 3,
+            TransferSettlementState::Invalidated => 4,
+            TransferSettlementState::ManualReview => 5,
+        }
     }
 
     proptest! {
@@ -719,6 +875,55 @@ mod tests {
             let err = handle_create(&request, &ctx).unwrap_err();
             let is_invalid = matches!(err, Error::InvalidInput { .. });
             prop_assert!(is_invalid);
+        }
+
+        #[test]
+        fn prop_status_mapping_is_monotonic_except_invalidation(
+            credit in prop_oneof![
+                Just("none".to_string()),
+                Just("eligible".to_string()),
+                Just("credited".to_string()),
+            ],
+        ) {
+            let states = ["unknown", "submitted", "confirming", "confirmed"];
+            let mut prev_chain = 0u8;
+            let mut prev_settlement = 0u8;
+
+            for state in states {
+                let record = CrossNodeTransferRecord {
+                    transfer_id: "tr".to_string(),
+                    source_node_id: "node://a".to_string(),
+                    destination_node_id: "node://b".to_string(),
+                    tx_hash: Some("h".to_string()),
+                    chain_state: state.to_string(),
+                    credit_state: credit.clone(),
+                    confirmations_observed: 1,
+                    created_at: 1,
+                    updated_at: 2,
+                };
+
+                let payload = status_payload_from_record(&record);
+                let c = chain_rank(&payload.chain_state);
+                let s = settlement_rank(&payload.settlement_state);
+                prop_assert!(c >= prev_chain);
+                prop_assert!(s >= prev_settlement);
+                prev_chain = c;
+                prev_settlement = s;
+            }
+
+            let invalidated = CrossNodeTransferRecord {
+                transfer_id: "tr".to_string(),
+                source_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                tx_hash: Some("h".to_string()),
+                chain_state: "invalidated".to_string(),
+                credit_state: "held".to_string(),
+                confirmations_observed: 1,
+                created_at: 1,
+                updated_at: 2,
+            };
+            let payload = status_payload_from_record(&invalidated);
+            prop_assert_eq!(payload.settlement_state, TransferSettlementState::ManualReview);
         }
 
         #[test]

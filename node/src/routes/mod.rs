@@ -231,12 +231,14 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
                 }),
             }
         }
-        Request::CrossNodeTransferStatus(request) => match cross_node::handle_status(&request) {
-            Ok(response) => Json(response),
-            Err(e) => Json(Response::Error {
-                reason: e.to_string(),
-            }),
-        },
+        Request::CrossNodeTransferStatus(request) => {
+            match cross_node::handle_status(&request, &ctx) {
+                Ok(response) => Json(response),
+                Err(e) => Json(Response::Error {
+                    reason: e.to_string(),
+                }),
+            }
+        }
         Request::CrossNodeTransferAck(request) => match cross_node::handle_ack(&request, &ctx) {
             Ok(response) => Json(response),
             Err(e) => Json(Response::Error {
