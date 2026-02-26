@@ -53,6 +53,7 @@ Transition write + idempotency outcome + audit event must commit atomically.
 - Recovery order: chain -> transfer store -> message history.
 - Reorg invalidation path must be deterministic.
 - Off-chain success without chain confirmation is never terminal success.
+- Default invalidation posture is `held`; `reversed` requires explicit override flow.
 
 Invariants:
 1. at most one destination credit per `transfer_id`

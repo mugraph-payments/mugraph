@@ -172,8 +172,11 @@ Implications:
 - Observability/tests: `milestone-3-observability-test-plan.md`
 - Implementation backlog: `milestone-3-implementation-backlog.md`
 
-## 11) Open decisions
+## 11) Policy decisions (resolved for M3 baseline)
 
-- Network-specific values for `credit_target`, `finality_target`, `reorg_tolerance`.
-- Destination invalidation policy default (`held` vs `reversed`).
-- Operator quorum for manual-review closure.
+Resolved defaults are defined in `milestone-3-glossary-and-defaults.md`:
+- network profiles for `credit_target`, `finality_target`, `reorg_tolerance`
+- destination invalidation default action = `held`
+- manual-review closure quorum = `2-of-3` (`ops`, `security`, `risk/product`)
+
+Any change to these values is an operational tuning change and must be recorded in release notes/runbooks.

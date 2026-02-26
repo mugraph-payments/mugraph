@@ -49,6 +49,8 @@ Command-only field:
 
 ## 2) Default policies (configurable)
 
+### 2.1 Global defaults
+
 | Policy | Default |
 |---|---|
 | max clock skew (`sent_at`) | ±300s |
@@ -61,6 +63,24 @@ Command-only field:
 | audit hot retention | >= 90d |
 | audit cold retention | >= 1y |
 | raw payload retention | 30d (encrypted at rest) |
+
+### 2.2 Network settlement defaults (policy freeze)
+
+| Profile | `credit_target` | `finality_target` | `reorg_tolerance` |
+|---|---:|---:|---:|
+| local/dev | 1 | 2 | 1 |
+| preprod/testnet | 3 | 6 | 3 |
+| mainnet/prod | 6 | 12 | 6 |
+
+Rules:
+- `credit_target <= finality_target` must always hold.
+- `reorg_tolerance < finality_target` must hold.
+
+### 2.3 Invalidation and manual-review policy defaults
+
+- destination invalidation default action: **`held`** (not immediate `reversed`).
+- `reversed` requires explicit operator action or automated policy override outside M3 baseline.
+- manual-review closure quorum: **2-of-3 approvals** from (`ops`, `security`, `risk/product`).
 
 If another M3 doc conflicts on defaults, this file wins.
 
