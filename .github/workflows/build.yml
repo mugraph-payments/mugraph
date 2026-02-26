@@ -49,7 +49,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
-    - run: PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_verification_tests
+    - run: |
+        PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_verification_tests
+        PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_chaos_scenarios
 
   build-node:
     needs: check
