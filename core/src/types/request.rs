@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
-use crate::types::{AssetName, BlindSignature, PolicyId, Refresh};
+use crate::types::{
+    AssetName, BlindSignature, PolicyId, Refresh, TransferAckPayload, TransferInitPayload,
+    TransferNoticePayload, TransferStatusQueryPayload, XNodeEnvelope,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
 #[serde(tag = "m", content = "p")]
@@ -20,6 +23,14 @@ pub enum Request {
     Deposit(DepositRequest),
     #[serde(rename = "withdraw")]
     Withdraw(WithdrawRequest),
+    #[serde(rename = "cross_node_transfer_create")]
+    CrossNodeTransferCreate(XNodeEnvelope<TransferInitPayload>),
+    #[serde(rename = "cross_node_transfer_notify")]
+    CrossNodeTransferNotify(XNodeEnvelope<TransferNoticePayload>),
+    #[serde(rename = "cross_node_transfer_status")]
+    CrossNodeTransferStatus(XNodeEnvelope<TransferStatusQueryPayload>),
+    #[serde(rename = "cross_node_transfer_ack")]
+    CrossNodeTransferAck(XNodeEnvelope<TransferAckPayload>),
 }
 
 /// Deposit request from user
@@ -85,7 +96,10 @@ pub struct WithdrawResponse {
 mod tests {
     use serde_json::Value;
 
-    use crate::types::{Refresh, Request};
+    use crate::types::{
+        Refresh, Request, TransferNoticePayload, TransferNoticeStage, XNodeAuth, XNodeEnvelope,
+        XNodeMessageType,
+    };
 
     #[test]
     fn test_serialization() {
@@ -121,5 +135,37 @@ mod tests {
         });
 
         assert_eq!(expected, serde_json::to_value(&request).unwrap());
+    }
+
+    #[test]
+    fn test_cross_node_transfer_notify_serialization() {
+        let request = Request::CrossNodeTransferNotify(XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid-1".to_string(),
+            transfer_id: "tr-1".to_string(),
+            idempotency_key: "ik-1".to_string(),
+            correlation_id: "corr-1".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: "2026-02-26T18:00:00Z".to_string(),
+            expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(6),
+            },
+            auth: XNodeAuth {
+                alg: "Ed25519".to_string(),
+                kid: "k1".to_string(),
+                sig: "sig".to_string(),
+            },
+        });
+
+        let value = serde_json::to_value(&request).unwrap();
+        assert_eq!(value["m"], "cross_node_transfer_notify");
+        assert_eq!(value["p"]["message_type"], "transfer_notice");
+        assert_eq!(value["p"]["payload"]["tx_hash"], "abcd");
     }
 }

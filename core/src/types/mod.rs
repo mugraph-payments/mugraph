@@ -10,6 +10,7 @@ mod request;
 mod response;
 mod secret_key;
 mod signature;
+mod xnode;
 
 pub use self::{
     asset::*,
@@ -24,4 +25,5 @@ pub use self::{
     response::*,
     secret_key::*,
     signature::*,
+    xnode::*,
 };

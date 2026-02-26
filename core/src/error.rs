@@ -23,6 +23,12 @@ pub enum Error {
     #[error("Invalid input: {reason}")]
     InvalidInput { reason: String },
 
+    #[error("Unsupported protocol version: {version}")]
+    UnsupportedVersion { version: String },
+
+    #[error("Unsupported message type: {message_type}")]
+    UnsupportedMessageType { message_type: String },
+
     #[error("Simulated error: {reason}")]
     SimulatedError { reason: String },
 
@@ -163,6 +169,23 @@ impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::JsonError {
             reason: value.to_string(),
+        }
+    }
+}
+
+impl From<crate::types::XNodeProtocolError> for Error {
+    fn from(value: crate::types::XNodeProtocolError) -> Self {
+        match value.code {
+            crate::types::XNodeProtocolErrorCode::UnsupportedVersion => {
+                Self::UnsupportedVersion {
+                    version: value.detail,
+                }
+            }
+            crate::types::XNodeProtocolErrorCode::UnsupportedMessageType => {
+                Self::UnsupportedMessageType {
+                    message_type: value.detail,
+                }
+            }
         }
     }
 }
