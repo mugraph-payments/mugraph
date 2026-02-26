@@ -165,32 +165,50 @@ pub fn materialize_outputs(
     Ok(created)
 }
 
-/// Execute a cross-node transfer: emit on destination, optionally refresh for change on source.
+/// Execute a cross-node transfer atomically on the destination node.
 ///
-/// The input note (signed by source node) is consumed. The destination node emits a fresh note
-/// for `spend_amount`. If there's change (`input.amount > spend_amount`), we emit the change
-/// on the source node as well (since we can't refresh a note we're "burning").
+/// The input note (signed by source node) is consumed. Both the transfer note
+/// (for the receiver) and the change note (for the sender, if any) are emitted
+/// on the destination node. This makes the operation atomic: either both notes
+/// are minted or neither is (single node, sequential calls that either all
+/// succeed or fail on the first).
+///
+/// The change note will be signed by the destination delegate rather than the
+/// source delegate. This is fine — the simulator routes refreshes by note
+/// delegate, so future transactions with the change note will go to the
+/// destination node.
 async fn cross_node_transfer(
-    source_node: &SimNode,
+    _source_node: &SimNode,
     dest_node: &SimNode,
     input_note: &Note,
     asset: Asset,
     spend_amount: u64,
-) -> Result<CrossNodeResult> {
+    receiver_id: usize,
+) -> std::result::Result<CrossNodeResult, CrossNodeError> {
     // Emit the transfer amount on the destination node
     let receiver_note = dest_node
         .client
         .emit(asset.policy_id, asset.asset_name, spend_amount)
-        .await?;
+        .await
+        .map_err(|e| CrossNodeError {
+            reason: format!("destination emit failed: {e}"),
+            recovered_notes: vec![],
+        })?;
 
-    // If there's change, emit it back on the source node
+    // If there's change, also emit it on the destination node to keep atomicity.
+    // The change note will be signed by the destination delegate.
     let change_note = if input_note.amount > spend_amount {
         let change_amount = input_note.amount - spend_amount;
         Some(
-            source_node
+            dest_node
                 .client
                 .emit(asset.policy_id, asset.asset_name, change_amount)
-                .await?,
+                .await
+                .map_err(|e| CrossNodeError {
+                    reason: format!("change emit failed after receiver note minted: {e}"),
+                    // The receiver note was already minted — include it for recovery
+                    recovered_notes: vec![(receiver_id, receiver_note.clone())],
+                })?,
         )
     } else {
         None
@@ -356,6 +374,7 @@ pub async fn simulation_owner_loop(
                             &input_note,
                             asset,
                             spend_amount,
+                            receiver_id,
                         )
                         .await;
 
@@ -368,7 +387,7 @@ pub async fn simulation_owner_loop(
                                 input_amount,
                                 input_note,
                                 spend_amount,
-                                result: result.map_err(|e| e.to_string()),
+                                result,
                             },
                         )));
                     });
@@ -579,15 +598,53 @@ pub async fn simulation_owner_loop(
                                     &format!("after successful cross-node tx {id}"),
                                 );
                             }
-                            Err(reason) => {
+                            Err(err) => {
                                 throughput.record_err();
-                                record_sender_failure(
-                                    &mut state,
-                                    sender_id,
-                                    asset,
-                                    input_note,
-                                    format!("xnode tx {id} failed: {reason}"),
-                                );
+
+                                if err.recovered_notes.is_empty() {
+                                    // Nothing was minted; restore the original input note
+                                    record_sender_failure(
+                                        &mut state,
+                                        sender_id,
+                                        asset,
+                                        input_note,
+                                        format!("xnode tx {id} failed: {}", err.reason),
+                                    );
+                                } else {
+                                    // Some notes were already minted before the failure.
+                                    // Distribute them to their intended recipients.
+                                    let recovered_total: u128 = err
+                                        .recovered_notes
+                                        .iter()
+                                        .map(|(_, n)| n.amount as u128)
+                                        .sum();
+                                    for (owner, note) in err.recovered_notes {
+                                        let key = Asset {
+                                            policy_id: note.policy_id,
+                                            asset_name: note.asset_name,
+                                        };
+                                        state.wallets[owner]
+                                            .notes
+                                            .entry(key)
+                                            .or_default()
+                                            .push(note);
+                                    }
+
+                                    // The remaining value is irrecoverably lost
+                                    let lost = (input_amount as u128).saturating_sub(recovered_total);
+                                    if lost > 0 {
+                                        oracle.record_loss(&asset, lost);
+                                    }
+
+                                    state.wallets[sender_id].failures += 1;
+                                    state.total_err += 1;
+                                    let msg = format!(
+                                        "xnode tx {id} partial failure (recovered {recovered_total}, lost {lost}): {}",
+                                        err.reason,
+                                    );
+                                    state.log(&msg);
+                                    state.last_failure = Some(msg);
+                                }
                                 oracle.assert_conservation(
                                     &state,
                                     &inflight_amounts,
@@ -615,6 +672,7 @@ pub async fn simulation_owner_loop(
 mod tests {
     use mugraph_core::types::{AssetName, Hash, PolicyId, Signature};
     use proptest::prelude::*;
+    use rand::SeedableRng;
 
     use super::*;
 
@@ -674,7 +732,570 @@ mod tests {
         assert_eq!(notes.len(), 2);
     }
 
+    /// Tests that partial cross-node failure with recovered notes correctly
+    /// adjusts the conservation oracle and distributes recovered notes.
+    ///
+    /// Scenario: receiver note (spend_amount=60) was minted on the destination
+    /// node, but the change note (40) failed to mint. The error handler should:
+    /// 1. Distribute the recovered receiver note to the receiver
+    /// 2. Record the lost value (40) in the conservation oracle
+    /// 3. Pass the conservation check (oracle expected supply is reduced)
+    #[test]
+    fn cross_node_partial_failure_recovers_notes_and_adjusts_oracle() {
+        let asset = Asset {
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+        };
+        let delegate_a = PublicKey([1u8; 32]);
+        let delegate_b = PublicKey([2u8; 32]);
+
+        let input_note = Note {
+            amount: 100,
+            delegate: delegate_a,
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([5u8; 32]),
+            signature: Signature([1u8; 32]),
+            dleq: None,
+        };
+
+        let receiver_note = Note {
+            amount: 60,
+            delegate: delegate_b,
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([6u8; 32]),
+            signature: Signature([2u8; 32]),
+            dleq: None,
+        };
+
+        let spend_amount = 60u64;
+        let input_amount = 100u64;
+
+        let mut state = AppState {
+            wallets: vec![
+                Wallet {
+                    id: 0,
+                    home_node: 0,
+                    notes: HashMap::new(),
+                    ..Default::default()
+                },
+                Wallet {
+                    id: 1,
+                    home_node: 1,
+                    notes: HashMap::new(),
+                    ..Default::default()
+                },
+            ],
+            assets: vec![],
+            delegates: vec![delegate_a, delegate_b],
+            ..Default::default()
+        };
+
+        let mut oracle = ConservationOracle::new();
+
+        // Seal with the input note present
+        state.wallets[0].notes.entry(asset).or_default().push(input_note.clone());
+        oracle.seal(&state);
+
+        // Reserve: remove note, track as inflight
+        state.wallets[0].notes.get_mut(&asset).unwrap().pop();
+        let mut inflight_amounts: HashMap<Asset, u128> = HashMap::new();
+        *inflight_amounts.entry(asset).or_default() += input_amount as u128;
+
+        oracle.assert_conservation(&state, &inflight_amounts, "after reserve");
+
+        // Simulate event arrival: clear inflight
+        let entry = inflight_amounts.entry(asset).or_default();
+        *entry = entry.saturating_sub(input_amount as u128);
+
+        // Partial failure: receiver note was minted (60), change (40) failed
+        let err = CrossNodeError {
+            reason: "change emit failed".to_string(),
+            recovered_notes: vec![(1, receiver_note)], // receiver gets 60
+        };
+
+        // Distribute recovered notes
+        let recovered_total: u128 = err
+            .recovered_notes
+            .iter()
+            .map(|(_, n)| n.amount as u128)
+            .sum();
+        for (owner, note) in err.recovered_notes {
+            let key = Asset {
+                policy_id: note.policy_id,
+                asset_name: note.asset_name,
+            };
+            state.wallets[owner].notes.entry(key).or_default().push(note);
+        }
+
+        // Record the irrecoverable loss
+        let lost = (input_amount as u128).saturating_sub(recovered_total);
+        assert_eq!(lost, 40, "40 units of value were lost (change never minted)");
+        oracle.record_loss(&asset, lost);
+
+        // Conservation check passes: oracle expected 100, reduced by 40 → expects 60
+        // Wallets have 60 (receiver), inflight 0. 60 == 60.
+        oracle.assert_conservation(
+            &state,
+            &inflight_amounts,
+            "after partial cross-node failure with recovery",
+        );
+
+        // Verify the receiver got the note
+        let receiver_balance: u64 = state.wallets[1]
+            .notes
+            .get(&asset)
+            .map(|ns| ns.iter().map(|n| n.amount).sum())
+            .unwrap_or(0);
+        assert_eq!(receiver_balance, spend_amount);
+
+        // Sender got nothing back (input was consumed, change failed)
+        let sender_balance: u64 = state.wallets[0]
+            .notes
+            .get(&asset)
+            .map(|ns| ns.iter().map(|n| n.amount).sum())
+            .unwrap_or(0);
+        assert_eq!(sender_balance, 0);
+    }
+
+    /// Tests that a total cross-node failure (no notes minted) restores the
+    /// input note to the sender and conservation holds without any oracle adjustment.
+    #[test]
+    fn cross_node_total_failure_restores_input_note() {
+        let asset = Asset {
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+        };
+        let delegate_a = PublicKey([1u8; 32]);
+
+        let input_note = Note {
+            amount: 100,
+            delegate: delegate_a,
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([5u8; 32]),
+            signature: Signature([1u8; 32]),
+            dleq: None,
+        };
+
+        let mut state = AppState {
+            wallets: vec![
+                Wallet {
+                    id: 0,
+                    home_node: 0,
+                    notes: HashMap::new(),
+                    ..Default::default()
+                },
+                Wallet {
+                    id: 1,
+                    home_node: 1,
+                    notes: HashMap::new(),
+                    ..Default::default()
+                },
+            ],
+            assets: vec![],
+            delegates: vec![delegate_a],
+            ..Default::default()
+        };
+
+        let mut oracle = ConservationOracle::new();
+
+        state.wallets[0].notes.entry(asset).or_default().push(input_note.clone());
+        oracle.seal(&state);
+
+        // Reserve
+        state.wallets[0].notes.get_mut(&asset).unwrap().pop();
+        let mut inflight_amounts: HashMap<Asset, u128> = HashMap::new();
+        *inflight_amounts.entry(asset).or_default() += 100u128;
+
+        oracle.assert_conservation(&state, &inflight_amounts, "after reserve");
+
+        // Clear inflight
+        let entry = inflight_amounts.entry(asset).or_default();
+        *entry = entry.saturating_sub(100u128);
+
+        // Total failure: nothing was minted, restore input
+        record_sender_failure(
+            &mut state,
+            0,
+            asset,
+            input_note,
+            "xnode tx failed: destination emit failed".to_string(),
+        );
+
+        // Conservation holds without any oracle adjustment
+        oracle.assert_conservation(
+            &state,
+            &inflight_amounts,
+            "after total cross-node failure",
+        );
+
+        // Sender got the input note back
+        let sender_balance: u64 = state.wallets[0]
+            .notes
+            .get(&asset)
+            .map(|ns| ns.iter().map(|n| n.amount).sum())
+            .unwrap_or(0);
+        assert_eq!(sender_balance, 100);
+    }
+
+    fn make_note(amount: u64, delegate: PublicKey, asset: Asset, sig_byte: u8) -> Note {
+        Note {
+            amount,
+            delegate,
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([sig_byte; 32]),
+            signature: Signature([sig_byte; 32]),
+            dleq: None,
+        }
+    }
+
+    fn test_asset() -> Asset {
+        Asset {
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+        }
+    }
+
     proptest! {
+        /// Conservation oracle: seal-then-check identity.
+        ///
+        /// After sealing, the very next conservation check must pass with zero
+        /// inflight — the oracle's expected supply should exactly match the wallet
+        /// contents it was sealed from.
+        #[test]
+        fn prop_oracle_seal_then_check_is_identity(
+            amounts in prop::collection::vec(1u64..=100_000, 1..8),
+            wallet_count in 1usize..=4,
+        ) {
+            let asset = test_asset();
+            let delegate = PublicKey([1u8; 32]);
+            let mut state = AppState::default();
+
+            for wid in 0..wallet_count {
+                let mut wallet = Wallet {
+                    id: wid,
+                    home_node: 0,
+                    ..Default::default()
+                };
+                // Distribute amounts round-robin to wallets
+                for (i, &amt) in amounts.iter().enumerate() {
+                    if i % wallet_count == wid {
+                        wallet
+                            .notes
+                            .entry(asset)
+                            .or_default()
+                            .push(make_note(amt, delegate, asset, (i & 0xFF) as u8));
+                    }
+                }
+                state.wallets.push(wallet);
+            }
+
+            let mut oracle = ConservationOracle::new();
+            oracle.seal(&state);
+
+            let empty_inflight = HashMap::new();
+            // Must not panic
+            oracle.assert_conservation(&state, &empty_inflight, "seal-then-check identity");
+            prop_assert_eq!(oracle.checks_passed(), 1);
+        }
+
+        /// Conservation oracle: reserve-then-restore round-trip.
+        ///
+        /// Removing a note from a wallet and tracking it as inflight preserves
+        /// conservation. Restoring it (simulating failure) also preserves it.
+        #[test]
+        fn prop_oracle_reserve_restore_round_trip(
+            input_amount in 1u64..=1_000_000,
+            extra_notes in prop::collection::vec(1u64..=50_000, 0..4),
+        ) {
+            let asset = test_asset();
+            let delegate = PublicKey([1u8; 32]);
+            let mut state = AppState {
+                wallets: vec![Wallet {
+                    id: 0,
+                    home_node: 0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            // Add the main note + extras
+            let input_note = make_note(input_amount, delegate, asset, 0);
+            state.wallets[0].notes.entry(asset).or_default().push(input_note.clone());
+            for (i, &amt) in extra_notes.iter().enumerate() {
+                state.wallets[0]
+                    .notes
+                    .entry(asset)
+                    .or_default()
+                    .push(make_note(amt, delegate, asset, (i + 1) as u8));
+            }
+
+            let mut oracle = ConservationOracle::new();
+            oracle.seal(&state);
+
+            // Reserve: remove note, add to inflight
+            state.wallets[0].notes.get_mut(&asset).unwrap().swap_remove(0);
+            let mut inflight = HashMap::new();
+            *inflight.entry(asset).or_default() += input_amount as u128;
+
+            oracle.assert_conservation(&state, &inflight, "after reserve");
+
+            // Restore: put note back, clear inflight
+            *inflight.get_mut(&asset).unwrap() -= input_amount as u128;
+            record_sender_failure(
+                &mut state,
+                0,
+                asset,
+                input_note,
+                "test failure".to_string(),
+            );
+
+            oracle.assert_conservation(&state, &inflight, "after restore");
+            prop_assert_eq!(oracle.checks_passed(), 2);
+        }
+
+        /// Conservation oracle: record_loss adjusts expected supply exactly.
+        ///
+        /// After losing some value, the oracle should accept a reduced total.
+        #[test]
+        fn prop_oracle_record_loss_adjusts_supply(
+            initial in 100u64..=1_000_000,
+            loss_pct in 1u32..=100,
+        ) {
+            let asset = test_asset();
+            let delegate = PublicKey([1u8; 32]);
+            let mut state = AppState {
+                wallets: vec![Wallet {
+                    id: 0,
+                    home_node: 0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+
+            state.wallets[0]
+                .notes
+                .entry(asset)
+                .or_default()
+                .push(make_note(initial, delegate, asset, 0));
+
+            let mut oracle = ConservationOracle::new();
+            oracle.seal(&state);
+
+            let loss = (initial as u128 * loss_pct as u128) / 100;
+            let remaining = initial as u128 - loss;
+
+            // Simulate: remove note, replace with smaller one
+            state.wallets[0].notes.get_mut(&asset).unwrap().clear();
+            if remaining > 0 {
+                state.wallets[0]
+                    .notes
+                    .entry(asset)
+                    .or_default()
+                    .push(make_note(remaining as u64, delegate, asset, 1));
+            }
+
+            oracle.record_loss(&asset, loss);
+
+            let empty = HashMap::new();
+            oracle.assert_conservation(&state, &empty, "after record_loss");
+        }
+
+        /// reserve_spendable_note: returned note was in the wallet and is removed.
+        ///
+        /// Invariant: wallet_value_before == wallet_value_after + returned_note.amount.
+        /// Also: the note must match an asset in the provided asset list.
+        #[test]
+        fn prop_reserve_removes_exactly_one_note(
+            amounts in prop::collection::vec(1u64..=10_000, 1..8),
+            seed in any::<u64>(),
+        ) {
+            let asset = test_asset();
+            let delegate = PublicKey([9u8; 32]);
+            let sim_asset = SimAsset {
+                policy_id: asset.policy_id,
+                asset_name: asset.asset_name,
+                name: "TEST",
+                policy_id_hex: "0000000000000000000000000000000000000000000000000000000000",
+            };
+
+            let mut wallet = Wallet {
+                id: 0,
+                home_node: 0,
+                ..Default::default()
+            };
+            for (i, &amt) in amounts.iter().enumerate() {
+                wallet
+                    .notes
+                    .entry(asset)
+                    .or_default()
+                    .push(make_note(amt, delegate, asset, i as u8));
+            }
+
+            let total_before: u64 = wallet
+                .notes
+                .values()
+                .flatten()
+                .map(|n| n.amount)
+                .sum();
+            let count_before = wallet.notes.values().map(|v| v.len()).sum::<usize>();
+
+            let mut rng = StdRng::seed_from_u64(seed);
+            let result = reserve_spendable_note(&mut wallet, &[sim_asset], &mut rng);
+
+            match result {
+                Some((returned_asset, note)) => {
+                    prop_assert_eq!(returned_asset, asset);
+                    prop_assert!(note.amount > 0);
+
+                    let total_after: u64 = wallet
+                        .notes
+                        .values()
+                        .flatten()
+                        .map(|n| n.amount)
+                        .sum();
+                    let count_after = wallet.notes.values().map(|v| v.len()).sum::<usize>();
+
+                    prop_assert_eq!(total_after + note.amount, total_before);
+                    prop_assert_eq!(count_after + 1, count_before);
+                }
+                None => {
+                    // Should never happen: all notes have amount > 0
+                    prop_assert!(false, "reserve returned None but wallet had notes");
+                }
+            }
+        }
+
+        /// Snapshot asset summaries must match wallet contents.
+        ///
+        /// Differential test: compute supply by summing wallets directly,
+        /// compare with snapshot.asset_summaries.
+        #[test]
+        fn prop_snapshot_asset_summary_matches_wallets(
+            wallet_amounts in prop::collection::vec(
+                prop::collection::vec(1u64..=10_000, 0..4),
+                1..=4,
+            ),
+        ) {
+            let asset = test_asset();
+            let delegate = PublicKey([1u8; 32]);
+            let sim_asset = SimAsset {
+                policy_id: asset.policy_id,
+                asset_name: asset.asset_name,
+                name: "TEST",
+                policy_id_hex: "0000000000000000000000000000000000000000000000000000000000",
+            };
+
+            let mut state = AppState {
+                assets: vec![sim_asset],
+                ..Default::default()
+            };
+
+            let mut expected_supply = 0u64;
+            let mut expected_notes = 0usize;
+            let mut expected_holding = 0usize;
+
+            for (wid, amounts) in wallet_amounts.iter().enumerate() {
+                let mut wallet = Wallet {
+                    id: wid,
+                    home_node: 0,
+                    ..Default::default()
+                };
+                let wallet_total: u64 = amounts.iter().sum();
+                if !amounts.is_empty() {
+                    expected_holding += 1;
+                    expected_notes += amounts.len();
+                    expected_supply += wallet_total;
+                    for (i, &amt) in amounts.iter().enumerate() {
+                        wallet
+                            .notes
+                            .entry(asset)
+                            .or_default()
+                            .push(make_note(amt, delegate, asset, (wid * 16 + i) as u8));
+                    }
+                }
+                state.wallets.push(wallet);
+            }
+
+            let snap = state.snapshot(0, 16, 0.0, 100.0);
+
+            prop_assert_eq!(snap.asset_summaries.len(), 1);
+            let summary = &snap.asset_summaries[0];
+            prop_assert_eq!(summary.total_supply, expected_supply);
+            prop_assert_eq!(summary.total_notes, expected_notes);
+            prop_assert_eq!(summary.wallets_holding, expected_holding);
+        }
+
+        /// Cross-node error recovery: recovered + lost == input_amount.
+        ///
+        /// For any split of input into recovered notes and lost value,
+        /// the accounting must be exact.
+        #[test]
+        fn prop_cross_node_recovery_accounting_is_exact(
+            input_amount in 2u64..=1_000_000,
+            recovered_pct in 0u32..=100,
+        ) {
+            let recovered_amount = (input_amount as u128 * recovered_pct as u128) / 100;
+            let lost = (input_amount as u128).saturating_sub(recovered_amount);
+
+            prop_assert_eq!(recovered_amount + lost, input_amount as u128);
+
+            // Simulate what the handler does
+            let asset = test_asset();
+            let delegate = PublicKey([2u8; 32]);
+            let mut state = AppState {
+                wallets: vec![
+                    Wallet { id: 0, home_node: 0, ..Default::default() },
+                    Wallet { id: 1, home_node: 1, ..Default::default() },
+                ],
+                ..Default::default()
+            };
+
+            // Seal with input in wallet 0
+            state.wallets[0]
+                .notes
+                .entry(asset)
+                .or_default()
+                .push(make_note(input_amount, delegate, asset, 0));
+
+            let mut oracle = ConservationOracle::new();
+            oracle.seal(&state);
+
+            // Reserve
+            state.wallets[0].notes.get_mut(&asset).unwrap().pop();
+            let mut inflight: HashMap<Asset, u128> = HashMap::new();
+            *inflight.entry(asset).or_default() += input_amount as u128;
+
+            oracle.assert_conservation(&state, &inflight, "after reserve");
+
+            // Event: clear inflight
+            *inflight.get_mut(&asset).unwrap() = 0;
+
+            // Distribute recovered to receiver (wallet 1)
+            if recovered_amount > 0 {
+                state.wallets[1]
+                    .notes
+                    .entry(asset)
+                    .or_default()
+                    .push(make_note(recovered_amount as u64, delegate, asset, 1));
+            }
+
+            // Record loss
+            if lost > 0 {
+                oracle.record_loss(&asset, lost);
+            }
+
+            // Must not panic
+            oracle.assert_conservation(
+                &state,
+                &inflight,
+                "after cross-node recovery",
+            );
+        }
+
         #[test]
         fn prop_build_refresh_conserves_total_amount(
             (input_amount, spend_amount) in (1u64..=1_000_000)

@@ -328,6 +328,14 @@ impl ConservationOracle {
         self.checks_passed += 1;
     }
 
+    /// Reduce the expected supply for an asset. Used when value is irrecoverably
+    /// lost (e.g., a partial cross-node failure where some notes couldn't be minted).
+    pub fn record_loss(&mut self, asset: &Asset, amount: u128) {
+        if let Some(supply) = self.expected_supply.get_mut(asset) {
+            *supply = supply.saturating_sub(amount);
+        }
+    }
+
     pub fn checks_passed(&self) -> u64 {
         self.checks_passed
     }
@@ -438,7 +446,7 @@ pub struct CrossNodeTxEvent {
     pub input_amount: u64,
     pub input_note: Note,
     pub spend_amount: u64,
-    pub result: std::result::Result<CrossNodeResult, String>,
+    pub result: std::result::Result<CrossNodeResult, CrossNodeError>,
 }
 
 #[derive(Debug)]
@@ -447,6 +455,14 @@ pub struct CrossNodeResult {
     pub receiver_note: Note,
     /// Optional change note from refreshing on the source node (when input > spend)
     pub change_note: Option<Note>,
+}
+
+#[derive(Debug)]
+pub struct CrossNodeError {
+    pub reason: String,
+    /// Notes already minted before the failure. These must be distributed
+    /// to their intended recipients instead of restoring the original input.
+    pub recovered_notes: Vec<(usize, Note)>,
 }
 
 #[derive(Debug, Clone, Copy)]
