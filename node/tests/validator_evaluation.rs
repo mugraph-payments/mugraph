@@ -191,6 +191,7 @@ fn build_multiasset_value(
 /// Build a Conway-era transaction that spends a script UTxO with a custom Value.
 ///
 /// Returns (tx_cbor_bytes, resolved_inputs) ready for eval_phase_two.
+#[allow(clippy::too_many_arguments)]
 fn build_spend_tx_with_value(
     script_cbor: &[u8],
     script_hash: &Hash<28>,

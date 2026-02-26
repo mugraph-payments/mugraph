@@ -63,6 +63,25 @@ pub struct ChainTip {
     pub block_height: u64,
 }
 
+/// Chain observation status for a transaction
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TxSettlementState {
+    NotFound,
+    Confirming,
+    Confirmed,
+    Invalidated,
+}
+
+/// Deterministic tx observation snapshot used by reconciler/lifecycle logic
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TxChainObservation {
+    pub tx_hash: String,
+    pub tx_block_height: Option<u64>,
+    pub tip_height: u64,
+    pub confirmations: u64,
+    pub state: TxSettlementState,
+}
+
 // Basic retry policy for provider calls
 const PROVIDER_MAX_RETRIES: usize = 3;
 const PROVIDER_BACKOFF_MS: u64 = 200;
@@ -151,6 +170,78 @@ impl Provider {
             Provider::Maestro(p) => p.get_protocol_params().await,
         }
     }
+
+    /// Observe tx confirmation/reorg status from provider tip + tx block visibility
+    pub async fn observe_tx_status(
+        &self,
+        tx_hash: &str,
+        finality_target: u64,
+        reorg_tolerance: u64,
+        previously_canonical: bool,
+    ) -> Result<TxChainObservation> {
+        let tip = self.get_tip().await?;
+        let tx_block_height = match self {
+            Provider::Blockfrost(p) => p.get_tx_block_height(tx_hash).await?,
+            Provider::Maestro(p) => p.get_tx_block_height(tx_hash).await?,
+        };
+
+        Ok(evaluate_tx_observation(
+            tx_hash,
+            tx_block_height,
+            tip.block_height,
+            finality_target,
+            reorg_tolerance,
+            previously_canonical,
+        ))
+    }
+}
+
+pub fn evaluate_tx_observation(
+    tx_hash: &str,
+    tx_block_height: Option<u64>,
+    tip_height: u64,
+    finality_target: u64,
+    _reorg_tolerance: u64,
+    previously_canonical: bool,
+) -> TxChainObservation {
+    match tx_block_height {
+        Some(block_height) => {
+            let confirmations = if tip_height >= block_height {
+                tip_height - block_height + 1
+            } else {
+                0
+            };
+
+            let state = if confirmations >= finality_target {
+                TxSettlementState::Confirmed
+            } else {
+                TxSettlementState::Confirming
+            };
+
+            TxChainObservation {
+                tx_hash: tx_hash.to_string(),
+                tx_block_height: Some(block_height),
+                tip_height,
+                confirmations,
+                state,
+            }
+        }
+        None => {
+            let state = if previously_canonical {
+                TxSettlementState::Invalidated
+            } else {
+                TxSettlementState::NotFound
+            };
+
+            TxChainObservation {
+                tx_hash: tx_hash.to_string(),
+                tx_block_height: None,
+                tip_height,
+                confirmations: 0,
+                state,
+            }
+        }
+    }
 }
 
 /// Send an HTTP request with retry/backoff for transient failures (429/5xx/network).
@@ -215,6 +306,25 @@ pub struct ProtocolParams {
 }
 
 impl BlockfrostProvider {
+    async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
+        let url = format!("{}/txs/{}", self.base_url, tx_hash);
+        let resp = send_with_retry(
+            || self.client.get(&url).header("project_id", &self.api_key),
+            "Failed to fetch transaction info from Blockfrost",
+        )
+        .await?;
+
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+
+        let tx_info: BlockfrostTxInfo = resp
+            .json()
+            .await
+            .context("Failed to parse Blockfrost transaction response")?;
+        Ok(Some(tx_info.block_height))
+    }
+
     async fn get_utxo(&self, tx_hash: &str, output_index: u16) -> Result<Option<UtxoInfo>> {
         // Fetch UTxO details
         let url = format!("{}/txs/{}/utxos", self.base_url, tx_hash);
@@ -228,16 +338,7 @@ impl BlockfrostProvider {
         .await
         .context("Failed to parse Blockfrost response")?;
 
-        // Fetch transaction info to get block height
-        let tx_url = format!("{}/txs/{}", self.base_url, tx_hash);
-        let tx_response: BlockfrostTxInfo = send_with_retry(
-            || self.client.get(&tx_url).header("project_id", &self.api_key),
-            "Failed to fetch transaction info from Blockfrost",
-        )
-        .await?
-        .json()
-        .await
-        .context("Failed to parse Blockfrost transaction response")?;
+        let tx_block_height = self.get_tx_block_height(tx_hash).await?;
 
         let maybe_output = response
             .outputs
@@ -266,7 +367,7 @@ impl BlockfrostProvider {
                 datum_hash: o.data_hash,
                 datum: datum_hex,
                 script_ref: o.reference_script_hash,
-                block_height: Some(tx_response.block_height),
+                block_height: tx_block_height,
             }))
         } else {
             Ok(None)
@@ -443,6 +544,26 @@ impl BlockfrostProvider {
 }
 
 impl MaestroProvider {
+    async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
+        let url = format!("{}/transactions/{}", self.base_url, tx_hash);
+        let resp = send_with_retry(
+            || self.client.get(&url).header("api-key", &self.api_key),
+            "Failed to fetch transaction info from Maestro",
+        )
+        .await?;
+
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+
+        let tx_info: MaestroTxInfo = resp
+            .json()
+            .await
+            .context("Failed to parse Maestro transaction response")?;
+
+        Ok(tx_info.block_height)
+    }
+
     async fn get_utxo(&self, tx_hash: &str, output_index: u16) -> Result<Option<UtxoInfo>> {
         let url = format!(
             "{}/transactions/{}/outputs/{}?order=desc",
@@ -668,6 +789,11 @@ struct MaestroAddressUtxo {
 #[derive(Debug, Deserialize)]
 struct MaestroSubmitResponse {
     hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MaestroTxInfo {
+    block_height: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]

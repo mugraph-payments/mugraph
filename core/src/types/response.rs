@@ -48,7 +48,7 @@ pub enum Response {
         accepted: bool,
     },
     #[serde(rename = "cross_node_transfer_status")]
-    CrossNodeTransferStatus(XNodeEnvelope<TransferStatusPayload>),
+    CrossNodeTransferStatus(Box<XNodeEnvelope<TransferStatusPayload>>),
     #[serde(rename = "cross_node_transfer_ack")]
     CrossNodeTransferAck {
         accepted: bool,
@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_cross_node_transfer_status_serialization() {
-        let response = Response::CrossNodeTransferStatus(XNodeEnvelope {
+        let response = Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
             m: "xnode".to_string(),
             version: "3.0".to_string(),
             message_type: XNodeMessageType::TransferStatus,
@@ -93,7 +93,7 @@ mod tests {
                 kid: "k1".to_string(),
                 sig: "sig".to_string(),
             },
-        });
+        }));
 
         let value = serde_json::to_value(&response).unwrap();
         assert_eq!(value["m"], "cross_node_transfer_status");

@@ -1,6 +1,15 @@
 //! Tests for Cardano provider implementations
 
-use mugraph_node::provider::{AssetAmount, ChainTip, ProtocolParams, Provider, UtxoInfo};
+use mugraph_node::provider::{
+    AssetAmount,
+    ChainTip,
+    ProtocolParams,
+    Provider,
+    TxSettlementState,
+    UtxoInfo,
+    evaluate_tx_observation,
+};
+use proptest::prelude::*;
 
 /// Test Blockfrost provider creation
 #[test]
@@ -222,5 +231,36 @@ fn test_provider_clone() {
             assert_eq!(p1.network, p2.network);
         }
         _ => panic!("Expected Blockfrost providers"),
+    }
+}
+
+#[test]
+fn test_observation_reports_invalidation_when_missing_after_canonical() {
+    let obs = evaluate_tx_observation("tx1", None, 100, 12, 6, true);
+    assert_eq!(obs.state, TxSettlementState::Invalidated);
+    assert_eq!(obs.confirmations, 0);
+}
+
+#[test]
+fn test_observation_reports_confirmed_when_target_reached() {
+    let obs = evaluate_tx_observation("tx1", Some(90), 101, 12, 6, false);
+    assert_eq!(obs.state, TxSettlementState::Confirmed);
+    assert!(obs.confirmations >= 12);
+}
+
+proptest! {
+    #[test]
+    fn prop_confirmations_are_monotonic_with_tip(
+        block_height in 1u64..=1_000_000,
+        tip1 in 1u64..=1_000_000,
+        tip2 in 1u64..=1_000_000,
+    ) {
+        let low_tip = tip1.min(tip2).max(block_height);
+        let high_tip = tip1.max(tip2).max(low_tip);
+
+        let a = evaluate_tx_observation("tx1", Some(block_height), low_tip, 12, 6, false);
+        let b = evaluate_tx_observation("tx1", Some(block_height), high_tip, 12, 6, false);
+
+        prop_assert!(b.confirmations >= a.confirmations);
     }
 }

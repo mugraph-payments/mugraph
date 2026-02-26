@@ -31,7 +31,7 @@ pub fn handle_status(
     validate_envelope_basics(request, XNodeMessageType::TransferStatusQuery, 3)
         .map_err(Error::from)?;
 
-    Ok(Response::CrossNodeTransferStatus(XNodeEnvelope {
+    Ok(Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
         m: "xnode".to_string(),
         version: request.version.clone(),
         message_type: XNodeMessageType::TransferStatus,
@@ -54,7 +54,7 @@ pub fn handle_status(
             updated_at: request.sent_at.clone(),
         },
         auth: request.auth.clone(),
-    }))
+    })))
 }
 
 pub fn handle_ack(
