@@ -1,10 +1,11 @@
 use mugraph_core::{
     error::Error,
     types::{
-        Response, TransferChainState, TransferCreditState, TransferSettlementState,
-        TransferStatusPayload, XNodeEnvelope, XNodeMessageType, validate_envelope_basics,
+        Response, XNodeEnvelope, XNodeMessageType, validate_envelope_basics,
     },
 };
+
+use crate::lifecycle::{LifecycleEvent, TransferLifecycle};
 
 pub fn handle_create(
     request: &XNodeEnvelope<mugraph_core::types::TransferInitPayload>,
@@ -31,6 +32,9 @@ pub fn handle_status(
     validate_envelope_basics(request, XNodeMessageType::TransferStatusQuery, 3)
         .map_err(Error::from)?;
 
+    let mut lifecycle = TransferLifecycle::new();
+    lifecycle.apply(LifecycleEvent::SourceSubmitted);
+
     Ok(Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
         m: "xnode".to_string(),
         version: request.version.clone(),
@@ -43,16 +47,7 @@ pub fn handle_status(
         destination_node_id: request.origin_node_id.clone(),
         sent_at: request.sent_at.clone(),
         expires_at: None,
-        payload: TransferStatusPayload {
-            source_state: "requested".to_string(),
-            destination_state: "notice_received".to_string(),
-            settlement_state: TransferSettlementState::Submitted,
-            chain_state: TransferChainState::Submitted,
-            credit_state: TransferCreditState::None,
-            tx_hash: None,
-            confirmations_observed: 0,
-            updated_at: request.sent_at.clone(),
-        },
+        payload: lifecycle.to_status_payload(request.sent_at.clone()),
         auth: request.auth.clone(),
     })))
 }
@@ -70,8 +65,9 @@ mod tests {
     use proptest::prelude::*;
 
     use mugraph_core::types::{
-        TransferAckPayload, TransferAckStatus, TransferInitPayload, TransferNoticePayload,
-        TransferNoticeStage, TransferQueryType, TransferStatusQueryPayload, XNodeAuth,
+        TransferAckPayload, TransferAckStatus, TransferChainState, TransferCreditState,
+        TransferInitPayload, TransferNoticePayload, TransferNoticeStage, TransferQueryType,
+        TransferStatusQueryPayload, XNodeAuth,
     };
 
     use super::*;

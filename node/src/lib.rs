@@ -6,6 +6,7 @@ pub mod cardano;
 pub mod config;
 pub mod database;
 pub mod deposit_monitor;
+pub mod lifecycle;
 pub mod peer_registry;
 pub mod provider;
 pub mod routes;
