@@ -58,6 +58,53 @@ pub struct WithdrawalRecord {
     pub timestamp: u64,
 }
 
+/// Cross-node transfer persistence record (M3)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CrossNodeTransferRecord {
+    pub transfer_id: String,
+    pub source_node_id: String,
+    pub destination_node_id: String,
+    pub tx_hash: Option<String>,
+    pub chain_state: String,
+    pub credit_state: String,
+    pub confirmations_observed: u32,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+/// Cross-node message persistence record (M3)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CrossNodeMessageRecord {
+    pub message_id: String,
+    pub transfer_id: String,
+    pub message_type: String,
+    pub direction: String,
+    pub attempt_count: u32,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+/// Idempotency persistence record (M3)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct IdempotencyRecord {
+    pub idempotency_key: String,
+    pub transfer_id: String,
+    pub message_type: String,
+    pub request_hash: String,
+    pub first_seen_at: u64,
+    pub expires_at: u64,
+}
+
+/// Audit event persistence record (M3)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TransferAuditEvent {
+    pub event_id: String,
+    pub transfer_id: String,
+    pub event_type: String,
+    pub reason: String,
+    pub created_at: u64,
+}
+
 impl CardanoWallet {
     pub fn new(
         payment_sk: Vec<u8>,
@@ -276,6 +323,118 @@ impl Value for WithdrawalRecord {
 
     fn type_name() -> redb::TypeName {
         redb::TypeName::new("mugraph::WithdrawalRecord")
+    }
+}
+
+impl Value for CrossNodeTransferRecord {
+    type SelfType<'a> = CrossNodeTransferRecord;
+    type AsBytes<'a> = Vec<u8>;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        bincode::deserialize(data).expect("Failed to deserialize CrossNodeTransferRecord")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'a,
+        Self: 'b,
+    {
+        bincode::serialize(value).expect("Failed to serialize CrossNodeTransferRecord")
+    }
+
+    fn type_name() -> redb::TypeName {
+        redb::TypeName::new("mugraph::CrossNodeTransferRecord")
+    }
+}
+
+impl Value for CrossNodeMessageRecord {
+    type SelfType<'a> = CrossNodeMessageRecord;
+    type AsBytes<'a> = Vec<u8>;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        bincode::deserialize(data).expect("Failed to deserialize CrossNodeMessageRecord")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'a,
+        Self: 'b,
+    {
+        bincode::serialize(value).expect("Failed to serialize CrossNodeMessageRecord")
+    }
+
+    fn type_name() -> redb::TypeName {
+        redb::TypeName::new("mugraph::CrossNodeMessageRecord")
+    }
+}
+
+impl Value for IdempotencyRecord {
+    type SelfType<'a> = IdempotencyRecord;
+    type AsBytes<'a> = Vec<u8>;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        bincode::deserialize(data).expect("Failed to deserialize IdempotencyRecord")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'a,
+        Self: 'b,
+    {
+        bincode::serialize(value).expect("Failed to serialize IdempotencyRecord")
+    }
+
+    fn type_name() -> redb::TypeName {
+        redb::TypeName::new("mugraph::IdempotencyRecord")
+    }
+}
+
+impl Value for TransferAuditEvent {
+    type SelfType<'a> = TransferAuditEvent;
+    type AsBytes<'a> = Vec<u8>;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        bincode::deserialize(data).expect("Failed to deserialize TransferAuditEvent")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+    where
+        Self: 'a,
+        Self: 'b,
+    {
+        bincode::serialize(value).expect("Failed to serialize TransferAuditEvent")
+    }
+
+    fn type_name() -> redb::TypeName {
+        redb::TypeName::new("mugraph::TransferAuditEvent")
     }
 }
 

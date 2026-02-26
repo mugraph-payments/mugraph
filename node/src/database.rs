@@ -3,7 +3,18 @@ use std::{fs::OpenOptions, path::PathBuf};
 use metrics::counter;
 use mugraph_core::{
     error::Error,
-    types::{CardanoWallet, DepositRecord, Signature, UtxoRef, WithdrawalKey, WithdrawalRecord},
+    types::{
+        CardanoWallet,
+        CrossNodeMessageRecord,
+        CrossNodeTransferRecord,
+        DepositRecord,
+        IdempotencyRecord,
+        Signature,
+        TransferAuditEvent,
+        UtxoRef,
+        WithdrawalKey,
+        WithdrawalRecord,
+    },
 };
 use redb::{
     Builder,
@@ -35,6 +46,22 @@ pub const DEPOSITS: TableDefinition<UtxoRef, DepositRecord> = TableDefinition::n
 /// Withdrawals indexed by network[1] + tx_hash[32]
 pub const WITHDRAWALS: TableDefinition<WithdrawalKey, WithdrawalRecord> =
     TableDefinition::new("withdrawals");
+
+/// Cross-node transfers indexed by transfer_id
+pub const CROSS_NODE_TRANSFERS: TableDefinition<&str, CrossNodeTransferRecord> =
+    TableDefinition::new("cross_node_transfers");
+
+/// Cross-node messages indexed by message_id
+pub const CROSS_NODE_MESSAGES: TableDefinition<&str, CrossNodeMessageRecord> =
+    TableDefinition::new("cross_node_messages");
+
+/// Idempotency records indexed by idempotency key
+pub const IDEMPOTENCY_KEYS: TableDefinition<&str, IdempotencyRecord> =
+    TableDefinition::new("idempotency_keys");
+
+/// Transfer audit events indexed by event_id
+pub const TRANSFER_AUDIT_LOG: TableDefinition<&str, TransferAuditEvent> =
+    TableDefinition::new("transfer_audit_log");
 
 #[derive(Debug)]
 pub struct Database {
@@ -131,10 +158,30 @@ impl Database {
             let _ = w.open_table(WITHDRAWALS)?;
         }
 
+        // Create CROSS_NODE_TRANSFERS table if it doesn't exist
+        {
+            let _ = w.open_table(CROSS_NODE_TRANSFERS)?;
+        }
+
+        // Create CROSS_NODE_MESSAGES table if it doesn't exist
+        {
+            let _ = w.open_table(CROSS_NODE_MESSAGES)?;
+        }
+
+        // Create IDEMPOTENCY_KEYS table if it doesn't exist
+        {
+            let _ = w.open_table(IDEMPOTENCY_KEYS)?;
+        }
+
+        // Create TRANSFER_AUDIT_LOG table if it doesn't exist
+        {
+            let _ = w.open_table(TRANSFER_AUDIT_LOG)?;
+        }
+
         // Update schema version
         {
             let mut t = w.open_table(SCHEMA_VERSION)?;
-            t.insert("version", 2)?;
+            t.insert("version", 3)?;
         }
 
         w.commit()?;
