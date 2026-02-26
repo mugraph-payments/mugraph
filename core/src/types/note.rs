@@ -47,12 +47,6 @@ mod tests {
     }
 
     #[proptest]
-    // Tests if a Note struct has a consistent size with the actual struct size
-    fn test_size_consistency(note: Note) {
-        prop_assert_eq!(size_of::<Note>(), size_of_val(&note));
-    }
-
-    #[proptest]
     fn test_commitment(note: Note) {
         let mut asset_bytes = [0u8; ASSET_ID_BYTES_SIZE];
         write_asset_bytes(&note.policy_id, &note.asset_name, &mut asset_bytes);

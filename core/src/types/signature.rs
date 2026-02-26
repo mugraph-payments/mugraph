@@ -173,17 +173,15 @@ impl redb::Value for Signature {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
-    use serde_json::Value;
+    use proptest::prop_assert_eq;
     use test_strategy::proptest;
 
     use super::Signature;
 
     #[proptest]
-    fn test_serialization(value: Signature) {
-        prop_assert!(matches!(
-            serde_json::to_value(value).unwrap(),
-            Value::String(_)
-        ))
+    fn test_serde_roundtrip(value: Signature) {
+        let json = serde_json::to_string(&value).unwrap();
+        let decoded: Signature = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(decoded, value);
     }
 }

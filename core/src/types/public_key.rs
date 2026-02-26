@@ -190,17 +190,15 @@ impl core::fmt::Debug for PublicKey {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
-    use serde_json::Value;
+    use proptest::prop_assert_eq;
     use test_strategy::proptest;
 
     use super::PublicKey;
 
     #[proptest]
-    fn test_serialization(value: PublicKey) {
-        prop_assert!(matches!(
-            serde_json::to_value(value).unwrap(),
-            Value::String(_)
-        ))
+    fn test_serde_roundtrip(value: PublicKey) {
+        let json = serde_json::to_string(&value).unwrap();
+        let decoded: PublicKey = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(decoded, value);
     }
 }

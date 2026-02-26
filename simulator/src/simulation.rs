@@ -429,12 +429,11 @@ mod tests {
     proptest! {
         #[test]
         fn prop_build_refresh_conserves_total_amount(
-            input_amount in 1u64..=1_000_000,
-            spend_amount in 1u64..=1_000_000,
+            (input_amount, spend_amount) in (1u64..=1_000_000)
+                .prop_flat_map(|input_amount| (Just(input_amount), 1u64..=input_amount)),
             sender in 0usize..16,
             receiver in 0usize..16,
         ) {
-            prop_assume!(spend_amount <= input_amount);
             let asset = Asset {
                 policy_id: PolicyId([7u8; 28]),
                 asset_name: AssetName::empty(),
@@ -471,10 +470,9 @@ mod tests {
 
         #[test]
         fn prop_build_refresh_outputs_never_exceed_input(
-            input_amount in 1u64..=500_000,
-            spend_amount in 1u64..=500_000,
+            (input_amount, spend_amount) in (1u64..=500_000)
+                .prop_flat_map(|input_amount| (Just(input_amount), 1u64..=input_amount)),
         ) {
-            prop_assume!(spend_amount <= input_amount);
             let asset = Asset {
                 policy_id: PolicyId([7u8; 28]),
                 asset_name: AssetName::empty(),

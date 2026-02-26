@@ -342,8 +342,10 @@ mod tests {
         }
 
         #[test]
-        fn prop_validate_version_rejects_other_majors(major in 0u16..=10, minor in 0u16..=1000) {
-            prop_assume!(major != 3);
+        fn prop_validate_version_rejects_other_majors(
+            major in prop_oneof![0u16..3, 4u16..=10],
+            minor in 0u16..=1000
+        ) {
             let version = format!("{major}.{minor}");
             let err = validate_version(&version, 3).unwrap_err();
             prop_assert_eq!(err.code, XNodeProtocolErrorCode::UnsupportedVersion);

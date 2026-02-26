@@ -282,12 +282,11 @@ proptest! {
 
     #[test]
     fn prop_pre_finality_observation_stays_confirming(
-        block_height in 1u64..=1_000_000,
-        finality_target in 2u64..=500,
-        confirmations_below in 0u64..=499,
+        (block_height, finality_target, confirmations_below) in (1u64..=1_000_000, 2u64..=500)
+            .prop_flat_map(|(block_height, finality_target)| {
+                (Just(block_height), Just(finality_target), 0u64..finality_target - 1)
+            }),
     ) {
-        prop_assume!(confirmations_below + 1 < finality_target);
-
         let tip_height = block_height + confirmations_below;
         let obs = evaluate_tx_observation(
             "tx1",

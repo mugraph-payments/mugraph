@@ -163,17 +163,15 @@ impl core::fmt::Debug for SecretKey {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
-    use serde_json::Value;
+    use proptest::prop_assert_eq;
     use test_strategy::proptest;
 
     use super::SecretKey;
 
     #[proptest]
-    fn test_serialization(value: SecretKey) {
-        prop_assert!(matches!(
-            serde_json::to_value(value).unwrap(),
-            Value::String(_)
-        ))
+    fn test_serde_roundtrip(value: SecretKey) {
+        let json = serde_json::to_string(&value).unwrap();
+        let decoded: SecretKey = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(decoded, value);
     }
 }
