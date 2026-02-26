@@ -94,13 +94,23 @@ pub struct WithdrawResponse {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prop_assert_eq;
     use serde_json::Value;
+    use test_strategy::proptest;
 
     use crate::types::{
         Refresh, Request, TransferAckPayload, TransferAckStatus, TransferInitPayload,
         TransferNoticePayload, TransferNoticeStage, TransferQueryType, TransferStatusQueryPayload,
         XNodeAuth, XNodeEnvelope, XNodeMessageType,
     };
+
+    #[proptest]
+    fn test_serde_roundtrip(request: Request) {
+        let json = serde_json::to_string(&request).unwrap();
+        let decoded: Request = serde_json::from_str(&json).unwrap();
+        let json2 = serde_json::to_string(&decoded).unwrap();
+        prop_assert_eq!(json, json2);
+    }
 
     #[test]
     fn test_serialization() {

@@ -321,6 +321,7 @@ mod tests {
         ) {
             let mut lifecycle = TransferLifecycle::new();
             lifecycle.apply(LifecycleEvent::SourceSubmitted);
+            let mut was_invalidated = false;
 
             for op in ops {
                 let before = lifecycle.clone();
@@ -342,13 +343,15 @@ mod tests {
                     Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
                 }
 
+                // Invariant: Ack/Notice don't regress confirmed state
                 if matches!(op, Op::Ack | Op::Notice)
                     && before.source == SourceLaneState::Confirmed
                     && before.chain == TransferChainState::Confirmed
                 {
-                    prop_assert_eq!(lifecycle.clone(), before);
+                    prop_assert_eq!(lifecycle.clone(), before.clone());
                 }
 
+                // Invariant: credited requires confirmed source
                 if lifecycle.source != SourceLaneState::Confirmed {
                     prop_assert_ne!(lifecycle.destination, DestinationLaneState::Credited);
                     prop_assert_ne!(
@@ -357,6 +360,7 @@ mod tests {
                     );
                 }
 
+                // Invariant: credited implies full confirmation
                 if lifecycle.credit == TransferCreditState::Credited {
                     prop_assert_eq!(lifecycle.source, SourceLaneState::Confirmed);
                     prop_assert_eq!(lifecycle.destination, DestinationLaneState::Credited);
@@ -367,6 +371,7 @@ mod tests {
                     );
                 }
 
+                // Invariant: invalidated is consistent across all fields
                 if lifecycle.settlement == TransferSettlementState::Invalidated {
                     prop_assert_eq!(lifecycle.source, SourceLaneState::Invalidated);
                     prop_assert_eq!(lifecycle.destination, DestinationLaneState::Invalidated);
@@ -378,6 +383,32 @@ mod tests {
                         lifecycle.credit == TransferCreditState::None
                             || lifecycle.credit == TransferCreditState::Reversed
                     );
+                }
+
+                // Invariant: invalidated is an absorbing state (no escape)
+                if was_invalidated {
+                    prop_assert_eq!(lifecycle.source, SourceLaneState::Invalidated);
+                    prop_assert_eq!(lifecycle.destination, DestinationLaneState::Invalidated);
+                    prop_assert_eq!(
+                        lifecycle.chain.clone(),
+                        TransferChainState::Invalidated
+                    );
+                    prop_assert_eq!(
+                        lifecycle.settlement.clone(),
+                        TransferSettlementState::Invalidated
+                    );
+                }
+
+                if lifecycle.settlement == TransferSettlementState::Invalidated {
+                    was_invalidated = true;
+                }
+
+                // Invariant: confirmations_observed reflects latest ChainObserved event
+                match &op {
+                    Op::ObserveConfirming(c) | Op::ObserveConfirmed(c) if lifecycle.chain != TransferChainState::Invalidated => {
+                        prop_assert_eq!(lifecycle.confirmations_observed, *c);
+                    }
+                    _ => {}
                 }
             }
         }

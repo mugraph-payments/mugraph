@@ -117,3 +117,81 @@ impl Refresh {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
+    use super::*;
+    /// Strategy that generates a structurally valid, balanced Refresh.
+    fn balanced_refresh() -> impl Strategy<Value = Refresh> {
+        (
+            any::<PublicKey>(),
+            any::<Asset>(),
+            1u64..=500_000,
+            proptest::collection::vec(1u64..=500_000, 1..=4),
+        )
+            .prop_map(|(delegate, asset, input_amount, split_weights)| {
+                let total_weight: u64 = split_weights.iter().sum();
+                let mut output_amounts: Vec<u64> = split_weights
+                    .iter()
+                    .map(|w| input_amount * w / total_weight)
+                    .collect();
+
+                // Distribute remainder to first output to guarantee exact balance
+                let output_sum: u64 = output_amounts.iter().sum();
+                if output_sum < input_amount {
+                    output_amounts[0] += input_amount - output_sum;
+                }
+
+                let mut input_mask = BitSet32::new();
+                input_mask.insert(0);
+
+                let mut atoms = vec![Atom {
+                    delegate,
+                    asset_id: 0,
+                    amount: input_amount,
+                    nonce: Hash::default(),
+                    signature: Some(0),
+                }];
+
+                for amount in &output_amounts {
+                    atoms.push(Atom {
+                        delegate,
+                        asset_id: 0,
+                        amount: *amount,
+                        nonce: Hash::default(),
+                        signature: None,
+                    });
+                }
+
+                Refresh {
+                    input_mask,
+                    atoms,
+                    asset_ids: vec![asset],
+                    signatures: vec![Signature::default()],
+                }
+            })
+    }
+
+    #[proptest]
+    fn prop_balanced_refresh_verifies(#[strategy(balanced_refresh())] refresh: Refresh) {
+        prop_assert!(refresh.verify().is_ok());
+    }
+
+    #[proptest]
+    fn prop_unbalanced_refresh_fails(#[strategy(balanced_refresh())] mut refresh: Refresh) {
+        // Find first output atom index
+        let output_idx = refresh
+            .atoms
+            .iter()
+            .enumerate()
+            .position(|(i, _)| refresh.is_output(i));
+
+        if let Some(idx) = output_idx {
+            refresh.atoms[idx].amount = refresh.atoms[idx].amount.saturating_add(1);
+            prop_assert!(refresh.verify().is_err());
+        }
+    }
+}

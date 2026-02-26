@@ -36,18 +36,10 @@ pub fn render_ui(
 
         let header = Paragraph::new(vec![
             Line::from(vec![
-                Span::raw("Node: "),
-                Span::styled(
-                    snapshot
-                        .node_pk
-                        .map(|pk| format!("{pk}"))
-                        .unwrap_or_else(|| "unknown".into()),
-                    Style::default().fg(Color::Cyan),
-                ),
-                Span::raw("  Delegate: "),
+                Span::raw("Delegate: "),
                 Span::styled(
                     format!("{}", snapshot.delegate_pk),
-                    Style::default().fg(Color::Green),
+                    Style::default().fg(Color::Cyan),
                 ),
                 Span::raw("  Paused: "),
                 Span::styled(

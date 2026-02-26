@@ -127,3 +127,78 @@ impl RefreshBuilder {
         Ok(refresh)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
+    use crate::types::*;
+
+    use super::*;
+
+    #[proptest]
+    fn prop_builder_produces_verifiable_refresh(
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        delegate: PublicKey,
+        nonce: Hash,
+        signature: Signature,
+        #[strategy(1u64..=500_000)] amount: u64,
+        #[strategy(proptest::collection::vec(1u64..=500_000, 1..=4))] split_weights: Vec<u64>,
+    ) {
+        let note = Note {
+            amount,
+            delegate,
+            policy_id,
+            asset_name,
+            nonce,
+            signature,
+            dleq: None,
+        };
+
+        let total_weight: u64 = split_weights.iter().sum();
+        let mut output_amounts: Vec<u64> = split_weights
+            .iter()
+            .map(|w| amount * w / total_weight)
+            .collect();
+        let output_sum: u64 = output_amounts.iter().sum();
+        if output_sum < amount {
+            output_amounts[0] += amount - output_sum;
+        }
+
+        let mut builder = RefreshBuilder::new().input(note);
+        for &out_amount in &output_amounts {
+            builder = builder.output(policy_id, asset_name, out_amount);
+        }
+
+        let refresh = builder.build().unwrap();
+        prop_assert!(refresh.verify().is_ok());
+    }
+
+    #[proptest]
+    fn prop_builder_rejects_unbalanced(
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        delegate: PublicKey,
+        nonce: Hash,
+        signature: Signature,
+        #[strategy(2u64..=500_000)] amount: u64,
+    ) {
+        let note = Note {
+            amount,
+            delegate,
+            policy_id,
+            asset_name,
+            nonce,
+            signature,
+            dleq: None,
+        };
+
+        let builder = RefreshBuilder::new()
+            .input(note)
+            .output(policy_id, asset_name, amount + 1);
+
+        prop_assert!(builder.build().is_err());
+    }
+}

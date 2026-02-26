@@ -85,3 +85,72 @@ impl_bitset!(64);
 impl_bitset!(32);
 impl_bitset!(16);
 impl_bitset!(8);
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
+    use super::*;
+
+    // --- Round-trip ---
+
+    #[proptest]
+    fn prop_bitset32_bytes_roundtrip(bs: BitSet32) {
+        let recovered = BitSet32::from(bs.to_bytes());
+        prop_assert_eq!(bs, recovered);
+    }
+
+    #[proptest]
+    fn prop_bitset64_bytes_roundtrip(bs: BitSet64) {
+        let recovered = BitSet64::from(bs.to_bytes());
+        prop_assert_eq!(bs, recovered);
+    }
+
+    #[proptest]
+    fn prop_bitset128_bytes_roundtrip(bs: BitSet128) {
+        let recovered = BitSet128::from(bs.to_bytes());
+        prop_assert_eq!(bs, recovered);
+    }
+
+    // --- Algebraic: insert/remove/contains ---
+
+    #[proptest]
+    fn prop_bitset32_insert_contains(#[strategy(0u32..32)] idx: u32) {
+        let mut bs = BitSet32::new();
+        bs.insert(idx);
+        prop_assert!(bs.contains(idx));
+    }
+
+    #[proptest]
+    fn prop_bitset32_remove_not_contains(#[strategy(0u32..32)] idx: u32) {
+        let mut bs = BitSet32::new();
+        bs.insert(idx);
+        bs.remove(idx);
+        prop_assert!(!bs.contains(idx));
+    }
+
+    #[proptest]
+    fn prop_bitset32_empty_after_new() {
+        let bs = BitSet32::new();
+        prop_assert!(bs.is_empty());
+        prop_assert_eq!(bs.count_ones(), 0);
+    }
+
+    #[proptest]
+    fn prop_bitset32_count_ones_matches_inserts(
+        #[strategy(proptest::collection::btree_set(0u32..32, 0..=16))]
+        indices: std::collections::BTreeSet<u32>,
+    ) {
+        let mut bs = BitSet32::new();
+        for &idx in &indices {
+            bs.insert(idx);
+        }
+        prop_assert_eq!(bs.count_ones(), indices.len() as u32);
+    }
+
+    #[proptest]
+    fn prop_bitset32_is_empty_iff_count_zero(bs: BitSet32) {
+        prop_assert_eq!(bs.is_empty(), bs.count_ones() == 0);
+    }
+}

@@ -33,10 +33,7 @@ impl proptest::arbitrary::Arbitrary for SecretKey {
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         use proptest::prelude::*;
 
-        any::<[u8; 32]>()
-            .prop_filter("must not be empty", |x| *x != [0u8; 32])
-            .prop_map(Self)
-            .boxed()
+        any::<[u8; 32]>().prop_map(Self).boxed()
     }
 }
 

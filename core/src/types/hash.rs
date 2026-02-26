@@ -31,10 +31,7 @@ impl Arbitrary for Hash {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        any::<[u8; 32]>()
-            .prop_filter("must not be empty", |x| *x != [0u8; 32])
-            .prop_map(Self)
-            .boxed()
+        any::<[u8; 32]>().prop_map(Self).boxed()
     }
 }
 
@@ -193,5 +190,15 @@ mod tests {
         let json = serde_json::to_string(&value).unwrap();
         let decoded: Hash = serde_json::from_str(&json).unwrap();
         prop_assert_eq!(decoded, value);
+    }
+
+    #[proptest]
+    fn prop_digest_deterministic(data: Vec<u8>) {
+        prop_assert_eq!(Hash::digest(&data), Hash::digest(&data));
+    }
+
+    #[proptest]
+    fn prop_digest_equality(a: Vec<u8>, b: Vec<u8>) {
+        prop_assert_eq!(a == b, Hash::digest(&a) == Hash::digest(&b));
     }
 }

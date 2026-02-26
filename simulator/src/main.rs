@@ -16,7 +16,7 @@ use crate::{
     assets::generate_assets,
     client::NodeClient,
     simulation::{bootstrap_wallets, simulation_owner_loop},
-    types::{AppState, Args, SimCommand},
+    types::{AppState, Args, SimChannels, SimCommand, SimConfig},
     ui::ui_loop,
 };
 
@@ -50,7 +50,6 @@ async fn main() -> Result<()> {
     let mut state = AppState {
         assets: assets.clone(),
         delegate_pk: node_pk,
-        node_pk: Some(node_pk),
         ..Default::default()
     };
 
@@ -66,66 +65,57 @@ async fn main() -> Result<()> {
     .await
     .wrap_err("bootstrap wallets")?;
 
-    let tick = Duration::from_millis(args.tick_ms);
+    let config = SimConfig {
+        amount_range: (args.min_amount, args.max_amount),
+        tick: Duration::from_millis(args.tick_ms),
+        max_inflight: args.max_inflight,
+    };
 
     let (snapshot_tx, snapshot_rx) = watch::channel(state.snapshot());
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
 
-    let mut owner_handle = tokio::spawn(simulation_owner_loop(
-        client,
-        state,
-        rng,
-        (args.min_amount, args.max_amount),
-        tick,
-        args.max_inflight,
+    let channels = SimChannels {
         cmd_rx,
         event_rx,
         event_tx,
         snapshot_tx,
-    ));
+    };
+
+    let mut owner_handle =
+        tokio::spawn(simulation_owner_loop(client, state, rng, config, channels));
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();
     let mut ui_handle =
         tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
 
-    let mut owner_done = false;
-    let mut ui_done = false;
-
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("received ctrl+c, shutting down");
-            let _ = cmd_tx.send(SimCommand::Quit);
+        }
+        res = &mut owner_handle => {
+            if let Err(e) = res {
+                error!("simulation owner task error: {e:?}");
+            }
         }
         res = &mut ui_handle => {
-            ui_done = true;
             match res {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => error!("ui task error: {e:#}"),
                 Err(e) => error!("ui task join error: {e:?}"),
             }
-            let _ = cmd_tx.send(SimCommand::Quit);
-        }
-        res = &mut owner_handle => {
-            owner_done = true;
-            if let Err(e) = res {
-                error!("simulation owner task error: {e:?}");
-            }
         }
     }
 
+    // Signal shutdown — sending to a closed channel is a no-op
     let _ = cmd_tx.send(SimCommand::Quit);
 
-    if !owner_done && let Err(e) = owner_handle.await {
-        error!("simulation owner task error: {e:?}");
-    }
-    if !ui_done {
-        match ui_handle.await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => error!("ui task error: {e:#}"),
-            Err(e) => error!("ui task join error: {e:?}"),
-        }
+    let _ = owner_handle.await;
+    match ui_handle.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => error!("ui task error: {e:#}"),
+        Err(e) => error!("ui task join error: {e:?}"),
     }
 
     ratatui::restore();

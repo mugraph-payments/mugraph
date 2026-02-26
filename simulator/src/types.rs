@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use clap::Parser;
+use std::time::Duration;
+
 use mugraph_core::types::{Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh};
 use reqwest::Url;
 
@@ -49,7 +51,6 @@ pub struct AppState {
     pub wallets: Vec<Wallet>,
     pub assets: Vec<SimAsset>,
     pub delegate_pk: PublicKey,
-    pub node_pk: Option<PublicKey>,
     pub logs: VecDeque<String>,
     pub inflight: usize,
     pub total_sent: u64,
@@ -110,7 +111,6 @@ impl AppState {
             wallets,
             assets: self.assets.clone(),
             delegate_pk: self.delegate_pk,
-            node_pk: self.node_pk,
             logs: self.logs.clone(),
             inflight: self.inflight,
             total_sent: self.total_sent,
@@ -143,7 +143,6 @@ pub struct AppSnapshot {
     pub wallets: Vec<WalletSnapshot>,
     pub assets: Vec<SimAsset>,
     pub delegate_pk: PublicKey,
-    pub node_pk: Option<PublicKey>,
     pub logs: VecDeque<String>,
     pub inflight: usize,
     pub total_sent: u64,
@@ -152,6 +151,19 @@ pub struct AppSnapshot {
     pub last_failure: Option<String>,
     pub paused: bool,
     pub shutdown: bool,
+}
+
+pub struct SimConfig {
+    pub amount_range: (u64, u64),
+    pub tick: Duration,
+    pub max_inflight: usize,
+}
+
+pub struct SimChannels {
+    pub cmd_rx: tokio::sync::mpsc::UnboundedReceiver<SimCommand>,
+    pub event_rx: tokio::sync::mpsc::UnboundedReceiver<SimEvent>,
+    pub event_tx: tokio::sync::mpsc::UnboundedSender<SimEvent>,
+    pub snapshot_tx: tokio::sync::watch::Sender<AppSnapshot>,
 }
 
 #[derive(Debug, Clone, Copy)]

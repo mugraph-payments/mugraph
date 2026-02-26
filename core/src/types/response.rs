@@ -59,10 +59,21 @@ pub enum Response {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prop_assert_eq;
+    use test_strategy::proptest;
+
     use crate::types::{
         Response, TransferChainState, TransferCreditState, TransferSettlementState,
         TransferStatusPayload, XNodeAuth, XNodeEnvelope, XNodeMessageType,
     };
+
+    #[proptest]
+    fn test_serde_roundtrip(response: Response) {
+        let json = serde_json::to_string(&response).unwrap();
+        let decoded: Response = serde_json::from_str(&json).unwrap();
+        let json2 = serde_json::to_string(&decoded).unwrap();
+        prop_assert_eq!(json, json2);
+    }
 
     #[test]
     fn test_cross_node_transfer_status_serialization() {

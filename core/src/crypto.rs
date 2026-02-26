@@ -210,7 +210,7 @@ mod tests {
         prop_assert_ne!(hash_to_scalar(&[&a]), hash_to_scalar(&[&b]));
     }
 
-    #[proptest]
+    #[proptest(cases = 500)]
     fn test_blinding_workflow(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
@@ -278,7 +278,7 @@ mod tests {
         );
     }
 
-    #[proptest]
+    #[proptest(cases = 500)]
     fn test_signature_validity_equality(
         #[strategy(rng())] mut rng: StdRng,
         pair: Keypair,
@@ -297,7 +297,7 @@ mod tests {
         prop_assert_eq!(verify(&pair.public_key, &b, unblinded)?, a == b);
     }
 
-    #[proptest]
+    #[proptest(cases = 500)]
     fn test_signature_key_validity(
         #[strategy(rng())] mut rng: StdRng,
         a: Keypair,

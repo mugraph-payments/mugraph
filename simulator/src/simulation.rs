@@ -1,16 +1,11 @@
-use std::time::Duration;
-
 use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
     types::{Asset, BlindSignature, DleqProofWithBlinding, Hash, Note, PublicKey, Refresh},
 };
-use rand::{Rng, rngs::StdRng, seq::SliceRandom};
-use tokio::{
-    sync::{mpsc, watch},
-    time::{MissedTickBehavior, interval},
-};
+use rand::{Rng, rngs::StdRng};
+use tokio::time::{MissedTickBehavior, interval};
 
 use crate::{client::NodeClient, types::*};
 
@@ -58,19 +53,18 @@ pub fn reserve_spendable_note(
     assets: &[SimAsset],
     rng: &mut StdRng,
 ) -> Option<(Asset, Note)> {
-    let mut shuffled: Vec<Asset> = assets
-        .iter()
-        .map(|a| Asset {
+    let n = assets.len();
+    let start = rng.random_range(0..n);
+    for i in 0..n {
+        let a = &assets[(start + i) % n];
+        let key = Asset {
             policy_id: a.policy_id,
             asset_name: a.asset_name,
-        })
-        .collect();
-    shuffled.shuffle(rng);
-    for asset in shuffled {
-        if let Some(notes) = wallet.notes.get_mut(&asset)
+        };
+        if let Some(notes) = wallet.notes.get_mut(&key)
             && let Some(pos) = notes.iter().position(|n| n.amount > 0)
         {
-            return Some((asset, notes.swap_remove(pos)));
+            return Some((key, notes.swap_remove(pos)));
         }
     }
     None
@@ -83,23 +77,18 @@ pub fn build_refresh(
     input_note: Note,
     amount: u64,
 ) -> Result<(Refresh, Vec<usize>)> {
-    let mut builder = RefreshBuilder::new().input(input_note.clone());
-    builder = builder.output(asset.policy_id, asset.asset_name, amount);
+    let mut builder = RefreshBuilder::new()
+        .input(input_note.clone())
+        .output(asset.policy_id, asset.asset_name, amount);
+
+    let mut owners = vec![output_owner];
 
     if input_note.amount > amount {
-        let change = input_note.amount - amount;
-        builder = builder.output(asset.policy_id, asset.asset_name, change);
-    }
-
-    let refresh = builder.build()?;
-
-    let mut owners = Vec::new();
-    owners.push(output_owner);
-    if input_note.amount > amount {
+        builder = builder.output(asset.policy_id, asset.asset_name, input_note.amount - amount);
         owners.push(input_owner);
     }
 
-    Ok((refresh, owners))
+    Ok((builder.build()?, owners))
 }
 
 pub fn materialize_outputs(
@@ -186,7 +175,6 @@ fn record_sender_failure(
     input_note: Note,
     message: String,
 ) {
-    state.last_failure = Some(message.clone());
     state.total_err += 1;
     state.wallets[sender_id].failures += 1;
     state.wallets[sender_id]
@@ -194,23 +182,25 @@ fn record_sender_failure(
         .entry(asset)
         .or_default()
         .push(input_note);
-    state.log(message);
+    state.log(&message);
+    state.last_failure = Some(message);
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn simulation_owner_loop(
     client: NodeClient,
     mut state: AppState,
     mut rng: StdRng,
-    amount_range: (u64, u64),
-    tick: Duration,
-    max_inflight: usize,
-    mut cmd_rx: mpsc::UnboundedReceiver<SimCommand>,
-    mut event_rx: mpsc::UnboundedReceiver<SimEvent>,
-    event_tx: mpsc::UnboundedSender<SimEvent>,
-    snapshot_tx: watch::Sender<AppSnapshot>,
+    config: SimConfig,
+    channels: SimChannels,
 ) {
-    let mut ticker = interval(tick);
+    let SimChannels {
+        mut cmd_rx,
+        mut event_rx,
+        event_tx,
+        snapshot_tx,
+    } = channels;
+
+    let mut ticker = interval(config.tick);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let _ = snapshot_tx.send(state.snapshot());
@@ -223,7 +213,7 @@ pub async fn simulation_owner_loop(
                 if state.shutdown {
                     break;
                 }
-                if state.paused || state.inflight >= max_inflight {
+                if state.paused || state.inflight >= config.max_inflight {
                     continue;
                 }
 
@@ -253,7 +243,7 @@ pub async fn simulation_owner_loop(
                 };
 
                 let spend_amount = rng
-                    .random_range(amount_range.0..=amount_range.1)
+                    .random_range(config.amount_range.0..=config.amount_range.1)
                     .min(input_note.amount);
 
                 let (refresh, owners) = match build_refresh(

@@ -208,21 +208,19 @@ pub fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
     let mut defs: Vec<CardanoAssetDef> = CARDANO_ASSET_DEFS.to_vec();
     defs.shuffle(rng);
 
-    let mut selected = Vec::with_capacity(count);
-    for i in 0..count {
-        let def = defs[i % defs.len()];
-        let policy_bytes = muhex::decode(def.policy_id).expect("policy_id must be hex");
-        let policy_id = PolicyId(policy_bytes.try_into().expect("policy_id must be 28 bytes"));
-        let asset_name =
-            AssetName::new(def.asset_name.as_bytes()).expect("asset_name must be <= 32 bytes");
-        selected.push(SimAsset {
-            policy_id,
-            asset_name,
-            name: def.asset_name,
-            policy_id_hex: def.policy_id,
-        });
-    }
-
-    selected
+    defs.iter()
+        .cycle()
+        .take(count)
+        .map(|def| {
+            let policy_bytes = muhex::decode(def.policy_id).expect("policy_id must be hex");
+            SimAsset {
+                policy_id: PolicyId(policy_bytes.try_into().expect("policy_id must be 28 bytes")),
+                asset_name: AssetName::new(def.asset_name.as_bytes())
+                    .expect("asset_name must be <= 32 bytes"),
+                name: def.asset_name,
+                policy_id_hex: def.policy_id,
+            }
+        })
+        .collect()
 }
 

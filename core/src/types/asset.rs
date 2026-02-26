@@ -23,10 +23,7 @@ impl Arbitrary for PolicyId {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        any::<[u8; POLICY_ID_SIZE]>()
-            .prop_filter("must not be empty", |x| *x != [0u8; POLICY_ID_SIZE])
-            .prop_map(Self)
-            .boxed()
+        any::<[u8; POLICY_ID_SIZE]>().prop_map(Self).boxed()
     }
 }
 
@@ -164,8 +161,8 @@ impl Arbitrary for AssetName {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        proptest::collection::vec(any::<u8>(), 0..=ASSET_NAME_MAX_SIZE)
-            .prop_map(|name| Self::new(&name).expect("len already validated"))
+        "[a-zA-Z0-9_]{0,32}"
+            .prop_map(|s| Self::new(s.as_bytes()).expect("regex guarantees valid length"))
             .boxed()
     }
 }

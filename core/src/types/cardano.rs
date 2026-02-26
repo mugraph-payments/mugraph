@@ -510,31 +510,22 @@ impl Value for WithdrawalKey {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prop_assert_eq;
+    use test_strategy::proptest;
+
     use super::*;
 
-    #[test]
-    fn test_utxo_ref_serialization() {
-        let tx_hash = [1u8; 32];
-        let index = 42u16;
-        let utxo = UtxoRef::new(tx_hash, index);
-
-        let bytes = utxo.to_bytes();
-        let recovered = UtxoRef::from_bytes(&bytes);
-
-        assert_eq!(utxo.tx_hash, recovered.tx_hash);
-        assert_eq!(utxo.index, recovered.index);
+    #[proptest]
+    fn prop_utxo_ref_roundtrip(tx_hash: [u8; 32], index: u16) {
+        let original = UtxoRef::new(tx_hash, index);
+        let recovered = UtxoRef::from_bytes(&original.to_bytes());
+        prop_assert_eq!(original, recovered);
     }
 
-    #[test]
-    fn test_withdrawal_key_serialization() {
-        let network = 1u8;
-        let tx_hash = [2u8; 32];
-        let key = WithdrawalKey::new(network, tx_hash);
-
-        let bytes = key.to_bytes();
-        let recovered = WithdrawalKey::from_bytes(&bytes);
-
-        assert_eq!(key.network, recovered.network);
-        assert_eq!(key.tx_hash, recovered.tx_hash);
+    #[proptest]
+    fn prop_withdrawal_key_roundtrip(network: u8, tx_hash: [u8; 32]) {
+        let original = WithdrawalKey::new(network, tx_hash);
+        let recovered = WithdrawalKey::from_bytes(&original.to_bytes());
+        prop_assert_eq!(original, recovered);
     }
 }
