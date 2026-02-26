@@ -348,5 +348,67 @@ mod tests {
             let err = validate_version(&version, 3).unwrap_err();
             prop_assert_eq!(err.code, XNodeProtocolErrorCode::UnsupportedVersion);
         }
+
+        #[test]
+        fn prop_command_messages_require_expires_at(msg in 0u8..=2) {
+            let message_type = match msg {
+                0 => XNodeMessageType::TransferInit,
+                1 => XNodeMessageType::TransferNotice,
+                _ => XNodeMessageType::TransferAck,
+            };
+
+            let env = XNodeEnvelope {
+                m: "xnode".to_string(),
+                version: "3.0".to_string(),
+                message_type: message_type.clone(),
+                message_id: "m1".to_string(),
+                transfer_id: "t1".to_string(),
+                idempotency_key: "ik".to_string(),
+                correlation_id: "c1".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: None,
+                payload: (),
+                auth: XNodeAuth {
+                    alg: "Ed25519".to_string(),
+                    kid: "k1".to_string(),
+                    sig: "sig".to_string(),
+                },
+            };
+
+            let err = validate_envelope_basics(&env, message_type, 3).unwrap_err();
+            prop_assert_eq!(err.code, XNodeProtocolErrorCode::SchemaValidationFailed);
+        }
+
+        #[test]
+        fn prop_non_command_messages_allow_missing_expires_at(msg in 0u8..=1) {
+            let message_type = match msg {
+                0 => XNodeMessageType::TransferStatusQuery,
+                _ => XNodeMessageType::TransferStatus,
+            };
+
+            let env = XNodeEnvelope {
+                m: "xnode".to_string(),
+                version: "3.0".to_string(),
+                message_type: message_type.clone(),
+                message_id: "m1".to_string(),
+                transfer_id: "t1".to_string(),
+                idempotency_key: "ik".to_string(),
+                correlation_id: "c1".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: None,
+                payload: (),
+                auth: XNodeAuth {
+                    alg: "Ed25519".to_string(),
+                    kid: "k1".to_string(),
+                    sig: "sig".to_string(),
+                },
+            };
+
+            prop_assert!(validate_envelope_basics(&env, message_type, 3).is_ok());
+        }
     }
 }

@@ -382,5 +382,84 @@ mod tests {
                 _ => prop_assert!(false, "unexpected response variant"),
             }
         }
+
+        #[test]
+        fn prop_handlers_accept_supported_minor_versions(minor in 0u16..=2000) {
+            let version = format!("3.{minor}");
+
+            let create = XNodeEnvelope {
+                m: "xnode".to_string(),
+                version: version.clone(),
+                message_type: XNodeMessageType::TransferInit,
+                message_id: "mid-c".to_string(),
+                transfer_id: "tr".to_string(),
+                idempotency_key: "ik-c".to_string(),
+                correlation_id: "corr".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+                payload: TransferInitPayload {
+                    asset: "lovelace".to_string(),
+                    amount: "1".to_string(),
+                    destination_account_ref: "acct".to_string(),
+                    source_intent_hash: "hash".to_string(),
+                },
+                auth: auth(),
+            };
+
+            let status = XNodeEnvelope {
+                m: "xnode".to_string(),
+                version,
+                message_type: XNodeMessageType::TransferStatusQuery,
+                message_id: "mid-s".to_string(),
+                transfer_id: "tr".to_string(),
+                idempotency_key: "ik-s".to_string(),
+                correlation_id: "corr".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: None,
+                payload: TransferStatusQueryPayload { query_type: TransferQueryType::Current },
+                auth: auth(),
+            };
+
+            prop_assert!(handle_create(&create).is_ok());
+            prop_assert!(handle_status(&status).is_ok());
+        }
+
+        #[test]
+        fn prop_notify_rejects_any_non_notice_message_type(mt in 0u8..=3) {
+            let message_type = match mt {
+                0 => XNodeMessageType::TransferInit,
+                1 => XNodeMessageType::TransferStatusQuery,
+                2 => XNodeMessageType::TransferStatus,
+                _ => XNodeMessageType::TransferAck,
+            };
+
+            let request = XNodeEnvelope {
+                m: "xnode".to_string(),
+                version: "3.0".to_string(),
+                message_type,
+                message_id: "mid".to_string(),
+                transfer_id: "tr".to_string(),
+                idempotency_key: "ik".to_string(),
+                correlation_id: "corr".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: Some("2026-02-26T18:05:00Z".to_string()),
+                payload: TransferNoticePayload {
+                    notice_stage: TransferNoticeStage::Confirmed,
+                    tx_hash: "abcd".to_string(),
+                    confirmations: Some(1),
+                },
+                auth: auth(),
+            };
+
+            let err = handle_notify(&request).unwrap_err();
+            let is_unsupported = matches!(err, Error::UnsupportedMessageType { .. });
+            prop_assert!(is_unsupported);
+        }
     }
 }
