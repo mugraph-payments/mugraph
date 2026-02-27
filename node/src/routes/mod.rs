@@ -200,6 +200,11 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
             asset_name,
             amount,
         } => {
+            if !ctx.config.dev_mode() {
+                return Json(Response::Error {
+                    reason: "Emit is only available in dev mode".to_string(),
+                });
+            }
             let mut rng = rand::rng();
             match emit_note(&ctx.keypair, policy_id, asset_name, amount, &mut rng) {
                 Ok(note) => Json(Response::Emit(Box::new(note))),
