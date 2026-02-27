@@ -201,4 +201,59 @@ mod tests {
 
         prop_assert!(builder.build().is_err());
     }
+
+    /// Model-based: RefreshBuilder with multiple inputs on the same asset
+    /// conserves per-asset total.
+    ///
+    /// Generates 2-4 input notes sharing one asset. The outputs split the
+    /// aggregate total into a different number of outputs. Validates that
+    /// the builder produces a verifiable Refresh where input_sum == output_sum.
+    #[proptest]
+    fn prop_builder_multi_input_conserves(
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        delegate: PublicKey,
+        #[strategy(proptest::collection::vec(1u64..=100_000, 2..=4))] input_amounts: Vec<u64>,
+        #[strategy(proptest::collection::vec(1u64..=100_000, 1..=4))] split_weights: Vec<u64>,
+    ) {
+        let total_input: u64 = input_amounts.iter().sum();
+
+        let total_weight: u64 = split_weights.iter().sum();
+        let mut output_amounts: Vec<u64> = split_weights
+            .iter()
+            .map(|w| total_input * w / total_weight)
+            .collect();
+        let output_sum: u64 = output_amounts.iter().sum();
+        if output_sum < total_input {
+            output_amounts[0] += total_input - output_sum;
+        }
+
+        let mut builder = RefreshBuilder::new();
+        for (i, &amt) in input_amounts.iter().enumerate() {
+            builder = builder.input(Note {
+                amount: amt,
+                delegate,
+                policy_id,
+                asset_name,
+                nonce: Hash([i as u8; 32]),
+                signature: Signature([i as u8; 32]),
+                dleq: None,
+            });
+        }
+        for &out_amount in &output_amounts {
+            builder = builder.output(policy_id, asset_name, out_amount);
+        }
+
+        prop_assert_eq!(builder.input_count(), input_amounts.len());
+        prop_assert_eq!(builder.output_count(), output_amounts.len());
+
+        let refresh = builder.build().unwrap();
+        prop_assert!(refresh.verify().is_ok());
+
+        // Verify the refresh has the right atom count
+        prop_assert_eq!(
+            refresh.atoms.len(),
+            input_amounts.len() + output_amounts.len()
+        );
+    }
 }

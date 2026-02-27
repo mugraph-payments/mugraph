@@ -160,7 +160,7 @@ impl core::fmt::Debug for SecretKey {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prop_assert_eq;
+    use proptest::{prop_assert_eq, prop_assert_ne};
     use test_strategy::proptest;
 
     use super::SecretKey;
@@ -170,5 +170,29 @@ mod tests {
         let json = serde_json::to_string(&value).unwrap();
         let decoded: SecretKey = serde_json::from_str(&json).unwrap();
         prop_assert_eq!(decoded, value);
+    }
+
+    /// Algebraic: SecretKey::public() is deterministic.
+    ///
+    /// Calling public() twice on the same key must yield the same PublicKey.
+    #[proptest]
+    fn prop_public_key_deterministic(sk: SecretKey) {
+        prop_assert_eq!(sk.public(), sk.public());
+    }
+
+    /// Algebraic: distinct secret keys produce distinct public keys.
+    ///
+    /// Two different SecretKey scalars (mod order) should map to different
+    /// PublicKeys. This is the injectivity property of scalar multiplication.
+    #[proptest]
+    fn prop_distinct_keys_distinct_pubkeys(a: SecretKey, b: SecretKey) {
+        let sa = a.to_scalar();
+        let sb = b.to_scalar();
+        // Only assert when the scalars are actually different (mod l).
+        // Arbitrary bytes produce the same scalar with negligible probability,
+        // but we check explicitly to avoid false failures.
+        if sa != sb {
+            prop_assert_ne!(a.public(), b.public());
+        }
     }
 }

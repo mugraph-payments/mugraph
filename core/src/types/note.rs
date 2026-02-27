@@ -73,6 +73,27 @@ mod tests {
         prop_assert_eq!(Hash::digest(&expected), note.commitment());
     }
 
+    /// Differential: Note::commitment() must equal Atom::commitment() when
+    /// constructed from the same fields. These two paths compute "the same"
+    /// commitment from different type layouts — divergence means refresh
+    /// verification silently breaks.
+    #[proptest]
+    fn prop_note_commitment_equals_atom_commitment(note: Note) {
+        let asset = Asset {
+            policy_id: note.policy_id,
+            asset_name: note.asset_name,
+        };
+        let atom = crate::types::Atom {
+            delegate: note.delegate,
+            asset_id: 0,
+            amount: note.amount,
+            nonce: note.nonce,
+            signature: None,
+        };
+
+        prop_assert_eq!(note.commitment(), atom.commitment(&[asset]));
+    }
+
     #[test]
     fn note_serializes_with_inline_asset_fields() {
         let note = Note {

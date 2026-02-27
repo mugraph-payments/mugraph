@@ -194,4 +194,119 @@ mod tests {
             prop_assert!(refresh.verify().is_err());
         }
     }
+
+    /// Strategy that generates a balanced multi-asset Refresh (2 assets).
+    ///
+    /// Each asset has its own input and outputs that sum correctly.
+    /// This exercises the per-asset balance check that single-asset tests miss.
+    fn multi_asset_refresh() -> impl Strategy<Value = Refresh> {
+        (
+            any::<PublicKey>(),
+            any::<Asset>(),
+            any::<Asset>(),
+            1u64..=500_000,
+            1u64..=500_000,
+            proptest::collection::vec(1u64..=500_000, 1..=3),
+            proptest::collection::vec(1u64..=500_000, 1..=3),
+        )
+            .prop_filter("assets must differ", |(_d, a, b, ..)| a != b)
+            .prop_map(
+                |(delegate, asset_a, asset_b, amount_a, amount_b, weights_a, weights_b)| {
+                    fn split(amount: u64, weights: &[u64]) -> Vec<u64> {
+                        let total_w: u64 = weights.iter().sum();
+                        let mut out: Vec<u64> =
+                            weights.iter().map(|w| amount * w / total_w).collect();
+                        let sum: u64 = out.iter().sum();
+                        if sum < amount {
+                            out[0] += amount - sum;
+                        }
+                        out
+                    }
+
+                    let outputs_a = split(amount_a, &weights_a);
+                    let outputs_b = split(amount_b, &weights_b);
+
+                    let mut input_mask = BitSet32::new();
+                    input_mask.insert(0);
+                    input_mask.insert(1);
+
+                    let mut atoms = vec![
+                        Atom {
+                            delegate,
+                            asset_id: 0,
+                            amount: amount_a,
+                            nonce: Hash::default(),
+                            signature: Some(0),
+                        },
+                        Atom {
+                            delegate,
+                            asset_id: 1,
+                            amount: amount_b,
+                            nonce: Hash::default(),
+                            signature: Some(1),
+                        },
+                    ];
+
+                    for &amt in &outputs_a {
+                        atoms.push(Atom {
+                            delegate,
+                            asset_id: 0,
+                            amount: amt,
+                            nonce: Hash::default(),
+                            signature: None,
+                        });
+                    }
+                    for &amt in &outputs_b {
+                        atoms.push(Atom {
+                            delegate,
+                            asset_id: 1,
+                            amount: amt,
+                            nonce: Hash::default(),
+                            signature: None,
+                        });
+                    }
+
+                    Refresh {
+                        input_mask,
+                        atoms,
+                        asset_ids: vec![asset_a, asset_b],
+                        signatures: vec![Signature::default(), Signature::default()],
+                    }
+                },
+            )
+    }
+
+    /// Multi-asset balanced refresh must verify.
+    ///
+    /// Validates the per-asset balance check path with 2 independent assets.
+    #[proptest]
+    fn prop_multi_asset_balanced_verifies(#[strategy(multi_asset_refresh())] refresh: Refresh) {
+        prop_assert!(refresh.verify().is_ok());
+    }
+
+    /// Multi-asset: moving value from asset A to asset B must fail.
+    ///
+    /// Metamorphic: a balanced multi-asset refresh becomes unbalanced when
+    /// we shift 1 unit from one asset's output to the other. This catches
+    /// bugs where verify() only checks global sum instead of per-asset.
+    #[proptest]
+    fn prop_multi_asset_cross_asset_shift_fails(
+        #[strategy(multi_asset_refresh())] mut refresh: Refresh,
+    ) {
+        // Find first output for asset 0 and first output for asset 1
+        let out_a = refresh.atoms.iter().enumerate().position(|(i, a)| {
+            refresh.is_output(i) && a.asset_id == 0
+        });
+        let out_b = refresh.atoms.iter().enumerate().position(|(i, a)| {
+            refresh.is_output(i) && a.asset_id == 1
+        });
+
+        if let (Some(ia), Some(ib)) = (out_a, out_b) {
+            // Shift 1 unit from asset A output to asset B output
+            refresh.atoms[ia].amount = refresh.atoms[ia].amount.saturating_sub(1);
+            refresh.atoms[ib].amount = refresh.atoms[ib].amount.saturating_add(1);
+            // Global sum unchanged, but per-asset balance broken
+            prop_assert!(refresh.verify().is_err());
+        }
+    }
 }
