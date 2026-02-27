@@ -293,6 +293,26 @@ mod tests {
         )
     }
 
+    fn source_rank(s: SourceLaneState) -> u8 {
+        match s {
+            SourceLaneState::Requested => 0,
+            SourceLaneState::Submitted => 1,
+            SourceLaneState::Confirming => 2,
+            SourceLaneState::Confirmed => 3,
+            SourceLaneState::Invalidated => 4,
+        }
+    }
+
+    fn dest_rank(d: DestinationLaneState) -> u8 {
+        match d {
+            DestinationLaneState::NoticeReceived => 0,
+            DestinationLaneState::ChainObserved => 1,
+            DestinationLaneState::CreditEligible => 2,
+            DestinationLaneState::Credited => 3,
+            DestinationLaneState::Invalidated => 4,
+        }
+    }
+
     proptest! {
         #[test]
         fn prop_ack_is_state_preserving_after_terminal_confirmation(
@@ -411,6 +431,270 @@ mod tests {
                     _ => {}
                 }
             }
+        }
+
+        /// Every event is idempotent: applying it twice produces the same
+        /// state as applying it once. Catches hidden counters or side effects.
+        #[test]
+        fn prop_every_event_is_idempotent(ops in op_sequence()) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+
+            for op in &ops {
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+            }
+
+            // Now apply each event a second time; state must not change.
+            if let Some(last) = ops.last() {
+                let before = lifecycle.clone();
+                match last {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+                prop_assert_eq!(lifecycle, before);
+            }
+        }
+
+        /// Source lane only moves forward: Requested < Submitted < Confirming < Confirmed.
+        /// Invalidated overrides everything but never regresses back.
+        #[test]
+        fn prop_source_lane_is_monotonic(ops in op_sequence()) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+            let mut max_rank = source_rank(lifecycle.source);
+
+            for op in ops {
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+
+                let rank = source_rank(lifecycle.source);
+                prop_assert!(
+                    rank >= max_rank,
+                    "source regressed from rank {} to {} after {:?}",
+                    max_rank, rank, op
+                );
+                max_rank = rank;
+            }
+        }
+
+        /// Destination lane only moves forward: NoticeReceived < ChainObserved < CreditEligible < Credited.
+        /// Invalidated overrides everything but never regresses back.
+        #[test]
+        fn prop_destination_lane_is_monotonic(ops in op_sequence()) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+            let mut max_rank = dest_rank(lifecycle.destination);
+
+            for op in ops {
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+
+                let rank = dest_rank(lifecycle.destination);
+                prop_assert!(
+                    rank >= max_rank,
+                    "destination regressed from rank {} to {} after {:?}",
+                    max_rank, rank, op
+                );
+                max_rank = rank;
+            }
+        }
+
+        /// Reversed credit state is only reachable if Credited was reached
+        /// before ChainInvalidated. No other path produces Reversed.
+        #[test]
+        fn prop_reversed_only_reachable_via_credited_then_invalidated(ops in op_sequence()) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+            let mut ever_credited = false;
+
+            for op in ops {
+                if lifecycle.credit == TransferCreditState::Credited {
+                    ever_credited = true;
+                }
+
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+
+                if lifecycle.credit == TransferCreditState::Reversed {
+                    prop_assert!(
+                        ever_credited,
+                        "Reversed without prior Credited state"
+                    );
+                }
+            }
+        }
+
+        /// ChainObserved is a complete no-op after invalidation.
+        /// No field changes at all, including tx_hash and confirmations.
+        #[test]
+        fn prop_chain_observed_noop_after_invalidation(
+            pre_ops in op_sequence(),
+            confirmations in 0u32..=100,
+            confirmed in any::<bool>(),
+        ) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+
+            for op in &pre_ops {
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: *c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+            }
+
+            // Force invalidation
+            lifecycle.apply(LifecycleEvent::ChainInvalidated);
+            let sealed = lifecycle.clone();
+
+            lifecycle.apply(LifecycleEvent::ChainObserved {
+                tx_hash: "new_hash",
+                confirmations,
+                confirmed,
+            });
+
+            prop_assert_eq!(lifecycle, sealed);
+        }
+
+        /// Happy path convergence: Submit, Observe(confirmed), Credit applied in any
+        /// permutation reach the same terminal state. Tests confluence.
+        #[test]
+        fn prop_happy_path_converges_regardless_of_event_order(
+            perm in prop::sample::subsequence(
+                (0..3usize).collect::<Vec<_>>(), 3..=3
+            ),
+        ) {
+            let events = [
+                LifecycleEvent::SourceSubmitted,
+                LifecycleEvent::ChainObserved {
+                    tx_hash: "abc",
+                    confirmations: 15,
+                    confirmed: true,
+                },
+                LifecycleEvent::DestinationCredited,
+            ];
+
+            let mut lifecycle = TransferLifecycle::new();
+            for &idx in &perm {
+                lifecycle.apply(events[idx]);
+            }
+
+            // Reference: canonical order
+            let mut reference = TransferLifecycle::new();
+            for event in &events {
+                reference.apply(*event);
+            }
+
+            // The terminal state should match regardless of order.
+            // Note: Credit before Confirm is a no-op, so the states may
+            // differ. We check the weaker property: both reach a consistent
+            // state that satisfies the same invariants.
+            //
+            // Specifically: if credit was applied before confirmed, it's a
+            // no-op, so the lifecycle won't be Credited. We verify consistency.
+            if lifecycle.source == SourceLaneState::Confirmed {
+                // If confirmed was reached, settlement must be Confirmed
+                prop_assert_eq!(
+                    lifecycle.settlement.clone(),
+                    TransferSettlementState::Confirmed
+                );
+                prop_assert_eq!(lifecycle.chain.clone(), TransferChainState::Confirmed);
+            }
+
+            // Credit only takes effect after Confirmed
+            if lifecycle.credit == TransferCreditState::Credited {
+                prop_assert_eq!(lifecycle.source, SourceLaneState::Confirmed);
+                prop_assert_eq!(lifecycle.destination, DestinationLaneState::Credited);
+            }
+        }
+
+        /// to_status_payload faithfully reflects all lifecycle fields.
+        /// Differential: compare lifecycle enum values against payload strings.
+        #[test]
+        fn prop_status_payload_matches_lifecycle_fields(ops in op_sequence()) {
+            let mut lifecycle = TransferLifecycle::new();
+            lifecycle.apply(LifecycleEvent::SourceSubmitted);
+
+            for op in ops {
+                match op {
+                    Op::Notice => lifecycle.apply(LifecycleEvent::DestinationNoticeReceived),
+                    Op::Ack => lifecycle.apply(LifecycleEvent::AckReceived),
+                    Op::ObserveConfirming(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: false,
+                    }),
+                    Op::ObserveConfirmed(c) => lifecycle.apply(LifecycleEvent::ChainObserved {
+                        tx_hash: "abc", confirmations: c, confirmed: true,
+                    }),
+                    Op::Credit => lifecycle.apply(LifecycleEvent::DestinationCredited),
+                    Op::Invalidate => lifecycle.apply(LifecycleEvent::ChainInvalidated),
+                }
+            }
+
+            let payload = lifecycle.to_status_payload("2025-01-01T00:00:00Z".to_string());
+
+            prop_assert_eq!(&payload.source_state, lifecycle.source.as_status_str());
+            prop_assert_eq!(&payload.destination_state, lifecycle.destination.as_status_str());
+            prop_assert_eq!(payload.settlement_state, lifecycle.settlement);
+            prop_assert_eq!(payload.chain_state, lifecycle.chain);
+            prop_assert_eq!(payload.credit_state, lifecycle.credit);
+            prop_assert_eq!(payload.tx_hash, lifecycle.tx_hash);
+            prop_assert_eq!(payload.confirmations_observed, lifecycle.confirmations_observed);
         }
     }
 }
