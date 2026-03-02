@@ -117,6 +117,51 @@ can verify the signature from the note is valid using it's own key.
 The specific blind signature protocol used on Mugraph is called Blind
 Diffie-Hellman Key Exchange (BDHKE).
 
+## How cross-node transfers work
+
+Cross-node settlement uses two lanes:
+
+- on-chain settlement (authoritative)
+- off-chain RPC messages (coordination)
+
+If the two disagree, chain evidence wins.
+
+### Transfer flow
+
+1. The source node receives a payment request and creates a durable transfer
+   record with a global `transfer_id` (`transfer_init`).
+2. The source submits one settlement transaction on Cardano.
+3. That transaction carries metadata label `673` with:
+   `transfer_id`, `source_node_id`, `destination_node_id`, `asset`, and `amount`.
+4. The source sends a `transfer_notice` over existing `/rpc`
+   (`cross_node_transfer_*`) with the `tx_hash`.
+5. The destination fetches the transaction by `tx_hash`, validates the metadata,
+   and verifies there is a destination-controlled output with the expected
+   asset and amount.
+6. The destination credits only after `credit_target` confirmations.
+7. The transfer is treated as final only after `finality_target` confirmations.
+
+Notes:
+
+- Delivery is at-least-once, so duplicate notices are expected and handled as
+  idempotent no-ops.
+- `transfer_status_query` / `transfer_status` are used for recovery when notices
+  or acknowledgements are delayed.
+
+### Reorgs and failure cases
+
+- Shallow reorgs keep the transfer in `confirming` and continue polling.
+- Deep reorgs can move it to `invalidated` until canonical inclusion is seen
+  again.
+- If recovery conditions are not met in policy time, the transfer goes to
+  manual review.
+- Message-level ACK state never overrides chain-confirmed settlement.
+
+For full protocol and state-machine details:
+
+- `docs/specs/milestone-3-cross-node-payments.md`
+- `docs/specs/milestone-3-inter-node-protocol-messages.md`
+
 ### Blind Diffie-Hellman Key Exchange (BDHKE)
 
 Blind Diffie-Hellman Key Exchange (BDHKE) protocol is a cryptographic method
