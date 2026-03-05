@@ -339,9 +339,116 @@ fn utxo_meets_min_deposit(utxo_info: &UtxoInfo, min_deposit_value: u64) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use crate::provider::AssetAmount;
+    use std::sync::Arc;
+
+    use axum::{
+        Router,
+        extract::{Path, State},
+        http::StatusCode,
+        response::IntoResponse,
+        routing::get,
+    };
+    use serde_json::json;
+    use tokio::sync::Mutex;
+
+    use crate::{
+        database::CARDANO_WALLET,
+        provider::AssetAmount,
+    };
 
     use super::*;
+
+    #[derive(Clone)]
+    struct MockState {
+        utxo_status: Arc<Mutex<StatusCode>>,
+    }
+
+    async fn latest_block() -> impl IntoResponse {
+        (StatusCode::OK, axum::Json(json!({"slot": 1000, "hash": "h", "height": 100})))
+    }
+
+    async fn tx_info() -> impl IntoResponse {
+        (StatusCode::OK, axum::Json(json!({"block_height": 90})))
+    }
+
+    async fn tx_utxos(State(state): State<MockState>, Path(_tx_hash): Path<String>) -> impl IntoResponse {
+        let status = *state.utxo_status.lock().await;
+        match status {
+            StatusCode::OK => (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": "ab",
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": "addr_test1script",
+                        "amount": [{"unit":"lovelace","quantity":"1000000"}],
+                        "data_hash": null,
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+                .into_response(),
+            StatusCode::NOT_FOUND => (StatusCode::NOT_FOUND, "not found").into_response(),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "boom").into_response(),
+        }
+    }
+
+    async fn spawn_mock_server(utxo_status: StatusCode) -> String {
+        let state = MockState {
+            utxo_status: Arc::new(Mutex::new(utxo_status)),
+        };
+
+        let app = Router::new()
+            .route("/blocks/latest", get(latest_block))
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .with_state(state);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
+    fn temp_db() -> Arc<Database> {
+        let path = std::env::temp_dir().join(format!(
+            "mugraph-deposit-monitor-test-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db = Arc::new(Database::setup(path).unwrap());
+        db.migrate().unwrap();
+        db
+    }
+
+    fn seed_wallet_and_deposit(db: &Arc<Database>, utxo_ref: UtxoRef, record: DepositRecord) {
+        let w = db.write().unwrap();
+        {
+            let mut wallet = w.open_table(CARDANO_WALLET).unwrap();
+            wallet
+                .insert(
+                    "wallet",
+                    &mugraph_core::types::CardanoWallet::new(
+                        vec![1u8; 32],
+                        vec![2u8; 32],
+                        vec![],
+                        vec![],
+                        "addr_test1script".to_string(),
+                        "preprod".to_string(),
+                    ),
+                )
+                .unwrap();
+
+            let mut deposits = w.open_table(DEPOSITS).unwrap();
+            deposits.insert(&utxo_ref, &record).unwrap();
+        }
+        w.commit().unwrap();
+    }
 
     #[test]
     fn test_default_config() {
@@ -383,5 +490,77 @@ mod tests {
             .checked_sub(std::time::Duration::from_secs(1))
             .expect("pre epoch time");
         assert_eq!(secs_since_unix_epoch(pre_epoch), 0);
+    }
+
+    #[tokio::test]
+    async fn check_deposits_marks_missing_utxo_as_spent() {
+        let base_url = spawn_mock_server(StatusCode::NOT_FOUND).await;
+        let provider = Provider::new(
+            "blockfrost",
+            "key".to_string(),
+            "preprod".to_string(),
+            Some(base_url),
+        )
+        .unwrap();
+        let db = temp_db();
+
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
+        let record = DepositRecord::new(99, now, now + 3600);
+        seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
+
+        let monitor = DepositMonitor::new(
+            DepositMonitorConfig {
+                confirm_depth: 1000,
+                expiration_blocks: 10_000,
+                min_deposit_value: 1_000_000,
+                revalidation_interval: 60,
+            },
+            db.clone(),
+            provider,
+        );
+
+        monitor.check_deposits().await.unwrap();
+
+        let r = db.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
+        assert!(stored.spent);
+    }
+
+    #[tokio::test]
+    async fn check_deposits_keeps_unspent_on_transient_provider_error() {
+        let base_url = spawn_mock_server(StatusCode::INTERNAL_SERVER_ERROR).await;
+        let provider = Provider::new(
+            "blockfrost",
+            "key".to_string(),
+            "preprod".to_string(),
+            Some(base_url),
+        )
+        .unwrap();
+        let db = temp_db();
+
+        let utxo_ref = UtxoRef::new([0xcdu8; 32], 0);
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
+        let record = DepositRecord::new(99, now, now + 3600);
+        seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
+
+        let monitor = DepositMonitor::new(
+            DepositMonitorConfig {
+                confirm_depth: 1000,
+                expiration_blocks: 10_000,
+                min_deposit_value: 1_000_000,
+                revalidation_interval: 60,
+            },
+            db.clone(),
+            provider,
+        );
+
+        monitor.check_deposits().await.unwrap();
+
+        let r = db.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
+        assert!(!stored.spent);
     }
 }
