@@ -127,10 +127,8 @@ impl Config {
         match self {
             Self::Server {
                 cardano_api_key, ..
-            } => cardano_api_key
-                .clone()
-                .unwrap_or_else(|| "test_key".to_string()),
-            _ => "test_key".to_string(),
+            } => cardano_api_key.clone().unwrap_or_default(),
+            _ => String::new(),
         }
     }
 

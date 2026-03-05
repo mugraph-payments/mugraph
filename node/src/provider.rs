@@ -95,6 +95,12 @@ impl Provider {
         network: String,
         custom_url: Option<String>,
     ) -> Result<Self> {
+        if api_key.trim().is_empty() {
+            return Err(color_eyre::eyre::eyre!(
+                "Missing provider API key. Set CARDANO_API_KEY or pass --cardano-api-key"
+            ));
+        }
+
         match provider_type {
             "blockfrost" => {
                 let base_url = custom_url.unwrap_or_else(|| match network.as_str() {
@@ -909,6 +915,12 @@ mod tests {
             "preprod".to_string(),
             None,
         );
+        assert!(provider.is_err());
+    }
+
+    #[test]
+    fn test_missing_api_key_is_rejected() {
+        let provider = Provider::new("blockfrost", "".to_string(), "preprod".to_string(), None);
         assert!(provider.is_err());
     }
 

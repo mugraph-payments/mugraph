@@ -138,8 +138,8 @@ fn test_config_default_values() {
         dev_mode: false,
     };
 
-    // API key should default to "test_key"
-    assert_eq!(config.provider_api_key(), "test_key");
+    // API key should not silently default to a fake key
+    assert_eq!(config.provider_api_key(), "");
 
     // min_deposit_value should default to 1_000_000
     assert_eq!(config.min_deposit_value(), 1_000_000);
