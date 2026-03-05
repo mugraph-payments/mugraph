@@ -1350,30 +1350,47 @@ mod handle_deposit_flow_tests {
         hex::encode(minicbor::to_vec(&datum).unwrap())
     }
 
-    async fn spawn_provider_mock(script_address: String, datum_cbor_hex: String, tip_height: u64) -> String {
+    async fn spawn_provider_mock_with_outputs(
+        script_address: String,
+        datum_cbor_hex: String,
+        tip_height: u64,
+        include_output: bool,
+    ) -> String {
         async fn tx_info() -> impl IntoResponse {
             (StatusCode::OK, axum::Json(json!({"block_height": 90})))
         }
 
-        async fn tx_utxos(Path(tx_hash): Path<String>, axum::extract::State(state): axum::extract::State<(String, String)>) -> impl IntoResponse {
-            let (script_address, _datum_hex) = state;
+        async fn tx_utxos(
+            Path(tx_hash): Path<String>,
+            axum::extract::State(state): axum::extract::State<(String, String, bool)>,
+        ) -> impl IntoResponse {
+            let (script_address, _datum_hex, include_output) = state;
+
+            let outputs = if include_output {
+                vec![json!({
+                    "output_index": 0,
+                    "address": script_address,
+                    "amount": [{"unit":"lovelace","quantity":"1000000"}],
+                    "data_hash": "datumhash",
+                    "reference_script_hash": null
+                })]
+            } else {
+                Vec::new()
+            };
+
             (
                 StatusCode::OK,
                 axum::Json(json!({
                     "hash": tx_hash,
-                    "outputs": [{
-                        "output_index": 0,
-                        "address": script_address,
-                        "amount": [{"unit":"lovelace","quantity":"1000000"}],
-                        "data_hash": "datumhash",
-                        "reference_script_hash": null
-                    }]
+                    "outputs": outputs
                 })),
             )
         }
 
-        async fn datum_cbor(axum::extract::State(state): axum::extract::State<(String, String)>) -> impl IntoResponse {
-            let (_script_address, datum_hex) = state;
+        async fn datum_cbor(
+            axum::extract::State(state): axum::extract::State<(String, String, bool)>,
+        ) -> impl IntoResponse {
+            let (_script_address, datum_hex, _include_output) = state;
             (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
         }
 
@@ -1384,7 +1401,7 @@ mod handle_deposit_flow_tests {
             .route("/txs/{tx_hash}", get(tx_info))
             .route("/txs/{tx_hash}/utxos", get(tx_utxos))
             .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
-            .with_state((script_address, datum_cbor_hex));
+            .with_state((script_address, datum_cbor_hex, include_output));
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1393,6 +1410,10 @@ mod handle_deposit_flow_tests {
         });
 
         format!("http://{addr}")
+    }
+
+    async fn spawn_provider_mock(script_address: String, datum_cbor_hex: String, tip_height: u64) -> String {
+        spawn_provider_mock_with_outputs(script_address, datum_cbor_hex, tip_height, true).await
     }
 
     fn prepare_request_and_datum(
@@ -1475,5 +1496,77 @@ mod handle_deposit_flow_tests {
         let deposits = r.open_table(DEPOSITS).unwrap();
         let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
         assert!(deposits.get(&utxo_ref).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_wrong_script_address() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url = spawn_provider_mock("addr_test1different".to_string(), datum_cbor_hex, 100).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("not at script address"));
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_missing_utxo() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url =
+            spawn_provider_mock_with_outputs("addr_test1script".to_string(), datum_cbor_hex, 100, false)
+                .await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("UTxO not found on chain"));
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_provider_datum_mismatch() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, _datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        // Provider serves malformed/incorrect datum payload.
+        let url = spawn_provider_mock("addr_test1script".to_string(), "00".to_string(), 100).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_duplicate_deposit() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        handle_deposit(&request, &ctx).await.expect("first deposit accepted");
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("already processed"));
     }
 }
