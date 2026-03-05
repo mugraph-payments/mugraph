@@ -843,8 +843,8 @@ async fn record_deposit(
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
 
         // Calculate expiration based on config
         // Each block is approximately 20 seconds on Cardano

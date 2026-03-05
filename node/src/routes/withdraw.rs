@@ -946,8 +946,8 @@ async fn validate_script_inputs_with_deposits(
                         // Check if expired
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs();
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
                         if now > deposit_record.expires_at {
                             return Err(Error::InvalidInput {
                                 reason: format!(

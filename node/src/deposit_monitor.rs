@@ -92,10 +92,7 @@ impl DepositMonitor {
         );
 
         // Get current timestamp
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
 
         // Scan all deposits and check pending ones
         // Note: This scans the entire table. For large deployments, consider:
@@ -292,10 +289,7 @@ impl DepositMonitor {
                 }
 
                 // Check if expired
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
+                let now = secs_since_unix_epoch(std::time::SystemTime::now());
 
                 if now > record.expires_at {
                     return Ok(false);
@@ -320,6 +314,12 @@ impl DepositMonitor {
             None => Ok(false),
         }
     }
+}
+
+fn secs_since_unix_epoch(now: std::time::SystemTime) -> u64 {
+    now.duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn is_expired_by_blocks(current_height: u64, deposit_height: u64, expiration_blocks: u64) -> bool {
@@ -375,5 +375,13 @@ mod tests {
 
         assert!(!utxo_meets_min_deposit(&utxo, 1_000_000));
         assert!(utxo_meets_min_deposit(&utxo, 999_999));
+    }
+
+    #[test]
+    fn secs_since_unix_epoch_clamps_pre_epoch_to_zero() {
+        let pre_epoch = std::time::UNIX_EPOCH
+            .checked_sub(std::time::Duration::from_secs(1))
+            .expect("pre epoch time");
+        assert_eq!(secs_since_unix_epoch(pre_epoch), 0);
     }
 }
