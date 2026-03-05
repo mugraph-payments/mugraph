@@ -104,10 +104,16 @@ impl Config {
         }
     }
 
-    /// Get the network byte (0 for testnets, 1 for mainnet)
+    /// Get a network namespace byte for DB keys.
+    ///
+    /// Uses distinct bytes for supported networks to avoid cross-network key collisions
+    /// when a database is reused across environments.
     pub fn network_byte(&self) -> u8 {
         match self.network().as_str() {
             "mainnet" => 1,
+            "preprod" => 0,
+            "preview" => 2,
+            "testnet" => 3,
             _ => 0,
         }
     }

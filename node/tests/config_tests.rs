@@ -82,11 +82,11 @@ fn test_config_mainnet() {
     assert_eq!(config.fee_tolerance_pct(), 10);
 }
 
-/// Test network byte for different networks
+/// Test network namespace byte mapping
 #[test]
 fn test_network_bytes() {
-    let testnets = vec!["preprod", "preview", "testnet"];
-    for network in testnets {
+    let cases = [("preprod", 0u8), ("preview", 2u8), ("testnet", 3u8)];
+    for (network, expected) in cases {
         let config = Config::Server {
             addr: "0.0.0.0:9999".parse().unwrap(),
             seed: None,
@@ -106,13 +106,39 @@ fn test_network_bytes() {
             fee_tolerance_pct: 5,
             dev_mode: false,
         };
-        assert_eq!(
-            config.network_byte(),
-            0,
-            "{} should have network_byte 0",
-            network
-        );
+        assert_eq!(config.network_byte(), expected, "unexpected network byte for {network}");
     }
+}
+
+#[test]
+fn test_testnets_have_distinct_network_bytes_for_db_namespacing() {
+    let make = |network: &str| Config::Server {
+        addr: "0.0.0.0:9999".parse().unwrap(),
+        seed: None,
+        secret_key: None,
+        cardano_network: network.to_string(),
+        cardano_provider: "blockfrost".to_string(),
+        cardano_api_key: None,
+        cardano_provider_url: None,
+        cardano_payment_sk: None,
+        xnode_peer_registry_file: None,
+        xnode_node_id: "node://local".to_string(),
+        deposit_confirm_depth: 15,
+        deposit_expiration_blocks: 1440,
+        min_deposit_value: None,
+        max_tx_size: 16384,
+        max_withdrawal_fee: 2000000,
+        fee_tolerance_pct: 5,
+        dev_mode: false,
+    };
+
+    let preprod = make("preprod").network_byte();
+    let preview = make("preview").network_byte();
+    let testnet = make("testnet").network_byte();
+
+    assert_ne!(preprod, preview);
+    assert_ne!(preprod, testnet);
+    assert_ne!(preview, testnet);
 }
 
 /// Test default values when optional fields are None
