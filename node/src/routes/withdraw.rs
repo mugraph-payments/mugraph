@@ -683,66 +683,13 @@ async fn validate_user_witnesses(
 /// blinding infrastructure is in place
 fn calculate_change_notes(
     _request: &WithdrawRequest,
-    tx_cbor: &[u8],
-    wallet: &mugraph_core::types::CardanoWallet,
-    keypair: &Keypair,
+    _tx_cbor: &[u8],
+    _wallet: &mugraph_core::types::CardanoWallet,
+    _keypair: &Keypair,
 ) -> Result<Vec<BlindSignature>, Error> {
-    use blake2::{Blake2b, Digest, digest::consts::U32};
-
-    // Extract outputs from transaction
-    let outputs = extract_transaction_outputs(tx_cbor)?;
-    tracing::info!("Found {} transaction outputs", outputs.len());
-
-    let mut change_notes = Vec::new();
-    let mut rng = rand::rng();
-
-    for (i, (address, amount)) in outputs.iter().enumerate() {
-        tracing::debug!("Output {}: address={}, amount={}", i, address, amount);
-
-        // Treat non-script outputs as spendable value returned to the requester.
-        if address != &wallet.script_address {
-            let mut preimage = Vec::with_capacity(address.len() + 8);
-            preimage.extend_from_slice(address.as_bytes());
-            preimage.extend_from_slice(&amount.to_le_bytes());
-
-            type Blake2b256 = Blake2b<U32>;
-            let digest = Blake2b256::digest(&preimage);
-            let point = mugraph_core::crypto::hash_to_curve(&digest);
-            let note = mugraph_core::crypto::sign_blinded(&mut rng, &keypair.secret_key, &point);
-            change_notes.push(note);
-        }
-    }
-
-    Ok(change_notes)
-}
-
-/// Extract transaction outputs from CBOR
-///
-/// Returns a vector of (address, lovelace_amount) tuples
-fn extract_transaction_outputs(tx_cbor: &[u8]) -> Result<Vec<(String, u64)>, Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
-
-    let mut outputs: Vec<(String, u64)> = Vec::new();
-    for output in &tx.body().outputs() {
-        let address = output
-            .address()
-            .to_bech32(None)
-            .map_err(|e| Error::InvalidInput {
-                reason: format!("Invalid output address: {}", e),
-            })?;
-        let coin = output.amount().coin();
-        let amount = coin
-            .to_str()
-            .parse::<u64>()
-            .map_err(|e| Error::InvalidInput {
-                reason: format!("Invalid output amount: {}", e),
-            })?;
-        outputs.push((address, amount));
-    }
-
-    Ok(outputs)
+    // Do not fabricate synthetic change notes from address/amount material.
+    // Change note issuance must be driven by protocol-bound blinded commitments.
+    Ok(Vec::new())
 }
 
 /// Validate script inputs and check deposit state
@@ -1512,7 +1459,7 @@ mod tests {
     }
 
     #[test]
-    fn test_change_notes_are_emitted_for_non_script_outputs() {
+    fn test_change_notes_are_not_fabricated_for_non_script_outputs() {
         let tx = minimal_tx_with_values(1_000_000, 170_000);
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
@@ -1540,7 +1487,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!notes.is_empty());
+        assert!(notes.is_empty());
     }
 
     /// Reject outputs on wrong network
