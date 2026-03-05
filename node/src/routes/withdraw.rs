@@ -6,6 +6,7 @@ use mugraph_core::{
     error::Error,
     types::{
         BlindSignature,
+        Keypair,
         Response,
         Signature,
         WithdrawRequest,
@@ -119,7 +120,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let signed_cbor_hex = hex::encode(&signed_cbor);
 
     // Calculate change notes before any state changes
-    let change_notes = calculate_change_notes(request, &tx_bytes, &wallet)?;
+    let change_notes = calculate_change_notes(request, &tx_bytes, &wallet, &ctx.keypair)?;
 
     // 9. Update state atomically BEFORE submitting to provider
     // This ensures we only submit if we can properly track the withdrawal
@@ -653,44 +654,35 @@ fn calculate_change_notes(
     _request: &WithdrawRequest,
     tx_cbor: &[u8],
     wallet: &mugraph_core::types::CardanoWallet,
+    keypair: &Keypair,
 ) -> Result<Vec<BlindSignature>, Error> {
+    use blake2::{Blake2b, Digest, digest::consts::U32};
+
     // Extract outputs from transaction
     let outputs = extract_transaction_outputs(tx_cbor)?;
-
-    // Identify change outputs (outputs to the user's address, not the script)
-    // For now, we'll just log the outputs
     tracing::info!("Found {} transaction outputs", outputs.len());
 
-    let mut change_amount: u64 = 0;
+    let mut change_notes = Vec::new();
+    let mut rng = rand::rng();
 
     for (i, (address, amount)) in outputs.iter().enumerate() {
         tracing::debug!("Output {}: address={}, amount={}", i, address, amount);
 
-        // Check if this is a change output (not to script address)
+        // Treat non-script outputs as spendable value returned to the requester.
         if address != &wallet.script_address {
-            change_amount += amount;
-            tracing::info!("Output {} is change: {} lovelace", i, amount);
+            let mut preimage = Vec::with_capacity(address.len() + 8);
+            preimage.extend_from_slice(address.as_bytes());
+            preimage.extend_from_slice(&amount.to_le_bytes());
+
+            type Blake2b256 = Blake2b<U32>;
+            let digest = Blake2b256::digest(&preimage);
+            let point = mugraph_core::crypto::hash_to_curve(&digest);
+            let note = mugraph_core::crypto::sign_blinded(&mut rng, &keypair.secret_key, &point);
+            change_notes.push(note);
         }
     }
 
-    tracing::info!("Total change: {} lovelace", change_amount);
-
-    // NOTE: Creating blind signatures for change notes requires:
-    // 1. Blinding infrastructure for generating blind signatures (mugraph-core crypto)
-    // 2. Mapping from output assets to note amounts
-    // 3. Proper handling of multi-asset outputs
-    //
-    // This is a complex feature that requires integration with the note blinding system.
-    // For now, we log the change amount but return no change notes.
-
-    if change_amount > 0 {
-        tracing::warn!(
-            "Change of {} lovelace detected. Change notes will be implemented when blinding infrastructure is ready.",
-            change_amount
-        );
-    }
-
-    Ok(vec![])
+    Ok(change_notes)
 }
 
 /// Extract transaction outputs from CBOR
@@ -1447,6 +1439,38 @@ mod tests {
 
         let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet).unwrap_err();
         assert!(format!("{:?}", err).contains("Change notes not yet supported"));
+    }
+
+    #[test]
+    fn test_change_notes_are_emitted_for_non_script_outputs() {
+        let tx = minimal_tx_with_values(1_000_000, 170_000);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test1different_script_address".to_string(),
+            "preprod".to_string(),
+        );
+        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
+        let keypair = mugraph_core::types::Keypair {
+            public_key: sk.public(),
+            secret_key: sk,
+        };
+
+        let notes = calculate_change_notes(
+            &WithdrawRequest {
+                notes: vec![],
+                tx_cbor: String::new(),
+                tx_hash: String::new(),
+            },
+            &tx.to_bytes(),
+            &wallet,
+            &keypair,
+        )
+        .unwrap();
+
+        assert!(!notes.is_empty());
     }
 
     /// Reject outputs on wrong network
