@@ -109,6 +109,11 @@ impl Write {
 impl Database {
     pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+
         let is_new = !path.exists();
         let file = OpenOptions::new()
             .read(true)

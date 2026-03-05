@@ -40,8 +40,27 @@ pub struct Context {
     peer_registry: Option<Arc<PeerRegistry>>,
 }
 
+fn default_database_path() -> std::path::PathBuf {
+    if let Ok(path) = std::env::var("MUGRAPH_DB_PATH")
+        && !path.trim().is_empty() {
+            return std::path::PathBuf::from(path);
+        }
+
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("mugraph")
+            .join("db.redb");
+    }
+
+    std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("db.redb")
+}
+
 pub async fn router(config: Config) -> Result<Router, Error> {
-    let database = Arc::new(Database::setup("./db")?);
+    let database = Arc::new(Database::setup(default_database_path())?);
 
     // Run database migrations
     database.migrate()?;
@@ -376,6 +395,13 @@ mod tests {
             config,
             peer_registry: None,
         }
+    }
+
+    #[test]
+    fn default_database_path_uses_absolute_home_location() {
+        let path = super::default_database_path();
+        assert!(path.is_absolute() || std::env::var("HOME").is_err());
+        assert!(path.to_string_lossy().contains("db"));
     }
 
     #[tokio::test]
