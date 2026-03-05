@@ -258,12 +258,12 @@ cardano-cli conway transaction build-raw \
   --out-file "$txbody"
 
 # Calculate exact fee
-# echo "Calculating transaction fee..."
-# FEE=$(cardano-cli conway transaction calculate-min-fee \
-#   --tx-body-file "$txbody" \
-#   --witness-count 1 \
-#   --protocol-params-file "$PROTOCOL_PARAMS" \
-#   | cut -d' ' -f1)
+echo "Calculating transaction fee..."
+FEE=$(cardano-cli conway transaction calculate-min-fee \
+  --tx-body-file "$txbody" \
+  --witness-count 1 \
+  --protocol-params-file "$PROTOCOL_PARAMS" \
+  | cut -d' ' -f1)
 
 echo "Exact fee: $FEE lovelace"
 

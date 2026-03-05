@@ -262,6 +262,32 @@ cardano-cli conway transaction build-raw \
   --fee $FEE \
   --out-file "$txbody"
 
+echo "Calculating transaction fee..."
+FEE=$(cardano-cli conway transaction calculate-min-fee \
+  --tx-body-file "$txbody" \
+  --witness-count 1 \
+  --protocol-params-file "$PROTOCOL_PARAMS" \
+  | cut -d' ' -f1)
+
+CHANGE_AMOUNT=$((FUND_AMOUNT - AMOUNT - FEE))
+if [[ $CHANGE_AMOUNT -lt 0 ]]; then
+  echo "Error: Insufficient funds after min-fee calculation. Need at least $((AMOUNT + FEE)) lovelace, have $FUND_AMOUNT"
+  exit 1
+fi
+
+echo "Exact fee:    $FEE lovelace"
+echo "Final change: $CHANGE_AMOUNT lovelace"
+
+cardano-cli conway transaction build-raw \
+  --tx-in "${FUND_TX}#${FUND_IX}" \
+  --tx-out "${SCRIPT_ADDR}+${AMOUNT}" \
+  --tx-out-inline-datum-file "$datumfile" \
+  --read-only-tx-in-reference "${REF_TX}#${REF_IX}" \
+  --tx-out "${CHANGE_ADDR}+${CHANGE_AMOUNT}" \
+  --invalid-hereafter $TTL \
+  --fee $FEE \
+  --out-file "$txbody"
+
 cardano-cli conway transaction sign \
   --tx-body-file "$txbody" \
   --signing-key-file "$PAYMENT_SKEY" \
