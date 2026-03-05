@@ -504,6 +504,15 @@ fn extract_transaction_inputs(tx_cbor: &[u8]) -> Result<Vec<(Vec<u8>, u32)>, Err
     Ok(inputs)
 }
 
+fn checked_output_index(index: u32, input_pos: usize) -> Result<u16, Error> {
+    u16::try_from(index).map_err(|_| Error::InvalidInput {
+        reason: format!(
+            "Input {} has output index {} which exceeds u16::MAX",
+            input_pos, index
+        ),
+    })
+}
+
 /// Validate user witnesses
 ///
 /// Uses whisky-csl (cardano-serialization-lib bindings) to parse the transaction,
@@ -744,11 +753,12 @@ async fn validate_script_inputs_with_deposits(
 
     for (i, (tx_hash_bytes, index)) in inputs.iter().enumerate() {
         let tx_hash = hex::encode(tx_hash_bytes);
+        let output_index = checked_output_index(*index, i)?;
 
         tracing::debug!("Validating input {}: {}:{}", i, &tx_hash[..16], index);
 
         // Query blockchain to verify input is at script address
-        match provider.get_utxo(&tx_hash, *index as u16).await {
+        match provider.get_utxo(&tx_hash, output_index).await {
             Ok(Some(utxo_info)) => {
                 if utxo_info.address != wallet.script_address {
                     return Err(Error::InvalidInput {
@@ -869,7 +879,7 @@ async fn validate_script_inputs_with_deposits(
                         .map_err(|_| Error::InvalidInput {
                             reason: format!("Invalid tx_hash length for input {}", i),
                         })?;
-                let utxo_ref = UtxoRef::new(tx_hash_array, *index as u16);
+                let utxo_ref = UtxoRef::new(tx_hash_array, output_index);
                 consumed_deposits.push(utxo_ref.clone());
 
                 match deposits_table.get(&utxo_ref)? {
@@ -1282,6 +1292,12 @@ mod tests {
             database,
             config,
         }
+    }
+
+    #[test]
+    fn rejects_input_index_overflow() {
+        let err = checked_output_index(u16::MAX as u32 + 1, 0).unwrap_err();
+        assert!(format!("{err:?}").contains("exceeds u16::MAX"));
     }
 
     #[test]
