@@ -264,6 +264,36 @@ async fn atomic_burn_and_record_pending(
     ctx: &Context,
     tx_hash: &str,
 ) -> Result<(), Error> {
+    let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid tx_hash hex: {}", e),
+    })?;
+    let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
+        reason: "tx_hash must be 32 bytes".to_string(),
+    })?;
+
+    let network_byte = ctx.config.network_byte();
+    let key = WithdrawalKey::new(network_byte, tx_hash_array);
+
+    // Retry path after ambiguous submission: notes are already burned for this tx.
+    {
+        let read_tx = ctx.database.read()?;
+        let withdrawals = read_tx.open_table(WITHDRAWALS)?;
+        if let Some(existing) = withdrawals.get(&key)?
+            && existing.value().status == WithdrawalStatus::Failed {
+                let write_tx = ctx.database.write()?;
+                {
+                    let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+                    withdrawals_table.insert(&key, &WithdrawalRecord::pending())?;
+                }
+                write_tx.commit()?;
+                tracing::info!(
+                    "Reused failed withdrawal state for retry without reburning notes: {}",
+                    &tx_hash[..std::cmp::min(16, tx_hash.len())]
+                );
+                return Ok(());
+            }
+    }
+
     let write_tx = ctx.database.write()?;
 
     {
@@ -285,20 +315,7 @@ async fn atomic_burn_and_record_pending(
 
         // 2. Record withdrawal as pending
         let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
-
-        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
-        let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
-
-        // Create pending record
-        let record = WithdrawalRecord::pending();
-        withdrawals_table.insert(key, &record)?;
+        withdrawals_table.insert(&key, &WithdrawalRecord::pending())?;
     }
 
     write_tx.commit()?;
@@ -1277,9 +1294,48 @@ fn validate_network_and_change_outputs(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use ed25519_dalek::SigningKey;
+    use tempfile::TempDir;
 
     use super::*;
+    use crate::{config::Config, database::Database, routes::Context};
+
+    fn test_context() -> Context {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("db.redb");
+        let database = Arc::new(Database::setup(db_path).unwrap());
+        database.migrate().unwrap();
+        std::mem::forget(dir);
+
+        let config = Config::Server {
+            addr: "127.0.0.1:9999".parse().unwrap(),
+            seed: Some(7),
+            secret_key: None,
+            cardano_network: "preprod".to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: Some("test".to_string()),
+            cardano_provider_url: None,
+            cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
+            xnode_node_id: "node://local".to_string(),
+            deposit_confirm_depth: 15,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: Some(1_000_000),
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2_000_000,
+            fee_tolerance_pct: 5,
+            dev_mode: true,
+        };
+        let keypair = config.keypair().unwrap();
+
+        Context {
+            keypair,
+            database,
+            config,
+        }
+    }
 
     #[test]
     fn test_validate_transaction_balance() {
@@ -1543,6 +1599,37 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn retry_after_failed_submission_does_not_reburn_notes() {
+        let ctx = test_context();
+        let request = WithdrawRequest {
+            tx_hash: "ab".repeat(32),
+            tx_cbor: "00".to_string(),
+            notes: vec![BlindSignature {
+                signature: mugraph_core::types::Blinded(mugraph_core::types::Signature::from([1u8; 32])),
+                proof: Default::default(),
+            }],
+        };
+
+        atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash)
+            .await
+            .expect("first burn succeeds");
+
+        mark_withdrawal_failed(&ctx, &request.tx_hash)
+            .await
+            .expect("mark as failed");
+
+        check_idempotency(&request, &ctx)
+            .await
+            .expect("failed withdrawals are retryable");
+
+        let second = atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash).await;
+        assert!(
+            second.is_ok(),
+            "retry should reuse failed pending state without burning notes again"
+        );
     }
 
     #[test]
