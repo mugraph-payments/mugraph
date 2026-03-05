@@ -1,5 +1,7 @@
 *.proptest-regressions
 /*.skey
+/.desloppify
+/.dev
 /.pi
 /.pre-commit-config.yaml
 /cardano-cli
