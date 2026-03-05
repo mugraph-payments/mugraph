@@ -13,7 +13,6 @@ async fn main() -> Result<()> {
         Config::GenerateKey => {
             let keypair = config.keypair()?;
             info!(
-                secret_key = %keypair.secret_key,
                 public_key = %keypair.public_key,
                 "No secret key supplied; generated one for this node. Pass --secret-key to reuse it."
             );
@@ -24,7 +23,6 @@ async fn main() -> Result<()> {
             let keypair = config.keypair()?;
             if secret_key.is_none() {
                 info!(
-                    secret_key = %keypair.secret_key,
                     public_key = %keypair.public_key,
                     "No secret key supplied; generated one for this node. Pass --secret-key to reuse it."
                 );

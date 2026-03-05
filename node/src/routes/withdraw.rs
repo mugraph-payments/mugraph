@@ -47,18 +47,6 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
         reason: format!("Invalid tx_cbor hex: {}", e),
     })?;
 
-    // Check transaction size limit (default: 16KB)
-    let max_tx_size = 16384;
-    if tx_bytes.len() > max_tx_size {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Transaction size {} exceeds maximum {}",
-                tx_bytes.len(),
-                max_tx_size
-            ),
-        });
-    }
-
     // 2. Check idempotency via WITHDRAWALS table
     check_idempotency(request, ctx).await?;
 
@@ -97,7 +85,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     }
 
     // 6. Ensure all inputs reference script UTxOs and validate deposit state
-    let (input_totals, required_user_hashes) =
+    let (input_totals, required_user_hashes, consumed_deposits) =
         validate_script_inputs_with_deposits(&tx_bytes, &wallet, ctx, &provider).await?;
 
     // 6b. Enforce intent and network binding via auxiliary metadata
@@ -150,29 +138,28 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let submit_response = match submit_transaction(&signed_cbor_hex, &provider).await {
         Ok(response) => response,
         Err(e) => {
-            // Submission failed: rollback pending record and unburn notes
+            // Submission can fail ambiguously (e.g. timeout after relay acceptance).
+            // Keep burned/pending state for deterministic reconciliation instead of unburning.
             tracing::error!(
-                "Transaction submission failed after notes were burned: {}. Rolling back.",
+                "Transaction submission failed after notes were burned: {}. Marking withdrawal failed for recovery.",
                 e
             );
-            if let Err(rollback_err) =
-                rollback_withdrawal(ctx, &pending_tx_hash, &request.notes).await
-            {
+            if let Err(mark_err) = mark_withdrawal_failed(ctx, &pending_tx_hash).await {
                 tracing::error!(
-                    "Rollback failed after submission error: {}. Manual recovery needed for tx {}",
-                    rollback_err,
+                    "Failed to mark withdrawal as failed after submit error: {} (tx {})",
+                    mark_err,
                     pending_tx_hash
                 );
             }
 
             return Err(Error::NetworkError {
-                reason: format!("Transaction submission failed and was rolled back: {}", e),
+                reason: format!("Transaction submission failed: {}", e),
             });
         }
     };
 
     // 11. Mark withdrawal as completed
-    match mark_withdrawal_completed(ctx, &submit_response.tx_hash).await {
+    match mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits).await {
         Ok(()) => {
             tracing::info!(
                 "Withdrawal completed successfully: {}",
@@ -310,44 +297,38 @@ async fn atomic_burn_and_record_pending(
     Ok(())
 }
 
-/// Roll back pending withdrawal and unburn notes (best-effort)
-async fn rollback_withdrawal(
-    ctx: &Context,
-    tx_hash: &str,
-    notes: &[BlindSignature],
-) -> Result<(), Error> {
+/// Mark withdrawal as failed for recovery
+async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
     let write_tx = ctx.database.write()?;
 
     {
-        // 1. Unburn notes
-        let mut notes_table = write_tx.open_table(NOTES)?;
-        for note in notes {
-            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
-            let signature = Signature::from(*sig_bytes);
-            notes_table.remove(signature)?;
-        }
-
-        // 2. Remove pending withdrawal record
         let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
+
         let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
             reason: format!("Invalid tx_hash hex: {}", e),
         })?;
         let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
             reason: "tx_hash must be 32 bytes".to_string(),
         })?;
+
         let network_byte = ctx.config.network_byte();
         let key = WithdrawalKey::new(network_byte, tx_hash_array);
-        withdrawals_table.remove(key)?;
+        let record = WithdrawalRecord::failed();
+        withdrawals_table.insert(key, &record)?;
     }
 
     write_tx.commit()?;
-    tracing::info!("Rolled back withdrawal {}", tx_hash);
     Ok(())
 }
 
-/// Mark withdrawal as failed for recovery
-/// Mark withdrawal as completed after successful submission
-async fn mark_withdrawal_completed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
+/// Mark withdrawal as completed after successful submission and lock consumed deposits.
+async fn mark_withdrawal_completed(
+    ctx: &Context,
+    tx_hash: &str,
+    consumed_deposits: &[mugraph_core::types::UtxoRef],
+) -> Result<(), Error> {
+    use crate::database::DEPOSITS;
+
     let write_tx = ctx.database.write()?;
 
     {
@@ -366,6 +347,15 @@ async fn mark_withdrawal_completed(ctx: &Context, tx_hash: &str) -> Result<(), E
         // Update record to mark as completed
         let record = WithdrawalRecord::completed();
         withdrawals_table.insert(key, &record)?;
+
+        let mut deposits_table = write_tx.open_table(DEPOSITS)?;
+        for utxo_ref in consumed_deposits {
+            let existing_record = deposits_table.get(utxo_ref)?.map(|v| v.value());
+            if let Some(mut record) = existing_record {
+                record.spent = true;
+                deposits_table.insert(utxo_ref, &record)?;
+            }
+        }
     }
 
     write_tx.commit()?;
@@ -417,25 +407,16 @@ async fn submit_transaction(
 fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64, tolerance_pct: u8) -> Result<u64, Error> {
     let fee = extract_transaction_fee(tx_cbor)?;
 
-    if fee > max_fee_lovelace {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Fee {} lovelace exceeds maximum {} lovelace",
-                fee, max_fee_lovelace
-            ),
-        });
-    }
-
-    // Calculate acceptable fee range with tolerance
-    // If tolerance is 5%, fee can be up to 105% of max_fee
+    // Calculate acceptable fee range with tolerance.
+    // If tolerance is 5%, fee can be up to 105% of max_fee.
     let tolerance_factor = 100 + tolerance_pct as u64;
-    let max_acceptable_fee = max_fee_lovelace * tolerance_factor / 100;
+    let max_acceptable_fee = max_fee_lovelace.saturating_mul(tolerance_factor) / 100;
 
     if fee > max_acceptable_fee {
         return Err(Error::InvalidInput {
             reason: format!(
-                "Fee {} lovelace exceeds acceptable maximum {} lovelace (with {}% tolerance)",
-                fee, max_acceptable_fee, tolerance_pct
+                "Fee {} lovelace exceeds acceptable maximum {} lovelace (base max {}, tolerance {}%)",
+                fee, max_acceptable_fee, max_fee_lovelace, tolerance_pct
             ),
         });
     }
@@ -644,18 +625,6 @@ async fn validate_user_witnesses(
         }
     }
 
-    // Basic sanity: require at least as many witnesses as notes being burned
-    if verified_witnesses < notes.len() {
-        return Err(Error::InvalidSignature {
-            reason: format!(
-                "Not enough witnesses: found {}, but {} notes are being spent",
-                verified_witnesses,
-                notes.len()
-            ),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
     tracing::info!(
         "Validated {} witness signatures for {} notes",
         verified_witnesses,
@@ -774,7 +743,11 @@ async fn validate_script_inputs_with_deposits(
     wallet: &mugraph_core::types::CardanoWallet,
     ctx: &Context,
     provider: &Provider,
-) -> Result<(HashMap<String, u128>, HashSet<String>), Error> {
+) -> Result<(
+    HashMap<String, u128>,
+    HashSet<String>,
+    Vec<mugraph_core::types::UtxoRef>,
+), Error> {
     use mugraph_core::types::UtxoRef;
 
     use crate::database::DEPOSITS;
@@ -789,6 +762,7 @@ async fn validate_script_inputs_with_deposits(
 
     let mut totals: HashMap<String, u128> = HashMap::new();
     let mut required_user_hashes: HashSet<String> = HashSet::new();
+    let mut consumed_deposits: Vec<UtxoRef> = Vec::new();
     let read_tx = ctx.database.read()?;
     let deposits_table = read_tx.open_table(DEPOSITS)?;
 
@@ -926,6 +900,7 @@ async fn validate_script_inputs_with_deposits(
                             reason: format!("Invalid tx_hash length for input {}", i),
                         })?;
                 let utxo_ref = UtxoRef::new(tx_hash_array, *index as u16);
+                consumed_deposits.push(utxo_ref.clone());
 
                 match deposits_table.get(&utxo_ref)? {
                     Some(deposit) => {
@@ -1026,7 +1001,7 @@ async fn validate_script_inputs_with_deposits(
             .join(", ")
     );
 
-    Ok((totals, required_user_hashes))
+    Ok((totals, required_user_hashes, consumed_deposits))
 }
 
 /// Validate transaction balance

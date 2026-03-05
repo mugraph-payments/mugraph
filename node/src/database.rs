@@ -104,6 +104,7 @@ impl Write {
 impl Database {
     pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
+        let is_new = !path.exists();
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -113,7 +114,7 @@ impl Database {
         let backend = FileBackend::new(file)?;
 
         Ok(Self {
-            db: Self::setup_with_backend(backend, !path.exists())?,
+            db: Self::setup_with_backend(backend, is_new)?,
         })
     }
 

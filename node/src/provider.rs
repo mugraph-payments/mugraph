@@ -305,6 +305,16 @@ pub struct ProtocolParams {
     pub coins_per_utxo_byte: u64,
 }
 
+fn parse_required<T>(field: &str, value: &str) -> Result<T>
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    value
+        .parse::<T>()
+        .map_err(|e| color_eyre::eyre::eyre!("invalid protocol param {field}={value}: {e}"))
+}
+
 impl BlockfrostProvider {
     async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
         let url = format!("{}/txs/{}", self.base_url, tx_hash);
@@ -329,14 +339,20 @@ impl BlockfrostProvider {
         // Fetch UTxO details
         let url = format!("{}/txs/{}/utxos", self.base_url, tx_hash);
 
-        let response: BlockfrostTxUtxos = send_with_retry(
+        let resp = send_with_retry(
             || self.client.get(&url).header("project_id", &self.api_key),
             "Failed to fetch UTxO from Blockfrost",
         )
-        .await?
-        .json()
-        .await
-        .context("Failed to parse Blockfrost response")?;
+        .await?;
+
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+
+        let response: BlockfrostTxUtxos = resp
+            .json()
+            .await
+            .context("Failed to parse Blockfrost response")?;
 
         let tx_block_height = self.get_tx_block_height(tx_hash).await?;
 
@@ -491,17 +507,17 @@ impl BlockfrostProvider {
         .context("Failed to parse protocol params response")?;
 
         Ok(ProtocolParams {
-            min_fee_a: response.min_fee_a.parse().unwrap_or(0),
-            min_fee_b: response.min_fee_b.parse().unwrap_or(0),
-            max_tx_size: response.max_tx_size.parse().unwrap_or(16384),
-            max_val_size: response.max_val_size.parse().unwrap_or(5000),
-            key_deposit: response.key_deposit.parse().unwrap_or(0),
-            pool_deposit: response.pool_deposit.parse().unwrap_or(0),
-            price_mem: response.price_mem.parse().unwrap_or(0.0),
-            price_step: response.price_step.parse().unwrap_or(0.0),
-            max_tx_ex_mem: response.max_tx_ex_mem.parse().unwrap_or(14000000),
-            max_tx_ex_steps: response.max_tx_ex_steps.parse().unwrap_or(10000000000),
-            coins_per_utxo_byte: response.coins_per_utxo_size.parse().unwrap_or(4310),
+            min_fee_a: parse_required("min_fee_a", &response.min_fee_a)?,
+            min_fee_b: parse_required("min_fee_b", &response.min_fee_b)?,
+            max_tx_size: parse_required("max_tx_size", &response.max_tx_size)?,
+            max_val_size: parse_required("max_val_size", &response.max_val_size)?,
+            key_deposit: parse_required("key_deposit", &response.key_deposit)?,
+            pool_deposit: parse_required("pool_deposit", &response.pool_deposit)?,
+            price_mem: parse_required("price_mem", &response.price_mem)?,
+            price_step: parse_required("price_step", &response.price_step)?,
+            max_tx_ex_mem: parse_required("max_tx_ex_mem", &response.max_tx_ex_mem)?,
+            max_tx_ex_steps: parse_required("max_tx_ex_steps", &response.max_tx_ex_steps)?,
+            coins_per_utxo_byte: parse_required("coins_per_utxo_size", &response.coins_per_utxo_size)?,
         })
     }
 
@@ -570,14 +586,20 @@ impl MaestroProvider {
             self.base_url, tx_hash, output_index
         );
 
-        let response: MaestroTxOutput = send_with_retry(
+        let resp = send_with_retry(
             || self.client.get(&url).header("api-key", &self.api_key),
             "Failed to fetch UTxO from Maestro",
         )
-        .await?
-        .json()
-        .await
-        .context("Failed to parse Maestro response")?;
+        .await?;
+
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+
+        let response: MaestroTxOutput = resp
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
 
         Ok(Some(UtxoInfo {
             tx_hash: tx_hash.to_string(),
@@ -687,17 +709,17 @@ impl MaestroProvider {
         .context("Failed to parse Maestro response")?;
 
         Ok(ProtocolParams {
-            min_fee_a: response.min_fee_a.parse().unwrap_or(44),
-            min_fee_b: response.min_fee_b.parse().unwrap_or(155381),
-            max_tx_size: response.max_tx_size.parse().unwrap_or(16384),
-            max_val_size: response.max_val_size.parse().unwrap_or(5000),
-            key_deposit: response.key_deposit.parse().unwrap_or(2000000),
-            pool_deposit: response.pool_deposit.parse().unwrap_or(500000000),
-            price_mem: response.price_mem.parse().unwrap_or(0.0577),
-            price_step: response.price_step.parse().unwrap_or(0.0000721),
-            max_tx_ex_mem: response.max_tx_ex_mem.parse().unwrap_or(14000000),
-            max_tx_ex_steps: response.max_tx_ex_steps.parse().unwrap_or(10000000000),
-            coins_per_utxo_byte: response.coins_per_utxo_byte.parse().unwrap_or(4310),
+            min_fee_a: parse_required("min_fee_a", &response.min_fee_a)?,
+            min_fee_b: parse_required("min_fee_b", &response.min_fee_b)?,
+            max_tx_size: parse_required("max_tx_size", &response.max_tx_size)?,
+            max_val_size: parse_required("max_val_size", &response.max_val_size)?,
+            key_deposit: parse_required("key_deposit", &response.key_deposit)?,
+            pool_deposit: parse_required("pool_deposit", &response.pool_deposit)?,
+            price_mem: parse_required("price_mem", &response.price_mem)?,
+            price_step: parse_required("price_step", &response.price_step)?,
+            max_tx_ex_mem: parse_required("max_tx_ex_mem", &response.max_tx_ex_mem)?,
+            max_tx_ex_steps: parse_required("max_tx_ex_steps", &response.max_tx_ex_steps)?,
+            coins_per_utxo_byte: parse_required("coins_per_utxo_byte", &response.coins_per_utxo_byte)?,
         })
     }
 }

@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use blake3::Hasher;
 use chrono::{DateTime, Utc};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, Verifier, VerifyingKey};
 use mugraph_core::{
     error::Error,
     types::{
@@ -24,7 +24,13 @@ use redb::ReadableTable;
 use serde::Serialize;
 
 use crate::{
-    database::{CROSS_NODE_MESSAGES, IDEMPOTENCY_KEYS, TRANSFER_AUDIT_LOG},
+    database::{
+        CARDANO_WALLET,
+        CROSS_NODE_MESSAGES,
+        CROSS_NODE_TRANSFERS,
+        IDEMPOTENCY_KEYS,
+        TRANSFER_AUDIT_LOG,
+    },
     peer_registry::PeerRegistry,
     routes::Context,
 };
@@ -103,6 +109,27 @@ pub fn handle_create(
     };
 
     if decision == IdempotencyDecision::New {
+        let now = now_secs();
+        let write_tx = ctx.database.write()?;
+        {
+            let mut transfers = write_tx.open_table(CROSS_NODE_TRANSFERS)?;
+            transfers.insert(
+                request.transfer_id.as_str(),
+                &CrossNodeTransferRecord {
+                    transfer_id: request.transfer_id.clone(),
+                    source_node_id: request.origin_node_id.clone(),
+                    destination_node_id: request.destination_node_id.clone(),
+                    tx_hash: None,
+                    chain_state: "unknown".to_string(),
+                    credit_state: "none".to_string(),
+                    confirmations_observed: 0,
+                    created_at: now,
+                    updated_at: now,
+                },
+            )?;
+        }
+        write_tx.commit()?;
+
         metrics::counter!("mugraph_m3_transfers_initiated_total").increment(1);
         let _ = audit_event(
             ctx,
@@ -194,8 +221,7 @@ pub fn handle_status(
     request: &XNodeEnvelope<mugraph_core::types::TransferStatusQueryPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    validate_envelope_basics(request, XNodeMessageType::TransferStatusQuery, 3)
-        .map_err(Error::from)?;
+    enforce_query_security(request, XNodeMessageType::TransferStatusQuery, ctx)?;
 
     let transfer = {
         let read_tx = ctx.database.read()?;
@@ -223,7 +249,7 @@ pub fn handle_status(
         "transfer.chain.confirmation_poll"
     );
 
-    Ok(Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
+    let mut response_envelope = XNodeEnvelope {
         m: "xnode".to_string(),
         version: request.version.clone(),
         message_type: XNodeMessageType::TransferStatus,
@@ -233,11 +259,19 @@ pub fn handle_status(
         correlation_id: request.correlation_id.clone(),
         origin_node_id: request.destination_node_id.clone(),
         destination_node_id: request.origin_node_id.clone(),
-        sent_at: request.sent_at.clone(),
+        sent_at: chrono::Utc::now().to_rfc3339(),
         expires_at: None,
         payload,
-        auth: request.auth.clone(),
-    })))
+        auth: mugraph_core::types::XNodeAuth {
+            alg: "Ed25519".to_string(),
+            kid: ctx.config.xnode_node_id(),
+            sig: String::new(),
+        },
+    };
+
+    sign_status_response(&mut response_envelope, ctx)?;
+
+    Ok(Response::CrossNodeTransferStatus(Box::new(response_envelope)))
 }
 
 pub fn handle_ack(
@@ -293,6 +327,18 @@ fn enforce_command_security<T: Serialize + Clone>(
     validate_destination_binding(request, &ctx.config.xnode_node_id())?;
     validate_auth_signature(request, ctx)?;
     check_replay_and_idempotency(request, message_type_key(&expected_message_type), ctx)
+}
+
+fn enforce_query_security<T: Serialize + Clone>(
+    request: &XNodeEnvelope<T>,
+    expected_message_type: XNodeMessageType,
+    ctx: &Context,
+) -> Result<(), Error> {
+    validate_envelope_basics(request, expected_message_type, 3).map_err(Error::from)?;
+    validate_query_freshness(&request.sent_at, now_secs() as i64)?;
+    validate_destination_binding(request, &ctx.config.xnode_node_id())?;
+    validate_auth_signature(request, ctx)?;
+    Ok(())
 }
 
 fn message_type_key(message_type: &XNodeMessageType) -> &'static str {
@@ -513,6 +559,27 @@ fn validate_freshness(sent_at: &str, expires_at: Option<&str>, now: i64) -> Resu
     Ok(())
 }
 
+fn validate_query_freshness(sent_at: &str, now: i64) -> Result<(), Error> {
+    let sent_at = DateTime::parse_from_rfc3339(sent_at)
+        .map_err(|e| {
+            protocol_reject(
+                "SCHEMA_VALIDATION_FAILED",
+                format!("invalid sent_at timestamp format: {e}"),
+            )
+        })?
+        .with_timezone(&Utc)
+        .timestamp();
+
+    if (now - sent_at).abs() > MAX_CLOCK_SKEW_SECS {
+        return Err(protocol_reject(
+            "REPLAY_DETECTED",
+            "sent_at outside allowed clock skew",
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_destination_binding<T>(
     request: &XNodeEnvelope<T>,
     local_node_id: &str,
@@ -638,9 +705,22 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
             return Err(protocol_reject("REPLAY_DETECTED", "duplicate message_id"));
         }
 
-        let decision = if let Some(existing) = idempotency.get(tuple_key.as_str())? {
-            let existing = existing.value();
-            if existing.request_hash == request_hash {
+        let existing = idempotency.get(tuple_key.as_str())?.map(|v| v.value());
+        let decision = if let Some(existing) = existing {
+            if existing.expires_at <= now {
+                idempotency.insert(
+                    tuple_key.as_str(),
+                    &IdempotencyRecord {
+                        idempotency_key: request.idempotency_key.clone(),
+                        transfer_id: request.transfer_id.clone(),
+                        message_type: message_type.to_string(),
+                        request_hash: request_hash.clone(),
+                        first_seen_at: now,
+                        expires_at: now.saturating_add(300),
+                    },
+                )?;
+                IdempotencyDecision::New
+            } else if existing.request_hash == request_hash {
                 IdempotencyDecision::DuplicateSameRequest
             } else {
                 metrics::counter!(
@@ -717,6 +797,32 @@ fn canonical_idempotency_payload<T: Serialize + Clone>(
     canonical.expires_at = None;
     canonical.auth.sig.clear();
     Ok(serde_json::to_vec(&canonical)?)
+}
+
+fn sign_status_response<T: Serialize + Clone>(
+    envelope: &mut XNodeEnvelope<T>,
+    ctx: &Context,
+) -> Result<(), Error> {
+    let read_tx = ctx.database.read()?;
+    let table = read_tx.open_table(CARDANO_WALLET)?;
+    let wallet = table.get("wallet")?.map(|v| v.value()).ok_or_else(|| {
+        protocol_reject(
+            "AUTHZ_DENIED",
+            "wallet not initialized; cannot sign status response",
+        )
+    })?;
+
+    let sk_bytes: [u8; 32] = wallet.payment_sk.as_slice().try_into().map_err(|_| {
+        protocol_reject(
+            "SCHEMA_VALIDATION_FAILED",
+            "wallet payment signing key must be 32 bytes",
+        )
+    })?;
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&sk_bytes);
+    let payload = canonical_auth_payload(envelope)?;
+    let sig = signing_key.sign(&payload);
+    envelope.auth.sig = muhex::encode(sig.to_bytes());
+    Ok(())
 }
 
 fn audit_event<T>(
@@ -856,6 +962,25 @@ mod tests {
         let db_path = db_dir.path().join("db.redb");
         let database = std::sync::Arc::new(Database::setup(db_path).unwrap());
         database.migrate().unwrap();
+
+        // Seed wallet for status response signing.
+        let w = database.write().unwrap();
+        {
+            let mut t = w.open_table(crate::database::CARDANO_WALLET).unwrap();
+            t.insert(
+                "wallet",
+                &mugraph_core::types::CardanoWallet::new(
+                    vec![7u8; 32],
+                    vec![8u8; 32],
+                    vec![],
+                    vec![],
+                    "addr_test...".to_string(),
+                    "preprod".to_string(),
+                ),
+            )
+            .unwrap();
+        }
+        w.commit().unwrap();
 
         // Keep tempdir alive by leaking during test process lifetime.
         std::mem::forget(db_dir);
@@ -1078,7 +1203,7 @@ mod tests {
         let ctx = test_ctx(&registry_path);
         seed_transfer(&ctx, "tr", "submitted", "none");
 
-        let request = XNodeEnvelope {
+        let mut request = XNodeEnvelope {
             m: "xnode".to_string(),
             version: "3.0".to_string(),
             message_type: XNodeMessageType::TransferStatusQuery,
@@ -1095,6 +1220,7 @@ mod tests {
             },
             auth: auth(),
         };
+        sign_envelope(&mut request, &signer);
 
         let response = handle_status(&request, &ctx).unwrap();
         match response {
@@ -1142,7 +1268,7 @@ mod tests {
 
         seed_transfer(&ctx, "tr-status", "confirmed", "credited");
 
-        let request = XNodeEnvelope {
+        let mut request = XNodeEnvelope {
             m: "xnode".to_string(),
             version: "3.0".to_string(),
             message_type: XNodeMessageType::TransferStatusQuery,
@@ -1159,6 +1285,7 @@ mod tests {
             },
             auth: auth(),
         };
+        sign_envelope(&mut request, &signer);
 
         let _ = handle_status(&request, &ctx).unwrap();
 

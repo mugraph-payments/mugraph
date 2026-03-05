@@ -37,7 +37,9 @@ pub async fn reconciler_loop(database: Arc<Database>, tick: Duration, policy: Re
 
     loop {
         ticker.tick().await;
-        let _ = reconcile_once(&database, policy, now_secs());
+        if let Err(e) = reconcile_once(&database, policy, now_secs()) {
+            tracing::error!("reconciler tick failed: {}", e);
+        }
     }
 }
 

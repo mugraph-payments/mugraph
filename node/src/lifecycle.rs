@@ -140,7 +140,10 @@ impl TransferLifecycle {
                 self.destination = DestinationLaneState::Invalidated;
                 self.chain = TransferChainState::Invalidated;
                 self.settlement = TransferSettlementState::Invalidated;
-                self.credit = if self.credit == TransferCreditState::Credited {
+                self.credit = if matches!(
+                    self.credit,
+                    TransferCreditState::Credited | TransferCreditState::Reversed
+                ) {
                     TransferCreditState::Reversed
                 } else {
                     TransferCreditState::None
