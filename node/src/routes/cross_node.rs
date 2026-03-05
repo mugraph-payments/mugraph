@@ -212,6 +212,35 @@ pub fn handle_notify(
     if decision == IdempotencyDecision::DuplicateSameRequest {
         metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_notice".to_string()).increment(1);
     } else {
+        let now = now_secs();
+        let write_tx = ctx.database.write()?;
+        {
+            let mut transfers = write_tx.open_table(CROSS_NODE_TRANSFERS)?;
+            let existing = {
+                transfers
+                    .get(request.transfer_id.as_str())?
+                    .map(|v| v.value())
+            };
+
+            if let Some(mut updated) = existing {
+                updated.tx_hash = Some(request.payload.tx_hash.clone());
+                updated.confirmations_observed = request
+                    .payload
+                    .confirmations
+                    .unwrap_or(updated.confirmations_observed)
+                    .max(updated.confirmations_observed);
+                updated.chain_state = match request.payload.notice_stage {
+                    mugraph_core::types::TransferNoticeStage::Submitted => "submitted",
+                    mugraph_core::types::TransferNoticeStage::Confirmed => "confirming",
+                    mugraph_core::types::TransferNoticeStage::Finalized => "confirmed",
+                }
+                .to_string();
+                updated.updated_at = now;
+                transfers.insert(request.transfer_id.as_str(), &updated)?;
+            }
+        }
+        write_tx.commit()?;
+
         let _ = audit_event(
             ctx,
             request,
@@ -1444,6 +1473,48 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn notify_persists_notice_derived_chain_state() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut create = create_request();
+        sign_envelope(&mut create, &signer);
+        handle_create(&create, &ctx).unwrap();
+
+        let mut notify = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid-notice-ok".to_string(),
+            transfer_id: create.transfer_id.clone(),
+            idempotency_key: "ik-notice-ok".to_string(),
+            correlation_id: create.correlation_id.clone(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: Some(now_rfc3339_offset(120)),
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(6),
+            },
+            auth: auth(),
+        };
+        sign_envelope(&mut notify, &signer);
+
+        handle_notify(&notify, &ctx).unwrap();
+
+        let read = ctx.database.read().unwrap();
+        let table = read.open_table(CROSS_NODE_TRANSFERS).unwrap();
+        let record = table.get(create.transfer_id.as_str()).unwrap().unwrap().value();
+        assert_eq!(record.tx_hash.as_deref(), Some("abcd"));
+        assert_eq!(record.confirmations_observed, 6);
+        assert_ne!(record.chain_state, "unknown");
     }
 
     fn chain_rank(chain: &TransferChainState) -> u8 {
