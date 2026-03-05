@@ -93,6 +93,9 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                     message.updated_at = now;
 
                     let exhausted_after_increment = message.attempt_count >= policy.max_attempts;
+                    if exhausted_after_increment {
+                        message.direction = "terminal".to_string();
+                    }
                     messages.insert(message.message_id.as_str(), &message)?;
 
                     metrics::counter!(
@@ -126,7 +129,7 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                         )?;
                     }
                 }
-                RetryAction::Exhausted(message) => {
+                RetryAction::Exhausted(mut message) => {
                     metrics::counter!(
                         "mugraph_m3_message_retries_total",
                         "message_type" => message.message_type.clone(),
@@ -134,6 +137,9 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                     )
                     .increment(1);
                     handle_exhaustion(&message, now, &mut transfers, &mut audits)?;
+                    message.direction = "terminal".to_string();
+                    message.updated_at = now;
+                    messages.insert(message.message_id.as_str(), &message)?;
                 }
             }
         }
@@ -409,6 +415,43 @@ mod tests {
         let transfer = t.get("tr-2").unwrap().unwrap().value();
         assert_eq!(transfer.credit_state, "none");
         assert_eq!(transfer.chain_state, "confirming");
+    }
+
+    #[test]
+    fn exhausted_message_is_terminalized_and_not_reprocessed() {
+        let db = temp_db();
+        seed_transfer(&db, "tr-3");
+        seed_message(
+            &db,
+            CrossNodeMessageRecord {
+                message_id: "mid-3".to_string(),
+                transfer_id: "tr-3".to_string(),
+                message_type: "transfer_notice".to_string(),
+                direction: "outbound".to_string(),
+                attempt_count: 12,
+                created_at: 1,
+                updated_at: 1,
+            },
+        );
+
+        reconcile_once(&db, RetryPolicy::default(), 10).unwrap();
+        reconcile_once(&db, RetryPolicy::default(), 20).unwrap();
+
+        let r = db.read().unwrap();
+        let messages = r.open_table(CROSS_NODE_MESSAGES).unwrap();
+        let msg = messages.get("mid-3").unwrap().unwrap().value();
+        assert_eq!(msg.direction, "terminal");
+
+        let audits = r.open_table(TRANSFER_AUDIT_LOG).unwrap();
+        let mut manual_review_count = 0;
+        for row in audits.iter().unwrap() {
+            let (_k, v) = row.unwrap();
+            let evt = v.value();
+            if evt.transfer_id == "tr-3" && evt.event_type == "reconciler.manual_review" {
+                manual_review_count += 1;
+            }
+        }
+        assert_eq!(manual_review_count, 1);
     }
 
     proptest! {
