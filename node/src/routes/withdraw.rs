@@ -159,13 +159,28 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
         }
     };
 
+    if submit_response.tx_hash != pending_tx_hash {
+        tracing::error!(
+            "Provider returned mismatched tx hash: expected {}, got {}",
+            pending_tx_hash,
+            submit_response.tx_hash
+        );
+        mark_withdrawal_failed(ctx, &pending_tx_hash)?;
+        return Err(Error::Internal {
+            reason: format!(
+                "Provider returned mismatched tx hash: expected {}, got {}",
+                pending_tx_hash, submit_response.tx_hash
+            ),
+        });
+    }
+
     // 11. Mark withdrawal as completed
-    let mark_result = mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits);
+    let mark_result = mark_withdrawal_completed(ctx, &pending_tx_hash, &consumed_deposits);
 
     finalize_withdraw_response(
         mark_result,
         signed_cbor_hex,
-        submit_response.tx_hash,
+        pending_tx_hash,
         change_notes,
     )
 }
@@ -375,6 +390,19 @@ fn mark_withdrawal_completed(
 
         let network_byte = ctx.config.network_byte();
         let key = WithdrawalKey::new(network_byte, tx_hash_array);
+
+        let existing = withdrawals_table.get(&key)?.map(|v| v.value());
+        let Some(existing) = existing else {
+            return Err(Error::InvalidInput {
+                reason: "Pending withdrawal not found for completion".to_string(),
+            });
+        };
+
+        if existing.status == WithdrawalStatus::Completed {
+            return Err(Error::InvalidInput {
+                reason: "Withdrawal already completed".to_string(),
+            });
+        }
 
         // Update record to mark as completed
         let record = WithdrawalRecord::completed();
@@ -1591,6 +1619,26 @@ mod tests {
             second.is_ok(),
             "retry should reuse failed pending state without burning notes again"
         );
+    }
+
+    #[test]
+    fn completion_rejects_unknown_withdrawal_hash() {
+        let ctx = test_context();
+        let request = WithdrawRequest {
+            tx_hash: "ab".repeat(32),
+            tx_cbor: "00".to_string(),
+            notes: vec![BlindSignature {
+                signature: mugraph_core::types::Blinded(mugraph_core::types::Signature::from([2u8; 32])),
+                proof: Default::default(),
+            }],
+        };
+
+        atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash)
+            .expect("first burn succeeds");
+
+        let mismatched = "cd".repeat(32);
+        let err = mark_withdrawal_completed(&ctx, &mismatched, &[]).unwrap_err();
+        assert!(format!("{err:?}").contains("Pending withdrawal not found"));
     }
 
     #[test]
