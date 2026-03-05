@@ -1015,6 +1015,21 @@ mod datum_tests {
         }
     }
 
+    fn mk_datum_hex(tag: u64, fields: Vec<Vec<u8>>) -> String {
+        let datum = PlutusData::Constr(Constr {
+            tag,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(
+                fields
+                    .into_iter()
+                    .map(|v| PlutusData::BoundedBytes(BoundedBytes::from(v)))
+                    .collect(),
+            ),
+        });
+
+        hex::encode(minicbor::to_vec(&datum).expect("encode datum"))
+    }
+
     fn mk_valid_datum_hex(
         request: &DepositRequest,
         wallet: &mugraph_core::types::CardanoWallet,
@@ -1031,17 +1046,10 @@ mod datum_tests {
             .to_bytes();
         let intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
 
-        let datum = PlutusData::Constr(Constr {
-            tag: 121,
-            any_constructor: None,
-            fields: MaybeIndefArray::Def(vec![
-                PlutusData::BoundedBytes(BoundedBytes::from(user_hash)),
-                PlutusData::BoundedBytes(BoundedBytes::from(node_hash)),
-                PlutusData::BoundedBytes(BoundedBytes::from(intent_hash.to_vec())),
-            ]),
-        });
-
-        hex::encode(minicbor::to_vec(&datum).expect("encode datum"))
+        mk_datum_hex(
+            121,
+            vec![user_hash, node_hash, intent_hash.to_vec()],
+        )
     }
 
     #[test]
@@ -1114,5 +1122,98 @@ mod datum_tests {
 
         validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
             .expect("valid datum must pass");
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_wrong_constructor() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+        let intent_hash = compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
+
+        let datum_hex = mk_datum_hex(122, vec![user_hash, node_hash, intent_hash.to_vec()]);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("Unexpected datum constructor"));
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_wrong_field_count() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+
+        let datum_hex = mk_datum_hex(121, vec![user_hash, node_hash]);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("expected 3"));
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_node_hash_mismatch() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+        let wrong_node_sk = SigningKey::from_bytes(&[8u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+        let wrong_node_pk = wrong_node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
+        let wrong_node_hash = csl::PublicKey::from_bytes(&wrong_node_pk).unwrap().hash().to_bytes();
+        let intent_hash = compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
+
+        let datum_hex = mk_datum_hex(121, vec![user_hash, wrong_node_hash, intent_hash.to_vec()]);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("node_pubkey_hash does not match this node"));
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_intent_hash_mismatch() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+        let wrong_intent = vec![9u8; 32];
+
+        let datum_hex = mk_datum_hex(121, vec![user_hash, node_hash, wrong_intent]);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("intent_hash does not match canonical payload"));
     }
 }
