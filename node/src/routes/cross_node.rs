@@ -31,7 +31,6 @@ use crate::{
         IDEMPOTENCY_KEYS,
         TRANSFER_AUDIT_LOG,
     },
-    peer_registry::PeerRegistry,
     routes::Context,
 };
 
@@ -631,15 +630,12 @@ fn validate_auth_signature<T: Serialize + Clone>(
         return Err(protocol_reject("AUTHZ_DENIED", "unsupported auth.alg"));
     }
 
-    let Some(path) = ctx.config.xnode_peer_registry_file() else {
+    let Some(registry) = ctx.peer_registry.as_ref() else {
         return Err(protocol_reject(
             "AUTHZ_DENIED",
             "xnode peer registry is required for cross-node command auth",
         ));
     };
-
-    let registry = PeerRegistry::load(path)?;
-    registry.validate()?;
 
     let peer = registry
         .peers
@@ -1000,11 +996,13 @@ mod tests {
 
         let config = test_config_with_registry(registry_path);
         let keypair = config.keypair().unwrap();
+        let registry = crate::peer_registry::PeerRegistry::load(registry_path).unwrap();
 
         Context {
             keypair,
             database,
             config,
+            peer_registry: Some(std::sync::Arc::new(registry)),
         }
     }
 
@@ -1107,6 +1105,25 @@ mod tests {
             }
         }
         assert!(count >= 1);
+    }
+
+    #[test]
+    fn cached_peer_registry_allows_requests_even_if_file_disappears() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        std::fs::remove_file(&registry_path).unwrap();
+
+        let mut request = create_request();
+        sign_envelope(&mut request, &signer);
+
+        let response = handle_create(&request, &ctx).unwrap();
+        assert!(matches!(
+            response,
+            Response::CrossNodeTransferCreate { accepted: true, .. }
+        ));
     }
 
     #[test]

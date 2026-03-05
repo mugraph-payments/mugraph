@@ -37,6 +37,7 @@ pub struct Context {
     keypair: Keypair,
     database: Arc<Database>,
     config: Config,
+    peer_registry: Option<Arc<PeerRegistry>>,
 }
 
 pub async fn router(config: Config) -> Result<Router, Error> {
@@ -45,8 +46,8 @@ pub async fn router(config: Config) -> Result<Router, Error> {
     // Run database migrations
     database.migrate()?;
 
-    // Validate trusted peer registry when configured
-    if let Some(path) = config.xnode_peer_registry_file() {
+    // Validate trusted peer registry when configured and keep it in memory
+    let peer_registry = if let Some(path) = config.xnode_peer_registry_file() {
         let registry = PeerRegistry::load(&path)?;
         registry.validate()?;
         tracing::info!(
@@ -54,7 +55,10 @@ pub async fn router(config: Config) -> Result<Router, Error> {
             path = %path,
             "loaded trusted peer registry"
         );
-    }
+        Some(Arc::new(registry))
+    } else {
+        None
+    };
 
     if config.dev_mode() {
         tracing::warn!("dev mode enabled — skipping Cardano wallet, deposit monitor, and reconciler");
@@ -79,6 +83,7 @@ pub async fn router(config: Config) -> Result<Router, Error> {
             database,
             keypair,
             config,
+            peer_registry,
         });
 
     Ok(router)
@@ -369,6 +374,7 @@ mod tests {
             keypair,
             database,
             config,
+            peer_registry: None,
         }
     }
 

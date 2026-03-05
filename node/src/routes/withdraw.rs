@@ -1291,6 +1291,7 @@ mod tests {
             keypair,
             database,
             config,
+            peer_registry: None,
         }
     }
 

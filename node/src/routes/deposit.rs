@@ -907,6 +907,7 @@ mod wallet_tests {
             keypair,
             database,
             config,
+            peer_registry: None,
         }
     }
 
