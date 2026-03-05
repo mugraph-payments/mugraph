@@ -6,7 +6,7 @@ use redb::ReadableTable;
 
 use crate::{
     database::{DEPOSITS, Database},
-    provider::Provider,
+    provider::{Provider, UtxoInfo},
 };
 
 /// Configuration for deposit monitoring
@@ -109,13 +109,21 @@ impl DepositMonitor {
         tracing::info!("Found {} pending deposits to check", pending_deposits.len());
 
         for (utxo_ref, record) in pending_deposits {
-            // Check expiration first
-            if now > record.expires_at && !record.spent {
+            // Check expiration first (both timestamp and block horizon)
+            let expired_by_time = now > record.expires_at && !record.spent;
+            let expired_by_blocks = is_expired_by_blocks(
+                tip.block_height,
+                record.block_height,
+                self.config.expiration_blocks,
+            ) && !record.spent;
+
+            if expired_by_time || expired_by_blocks {
                 tracing::info!(
-                    "Deposit {} expired (expired at {}, now {})",
+                    "Deposit {} expired (expired_at {}, now {}, blocks elapsed {})",
                     hex::encode(&utxo_ref.tx_hash[..8]),
                     record.expires_at,
-                    now
+                    now,
+                    tip.block_height.saturating_sub(record.block_height)
                 );
 
                 // Mark as expired by setting spent flag
@@ -212,6 +220,16 @@ impl DepositMonitor {
                         );
                         return Ok(false);
                     }
+
+                if !utxo_meets_min_deposit(&utxo_info, self.config.min_deposit_value) {
+                    tracing::warn!(
+                        "UTxO {} below min deposit value {}",
+                        tx_hash,
+                        self.config.min_deposit_value
+                    );
+                    return Ok(false);
+                }
+
                 Ok(!utxo_info.amount.is_empty())
             }
             Ok(None) => {
@@ -304,8 +322,25 @@ impl DepositMonitor {
     }
 }
 
+fn is_expired_by_blocks(current_height: u64, deposit_height: u64, expiration_blocks: u64) -> bool {
+    current_height.saturating_sub(deposit_height) > expiration_blocks
+}
+
+fn utxo_meets_min_deposit(utxo_info: &UtxoInfo, min_deposit_value: u64) -> bool {
+    let lovelace = utxo_info
+        .amount
+        .iter()
+        .find(|a| a.unit == "lovelace")
+        .and_then(|a| a.quantity.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    lovelace >= min_deposit_value
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::provider::AssetAmount;
+
     use super::*;
 
     #[test]
@@ -314,5 +349,31 @@ mod tests {
         assert_eq!(config.confirm_depth, 15);
         assert_eq!(config.expiration_blocks, 1440);
         assert_eq!(config.min_deposit_value, 1_000_000);
+    }
+
+    #[test]
+    fn expiration_by_blocks_uses_configured_horizon() {
+        assert!(!is_expired_by_blocks(200, 100, 100));
+        assert!(is_expired_by_blocks(201, 100, 100));
+    }
+
+    #[test]
+    fn min_deposit_value_is_enforced_from_config() {
+        let utxo = UtxoInfo {
+            tx_hash: "ab".repeat(32),
+            output_index: 0,
+            address: "addr_test1...".to_string(),
+            amount: vec![AssetAmount {
+                unit: "lovelace".to_string(),
+                quantity: "999999".to_string(),
+            }],
+            datum_hash: None,
+            datum: None,
+            script_ref: None,
+            block_height: Some(10),
+        };
+
+        assert!(!utxo_meets_min_deposit(&utxo, 1_000_000));
+        assert!(utxo_meets_min_deposit(&utxo, 999_999));
     }
 }
