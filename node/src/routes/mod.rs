@@ -306,6 +306,7 @@ mod tests {
     use axum::{Json, extract::State};
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::{
+        CrossNodeTransferRecord,
         Request,
         TransferNoticePayload,
         TransferNoticeStage,
@@ -386,14 +387,15 @@ mod tests {
 
         let signer = SigningKey::from_bytes(&[7u8; 32]);
         let registry_path = write_registry(&signer);
-        let config = test_config(Some(registry_path));
+        let config = test_config(Some(registry_path.clone()));
         let keypair = config.keypair().unwrap();
+        let peer_registry = Some(Arc::new(PeerRegistry::load(registry_path).unwrap()));
 
         Context {
             keypair,
             database,
             config,
-            peer_registry: None,
+            peer_registry,
         }
     }
 
@@ -407,6 +409,29 @@ mod tests {
     #[tokio::test]
     async fn rpc_dispatches_cross_node_transfer_notify() {
         let ctx = test_context();
+        {
+            let w = ctx.database.write().unwrap();
+            {
+                let mut t = w.open_table(crate::database::CROSS_NODE_TRANSFERS).unwrap();
+                t.insert(
+                    "tr-1",
+                    &CrossNodeTransferRecord {
+                        transfer_id: "tr-1".to_string(),
+                        source_node_id: "node://a".to_string(),
+                        destination_node_id: "node://b".to_string(),
+                        tx_hash: None,
+                        chain_state: "unknown".to_string(),
+                        credit_state: "none".to_string(),
+                        confirmations_observed: 0,
+                        created_at: 1,
+                        updated_at: 1,
+                    },
+                )
+                .unwrap();
+            }
+            w.commit().unwrap();
+        }
+
         let signer = SigningKey::from_bytes(&[7u8; 32]);
         let notice = XNodeEnvelope {
             m: "xnode".to_string(),
