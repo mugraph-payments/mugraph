@@ -28,7 +28,7 @@ macro_rules! impl_bitset {
 
                 #[inline]
                 pub const fn contains(&self, index: [<u $size>]) -> bool {
-                    debug_assert!(index <= $size);
+                    debug_assert!(index < $size);
                     self.0 & (1 << index) != 0
                 }
 
@@ -54,13 +54,13 @@ macro_rules! impl_bitset {
 
                 #[inline]
                 pub fn insert(&mut self, index: [<u $size>]) {
-                    debug_assert!(index <= $size);
+                    debug_assert!(index < $size);
                     self.0 |= 1 << index;
                 }
 
                 #[inline]
                 pub fn remove(&mut self, index: [<u $size>]) {
-                    debug_assert!(index <= $size);
+                    debug_assert!(index < $size);
                     self.0 &= !(1 << index);
                 }
             }
@@ -152,5 +152,26 @@ mod tests {
     #[proptest]
     fn prop_bitset32_is_empty_iff_count_zero(bs: BitSet32) {
         prop_assert_eq!(bs.is_empty(), bs.count_ones() == 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn bitset32_insert_rejects_upper_bound_index() {
+        let mut bs = BitSet32::new();
+        bs.insert(32);
+    }
+
+    #[test]
+    #[should_panic]
+    fn bitset32_contains_rejects_upper_bound_index() {
+        let bs = BitSet32::new();
+        let _ = bs.contains(32);
+    }
+
+    #[test]
+    #[should_panic]
+    fn bitset32_remove_rejects_upper_bound_index() {
+        let mut bs = BitSet32::new();
+        bs.remove(32);
     }
 }
