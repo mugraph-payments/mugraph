@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use redb::{Key, Value};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -107,22 +105,10 @@ pub struct TransferAuditEvent {
     pub created_at: u64,
 }
 
-static DESERIALIZATION_FALLBACKS: AtomicU64 = AtomicU64::new(0);
-
-fn deserialize_or_fallback<T: DeserializeOwned>(data: &[u8], fallback: impl FnOnce() -> T) -> T {
-    match bincode::deserialize(data) {
-        Ok(value) => value,
-        Err(e) => {
-            DESERIALIZATION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
-            eprintln!("failed to deserialize cardano redb value; using fallback value: {e}");
-            fallback()
-        }
-    }
-}
-
-#[cfg(test)]
-fn deserialization_fallback_count() -> u64 {
-    DESERIALIZATION_FALLBACKS.load(Ordering::Relaxed)
+fn deserialize_or_panic<T: DeserializeOwned>(data: &[u8]) -> T {
+    bincode::deserialize(data).unwrap_or_else(|e| {
+        panic!("failed to deserialize cardano redb value: {e}")
+    })
 }
 
 impl CardanoWallet {
@@ -274,15 +260,7 @@ impl Value for CardanoWallet {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || CardanoWallet {
-            payment_sk: Vec::new(),
-            payment_vk: Vec::new(),
-            script_cbor: Vec::new(),
-            script_hash: Vec::new(),
-            script_address: String::new(),
-            network: String::new(),
-            compiled_at: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -310,13 +288,7 @@ impl Value for DepositRecord {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || DepositRecord {
-            spent: true,
-            block_height: 0,
-            created_at: 0,
-            expires_at: 0,
-            intent_hash: [0u8; 32],
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -344,10 +316,7 @@ impl Value for WithdrawalRecord {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || WithdrawalRecord {
-            status: WithdrawalStatus::Failed,
-            timestamp: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -375,17 +344,7 @@ impl Value for CrossNodeTransferRecord {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || CrossNodeTransferRecord {
-            transfer_id: String::new(),
-            source_node_id: String::new(),
-            destination_node_id: String::new(),
-            tx_hash: None,
-            chain_state: "invalidated".to_string(),
-            credit_state: "held".to_string(),
-            confirmations_observed: 0,
-            created_at: 0,
-            updated_at: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -413,15 +372,7 @@ impl Value for CrossNodeMessageRecord {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || CrossNodeMessageRecord {
-            message_id: String::new(),
-            transfer_id: String::new(),
-            message_type: String::new(),
-            direction: "terminal".to_string(),
-            attempt_count: 0,
-            created_at: 0,
-            updated_at: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -449,14 +400,7 @@ impl Value for IdempotencyRecord {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || IdempotencyRecord {
-            idempotency_key: String::new(),
-            transfer_id: String::new(),
-            message_type: String::new(),
-            request_hash: String::new(),
-            first_seen_at: 0,
-            expires_at: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -484,13 +428,7 @@ impl Value for TransferAuditEvent {
     where
         Self: 'a,
     {
-        deserialize_or_fallback(data, || TransferAuditEvent {
-            event_id: String::new(),
-            transfer_id: String::new(),
-            event_type: "storage.deserialize_error".to_string(),
-            reason: "fallback".to_string(),
-            created_at: 0,
-        })
+        deserialize_or_panic(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -608,17 +546,15 @@ mod tests {
     }
 
     #[test]
-    fn malformed_deposit_record_bytes_do_not_panic() {
-        let value = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
-        assert!(value.spent);
+    #[should_panic(expected = "failed to deserialize cardano redb value")]
+    fn malformed_deposit_record_bytes_fail_fast() {
+        let _ = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
     }
 
     #[test]
-    fn malformed_bytes_increment_fallback_counter() {
-        let before = deserialization_fallback_count();
+    #[should_panic(expected = "failed to deserialize cardano redb value")]
+    fn malformed_withdrawal_record_bytes_fail_fast() {
         let _ = <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
-        let after = deserialization_fallback_count();
-        assert!(after > before, "fallback counter must increase on decode errors");
     }
 
     #[test]
