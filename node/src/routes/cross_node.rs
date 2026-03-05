@@ -114,6 +114,13 @@ pub fn handle_create(
         let write_tx = ctx.database.write()?;
         {
             let mut transfers = write_tx.open_table(CROSS_NODE_TRANSFERS)?;
+            if transfers.get(request.transfer_id.as_str())?.is_some() {
+                return Err(protocol_reject(
+                    "TRANSFER_ALREADY_EXISTS",
+                    "transfer_id already exists",
+                ));
+            }
+
             transfers.insert(
                 request.transfer_id.as_str(),
                 &CrossNodeTransferRecord {
@@ -1171,6 +1178,30 @@ mod tests {
         match err {
             Error::InvalidInput { reason } => assert!(reason.contains("IDEMPOTENCY_CONFLICT")),
             _ => panic!("expected InvalidInput conflict"),
+        }
+    }
+
+    #[test]
+    fn create_rejects_duplicate_transfer_id_across_idempotency_keys() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut first = create_request();
+        sign_envelope(&mut first, &signer);
+        handle_create(&first, &ctx).unwrap();
+
+        let mut second = create_request();
+        second.message_id = "mid-2".to_string();
+        second.idempotency_key = "ik-2".to_string();
+        second.payload.destination_account_ref = "acct-2".to_string();
+        sign_envelope(&mut second, &signer);
+
+        let err = handle_create(&second, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => assert!(reason.contains("TRANSFER_ALREADY_EXISTS")),
+            _ => panic!("expected duplicate transfer_id rejection"),
         }
     }
 
