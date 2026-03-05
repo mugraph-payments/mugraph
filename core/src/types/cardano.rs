@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use redb::{Key, Value};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -105,11 +107,22 @@ pub struct TransferAuditEvent {
     pub created_at: u64,
 }
 
+static DESERIALIZATION_FALLBACKS: AtomicU64 = AtomicU64::new(0);
+
 fn deserialize_or_fallback<T: DeserializeOwned>(data: &[u8], fallback: impl FnOnce() -> T) -> T {
     match bincode::deserialize(data) {
         Ok(value) => value,
-        Err(_e) => fallback(),
+        Err(e) => {
+            DESERIALIZATION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
+            eprintln!("failed to deserialize cardano redb value; using fallback value: {e}");
+            fallback()
+        }
     }
+}
+
+#[cfg(test)]
+fn deserialization_fallback_count() -> u64 {
+    DESERIALIZATION_FALLBACKS.load(Ordering::Relaxed)
 }
 
 impl CardanoWallet {
@@ -598,6 +611,14 @@ mod tests {
     fn malformed_deposit_record_bytes_do_not_panic() {
         let value = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
         assert!(value.spent);
+    }
+
+    #[test]
+    fn malformed_bytes_increment_fallback_counter() {
+        let before = deserialization_fallback_count();
+        let _ = <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
+        let after = deserialization_fallback_count();
+        assert!(after > before, "fallback counter must increase on decode errors");
     }
 
     #[test]
