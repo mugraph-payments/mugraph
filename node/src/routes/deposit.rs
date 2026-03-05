@@ -4,6 +4,7 @@ use mugraph_core::{
     error::Error,
     types::{BlindSignature, DepositRequest, PublicKey, Response, UtxoRef},
 };
+use redb::ReadableTable;
 use serde::{Deserialize, Serialize};
 use whisky_csl::csl;
 
@@ -87,15 +88,28 @@ async fn load_or_create_wallet(ctx: &Context) -> Result<mugraph_core::types::Car
             reason: e.to_string(),
         })?;
 
-    // Store wallet in database
-    let write_tx = ctx.database.write()?;
-    {
-        let mut table = write_tx.open_table(CARDANO_WALLET)?;
-        table.insert("wallet", &wallet)?;
-    }
-    write_tx.commit()?;
+    // Store wallet in database only if still absent (concurrency-safe)
+    let selected = store_wallet_if_absent(ctx, wallet)?;
 
-    Ok(wallet)
+    Ok(selected)
+}
+
+fn store_wallet_if_absent(
+    ctx: &Context,
+    candidate: mugraph_core::types::CardanoWallet,
+) -> Result<mugraph_core::types::CardanoWallet, Error> {
+    let write_tx = ctx.database.write()?;
+    let selected = {
+        let mut table = write_tx.open_table(CARDANO_WALLET)?;
+        if let Some(existing) = table.get("wallet")? {
+            existing.value()
+        } else {
+            table.insert("wallet", &candidate)?;
+            candidate
+        }
+    };
+    write_tx.commit()?;
+    Ok(selected)
 }
 
 /// Create Cardano provider from configuration
@@ -843,4 +857,84 @@ async fn record_deposit(
         tip.block_height
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod wallet_tests {
+    use std::sync::Arc;
+
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::{
+        config::Config,
+        database::Database,
+    };
+
+    fn test_context() -> Context {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("db.redb");
+        let database = Arc::new(Database::setup(db_path).unwrap());
+        database.migrate().unwrap();
+        std::mem::forget(dir);
+
+        let config = Config::Server {
+            addr: "127.0.0.1:9999".parse().unwrap(),
+            seed: Some(7),
+            secret_key: None,
+            cardano_network: "preprod".to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: Some("test".to_string()),
+            cardano_provider_url: None,
+            cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
+            xnode_node_id: "node://local".to_string(),
+            deposit_confirm_depth: 15,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: Some(1_000_000),
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2_000_000,
+            fee_tolerance_pct: 5,
+            dev_mode: true,
+        };
+        let keypair = config.keypair().unwrap();
+
+        Context {
+            keypair,
+            database,
+            config,
+        }
+    }
+
+    #[test]
+    fn store_wallet_if_absent_keeps_existing_wallet() {
+        let ctx = test_context();
+        let first = mugraph_core::types::CardanoWallet::new(
+            vec![1u8; 32],
+            vec![2u8; 32],
+            vec![3u8; 10],
+            vec![4u8; 28],
+            "addr_test1first".to_string(),
+            "preprod".to_string(),
+        );
+        let second = mugraph_core::types::CardanoWallet::new(
+            vec![9u8; 32],
+            vec![8u8; 32],
+            vec![7u8; 10],
+            vec![6u8; 28],
+            "addr_test1second".to_string(),
+            "preprod".to_string(),
+        );
+
+        let saved = store_wallet_if_absent(&ctx, first.clone()).unwrap();
+        assert_eq!(saved.script_address, first.script_address);
+
+        let selected = store_wallet_if_absent(&ctx, second.clone()).unwrap();
+        assert_eq!(selected.script_address, first.script_address);
+
+        let read_tx = ctx.database.read().unwrap();
+        let table = read_tx.open_table(CARDANO_WALLET).unwrap();
+        let persisted = table.get("wallet").unwrap().unwrap().value();
+        assert_eq!(persisted.script_address, first.script_address);
+    }
 }
