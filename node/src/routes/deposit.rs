@@ -959,3 +959,160 @@ mod wallet_tests {
         write_tx.commit().unwrap();
     }
 }
+
+#[cfg(test)]
+mod datum_tests {
+    use ed25519_dalek::SigningKey;
+    use pallas_codec::minicbor;
+    use pallas_primitives::{
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
+    };
+
+    use super::*;
+    use crate::provider::{AssetAmount, UtxoInfo};
+
+    fn mk_request_with_user_pubkey(user_pk: &[u8; 32]) -> DepositRequest {
+        DepositRequest {
+            utxo: mugraph_core::types::UtxoReference {
+                tx_hash: "ab".repeat(32),
+                index: 0,
+            },
+            outputs: vec![BlindSignature::default()],
+            message: format!(r#"{{"user_pubkey":"{}"}}"#, hex::encode(user_pk)),
+            signature: vec![0u8; 64],
+            nonce: 1,
+            network: "preprod".to_string(),
+        }
+    }
+
+    fn mk_wallet(payment_vk: &[u8; 32]) -> mugraph_core::types::CardanoWallet {
+        mugraph_core::types::CardanoWallet::new(
+            vec![9u8; 32],
+            payment_vk.to_vec(),
+            vec![],
+            vec![],
+            "addr_test1datumcheck".to_string(),
+            "preprod".to_string(),
+        )
+    }
+
+    fn mk_utxo_with_datum_hex(datum_hex: Option<String>) -> UtxoInfo {
+        UtxoInfo {
+            tx_hash: "ab".repeat(32),
+            output_index: 0,
+            address: "addr_test1datumcheck".to_string(),
+            amount: vec![AssetAmount {
+                unit: "lovelace".to_string(),
+                quantity: "1000000".to_string(),
+            }],
+            datum_hash: None,
+            datum: datum_hex,
+            script_ref: None,
+            block_height: Some(100),
+        }
+    }
+
+    fn mk_valid_datum_hex(
+        request: &DepositRequest,
+        wallet: &mugraph_core::types::CardanoWallet,
+        delegate_pk: &PublicKey,
+        user_pk: &[u8; 32],
+    ) -> String {
+        let user_hash = csl::PublicKey::from_bytes(user_pk)
+            .expect("valid user key")
+            .hash()
+            .to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .expect("valid node key")
+            .hash()
+            .to_bytes();
+        let intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
+
+        let datum = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![
+                PlutusData::BoundedBytes(BoundedBytes::from(user_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(node_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(intent_hash.to_vec())),
+            ]),
+        });
+
+        hex::encode(minicbor::to_vec(&datum).expect("encode datum"))
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_missing_datum() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let utxo = mk_utxo_with_datum_hex(None);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("missing inline datum"));
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_non_cbor_datum() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let utxo = mk_utxo_with_datum_hex(Some("00ff".to_string()));
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(matches!(err, Error::InvalidInput { .. }));
+    }
+
+    #[test]
+    fn validate_deposit_datum_rejects_user_hash_mismatch() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+        let wrong_user_sk = SigningKey::from_bytes(&[4u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+        let wrong_user_pk = wrong_user_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let datum_hex = mk_valid_datum_hex(&request, &wallet, &delegate_pk, &wrong_user_pk);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        assert!(format!("{err:?}").contains("Datum user_pubkey_hash does not match"));
+    }
+
+    #[test]
+    fn validate_deposit_datum_accepts_valid_payload_binding() {
+        let user_sk = SigningKey::from_bytes(&[1u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[2u8; 32]);
+
+        let user_pk = user_sk.verifying_key().to_bytes();
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let request = mk_request_with_user_pubkey(&user_pk);
+        let wallet = mk_wallet(&node_pk);
+        let delegate_pk = PublicKey([3u8; 32]);
+
+        let datum_hex = mk_valid_datum_hex(&request, &wallet, &delegate_pk, &user_pk);
+        let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
+
+        validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+            .expect("valid datum must pass");
+    }
+}
