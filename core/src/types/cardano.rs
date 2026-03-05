@@ -1,5 +1,5 @@
 use redb::{Key, Value};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Cardano wallet data stored in the database
 /// Contains node keys and validator script artifacts
@@ -103,6 +103,13 @@ pub struct TransferAuditEvent {
     pub event_type: String,
     pub reason: String,
     pub created_at: u64,
+}
+
+fn deserialize_or_fallback<T: DeserializeOwned>(data: &[u8], fallback: impl FnOnce() -> T) -> T {
+    match bincode::deserialize(data) {
+        Ok(value) => value,
+        Err(_e) => fallback(),
+    }
 }
 
 impl CardanoWallet {
@@ -254,7 +261,15 @@ impl Value for CardanoWallet {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize CardanoWallet")
+        deserialize_or_fallback(data, || CardanoWallet {
+            payment_sk: Vec::new(),
+            payment_vk: Vec::new(),
+            script_cbor: Vec::new(),
+            script_hash: Vec::new(),
+            script_address: String::new(),
+            network: String::new(),
+            compiled_at: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -282,7 +297,13 @@ impl Value for DepositRecord {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize DepositRecord")
+        deserialize_or_fallback(data, || DepositRecord {
+            spent: true,
+            block_height: 0,
+            created_at: 0,
+            expires_at: 0,
+            intent_hash: [0u8; 32],
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -310,7 +331,10 @@ impl Value for WithdrawalRecord {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize WithdrawalRecord")
+        deserialize_or_fallback(data, || WithdrawalRecord {
+            status: WithdrawalStatus::Failed,
+            timestamp: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -338,7 +362,17 @@ impl Value for CrossNodeTransferRecord {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize CrossNodeTransferRecord")
+        deserialize_or_fallback(data, || CrossNodeTransferRecord {
+            transfer_id: String::new(),
+            source_node_id: String::new(),
+            destination_node_id: String::new(),
+            tx_hash: None,
+            chain_state: "invalidated".to_string(),
+            credit_state: "held".to_string(),
+            confirmations_observed: 0,
+            created_at: 0,
+            updated_at: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -366,7 +400,15 @@ impl Value for CrossNodeMessageRecord {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize CrossNodeMessageRecord")
+        deserialize_or_fallback(data, || CrossNodeMessageRecord {
+            message_id: String::new(),
+            transfer_id: String::new(),
+            message_type: String::new(),
+            direction: "terminal".to_string(),
+            attempt_count: 0,
+            created_at: 0,
+            updated_at: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -394,7 +436,14 @@ impl Value for IdempotencyRecord {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize IdempotencyRecord")
+        deserialize_or_fallback(data, || IdempotencyRecord {
+            idempotency_key: String::new(),
+            transfer_id: String::new(),
+            message_type: String::new(),
+            request_hash: String::new(),
+            first_seen_at: 0,
+            expires_at: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -422,7 +471,13 @@ impl Value for TransferAuditEvent {
     where
         Self: 'a,
     {
-        bincode::deserialize(data).expect("Failed to deserialize TransferAuditEvent")
+        deserialize_or_fallback(data, || TransferAuditEvent {
+            event_id: String::new(),
+            transfer_id: String::new(),
+            event_type: "storage.deserialize_error".to_string(),
+            reason: "fallback".to_string(),
+            created_at: 0,
+        })
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -456,8 +511,13 @@ impl Value for UtxoRef {
     where
         Self: 'a,
     {
-        let bytes: &[u8; 34] = data.try_into().expect("Invalid UtxoRef bytes length");
-        Self::from_bytes(bytes)
+        match data.try_into() {
+            Ok(bytes) => Self::from_bytes(bytes),
+            Err(_) => Self {
+                tx_hash: [0u8; 32],
+                index: 0,
+            },
+        }
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -491,8 +551,13 @@ impl Value for WithdrawalKey {
     where
         Self: 'a,
     {
-        let bytes: &[u8; 33] = data.try_into().expect("Invalid WithdrawalKey bytes length");
-        Self::from_bytes(bytes)
+        match data.try_into() {
+            Ok(bytes) => Self::from_bytes(bytes),
+            Err(_) => Self {
+                network: 0,
+                tx_hash: [0u8; 32],
+            },
+        }
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -527,5 +592,17 @@ mod tests {
         let original = WithdrawalKey::new(network, tx_hash);
         let recovered = WithdrawalKey::from_bytes(&original.to_bytes());
         prop_assert_eq!(original, recovered);
+    }
+
+    #[test]
+    fn malformed_deposit_record_bytes_do_not_panic() {
+        let value = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
+        assert!(value.spent);
+    }
+
+    #[test]
+    fn malformed_utxo_ref_bytes_do_not_panic() {
+        let value = <UtxoRef as Value>::from_bytes(&[1u8; 3]);
+        assert_eq!(value.index, 0);
     }
 }
