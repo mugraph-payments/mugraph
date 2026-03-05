@@ -135,6 +135,12 @@ impl TryFrom<Vec<u8>> for Hash {
 
     #[inline]
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        if value.len() != 32 {
+            return Err(crate::error::Error::InvalidHash {
+                reason: format!("Hash must be 32 bytes, got {}", value.len()),
+            });
+        }
+
         let mut result = Hash::default();
         result.0.copy_from_slice(&value[..]);
 
@@ -147,6 +153,12 @@ impl TryFrom<&[u8]> for Hash {
 
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != 32 {
+            return Err(crate::error::Error::InvalidHash {
+                reason: format!("Hash must be 32 bytes, got {}", value.len()),
+            });
+        }
+
         let mut result = Hash::default();
         result.0.copy_from_slice(value);
 
@@ -200,5 +212,18 @@ mod tests {
     #[proptest]
     fn prop_digest_equality(a: Vec<u8>, b: Vec<u8>) {
         prop_assert_eq!(a == b, Hash::digest(&a) == Hash::digest(&b));
+    }
+
+    #[test]
+    fn try_from_vec_rejects_invalid_length() {
+        let err = Hash::try_from(vec![1u8; 31]).unwrap_err();
+        assert!(matches!(err, crate::error::Error::InvalidHash { .. }));
+    }
+
+    #[test]
+    fn try_from_slice_rejects_invalid_length() {
+        let bytes = [1u8; 31];
+        let err = Hash::try_from(bytes.as_slice()).unwrap_err();
+        assert!(matches!(err, crate::error::Error::InvalidHash { .. }));
     }
 }
