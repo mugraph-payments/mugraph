@@ -86,10 +86,10 @@ pub async fn router(config: Config) -> Result<Router, Error> {
         initialize_cardano_wallet(&config, &database).await?;
 
         // Start deposit monitor background task
-        start_deposit_monitor(&config, database.clone()).await?;
+        start_deposit_monitor(&config, database.clone())?;
 
         // Start cross-node reconciler worker for retry/recovery convergence
-        start_cross_node_reconciler(database.clone()).await?;
+        start_cross_node_reconciler(database.clone())?;
     }
 
     let keypair = config.keypair()?;
@@ -151,7 +151,7 @@ async fn initialize_cardano_wallet(config: &Config, database: &Database) -> Resu
 }
 
 /// Start the deposit monitor background task
-async fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Result<(), Error> {
+fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Result<(), Error> {
     // Create provider for the monitor using config
     let provider = Provider::new(
         &config.provider_type(),
@@ -184,7 +184,7 @@ async fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Resu
     Ok(())
 }
 
-async fn start_cross_node_reconciler(database: Arc<Database>) -> Result<(), Error> {
+fn start_cross_node_reconciler(database: Arc<Database>) -> Result<(), Error> {
     tokio::spawn(async move {
         reconciler_loop(
             database,
