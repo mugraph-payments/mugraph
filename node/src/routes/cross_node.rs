@@ -192,6 +192,17 @@ pub fn handle_notify(
         }
     };
 
+    {
+        let read_tx = ctx.database.read()?;
+        let transfers = read_tx.open_table(CROSS_NODE_TRANSFERS)?;
+        if transfers.get(request.transfer_id.as_str())?.is_none() {
+            return Err(protocol_reject(
+                "TRANSFER_NOT_FOUND",
+                "cannot accept notice for unknown transfer",
+            ));
+        }
+    }
+
     if decision == IdempotencyDecision::DuplicateSameRequest {
         metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_notice".to_string()).increment(1);
     } else {
@@ -1348,6 +1359,43 @@ mod tests {
             response,
             Response::CrossNodeTransferAck { accepted: true }
         ));
+    }
+
+    #[test]
+    fn notify_rejects_unknown_transfer_id() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferNotice,
+            message_id: "mid-notice".to_string(),
+            transfer_id: "tr-missing".to_string(),
+            idempotency_key: "ik-notice".to_string(),
+            correlation_id: "corr-notice".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: Some(now_rfc3339_offset(120)),
+            payload: TransferNoticePayload {
+                notice_stage: TransferNoticeStage::Confirmed,
+                tx_hash: "abcd".to_string(),
+                confirmations: Some(6),
+            },
+            auth: auth(),
+        };
+        sign_envelope(&mut request, &signer);
+
+        let err = handle_notify(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("TRANSFER_NOT_FOUND"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     fn chain_rank(chain: &TransferChainState) -> u8 {
