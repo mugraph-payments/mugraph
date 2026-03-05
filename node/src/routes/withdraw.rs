@@ -160,33 +160,47 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     };
 
     // 11. Mark withdrawal as completed
-    match mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits).await {
+    let mark_result = mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits).await;
+
+    finalize_withdraw_response(
+        mark_result,
+        signed_cbor_hex,
+        submit_response.tx_hash,
+        change_notes,
+    )
+}
+
+fn finalize_withdraw_response(
+    mark_result: Result<(), Error>,
+    signed_tx_cbor: String,
+    tx_hash: String,
+    change_notes: Vec<BlindSignature>,
+) -> Result<Response, Error> {
+    match mark_result {
         Ok(()) => {
             tracing::info!(
                 "Withdrawal completed successfully: {}",
-                &submit_response.tx_hash[..std::cmp::min(16, submit_response.tx_hash.len())]
+                &tx_hash[..std::cmp::min(16, tx_hash.len())]
             );
 
             Ok(Response::Withdraw {
-                signed_tx_cbor: signed_cbor_hex,
-                tx_hash: submit_response.tx_hash,
+                signed_tx_cbor,
+                tx_hash,
                 change_notes,
             })
         }
         Err(e) => {
-            // CRITICAL: Transaction was submitted but we failed to mark as completed
             tracing::error!(
-                "CRITICAL: Transaction {} was submitted but marking as completed failed: {}. Manual reconciliation required.",
-                submit_response.tx_hash,
+                "CRITICAL: Transaction {} was submitted but marking as completed failed: {}.",
+                tx_hash,
                 e
             );
 
-            // Still return success since blockchain transaction succeeded
-            // but log the inconsistency for manual recovery
-            Ok(Response::Withdraw {
-                signed_tx_cbor: signed_cbor_hex,
-                tx_hash: submit_response.tx_hash,
-                change_notes,
+            Err(Error::Internal {
+                reason: format!(
+                    "Transaction {} submitted but completion state update failed: {}",
+                    tx_hash, e
+                ),
             })
         }
     }
@@ -1515,6 +1529,20 @@ mod tests {
 
         let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet).unwrap_err();
         assert!(format!("{:?}", err).contains("network_id 1"));
+    }
+
+    #[test]
+    fn completion_state_failure_returns_error() {
+        let result = finalize_withdraw_response(
+            Err(Error::Internal {
+                reason: "db write failed".to_string(),
+            }),
+            "deadbeef".to_string(),
+            "ab".repeat(32),
+            vec![],
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
