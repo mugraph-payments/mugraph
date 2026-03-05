@@ -115,6 +115,12 @@ impl TryFrom<Vec<u8>> for SecretKey {
 
     #[inline]
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        if value.len() != 32 {
+            return Err(Error::InvalidKey {
+                reason: format!("Secret key must be 32 bytes, got {}", value.len()),
+            });
+        }
+
         let mut result = SecretKey::default();
         result.0.copy_from_slice(&value[..]);
 
@@ -127,6 +133,12 @@ impl TryFrom<&[u8]> for SecretKey {
 
     #[inline]
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() != 32 {
+            return Err(Error::InvalidKey {
+                reason: format!("Secret key must be 32 bytes, got {}", value.len()),
+            });
+        }
+
         let mut result = SecretKey::default();
         result.0.copy_from_slice(value);
 
@@ -194,5 +206,18 @@ mod tests {
         if sa != sb {
             prop_assert_ne!(a.public(), b.public());
         }
+    }
+
+    #[test]
+    fn try_from_vec_rejects_invalid_length() {
+        let err = SecretKey::try_from(vec![1u8; 31]).unwrap_err();
+        assert!(matches!(err, crate::error::Error::InvalidKey { .. }));
+    }
+
+    #[test]
+    fn try_from_slice_rejects_invalid_length() {
+        let bytes = [1u8; 31];
+        let err = SecretKey::try_from(bytes.as_slice()).unwrap_err();
+        assert!(matches!(err, crate::error::Error::InvalidKey { .. }));
     }
 }
