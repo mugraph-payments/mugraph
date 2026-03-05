@@ -8,3 +8,4 @@
 db
 proptest-regressions
 target
+/result

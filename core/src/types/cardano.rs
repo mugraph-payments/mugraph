@@ -105,10 +105,102 @@ pub struct TransferAuditEvent {
     pub created_at: u64,
 }
 
-fn deserialize_or_panic<T: DeserializeOwned>(data: &[u8]) -> T {
-    bincode::deserialize(data).unwrap_or_else(|e| {
-        panic!("failed to deserialize cardano redb value: {e}")
-    })
+trait CorruptFallback {
+    fn corrupt_fallback() -> Self;
+}
+
+fn deserialize_or_fallback<T: DeserializeOwned + CorruptFallback>(data: &[u8]) -> T {
+    bincode::deserialize(data).unwrap_or_else(|_| T::corrupt_fallback())
+}
+
+impl CorruptFallback for CardanoWallet {
+    fn corrupt_fallback() -> Self {
+        Self {
+            payment_sk: Vec::new(),
+            payment_vk: Vec::new(),
+            script_cbor: Vec::new(),
+            script_hash: Vec::new(),
+            script_address: String::new(),
+            network: "corrupt".to_string(),
+            compiled_at: 0,
+        }
+    }
+}
+
+impl CorruptFallback for DepositRecord {
+    fn corrupt_fallback() -> Self {
+        Self {
+            spent: true,
+            block_height: 0,
+            created_at: 0,
+            expires_at: 0,
+            intent_hash: [0u8; 32],
+        }
+    }
+}
+
+impl CorruptFallback for WithdrawalRecord {
+    fn corrupt_fallback() -> Self {
+        Self {
+            status: WithdrawalStatus::Failed,
+            timestamp: 0,
+        }
+    }
+}
+
+impl CorruptFallback for CrossNodeTransferRecord {
+    fn corrupt_fallback() -> Self {
+        Self {
+            transfer_id: String::new(),
+            source_node_id: String::new(),
+            destination_node_id: String::new(),
+            tx_hash: None,
+            chain_state: "invalidated".to_string(),
+            credit_state: "held".to_string(),
+            confirmations_observed: 0,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+}
+
+impl CorruptFallback for CrossNodeMessageRecord {
+    fn corrupt_fallback() -> Self {
+        Self {
+            message_id: String::new(),
+            transfer_id: String::new(),
+            message_type: String::new(),
+            direction: "terminal".to_string(),
+            attempt_count: u32::MAX,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+}
+
+impl CorruptFallback for IdempotencyRecord {
+    fn corrupt_fallback() -> Self {
+        Self {
+            idempotency_key: String::new(),
+            transfer_id: String::new(),
+            message_type: String::new(),
+            request_hash: String::new(),
+            first_seen_at: 0,
+            expires_at: 0,
+        }
+    }
+}
+
+impl CorruptFallback for TransferAuditEvent {
+    fn corrupt_fallback() -> Self {
+        Self {
+            event_id: String::new(),
+            transfer_id: String::new(),
+            event_type: "corrupt_record".to_string(),
+            reason: "failed to deserialize persisted audit event".to_string(),
+            created_at: 0,
+        }
+    }
 }
 
 impl CardanoWallet {
@@ -260,7 +352,7 @@ impl Value for CardanoWallet {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -288,7 +380,7 @@ impl Value for DepositRecord {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -316,7 +408,7 @@ impl Value for WithdrawalRecord {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -344,7 +436,7 @@ impl Value for CrossNodeTransferRecord {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -372,7 +464,7 @@ impl Value for CrossNodeMessageRecord {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -400,7 +492,7 @@ impl Value for IdempotencyRecord {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -428,7 +520,7 @@ impl Value for TransferAuditEvent {
     where
         Self: 'a,
     {
-        deserialize_or_panic(data)
+        deserialize_or_fallback(data)
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
@@ -546,15 +638,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "failed to deserialize cardano redb value")]
-    fn malformed_deposit_record_bytes_fail_fast() {
-        let _ = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
+    fn malformed_deposit_record_bytes_fail_closed_without_panicking() {
+        let value = <DepositRecord as Value>::from_bytes(&[0xff, 0x00, 0x01]);
+        assert!(value.spent, "corrupt deposit record must fail closed");
     }
 
     #[test]
-    #[should_panic(expected = "failed to deserialize cardano redb value")]
-    fn malformed_withdrawal_record_bytes_fail_fast() {
-        let _ = <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
+    fn malformed_withdrawal_record_bytes_fail_closed_without_panicking() {
+        let value = <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
+        assert_eq!(value.status, WithdrawalStatus::Failed);
     }
 
     #[test]
