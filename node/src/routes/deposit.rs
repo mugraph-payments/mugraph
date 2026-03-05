@@ -1217,3 +1217,263 @@ mod datum_tests {
         assert!(format!("{err:?}").contains("intent_hash does not match canonical payload"));
     }
 }
+
+#[cfg(test)]
+mod handle_deposit_flow_tests {
+    use std::sync::Arc;
+
+    use axum::{
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::get,
+    };
+    use coset::{CoseSign1, CoseSign1Builder, Header, ProtectedHeader, TaggedCborSerializable, iana};
+    use ed25519_dalek::{Signer, SigningKey};
+    use pallas_codec::minicbor;
+    use pallas_primitives::{
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
+    };
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        config::Config,
+        database::Database,
+    };
+
+    fn build_cip8_signature(sk: &SigningKey, payload: &[u8]) -> Vec<u8> {
+        let header = Header {
+            alg: Some(coset::RegisteredLabelWithPrivate::Assigned(
+                iana::Algorithm::EdDSA,
+            )),
+            ..Default::default()
+        };
+        let tbs = CoseSign1 {
+            protected: ProtectedHeader {
+                original_data: None,
+                header: header.clone(),
+            },
+            unprotected: Header::default(),
+            payload: Some(payload.to_vec()),
+            signature: vec![],
+        }
+        .tbs_data(&[]);
+        let sig = sk.sign(&tbs);
+
+        CoseSign1Builder::new()
+            .protected(header)
+            .payload(payload.to_vec())
+            .signature(sig.to_vec())
+            .build()
+            .to_tagged_vec()
+            .unwrap()
+    }
+
+    fn mk_context(provider_url: String) -> Context {
+        let db_path = std::env::temp_dir().join(format!(
+            "mugraph-handle-deposit-test-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let database = Arc::new(Database::setup(db_path).unwrap());
+        database.migrate().unwrap();
+
+        let config = Config::Server {
+            addr: "127.0.0.1:9999".parse().unwrap(),
+            seed: Some(42),
+            secret_key: None,
+            cardano_network: "preprod".to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: Some("test".to_string()),
+            cardano_provider_url: Some(provider_url),
+            cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
+            xnode_node_id: "node://local".to_string(),
+            deposit_confirm_depth: 5,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: Some(1_000_000),
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2_000_000,
+            fee_tolerance_pct: 5,
+            dev_mode: true,
+        };
+
+        let keypair = config.keypair().unwrap();
+
+        Context {
+            keypair,
+            database,
+            config,
+            peer_registry: None,
+        }
+    }
+
+    fn insert_wallet(ctx: &Context, payment_vk: Vec<u8>, script_address: &str) {
+        let w = ctx.database.write().unwrap();
+        {
+            let mut t = w.open_table(CARDANO_WALLET).unwrap();
+            t.insert(
+                "wallet",
+                &mugraph_core::types::CardanoWallet::new(
+                    vec![1u8; 32],
+                    payment_vk,
+                    vec![],
+                    vec![],
+                    script_address.to_string(),
+                    "preprod".to_string(),
+                ),
+            )
+            .unwrap();
+        }
+        w.commit().unwrap();
+    }
+
+    fn mk_datum_cbor_hex(user_hash: Vec<u8>, node_hash: Vec<u8>, intent_hash: Vec<u8>) -> String {
+        let datum = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![
+                PlutusData::BoundedBytes(BoundedBytes::from(user_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(node_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(intent_hash)),
+            ]),
+        });
+
+        hex::encode(minicbor::to_vec(&datum).unwrap())
+    }
+
+    async fn spawn_provider_mock(script_address: String, datum_cbor_hex: String, tip_height: u64) -> String {
+        async fn tx_info() -> impl IntoResponse {
+            (StatusCode::OK, axum::Json(json!({"block_height": 90})))
+        }
+
+        async fn tx_utxos(Path(tx_hash): Path<String>, axum::extract::State(state): axum::extract::State<(String, String)>) -> impl IntoResponse {
+            let (script_address, _datum_hex) = state;
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": tx_hash,
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": script_address,
+                        "amount": [{"unit":"lovelace","quantity":"1000000"}],
+                        "data_hash": "datumhash",
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+        }
+
+        async fn datum_cbor(axum::extract::State(state): axum::extract::State<(String, String)>) -> impl IntoResponse {
+            let (_script_address, datum_hex) = state;
+            (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
+        }
+
+        let app = Router::new()
+            .route("/blocks/latest", get(move || async move {
+                (StatusCode::OK, axum::Json(json!({"slot": 1000, "hash": "tip", "height": tip_height})))
+            }))
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
+            .with_state((script_address, datum_cbor_hex));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
+    fn prepare_request_and_datum(
+        ctx: &Context,
+        user_sk: &SigningKey,
+        node_pk: &[u8; 32],
+    ) -> (DepositRequest, String) {
+        let user_pk = user_sk.verifying_key().to_bytes();
+
+        let mut request = DepositRequest {
+            utxo: mugraph_core::types::UtxoReference {
+                tx_hash: "ab".repeat(32),
+                index: 0,
+            },
+            outputs: vec![BlindSignature::default()],
+            message: format!(r#"{{"user_pubkey":"{}"}}"#, hex::encode(user_pk)),
+            signature: vec![],
+            nonce: 7,
+            network: "preprod".to_string(),
+        };
+
+        insert_wallet(ctx, node_pk.to_vec(), "addr_test1script");
+        let wallet = {
+            let r = ctx.database.read().unwrap();
+            let t = r.open_table(CARDANO_WALLET).unwrap();
+            t.get("wallet").unwrap().unwrap().value()
+        };
+
+        let intent = compute_intent_hash(&request, &ctx.keypair.public_key, &wallet.script_address);
+        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+        let datum_cbor_hex = mk_datum_cbor_hex(user_hash, node_hash, intent.to_vec());
+
+        let payload = build_canonical_payload(&request, &ctx.keypair.public_key, "addr_test1script");
+        request.signature = build_cip8_signature(user_sk, &payload);
+
+        (request, datum_cbor_hex)
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_happy_path_records_deposit() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let response = handle_deposit(&request, &ctx).await.expect("deposit accepted");
+        assert!(matches!(response, Response::Deposit { .. }));
+
+        let r = ctx.database.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        assert!(deposits.get(&utxo_ref).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_insufficient_confirmations() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        // tx block is 90 in mock; tip 92 => 2 confirmations < configured depth 5.
+        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 92).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("not sufficiently confirmed"));
+
+        let r = ctx.database.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        assert!(deposits.get(&utxo_ref).unwrap().is_none());
+    }
+}
