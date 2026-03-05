@@ -609,24 +609,13 @@ async fn fetch_and_validate_utxo(
         });
     }
 
-    // Check if deposit already exists in database
-    let read_tx = ctx.database.read()?;
-    let table = read_tx.open_table(DEPOSITS)?;
-
+    // Validate tx_hash shape early; uniqueness is enforced atomically during record_deposit().
     let tx_hash = hex::decode(&request.utxo.tx_hash).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid tx_hash hex: {}", e),
     })?;
-    let tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
+    let _tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
         reason: "tx_hash must be 32 bytes".to_string(),
     })?;
-
-    let utxo_ref = UtxoRef::new(tx_hash_array, request.utxo.index);
-
-    if table.get(utxo_ref)?.is_some() {
-        return Err(Error::InvalidInput {
-            reason: "Deposit already processed".to_string(),
-        });
-    }
 
     // Verify confirm depth (reorg safety)
     // Get current chain tip
@@ -807,6 +796,21 @@ fn sign_outputs(
     Ok(signatures)
 }
 
+fn insert_deposit_if_absent(
+    table: &mut redb::Table<'_, UtxoRef, mugraph_core::types::DepositRecord>,
+    utxo_ref: UtxoRef,
+    record: mugraph_core::types::DepositRecord,
+) -> Result<(), Error> {
+    if table.get(&utxo_ref)?.is_some() {
+        return Err(Error::InvalidInput {
+            reason: "Deposit already processed".to_string(),
+        });
+    }
+
+    table.insert(utxo_ref, &record)?;
+    Ok(())
+}
+
 /// Record deposit in database
 async fn record_deposit(
     request: &DepositRequest,
@@ -848,7 +852,7 @@ async fn record_deposit(
         let expires_at = now + expiration_seconds;
 
         let record = DepositRecord::with_intent_hash(tip.block_height, now, expires_at, intent_hash);
-        table.insert(utxo_ref, &record)?;
+        insert_deposit_if_absent(&mut table, utxo_ref, record)?;
     }
     write_tx.commit()?;
 
@@ -936,5 +940,21 @@ mod wallet_tests {
         let table = read_tx.open_table(CARDANO_WALLET).unwrap();
         let persisted = table.get("wallet").unwrap().unwrap().value();
         assert_eq!(persisted.script_address, first.script_address);
+    }
+
+    #[test]
+    fn insert_deposit_if_absent_rejects_duplicates() {
+        let ctx = test_context();
+        let write_tx = ctx.database.write().unwrap();
+        {
+            let mut table = write_tx.open_table(DEPOSITS).unwrap();
+            let utxo = UtxoRef::new([1u8; 32], 0);
+            let record = mugraph_core::types::DepositRecord::new(1, 1, 100);
+
+            insert_deposit_if_absent(&mut table, utxo.clone(), record.clone()).unwrap();
+            let err = insert_deposit_if_absent(&mut table, utxo, record).unwrap_err();
+            assert!(matches!(err, Error::InvalidInput { .. }));
+        }
+        write_tx.commit().unwrap();
     }
 }
