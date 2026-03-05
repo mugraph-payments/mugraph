@@ -85,6 +85,7 @@ pub struct TxChainObservation {
 // Basic retry policy for provider calls
 const PROVIDER_MAX_RETRIES: usize = 3;
 const PROVIDER_BACKOFF_MS: u64 = 200;
+const ADDRESS_UTXO_PAGE_SIZE: usize = 100;
 
 impl Provider {
     /// Create a new provider based on configuration
@@ -315,6 +316,10 @@ where
         .map_err(|e| color_eyre::eyre::eyre!("invalid protocol param {field}={value}: {e}"))
 }
 
+fn with_pagination(base_url: &str, page: usize, count: usize) -> String {
+    format!("{base_url}?page={page}&count={count}")
+}
+
 impl BlockfrostProvider {
     async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
         let url = format!("{}/txs/{}", self.base_url, tx_hash);
@@ -391,20 +396,35 @@ impl BlockfrostProvider {
     }
 
     async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
-        let url = format!("{}/addresses/{}/utxos", self.base_url, address);
+        let base_url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
-        let response: Vec<BlockfrostAddressUtxo> = send_with_retry(
-            || self.client.get(&url).header("project_id", &self.api_key),
-            "Failed to fetch address UTxOs from Blockfrost",
-        )
-        .await?
-        .json()
-        .await
-        .context("Failed to parse Blockfrost response")?;
+        let mut all = Vec::new();
+        for page in 1.. {
+            let url = with_pagination(&base_url, page, ADDRESS_UTXO_PAGE_SIZE);
+            let response: Vec<BlockfrostAddressUtxo> = send_with_retry(
+                || self.client.get(&url).header("project_id", &self.api_key),
+                "Failed to fetch address UTxOs from Blockfrost",
+            )
+            .await?
+            .json()
+            .await
+            .context("Failed to parse Blockfrost response")?;
+
+            if response.is_empty() {
+                break;
+            }
+
+            let page_len = response.len();
+            all.extend(response);
+
+            if page_len < ADDRESS_UTXO_PAGE_SIZE {
+                break;
+            }
+        }
 
         // Fetch block heights for entries missing it
-        let mut results = Vec::with_capacity(response.len());
-        for u in response {
+        let mut results = Vec::with_capacity(all.len());
+        for u in all {
             let block_height = match u.block_height {
                 Some(h) => Some(h),
                 None => {
@@ -621,18 +641,33 @@ impl MaestroProvider {
     }
 
     async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
-        let url = format!("{}/addresses/{}/utxos", self.base_url, address);
+        let base_url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
-        let response: Vec<MaestroAddressUtxo> = send_with_retry(
-            || self.client.get(&url).header("api-key", &self.api_key),
-            "Failed to fetch address UTxOs from Maestro",
-        )
-        .await?
-        .json()
-        .await
-        .context("Failed to parse Maestro response")?;
+        let mut all = Vec::new();
+        for page in 1.. {
+            let url = with_pagination(&base_url, page, ADDRESS_UTXO_PAGE_SIZE);
+            let response: Vec<MaestroAddressUtxo> = send_with_retry(
+                || self.client.get(&url).header("api-key", &self.api_key),
+                "Failed to fetch address UTxOs from Maestro",
+            )
+            .await?
+            .json()
+            .await
+            .context("Failed to parse Maestro response")?;
 
-        Ok(response
+            if response.is_empty() {
+                break;
+            }
+
+            let page_len = response.len();
+            all.extend(response);
+
+            if page_len < ADDRESS_UTXO_PAGE_SIZE {
+                break;
+            }
+        }
+
+        Ok(all
             .into_iter()
             .map(|u| UtxoInfo {
                 tx_hash: u.tx_hash,
@@ -875,5 +910,11 @@ mod tests {
             None,
         );
         assert!(provider.is_err());
+    }
+
+    #[test]
+    fn test_with_pagination_builds_query() {
+        let url = with_pagination("https://api.example/addresses/addr/utxos", 2, 100);
+        assert_eq!(url, "https://api.example/addresses/addr/utxos?page=2&count=100");
     }
 }
