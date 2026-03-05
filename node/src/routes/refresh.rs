@@ -54,6 +54,8 @@ pub fn refresh(
     keypair: Keypair,
     database: &Database,
 ) -> Result<Response, Error> {
+    transaction.verify()?;
+
     let mut rng = rand::rng();
     let mut outputs = Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
     let w = database.write()?;
@@ -105,4 +107,64 @@ pub fn refresh(
 
     w.commit()?;
     Ok(Response::Transaction { outputs })
+}
+
+#[cfg(test)]
+mod tests {
+    use mugraph_core::{builder::RefreshBuilder, crypto, types::{Hash, Note}};
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::*;
+
+    fn temp_db() -> Database {
+        let path = std::env::temp_dir().join(format!(
+            "mugraph-refresh-test-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db = Database::setup(path).unwrap();
+        db.migrate().unwrap();
+        db
+    }
+
+    fn signed_note(keypair: &Keypair, amount: u64) -> Note {
+        let mut rng = StdRng::seed_from_u64(7);
+        let mut note = Note {
+            delegate: keypair.public_key,
+            policy_id: Default::default(),
+            asset_name: Default::default(),
+            nonce: Hash::random(&mut rng),
+            amount,
+            signature: Signature::default(),
+            dleq: None,
+        };
+
+        let blind = crypto::blind_note(&mut rng, &note);
+        let signed = crypto::sign_blinded(&mut rng, &keypair.secret_key, &blind.point);
+        note.signature = crypto::unblind_signature(&signed.signature, &blind.factor, &keypair.public_key)
+            .expect("valid unblind");
+        note
+    }
+
+    #[test]
+    fn refresh_rejects_unbalanced_transaction() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let keypair = Keypair::random(&mut rng);
+        let note = signed_note(&keypair, 10);
+        let db = temp_db();
+
+        let mut refresh_tx = RefreshBuilder::new()
+            .input(note.clone())
+            .output(note.policy_id, note.asset_name, 10)
+            .build()
+            .unwrap();
+
+        // break conservation: output > input
+        refresh_tx.atoms[1].amount = 11;
+
+        let result = refresh(&refresh_tx, keypair, &db);
+        assert!(result.is_err(), "unbalanced refresh must be rejected");
+    }
 }
