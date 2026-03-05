@@ -661,12 +661,13 @@ fn validate_destination_binding<T>(
     Ok(())
 }
 
-fn validate_auth_signature<T: Serialize + Clone>(
-    request: &XNodeEnvelope<T>,
+fn load_peer_registry_for_auth(
     ctx: &Context,
-) -> Result<(), Error> {
-    if request.auth.alg != "Ed25519" {
-        return Err(protocol_reject("AUTHZ_DENIED", "unsupported auth.alg"));
+) -> Result<std::borrow::Cow<'_, crate::peer_registry::PeerRegistry>, Error> {
+    if let Some(path) = ctx.config.xnode_peer_registry_file() {
+        let registry = crate::peer_registry::PeerRegistry::load(&path)?;
+        registry.validate()?;
+        return Ok(std::borrow::Cow::Owned(registry));
     }
 
     let Some(registry) = ctx.peer_registry.as_ref() else {
@@ -675,6 +676,19 @@ fn validate_auth_signature<T: Serialize + Clone>(
             "xnode peer registry is required for cross-node command auth",
         ));
     };
+
+    Ok(std::borrow::Cow::Borrowed(registry.as_ref()))
+}
+
+fn validate_auth_signature<T: Serialize + Clone>(
+    request: &XNodeEnvelope<T>,
+    ctx: &Context,
+) -> Result<(), Error> {
+    if request.auth.alg != "Ed25519" {
+        return Err(protocol_reject("AUTHZ_DENIED", "unsupported auth.alg"));
+    }
+
+    let registry = load_peer_registry_for_auth(ctx)?;
 
     let peer = registry
         .peers
@@ -1147,7 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_peer_registry_allows_requests_even_if_file_disappears() {
+    fn requests_are_rejected_if_peer_registry_file_disappears() {
         let signer = SigningKey::from_bytes(&[7u8; 32]);
         let registry_dir = TempDir::new().unwrap();
         let registry_path = write_registry(&registry_dir, &signer);
@@ -1158,11 +1172,39 @@ mod tests {
         let mut request = create_request();
         sign_envelope(&mut request, &signer);
 
-        let response = handle_create(&request, &ctx).unwrap();
-        assert!(matches!(
-            response,
-            Response::CrossNodeTransferCreate { accepted: true, .. }
-        ));
+        let err = handle_create(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("AUTHZ_DENIED") || reason.contains("failed to read peer registry"));
+            }
+            _ => panic!("expected InvalidInput authz error"),
+        }
+    }
+
+    #[test]
+    fn runtime_registry_reload_honors_revocation() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let mut request = create_request();
+        sign_envelope(&mut request, &signer);
+        assert!(validate_auth_signature(&request, &ctx).is_ok());
+
+        let revoked_json = format!(
+            r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":true}}]}}"#,
+            muhex::encode(signer.verifying_key().to_bytes())
+        );
+        std::fs::write(&registry_path, revoked_json).unwrap();
+
+        let err = validate_auth_signature(&request, &ctx).unwrap_err();
+        match err {
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("UNKNOWN_KEY_ID"));
+            }
+            _ => panic!("expected invalid input with unknown key id"),
+        }
     }
 
     #[test]
