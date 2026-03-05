@@ -31,10 +31,10 @@ tmux new-session -d -s "$SESSION" -n "cluster" \
 
 # Right side: split into two stacked panes for the nodes
 tmux split-window -h -t "$SESSION:cluster.0" \
-  "cd '$NODE1_DIR' && '$NODE_BIN' server --addr $NODE1_ADDR --dev-mode --seed 1 --xnode-node-id node://alpha; read"
+  "cd '$NODE1_DIR' && MUGRAPH_DB_PATH='$NODE1_DIR/db.redb' '$NODE_BIN' server --addr $NODE1_ADDR --dev-mode --seed 1 --xnode-node-id node://alpha; read"
 
 tmux split-window -v -t "$SESSION:cluster.1" \
-  "cd '$NODE2_DIR' && '$NODE_BIN' server --addr $NODE2_ADDR --dev-mode --seed 2 --xnode-node-id node://beta; read"
+  "cd '$NODE2_DIR' && MUGRAPH_DB_PATH='$NODE2_DIR/db.redb' '$NODE_BIN' server --addr $NODE2_ADDR --dev-mode --seed 2 --xnode-node-id node://beta; read"
 
 # Pane 0 (simulator) gets ~65% width, panes 1+2 (nodes) share the right
 tmux select-layout -t "$SESSION:cluster" main-vertical
