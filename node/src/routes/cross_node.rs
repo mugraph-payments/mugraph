@@ -104,7 +104,9 @@ pub fn handle_create(
                 );
             }
             emit_receive_metrics("transfer_init", "rejected");
-            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
+                tracing::error!("failed to write reject audit event: {}", audit_err);
+            }
             return Err(e);
         }
     };
@@ -139,12 +141,12 @@ pub fn handle_create(
         write_tx.commit()?;
 
         metrics::counter!("mugraph_m3_transfers_initiated_total").increment(1);
-        let _ = audit_event(
+        audit_event(
             ctx,
             request,
             "transfer.initiated",
             "accepted create command".to_string(),
-        );
+        )?;
     } else {
         metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_init".to_string()).increment(1);
     }
@@ -193,7 +195,9 @@ pub fn handle_notify(
                 );
             }
             emit_receive_metrics("transfer_notice", "rejected");
-            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
+                tracing::error!("failed to write reject audit event: {}", audit_err);
+            }
             return Err(e);
         }
     };
@@ -241,12 +245,12 @@ pub fn handle_notify(
         }
         write_tx.commit()?;
 
-        let _ = audit_event(
+        audit_event(
             ctx,
             request,
             "transfer.notice.accepted",
             "notice accepted".to_string(),
-        );
+        )?;
     }
 
     emit_receive_metrics("transfer_notice", "accepted");
@@ -282,7 +286,7 @@ pub fn handle_status(
 
     let payload = status_payload_from_record(&transfer);
     emit_chain_metrics(&transfer, &payload);
-    let _ = audit_status_events(ctx, request, &payload);
+    audit_status_events(ctx, request, &payload)?;
 
     tracing::info!(
         transfer_id = %request.transfer_id,
@@ -347,7 +351,9 @@ pub fn handle_ack(
                 );
             }
             emit_receive_metrics("transfer_ack", "rejected");
-            let _ = audit_reject(ctx, &request.transfer_id, event, e.to_string());
+            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
+                tracing::error!("failed to write reject audit event: {}", audit_err);
+            }
             return Err(e);
         }
     };
@@ -508,45 +514,42 @@ fn emit_chain_metrics(record: &CrossNodeTransferRecord, payload: &TransferStatus
     }
 }
 
+fn audit_status_events_with<T, F>(
+    _ctx: &Context,
+    _request: &XNodeEnvelope<T>,
+    payload: &TransferStatusPayload,
+    mut emit: F,
+) -> Result<(), Error>
+where
+    F: FnMut(&str, String) -> Result<(), Error>,
+{
+    if payload.credit_state == TransferCreditState::Credited {
+        emit("transfer.credited", "credit observed in status".to_string())?;
+    }
+    if payload.settlement_state == TransferSettlementState::Confirmed {
+        emit("transfer.confirmed", "confirmed in status".to_string())?;
+    }
+    if payload.chain_state == TransferChainState::Invalidated {
+        emit("transfer.invalidated", "invalidated in status".to_string())?;
+    }
+    if payload.settlement_state == TransferSettlementState::ManualReview {
+        emit(
+            "transfer.manual_override",
+            "manual-review state observed".to_string(),
+        )?;
+    }
+
+    Ok(())
+}
+
 fn audit_status_events<T>(
     ctx: &Context,
     request: &XNodeEnvelope<T>,
     payload: &TransferStatusPayload,
 ) -> Result<(), Error> {
-    if payload.credit_state == TransferCreditState::Credited {
-        let _ = audit_event(
-            ctx,
-            request,
-            "transfer.credited",
-            "credit observed in status".to_string(),
-        );
-    }
-    if payload.settlement_state == TransferSettlementState::Confirmed {
-        let _ = audit_event(
-            ctx,
-            request,
-            "transfer.confirmed",
-            "confirmed in status".to_string(),
-        );
-    }
-    if payload.chain_state == TransferChainState::Invalidated {
-        let _ = audit_event(
-            ctx,
-            request,
-            "transfer.invalidated",
-            "invalidated in status".to_string(),
-        );
-    }
-    if payload.settlement_state == TransferSettlementState::ManualReview {
-        let _ = audit_event(
-            ctx,
-            request,
-            "transfer.manual_override",
-            "manual-review state observed".to_string(),
-        );
-    }
-
-    Ok(())
+    audit_status_events_with(ctx, request, payload, |event_type, reason| {
+        audit_event(ctx, request, event_type, reason)
+    })
 }
 
 fn validate_freshness(sent_at: &str, expires_at: Option<&str>, now: i64) -> Result<(), Error> {
@@ -1401,6 +1404,51 @@ mod tests {
 
         assert!(confirmed);
         assert!(credited);
+    }
+
+    #[test]
+    fn audit_status_events_propagates_audit_failures() {
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let registry_dir = TempDir::new().unwrap();
+        let registry_path = write_registry(&registry_dir, &signer);
+        let ctx = test_ctx(&registry_path);
+
+        let request = XNodeEnvelope {
+            m: "xnode".to_string(),
+            version: "3.0".to_string(),
+            message_type: XNodeMessageType::TransferStatusQuery,
+            message_id: "mid-status-fail".to_string(),
+            transfer_id: "tr-status-fail".to_string(),
+            idempotency_key: "ik-status-fail".to_string(),
+            correlation_id: "corr".to_string(),
+            origin_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            sent_at: now_rfc3339_offset(0),
+            expires_at: None,
+            payload: TransferStatusQueryPayload {
+                query_type: TransferQueryType::Current,
+            },
+            auth: auth(),
+        };
+
+        let payload = TransferStatusPayload {
+            source_state: "confirmed".to_string(),
+            destination_state: "credited".to_string(),
+            settlement_state: TransferSettlementState::Confirmed,
+            chain_state: TransferChainState::Confirmed,
+            credit_state: TransferCreditState::Credited,
+            tx_hash: Some("h".to_string()),
+            confirmations_observed: 7,
+            updated_at: "1".to_string(),
+        };
+
+        let err = audit_status_events_with(&ctx, &request, &payload, |_event_type, _reason| {
+            Err(Error::Internal {
+                reason: "audit failed".to_string(),
+            })
+        })
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("audit failed"));
     }
 
     #[test]
