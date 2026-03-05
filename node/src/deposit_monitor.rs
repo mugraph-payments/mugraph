@@ -361,6 +361,7 @@ mod tests {
     #[derive(Clone)]
     struct MockState {
         utxo_status: Arc<Mutex<StatusCode>>,
+        utxo_address: String,
     }
 
     async fn latest_block() -> impl IntoResponse {
@@ -380,7 +381,7 @@ mod tests {
                     "hash": "ab",
                     "outputs": [{
                         "output_index": 0,
-                        "address": "addr_test1script",
+                        "address": state.utxo_address,
                         "amount": [{"unit":"lovelace","quantity":"1000000"}],
                         "data_hash": null,
                         "reference_script_hash": null
@@ -393,9 +394,10 @@ mod tests {
         }
     }
 
-    async fn spawn_mock_server(utxo_status: StatusCode) -> String {
+    async fn spawn_mock_server(utxo_status: StatusCode, utxo_address: &str) -> String {
         let state = MockState {
             utxo_status: Arc::new(Mutex::new(utxo_status)),
+            utxo_address: utxo_address.to_string(),
         };
 
         let app = Router::new()
@@ -494,7 +496,7 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_marks_missing_utxo_as_spent() {
-        let base_url = spawn_mock_server(StatusCode::NOT_FOUND).await;
+        let base_url = spawn_mock_server(StatusCode::NOT_FOUND, "addr_test1script").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -530,7 +532,7 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_keeps_unspent_on_transient_provider_error() {
-        let base_url = spawn_mock_server(StatusCode::INTERNAL_SERVER_ERROR).await;
+        let base_url = spawn_mock_server(StatusCode::INTERNAL_SERVER_ERROR, "addr_test1script").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -562,5 +564,104 @@ mod tests {
         let deposits = r.open_table(DEPOSITS).unwrap();
         let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
         assert!(!stored.spent);
+    }
+
+    #[tokio::test]
+    async fn check_deposits_marks_time_expired_as_spent_without_chain_lookup() {
+        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1script").await;
+        let provider = Provider::new(
+            "blockfrost",
+            "key".to_string(),
+            "preprod".to_string(),
+            Some(base_url),
+        )
+        .unwrap();
+        let db = temp_db();
+
+        let utxo_ref = UtxoRef::new([0xeeu8; 32], 0);
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
+        let record = DepositRecord::new(99, now.saturating_sub(3600), now.saturating_sub(1));
+        seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
+
+        let monitor = DepositMonitor::new(DepositMonitorConfig::default(), db.clone(), provider);
+        monitor.check_deposits().await.unwrap();
+
+        let r = db.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
+        assert!(stored.spent);
+    }
+
+    #[tokio::test]
+    async fn check_deposits_marks_block_horizon_expired_as_spent() {
+        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1script").await;
+        let provider = Provider::new(
+            "blockfrost",
+            "key".to_string(),
+            "preprod".to_string(),
+            Some(base_url),
+        )
+        .unwrap();
+        let db = temp_db();
+
+        let utxo_ref = UtxoRef::new([0xefu8; 32], 0);
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
+        // tip=100 from mock, with expiration_blocks=5 => record at 90 is expired by blocks.
+        let record = DepositRecord::new(90, now, now + 3600);
+        seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
+
+        let monitor = DepositMonitor::new(
+            DepositMonitorConfig {
+                confirm_depth: 1000,
+                expiration_blocks: 5,
+                min_deposit_value: 1_000_000,
+                revalidation_interval: 60,
+            },
+            db.clone(),
+            provider,
+        );
+
+        monitor.check_deposits().await.unwrap();
+
+        let r = db.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
+        assert!(stored.spent);
+    }
+
+    #[tokio::test]
+    async fn check_deposits_marks_script_address_drift_as_spent() {
+        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1different").await;
+        let provider = Provider::new(
+            "blockfrost",
+            "key".to_string(),
+            "preprod".to_string(),
+            Some(base_url),
+        )
+        .unwrap();
+        let db = temp_db();
+
+        let utxo_ref = UtxoRef::new([0xf0u8; 32], 0);
+        let now = secs_since_unix_epoch(std::time::SystemTime::now());
+        let record = DepositRecord::new(99, now, now + 3600);
+        seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
+
+        let monitor = DepositMonitor::new(
+            DepositMonitorConfig {
+                confirm_depth: 1000,
+                expiration_blocks: 10_000,
+                min_deposit_value: 1_000_000,
+                revalidation_interval: 60,
+            },
+            db.clone(),
+            provider,
+        );
+
+        monitor.check_deposits().await.unwrap();
+
+        let r = db.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let stored = deposits.get(&utxo_ref).unwrap().unwrap().value();
+        assert!(stored.spent);
     }
 }
