@@ -63,6 +63,11 @@ pub const IDEMPOTENCY_KEYS: TableDefinition<&str, IdempotencyRecord> =
 pub const TRANSFER_AUDIT_LOG: TableDefinition<&str, TransferAuditEvent> =
     TableDefinition::new("transfer_audit_log");
 
+const METRIC_DB_READ: &str = "mugraph.node.database.read";
+const METRIC_DB_WRITE: &str = "mugraph.node.database.write";
+const METRIC_DB_WRITE_OPEN_TABLE: &str = "mugraph.node.database.write.open_table";
+const METRIC_DB_WRITE_COMMIT: &str = "mugraph.node.database.write.commit";
+
 #[derive(Debug)]
 pub struct Database {
     db: Redb,
@@ -90,13 +95,13 @@ impl Write {
         &self,
         table: TableDefinition<K, V>,
     ) -> Result<Table<'_, K, V>, Error> {
-        counter!("mugraph.simulator.database.write.open_table").increment(1);
+        counter!(METRIC_DB_WRITE_OPEN_TABLE).increment(1);
         Ok(self.0.open_table(table)?)
     }
 
     #[tracing::instrument(skip_all)]
     pub fn commit(self) -> Result<(), Error> {
-        counter!("mugraph.simulator.database.write.commit").increment(1);
+        counter!(METRIC_DB_WRITE_COMMIT).increment(1);
         Ok(self.0.commit()?)
     }
 }
@@ -203,7 +208,7 @@ impl Database {
     #[inline]
     pub fn read(&self) -> Result<Read, Error> {
         let result = self.db.begin_read().map(Read).map_err(Error::from)?;
-        counter!("mugraph.simulator.database.read").increment(1);
+        counter!(METRIC_DB_READ).increment(1);
 
         Ok(result)
     }
@@ -212,8 +217,26 @@ impl Database {
     #[inline]
     pub fn write(&self) -> Result<Write, Error> {
         let result = self.db.begin_write().map(Write).map_err(Error::from)?;
-        counter!("mugraph.simulator.database.write").increment(1);
+        counter!(METRIC_DB_WRITE).increment(1);
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metric_names_use_node_namespace() {
+        for metric in [
+            METRIC_DB_READ,
+            METRIC_DB_WRITE,
+            METRIC_DB_WRITE_OPEN_TABLE,
+            METRIC_DB_WRITE_COMMIT,
+        ] {
+            assert!(metric.starts_with("mugraph.node.database"));
+            assert!(!metric.contains("simulator"));
+        }
     }
 }
