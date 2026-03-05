@@ -49,7 +49,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     })?;
 
     // 2. Check idempotency via WITHDRAWALS table
-    check_idempotency(request, ctx).await?;
+    check_idempotency(request, ctx)?;
 
     // 3. Validate transaction size and fee
     if tx_bytes.len() > ctx.config.max_tx_size() {
@@ -70,7 +70,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     )?;
 
     // 4. Load wallet needed for validations and signing
-    let wallet = load_wallet(ctx).await?;
+    let wallet = load_wallet(ctx)?;
 
     // 5. Verify provided hash matches recomputed hash
     let computed_hash = hex::encode(compute_tx_hash(&tx_bytes).map_err(|e| Error::InvalidInput {
@@ -125,7 +125,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // 9. Update state atomically BEFORE submitting to provider
     // This ensures we only submit if we can properly track the withdrawal
     let pending_tx_hash = request.tx_hash.clone();
-    match atomic_burn_and_record_pending(request, ctx, &pending_tx_hash).await {
+    match atomic_burn_and_record_pending(request, ctx, &pending_tx_hash) {
         Ok(()) => {
             tracing::info!("Notes burned and withdrawal recorded as pending");
         }
@@ -145,7 +145,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
                 "Transaction submission failed after notes were burned: {}. Marking withdrawal failed for recovery.",
                 e
             );
-            if let Err(mark_err) = mark_withdrawal_failed(ctx, &pending_tx_hash).await {
+            if let Err(mark_err) = mark_withdrawal_failed(ctx, &pending_tx_hash) {
                 tracing::error!(
                     "Failed to mark withdrawal as failed after submit error: {} (tx {})",
                     mark_err,
@@ -160,7 +160,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     };
 
     // 11. Mark withdrawal as completed
-    let mark_result = mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits).await;
+    let mark_result = mark_withdrawal_completed(ctx, &submit_response.tx_hash, &consumed_deposits);
 
     finalize_withdraw_response(
         mark_result,
@@ -220,7 +220,7 @@ fn create_provider(ctx: &Context) -> Result<Provider, Error> {
 }
 
 /// Check if withdrawal has already been processed (idempotency)
-async fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(), Error> {
+fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(), Error> {
     let read_tx = ctx.database.read()?;
     let table = read_tx.open_table(WITHDRAWALS)?;
 
@@ -259,7 +259,7 @@ async fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(
 ///
 /// This is the first step in the withdrawal process.
 /// Notes are burned and withdrawal is recorded before submission.
-async fn atomic_burn_and_record_pending(
+fn atomic_burn_and_record_pending(
     request: &WithdrawRequest,
     ctx: &Context,
     tx_hash: &str,
@@ -330,7 +330,7 @@ async fn atomic_burn_and_record_pending(
 }
 
 /// Mark withdrawal as failed for recovery
-async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
+fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
     let write_tx = ctx.database.write()?;
 
     {
@@ -354,7 +354,7 @@ async fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Erro
 }
 
 /// Mark withdrawal as completed after successful submission and lock consumed deposits.
-async fn mark_withdrawal_completed(
+fn mark_withdrawal_completed(
     ctx: &Context,
     tx_hash: &str,
     consumed_deposits: &[mugraph_core::types::UtxoRef],
@@ -398,7 +398,7 @@ async fn mark_withdrawal_completed(
 }
 
 /// Load Cardano wallet for signing
-async fn load_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet, Error> {
+fn load_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet, Error> {
     let read_tx = ctx.database.read()?;
     let table = read_tx.open_table(CARDANO_WALLET)?;
 
@@ -1565,8 +1565,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[tokio::test]
-    async fn retry_after_failed_submission_does_not_reburn_notes() {
+    #[test]
+    fn retry_after_failed_submission_does_not_reburn_notes() {
         let ctx = test_context();
         let request = WithdrawRequest {
             tx_hash: "ab".repeat(32),
@@ -1578,18 +1578,15 @@ mod tests {
         };
 
         atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash)
-            .await
             .expect("first burn succeeds");
 
         mark_withdrawal_failed(&ctx, &request.tx_hash)
-            .await
             .expect("mark as failed");
 
         check_idempotency(&request, &ctx)
-            .await
             .expect("failed withdrawals are retryable");
 
-        let second = atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash).await;
+        let second = atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash);
         assert!(
             second.is_ok(),
             "retry should reuse failed pending state without burning notes again"
