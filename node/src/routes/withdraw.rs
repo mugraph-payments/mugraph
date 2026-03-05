@@ -96,7 +96,12 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     validate_user_witnesses(&tx_bytes, &request.notes, &required_user_hashes, &wallet).await?;
 
     // 8. Validate transaction value balance
-    validate_transaction_balance(&tx_bytes, &input_totals, ctx.config.max_withdrawal_fee())?;
+    validate_transaction_balance_with_tolerance(
+        &tx_bytes,
+        &input_totals,
+        ctx.config.max_withdrawal_fee(),
+        ctx.config.fee_tolerance_pct(),
+    )?;
 
     // 9. Enforce network consistency and reject change back to the script
     validate_network_and_change_outputs(&tx_bytes, &wallet)?;
@@ -1012,6 +1017,21 @@ async fn validate_script_inputs_with_deposits(
     Ok((totals, required_user_hashes, consumed_deposits))
 }
 
+fn max_acceptable_fee(max_fee_lovelace: u64, tolerance_pct: u8) -> u64 {
+    let tolerance_factor = 100 + tolerance_pct as u64;
+    max_fee_lovelace.saturating_mul(tolerance_factor) / 100
+}
+
+fn validate_transaction_balance_with_tolerance(
+    tx_cbor: &[u8],
+    input_totals: &HashMap<String, u128>,
+    max_fee: u64,
+    fee_tolerance_pct: u8,
+) -> Result<(), Error> {
+    let effective_max_fee = max_acceptable_fee(max_fee, fee_tolerance_pct);
+    validate_transaction_balance(tx_cbor, input_totals, effective_max_fee)
+}
+
 /// Validate transaction balance
 ///
 /// Verifies that: inputs - fee = outputs (within tolerance)
@@ -1342,6 +1362,17 @@ mod tests {
         // Fee too high
         let max_fee = 500_000;
         assert!(validate_transaction_balance(&tx_cbor, &totals, max_fee).is_err());
+    }
+
+    #[test]
+    fn test_validate_transaction_balance_respects_fee_tolerance() {
+        let tx = minimal_tx_with_values(1_000_000, 1_050_000); // fee within 5% of 1_000_000
+        let tx_cbor = tx.to_bytes();
+        let mut totals = HashMap::new();
+        totals.insert("lovelace".to_string(), 2_050_000u128);
+
+        let res = validate_transaction_balance_with_tolerance(&tx_cbor, &totals, 1_000_000, 5);
+        assert!(res.is_ok());
     }
 
     /// required_signers present but missing matching witness => reject
