@@ -55,9 +55,11 @@ fn error_code(reason: &str) -> &str {
     reason.split(':').next().unwrap_or("INTERNAL_ERROR")
 }
 
+const M3_MESSAGE_RECEIVE_COUNTER: &str = "mugraph_m3_message_receive_total";
+
 fn emit_receive_metrics(message_type: &str, result: &str) {
     metrics::counter!(
-        "mugraph_m3_message_send_total",
+        M3_MESSAGE_RECEIVE_COUNTER,
         "message_type" => message_type.to_string(),
         "result" => result.to_string()
     )
@@ -1063,6 +1065,11 @@ mod tests {
                 .unwrap();
         }
         w.commit().unwrap();
+    }
+
+    #[test]
+    fn receive_metric_name_is_not_send_metric() {
+        assert_eq!(M3_MESSAGE_RECEIVE_COUNTER, "mugraph_m3_message_receive_total");
     }
 
     #[test]
