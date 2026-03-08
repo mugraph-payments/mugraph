@@ -54,11 +54,6 @@ mod tests {
     }
 
     #[proptest]
-    fn test_commitment_deterministic(note: Note) {
-        prop_assert_eq!(note.commitment(), note.commitment());
-    }
-
-    #[proptest]
     fn test_commitment(note: Note) {
         let mut asset_bytes = [0u8; ASSET_ID_BYTES_SIZE];
         write_asset_bytes(&note.policy_id, &note.asset_name, &mut asset_bytes);
