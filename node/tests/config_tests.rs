@@ -118,9 +118,9 @@ fn keypair_prefers_secret_key_over_seed() {
     assert_eq!(*keypair.secret_key, [9u8; 32]);
 }
 
-/// Test configuration parsing with defaults
+/// Direct-construction smoke test for server config getters.
 #[test]
-fn test_config_defaults() {
+fn direct_server_config_getters_preserve_assigned_values() {
     // We can't easily test Config::new() since it parses CLI args,
     // but we can test the struct directly
     let config = Config::Server {
@@ -155,9 +155,9 @@ fn test_config_defaults() {
     assert_eq!(config.fee_tolerance_pct(), 5);
 }
 
-/// Test mainnet configuration
+/// Direct-construction smoke test for non-default getter values.
 #[test]
-fn test_config_mainnet() {
+fn direct_server_config_getters_preserve_explicit_overrides() {
     let config = Config::Server {
         addr: "0.0.0.0:9999".parse().unwrap(),
         seed: None,
@@ -257,9 +257,9 @@ fn test_testnets_have_distinct_network_bytes_for_db_namespacing() {
     assert_ne!(preview, testnet);
 }
 
-/// Test default values when optional fields are None
+/// Direct-construction smoke test for fallback getters on missing optionals.
 #[test]
-fn test_config_default_values() {
+fn direct_server_config_getters_apply_fallbacks_for_missing_optionals() {
     let config = Config::Server {
         addr: "0.0.0.0:9999".parse().unwrap(),
         seed: None,
