@@ -273,10 +273,22 @@ mod tests {
     }
 
     fn build_cip8_signature(sk: &SigningKey, payload: &[u8]) -> Vec<u8> {
+        build_custom_cip8_signature(
+            sk,
+            Some(payload),
+            Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)),
+            None,
+        )
+    }
+
+    fn build_custom_cip8_signature(
+        sk: &SigningKey,
+        payload: Option<&[u8]>,
+        alg: Option<coset::RegisteredLabelWithPrivate<iana::Algorithm>>,
+        signature_override: Option<Vec<u8>>,
+    ) -> Vec<u8> {
         let header = Header {
-            alg: Some(coset::RegisteredLabelWithPrivate::Assigned(
-                iana::Algorithm::EdDSA,
-            )),
+            alg,
             ..Default::default()
         };
         let unprotected = Header::default();
@@ -286,19 +298,17 @@ mod tests {
                 header: header.clone(),
             },
             unprotected,
-            payload: Some(payload.to_vec()),
+            payload: payload.map(|bytes| bytes.to_vec()),
             signature: vec![],
         }
         .tbs_data(&[]);
-        let sig = sk.sign(&tbs);
+        let signature = signature_override.unwrap_or_else(|| sk.sign(&tbs).to_vec());
 
-        let cose = CoseSign1Builder::new()
-            .protected(header)
-            .payload(payload.to_vec())
-            .signature(sig.to_vec())
-            .build();
-
-        cose.to_tagged_vec().unwrap()
+        let mut builder = CoseSign1Builder::new().protected(header).signature(signature);
+        if let Some(payload) = payload {
+            builder = builder.payload(payload.to_vec());
+        }
+        builder.build().to_tagged_vec().unwrap()
     }
 
     #[test]
@@ -360,6 +370,214 @@ mod tests {
 
         let res = verify_cip8_cose_signature(&request, &bad_payload);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_missing_user_pubkey() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: "{}".to_string(),
+            signature: vec![0u8; 8],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.try_into().unwrap()),
+            "addr_test1...",
+        );
+        let err = verify_cip8_cose_signature(&request, &payload).unwrap_err();
+        assert!(format!("{err:?}").contains("Missing user_pubkey"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_invalid_user_pubkey_hex() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: "{\"user_pubkey\":\"not-hex\"}".to_string(),
+            signature: vec![0u8; 8],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.try_into().unwrap()),
+            "addr_test1...",
+        );
+        let err = verify_cip8_cose_signature(&request, &payload).unwrap_err();
+        assert!(format!("{err:?}").contains("Invalid user_pubkey hex"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_wrong_user_pubkey_length() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: "{\"user_pubkey\":\"abcd\"}".to_string(),
+            signature: vec![0u8; 8],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.try_into().unwrap()),
+            "addr_test1...",
+        );
+        let err = verify_cip8_cose_signature(&request, &payload).unwrap_err();
+        assert!(format!("{err:?}").contains("user_pubkey must be 32 bytes"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_invalid_cose_bytes() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: vec![0u8; 3],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let payload = build_canonical_payload(
+            &request,
+            &PublicKey(pk_bytes.try_into().unwrap()),
+            "addr_test1...",
+        );
+        let err = verify_cip8_cose_signature(&request, &payload).unwrap_err();
+        assert!(format!("{err:?}").contains("Invalid COSE_Sign1"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_missing_alg() {
+        let (sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: build_custom_cip8_signature(&sk, Some(b"payload"), None, None),
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let err = verify_cip8_cose_signature(&request, b"payload").unwrap_err();
+        assert!(format!("{err:?}").contains("Missing alg"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_unsupported_alg() {
+        let (sk, pk_bytes) = gen_key();
+        let payload = b"payload";
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: build_custom_cip8_signature(
+                &sk,
+                Some(payload),
+                Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::ES256)),
+                None,
+            ),
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let err = verify_cip8_cose_signature(&request, payload).unwrap_err();
+        assert!(format!("{err:?}").contains("Unsupported alg"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_missing_cose_payload() {
+        let (sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: build_custom_cip8_signature(&sk, None, Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)), None),
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let err = verify_cip8_cose_signature(&request, b"payload").unwrap_err();
+        assert!(format!("{err:?}").contains("COSE payload missing"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_wrong_signature_length() {
+        let (sk, pk_bytes) = gen_key();
+        let payload = b"payload";
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: build_custom_cip8_signature(
+                &sk,
+                Some(payload),
+                Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)),
+                Some(vec![7u8; 32]),
+            ),
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let err = verify_cip8_cose_signature(&request, payload).unwrap_err();
+        assert!(format!("{err:?}").contains("COSE signature must be 64 bytes"));
+    }
+
+    #[test]
+    fn test_cip8_verification_rejects_invalid_signature() {
+        let (sk, pk_bytes) = gen_key();
+        let payload = b"payload";
+        let mut request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: build_cip8_signature(&sk, payload),
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        let mut cose = CoseSign1::from_tagged_slice(&request.signature).unwrap();
+        cose.signature[0] ^= 0xff;
+        request.signature = cose.to_tagged_vec().unwrap();
+
+        let err = verify_cip8_cose_signature(&request, payload).unwrap_err();
+        assert!(format!("{err:?}").contains("verification failed"));
     }
 }
 
