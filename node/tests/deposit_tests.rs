@@ -1,102 +1,23 @@
-//! Tests for deposit request handling and validation
+//! Serde smoke tests for deposit request types.
 
 use mugraph_core::types::{BlindSignature, DepositRequest, UtxoReference};
 
-/// Test deposit request with valid structure
 #[test]
-fn test_deposit_request_structure() {
-    let request = DepositRequest {
-        utxo: UtxoReference {
-            tx_hash: "abc123".to_string(),
-            index: 0,
-        },
-        outputs: vec![BlindSignature::default()],
-        message: r#"{"user_pubkey":"deadbeef"}"#.to_string(),
-        signature: vec![0u8; 64], // Valid Ed25519 signature length
-        nonce: 12345,
-        network: "preprod".to_string(),
-    };
-
-    assert_eq!(request.utxo.index, 0);
-    assert_eq!(request.outputs.len(), 1);
-    assert_eq!(request.signature.len(), 64);
-}
-
-/// Test deposit request validation - empty outputs should fail
-#[test]
-fn test_deposit_empty_outputs() {
-    let request = DepositRequest {
-        utxo: UtxoReference {
-            tx_hash: "abc123".to_string(),
-            index: 0,
-        },
-        outputs: vec![], // Empty outputs
-        message: r#"{"user_pubkey":"deadbeef"}"#.to_string(),
-        signature: vec![0u8; 64],
-        nonce: 12345,
-        network: "preprod".to_string(),
-    };
-
-    assert!(request.outputs.is_empty());
-}
-
-/// Test deposit request with different networks
-#[test]
-fn test_deposit_network_variations() {
-    let networks = vec!["mainnet", "preprod", "preview", "testnet"];
-
-    for network in networks {
-        let request = DepositRequest {
-            utxo: UtxoReference {
-                tx_hash: "abc123".to_string(),
-                index: 0,
-            },
-            outputs: vec![BlindSignature::default()],
-            message: r#"{"user_pubkey":"deadbeef"}"#.to_string(),
-            signature: vec![0u8; 64],
-            nonce: 12345,
-            network: network.to_string(),
-        };
-
-        assert_eq!(request.network, network);
-    }
-}
-
-/// Test deposit request signature length validation
-#[test]
-fn test_deposit_signature_lengths() {
-    // Valid Ed25519 signature length
-    let valid_sig = [0u8; 64];
-    assert_eq!(valid_sig.len(), 64);
-
-    // Invalid lengths
-    let too_short = [0u8; 32];
-    assert_ne!(too_short.len(), 64);
-
-    let too_long = [0u8; 128];
-    assert_ne!(too_long.len(), 64);
-}
-
-/// Test UtxoReference serialization
-#[test]
-fn test_utxo_reference_serialization() {
+fn utxo_reference_serde_roundtrip_preserves_fields() {
     let utxo = UtxoReference {
         tx_hash: "deadbeef".to_string(),
         index: 42,
     };
 
     let json = serde_json::to_string(&utxo).unwrap();
-    assert!(json.contains("deadbeef"));
-    assert!(json.contains("42"));
+    let decoded: UtxoReference = serde_json::from_str(&json).unwrap();
 
-    let deserialized: UtxoReference = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.tx_hash, "deadbeef");
-    assert_eq!(deserialized.index, 42);
+    assert_eq!(decoded.tx_hash, utxo.tx_hash);
+    assert_eq!(decoded.index, utxo.index);
 }
 
-/// Test deposit request serialization
 #[test]
-fn test_deposit_request_serialization() {
+fn deposit_request_serde_roundtrip_preserves_nonce_and_network() {
     let request = DepositRequest {
         utxo: UtxoReference {
             tx_hash: "abc123".to_string(),
@@ -105,37 +26,16 @@ fn test_deposit_request_serialization() {
         outputs: vec![BlindSignature::default()],
         message: "test_message".to_string(),
         signature: vec![1u8; 64],
-        nonce: 999999,
+        nonce: 999_999,
         network: "mainnet".to_string(),
     };
 
     let json = serde_json::to_string(&request).unwrap();
-    assert!(json.contains("abc123"));
-    assert!(json.contains("mainnet"));
+    let decoded: DepositRequest = serde_json::from_str(&json).unwrap();
 
-    let deserialized: DepositRequest = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.nonce, 999999);
-    assert_eq!(deserialized.network, "mainnet");
-}
-
-/// Test canonical payload structure
-#[test]
-fn test_canonical_payload_structure() {
-    // The canonical payload should include specific fields
-    let request = DepositRequest {
-        utxo: UtxoReference {
-            tx_hash: "txhash123".to_string(),
-            index: 0,
-        },
-        outputs: vec![BlindSignature::default()],
-        message: r#"{"user_pubkey":"pubkey123"}"#.to_string(),
-        signature: vec![0u8; 64],
-        nonce: 1234567890,
-        network: "preprod".to_string(),
-    };
-
-    // Serialize and verify structure
-    let json = serde_json::to_string(&request.utxo).unwrap();
-    assert!(json.contains("tx_hash"));
-    assert!(json.contains("index"));
+    assert_eq!(decoded.utxo.tx_hash, request.utxo.tx_hash);
+    assert_eq!(decoded.utxo.index, request.utxo.index);
+    assert_eq!(decoded.nonce, request.nonce);
+    assert_eq!(decoded.network, request.network);
+    assert_eq!(decoded.signature, request.signature);
 }
