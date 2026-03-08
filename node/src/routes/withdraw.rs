@@ -1301,13 +1301,37 @@ fn validate_network_and_change_outputs(
 mod tests {
     use std::sync::Arc;
 
+    use axum::{
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::{get, post},
+    };
     use ed25519_dalek::SigningKey;
+    use pallas_codec::minicbor;
+    use pallas_primitives::{
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
+    };
+    use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{config::Config, database::Database, routes::Context};
+    use crate::{
+        cardano::generate_payment_keypair,
+        config::Config,
+        database::{CARDANO_WALLET, DEPOSITS, NOTES, WITHDRAWALS, Database},
+        routes::Context,
+    };
 
     fn test_context() -> Context {
+        test_context_with_provider_url(None)
+    }
+
+    fn test_context_with_provider_url(provider_url: Option<String>) -> Context {
         let dir = TempDir::new().unwrap();
         let db_path = dir.path().join("db.redb");
         let database = Arc::new(Database::setup(db_path).unwrap());
@@ -1321,7 +1345,7 @@ mod tests {
             cardano_network: "preprod".to_string(),
             cardano_provider: "blockfrost".to_string(),
             cardano_api_key: Some("test".to_string()),
-            cardano_provider_url: None,
+            cardano_provider_url: provider_url,
             cardano_payment_sk: None,
             xnode_peer_registry_file: None,
             xnode_node_id: "node://local".to_string(),
@@ -1341,6 +1365,206 @@ mod tests {
             config,
             peer_registry: None,
         }
+    }
+
+    fn insert_wallet(ctx: &Context, payment_sk: Vec<u8>, payment_vk: Vec<u8>, script_address: &str) {
+        let write_tx = ctx.database.write().unwrap();
+        {
+            let mut table = write_tx.open_table(CARDANO_WALLET).unwrap();
+            table
+                .insert(
+                    "wallet",
+                    &mugraph_core::types::CardanoWallet::new(
+                        payment_sk,
+                        payment_vk,
+                        vec![],
+                        vec![],
+                        script_address.to_string(),
+                        "preprod".to_string(),
+                    ),
+                )
+                .unwrap();
+        }
+        write_tx.commit().unwrap();
+    }
+
+    fn seed_deposit(ctx: &Context, utxo_ref: mugraph_core::types::UtxoRef, intent_hash: [u8; 32]) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let record = mugraph_core::types::DepositRecord::with_intent_hash(90, now, now + 3600, intent_hash);
+
+        let write_tx = ctx.database.write().unwrap();
+        {
+            let mut table = write_tx.open_table(DEPOSITS).unwrap();
+            table.insert(&utxo_ref, &record).unwrap();
+        }
+        write_tx.commit().unwrap();
+    }
+
+    fn build_datum_cbor_hex(user_hash: Vec<u8>, node_hash: Vec<u8>, intent_hash: Vec<u8>) -> String {
+        let datum = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![
+                PlutusData::BoundedBytes(BoundedBytes::from(user_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(node_hash)),
+                PlutusData::BoundedBytes(BoundedBytes::from(intent_hash)),
+            ]),
+        });
+
+        hex::encode(minicbor::to_vec(&datum).unwrap())
+    }
+
+    fn build_withdraw_request(
+        user_sk: &SigningKey,
+        input_tx_hash: [u8; 32],
+        input_value: u64,
+        output_value: u64,
+        fee: u64,
+        network: &str,
+    ) -> WithdrawRequest {
+        let tx_hash = csl::TransactionHash::from_bytes(input_tx_hash.to_vec()).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let output_coin = csl::Coin::from_str(&output_value.to_string()).unwrap();
+        let value = csl::Value::new(&output_coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee_coin = csl::Coin::from_str(&fee.to_string()).unwrap();
+        let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee_coin);
+
+        let pk = user_sk.verifying_key();
+        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap().hash();
+        let mut required = csl::Ed25519KeyHashes::new();
+        required.add(&pk_hash);
+        body.set_required_signers(&required);
+
+        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+        let body_hash = Blake2b256::digest(body.to_bytes());
+        let tx_body_hash_hex = hex::encode(body_hash);
+
+        let mut metadata_map = csl::MetadataMap::new();
+        metadata_map
+            .insert_str(
+                "network",
+                &csl::TransactionMetadatum::new_text(network.to_string()).unwrap(),
+            )
+            .unwrap();
+        metadata_map
+            .insert_str(
+                "tx_body_hash",
+                &csl::TransactionMetadatum::new_text(tx_body_hash_hex).unwrap(),
+            )
+            .unwrap();
+        let metadatum = csl::TransactionMetadatum::new_map(&metadata_map);
+        let mut general_md = csl::GeneralTransactionMetadata::new();
+        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
+        let mut aux = csl::AuxiliaryData::new();
+        aux.set_metadata(&general_md);
+
+        let tx_hash_csl = csl::TransactionHash::from_bytes(body_hash.to_vec()).unwrap();
+        let private = csl::PrivateKey::from_normal_bytes(user_sk.as_bytes()).unwrap();
+        let witness = csl::make_vkey_witness(&tx_hash_csl, &private);
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        let mut vkeys = csl::Vkeywitnesses::new();
+        vkeys.add(&witness);
+        witness_set.set_vkeys(&vkeys);
+
+        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
+        let tx_cbor = tx.to_bytes();
+        let tx_hash = hex::encode(compute_tx_hash(&tx_cbor).unwrap());
+
+        assert_eq!(input_value, output_value + fee, "test transaction must balance");
+
+        WithdrawRequest {
+            notes: vec![BlindSignature {
+                signature: mugraph_core::types::Blinded(mugraph_core::types::Signature::from([9u8; 32])),
+                proof: Default::default(),
+            }],
+            tx_cbor: hex::encode(tx_cbor),
+            tx_hash,
+        }
+    }
+
+    fn withdrawal_key_from_hex(tx_hash: &str) -> mugraph_core::types::WithdrawalKey {
+        let bytes = hex::decode(tx_hash).unwrap();
+        let array: [u8; 32] = bytes.try_into().unwrap();
+        mugraph_core::types::WithdrawalKey::new(0, array)
+    }
+
+    async fn spawn_withdraw_provider_mock(
+        script_address: String,
+        datum_cbor_hex: String,
+        input_value: u64,
+        submit_status: StatusCode,
+        submit_hash: String,
+    ) -> String {
+        async fn tx_info() -> impl IntoResponse {
+            (StatusCode::OK, axum::Json(json!({"block_height": 90})))
+        }
+
+        async fn tx_utxos(
+            Path(tx_hash): Path<String>,
+            axum::extract::State(state): axum::extract::State<(String, String, u64, StatusCode, String)>,
+        ) -> impl IntoResponse {
+            let (script_address, _datum_hex, input_value, _submit_status, _submit_hash) = state;
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": tx_hash,
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": script_address,
+                        "amount": [{"unit": "lovelace", "quantity": input_value.to_string()}],
+                        "data_hash": "datumhash",
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+        }
+
+        async fn datum_cbor(
+            axum::extract::State(state): axum::extract::State<(String, String, u64, StatusCode, String)>,
+        ) -> impl IntoResponse {
+            let (_script_address, datum_hex, _input_value, _submit_status, _submit_hash) = state;
+            (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
+        }
+
+        async fn submit(
+            axum::extract::State(state): axum::extract::State<(String, String, u64, StatusCode, String)>,
+        ) -> impl IntoResponse {
+            let (_script_address, _datum_hex, _input_value, submit_status, submit_hash) = state;
+            if submit_status.is_success() {
+                (submit_status, axum::Json(json!(submit_hash))).into_response()
+            } else {
+                (submit_status, "submit failed").into_response()
+            }
+        }
+
+        let app = Router::new()
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
+            .route("/tx/submit", post(submit))
+            .with_state((script_address, datum_cbor_hex, input_value, submit_status, submit_hash));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
     }
 
     #[test]
@@ -1608,6 +1832,98 @@ mod tests {
 
         let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet).unwrap_err();
         assert!(format!("{:?}", err).contains("network_id 1"));
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_happy_path_marks_withdrawal_completed_and_spends_deposit() {
+        let user_sk = SigningKey::from_bytes(&[3u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xabu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(&user_sk, input_tx_hash, input_value, 1_000_000, 170_000, "preprod");
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let response = handle_withdraw(&request, &ctx).await.expect("withdraw accepted");
+        assert!(matches!(response, Response::Withdraw { .. }));
+
+        let read_tx = ctx.database.read().unwrap();
+        let notes = read_tx.open_table(NOTES).unwrap();
+        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
+        assert!(notes.get(note_signature).unwrap().is_some());
+
+        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
+        let key = withdrawal_key_from_hex(&request.tx_hash);
+        assert_eq!(
+            withdrawals.get(&key).unwrap().unwrap().value().status,
+            mugraph_core::types::WithdrawalStatus::Completed
+        );
+
+        let deposits = read_tx.open_table(DEPOSITS).unwrap();
+        assert!(deposits
+            .get(mugraph_core::types::UtxoRef::new(input_tx_hash, 0))
+            .unwrap()
+            .unwrap()
+            .value()
+            .spent);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_submit_failure_marks_withdrawal_failed_without_unburning_notes() {
+        let user_sk = SigningKey::from_bytes(&[4u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xcdu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(&user_sk, input_tx_hash, input_value, 1_000_000, 170_000, "preprod");
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Transaction submission failed"));
+
+        let read_tx = ctx.database.read().unwrap();
+        let notes = read_tx.open_table(NOTES).unwrap();
+        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
+        assert!(notes.get(note_signature).unwrap().is_some());
+
+        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
+        let key = withdrawal_key_from_hex(&request.tx_hash);
+        assert_eq!(
+            withdrawals.get(&key).unwrap().unwrap().value().status,
+            mugraph_core::types::WithdrawalStatus::Failed
+        );
     }
 
     #[test]
