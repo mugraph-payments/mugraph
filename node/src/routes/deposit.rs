@@ -1717,6 +1717,26 @@ mod handle_deposit_flow_tests {
     }
 
     #[tokio::test]
+    async fn handle_deposit_accepts_exact_confirmation_threshold() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        // tx block is 90 in mock; tip 95 => exactly 5 confirmations, which should pass.
+        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 95).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let response = handle_deposit(&request, &ctx)
+            .await
+            .expect("deposit accepted at confirmation threshold");
+        assert!(matches!(response, Response::Deposit { .. }));
+    }
+
+    #[tokio::test]
     async fn handle_deposit_rejects_wrong_script_address() {
         let user_sk = SigningKey::from_bytes(&[11u8; 32]);
         let node_sk = SigningKey::from_bytes(&[22u8; 32]);
