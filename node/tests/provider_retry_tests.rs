@@ -7,7 +7,7 @@ use axum::{
     Router,
     body::Bytes,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
 };
@@ -220,6 +220,151 @@ async fn spawn_protocol_params_mock(valid: bool) -> String {
     format!("http://{}", addr)
 }
 
+fn assert_maestro_api_key(headers: &HeaderMap) {
+    assert_eq!(headers.get("api-key").and_then(|v| v.to_str().ok()), Some("test-key"));
+}
+
+async fn maestro_latest_block(headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    (StatusCode::OK, axum::Json(json!({"slot": 77, "hash": "def", "height": 20})))
+}
+
+async fn maestro_protocol_params_ok(headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    axum::Json(json!({
+        "min_fee_a": "44",
+        "min_fee_b": "155381",
+        "max_tx_size": "16384",
+        "max_val_size": "5000",
+        "key_deposit": "2000000",
+        "pool_deposit": "500000000",
+        "price_mem": "0.0577",
+        "price_step": "0.0000721",
+        "max_tx_ex_mem": "14000000",
+        "max_tx_ex_steps": "10000000000",
+        "coins_per_utxo_byte": "4310"
+    }))
+}
+
+async fn maestro_protocol_params_bad(headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    axum::Json(json!({
+        "min_fee_a": "oops",
+        "min_fee_b": "155381",
+        "max_tx_size": "16384",
+        "max_val_size": "5000",
+        "key_deposit": "2000000",
+        "pool_deposit": "500000000",
+        "price_mem": "0.0577",
+        "price_step": "0.0000721",
+        "max_tx_ex_mem": "14000000",
+        "max_tx_ex_steps": "10000000000",
+        "coins_per_utxo_byte": "4310"
+    }))
+}
+
+async fn maestro_submit_ok(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    assert!(!body.is_empty(), "submitted tx body should not be empty");
+    (StatusCode::OK, axum::Json(json!({"hash": "cd".repeat(32)})))
+}
+
+async fn maestro_submit_bad(headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    (StatusCode::BAD_REQUEST, "bad tx body")
+}
+
+async fn maestro_output(Path((tx_hash, index)): Path<(String, u16)>, headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    if tx_hash.starts_with("ff") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "address": "addr_test1maestro",
+            "assets": [{"unit": "lovelace", "quantity": "4000000"}],
+            "datum_hash": null,
+            "datum": null,
+            "reference_script_hash": null,
+            "block_height": 123,
+            "index_echo": index
+        })),
+    )
+        .into_response()
+}
+
+async fn maestro_tx_info(Path(tx_hash): Path<String>, headers: HeaderMap) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    if tx_hash.starts_with("ff") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    (StatusCode::OK, axum::Json(json!({"block_height": 123}))).into_response()
+}
+
+async fn maestro_address_utxos(
+    Path(_address): Path<String>,
+    Query(query): Query<PaginationQuery>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    assert_maestro_api_key(&headers);
+    let page = query.page.unwrap_or(1);
+    match page {
+        1 => axum::Json(json!([
+            {
+                "tx_hash": "44".repeat(32),
+                "tx_index": 0,
+                "assets": [{"unit": "lovelace", "quantity": "2000000"}],
+                "datum_hash": null,
+                "reference_script_hash": null
+            },
+            {
+                "tx_hash": "55".repeat(32),
+                "tx_index": 1,
+                "assets": [{"unit": "lovelace", "quantity": "3000000"}],
+                "datum_hash": "abcd",
+                "reference_script_hash": null
+            }
+        ]))
+        .into_response(),
+        _ => axum::Json(json!([])).into_response(),
+    }
+}
+
+async fn spawn_maestro_mock(valid_params: bool, submit_ok_status: bool) -> String {
+    let app = Router::new()
+        .route("/blocks/latest", get(maestro_latest_block))
+        .route(
+            "/protocol-params",
+            if valid_params {
+                get(maestro_protocol_params_ok)
+            } else {
+                get(maestro_protocol_params_bad)
+            },
+        )
+        .route(
+            "/transactions",
+            if submit_ok_status {
+                post(maestro_submit_ok)
+            } else {
+                post(maestro_submit_bad)
+            },
+        )
+        .route("/transactions/{tx_hash}", get(maestro_tx_info))
+        .route("/transactions/{tx_hash}/outputs/{index}", get(maestro_output))
+        .route("/addresses/{address}/utxos", get(maestro_address_utxos));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    format!("http://{}", addr)
+}
+
 #[tokio::test]
 async fn get_tip_retries_transient_errors_and_recovers() {
     let (url, hits) = spawn_mock(vec![StatusCode::TOO_MANY_REQUESTS, StatusCode::INTERNAL_SERVER_ERROR, StatusCode::OK]).await;
@@ -375,4 +520,125 @@ async fn get_protocol_params_rejects_malformed_numeric_fields() {
         .await
         .expect_err("malformed params must fail");
     assert!(format!("{err}").contains("invalid protocol param min_fee_a=oops"));
+}
+
+#[tokio::test]
+async fn maestro_get_tip_uses_api_key_header_and_parses_response() {
+    let url = spawn_maestro_mock(true, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let tip = provider.get_tip().await.expect("tip");
+    assert_eq!(tip.block_height, 20);
+    assert_eq!(tip.slot, 77);
+    assert_eq!(tip.hash, "def");
+}
+
+#[tokio::test]
+async fn maestro_submit_tx_parses_hash_response() {
+    let url = spawn_maestro_mock(true, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let response = provider
+        .submit_tx(&[0xde, 0xad, 0xbe, 0xef])
+        .await
+        .expect("submit ok");
+    assert_eq!(response.tx_hash, "cd".repeat(32));
+}
+
+#[tokio::test]
+async fn maestro_get_protocol_params_parses_numeric_fields() {
+    let url = spawn_maestro_mock(true, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let params = provider.get_protocol_params().await.expect("protocol params");
+    assert_eq!(params.min_fee_a, 44);
+    assert_eq!(params.max_tx_size, 16_384);
+    assert_eq!(params.coins_per_utxo_byte, 4_310);
+}
+
+#[tokio::test]
+async fn maestro_get_protocol_params_rejects_malformed_numeric_fields() {
+    let url = spawn_maestro_mock(false, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let err = provider
+        .get_protocol_params()
+        .await
+        .expect_err("malformed params must fail");
+    assert!(format!("{err}").contains("invalid protocol param min_fee_a=oops"));
+}
+
+#[tokio::test]
+async fn maestro_get_utxo_maps_found_and_missing_outputs() {
+    let url = spawn_maestro_mock(true, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let utxo = provider
+        .get_utxo(&"11".repeat(32), 0)
+        .await
+        .expect("get utxo")
+        .expect("utxo should exist");
+    assert_eq!(utxo.address, "addr_test1maestro");
+    assert_eq!(utxo.output_index, 0);
+    assert_eq!(utxo.block_height, Some(123));
+    assert_eq!(utxo.amount[0].quantity, "4000000");
+
+    let missing = provider
+        .get_utxo(&"ff".repeat(32), 0)
+        .await
+        .expect("missing lookup should succeed");
+    assert!(missing.is_none());
+}
+
+#[tokio::test]
+async fn maestro_get_address_utxos_paginates_and_maps_assets() {
+    let url = spawn_maestro_mock(true, true).await;
+    let provider = Provider::new(
+        "maestro",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let utxos = provider
+        .get_address_utxos("addr_test1maestro")
+        .await
+        .expect("address utxos");
+
+    assert_eq!(utxos.len(), 2);
+    assert_eq!(utxos[0].tx_hash, "44".repeat(32));
+    assert_eq!(utxos[0].output_index, 0);
+    assert_eq!(utxos[0].block_height, None);
+    assert_eq!(utxos[1].datum_hash.as_deref(), Some("abcd"));
 }
