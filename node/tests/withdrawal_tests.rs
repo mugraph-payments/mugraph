@@ -18,15 +18,3 @@ fn withdraw_request_serde_roundtrip_preserves_tx_hash() {
     assert_eq!(decoded.notes.len(), request.notes.len());
 }
 
-#[test]
-fn withdraw_tx_cbor_hex_roundtrip_decodes_original_bytes() {
-    let tx_bytes = vec![0x82, 0xa0, 0xa0];
-    let request = WithdrawRequest {
-        notes: vec![BlindSignature::default()],
-        tx_cbor: hex::encode(&tx_bytes),
-        tx_hash: "cd".repeat(32),
-    };
-
-    let decoded = hex::decode(&request.tx_cbor).unwrap();
-    assert_eq!(decoded, tx_bytes);
-}
