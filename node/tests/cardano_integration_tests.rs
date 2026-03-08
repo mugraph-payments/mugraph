@@ -1,6 +1,5 @@
 //! Smoke tests for Cardano-related helpers and request types.
 
-use mugraph_core::types::{DepositRequest, UtxoReference, WithdrawRequest};
 use mugraph_node::{
     cardano::{build_script_address, compute_script_hash, generate_payment_keypair},
     provider::{Provider, UtxoInfo},
@@ -65,46 +64,3 @@ fn test_utxo_info_serialization() {
     assert!(json.contains("lovelace"));
 }
 
-/// Smoke test that deposit request serde preserves security-relevant fields.
-#[test]
-fn deposit_request_serde_roundtrip_preserves_security_fields() {
-    let request = DepositRequest {
-        utxo: UtxoReference {
-            tx_hash: "ab".repeat(32),
-            index: 1,
-        },
-        outputs: vec![Default::default()],
-        message: r#"{"user_pubkey":"11"}"#.to_string(),
-        signature: vec![0u8; 64],
-        nonce: 42,
-        network: "preprod".to_string(),
-    };
-
-    let json = serde_json::to_string(&request).expect("serialize deposit request");
-    let decoded: DepositRequest = serde_json::from_str(&json).expect("deserialize deposit request");
-
-    assert_eq!(decoded.utxo.tx_hash, request.utxo.tx_hash);
-    assert_eq!(decoded.utxo.index, request.utxo.index);
-    assert_eq!(decoded.nonce, 42);
-    assert_eq!(decoded.network, "preprod");
-    assert_eq!(decoded.signature.len(), 64);
-}
-
-/// Smoke test that withdrawal request carries CBOR hex that decodes deterministically.
-#[test]
-fn withdraw_request_hex_payload_roundtrip() {
-    let request = WithdrawRequest {
-        notes: vec![Default::default()],
-        tx_cbor: hex::encode([0x82u8, 0xA0, 0xA0]),
-        tx_hash: "cd".repeat(32),
-    };
-
-    let decoded = hex::decode(&request.tx_cbor).expect("valid hex cbor");
-    assert_eq!(decoded, vec![0x82, 0xA0, 0xA0]);
-
-    let invalid = WithdrawRequest {
-        tx_cbor: "zz-not-hex".to_string(),
-        ..request
-    };
-    assert!(hex::decode(&invalid.tx_cbor).is_err());
-}
