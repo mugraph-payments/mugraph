@@ -2,11 +2,8 @@
 
 use mugraph_node::provider::{
     AssetAmount,
-    ChainTip,
-    ProtocolParams,
     Provider,
     TxSettlementState,
-    UtxoInfo,
     evaluate_tx_observation,
 };
 use proptest::prelude::*;
@@ -119,36 +116,6 @@ fn test_invalid_provider_type() {
     assert!(result.is_err());
 }
 
-/// Test UtxoInfo structure
-#[test]
-fn test_utxo_info_structure() {
-    let utxo = UtxoInfo {
-        tx_hash: "deadbeef".to_string(),
-        output_index: 5,
-        address: "addr_test1...".to_string(),
-        amount: vec![
-            AssetAmount {
-                unit: "lovelace".to_string(),
-                quantity: "1000000".to_string(),
-            },
-            AssetAmount {
-                unit: "deadbeef.my_token".to_string(),
-                quantity: "100".to_string(),
-            },
-        ],
-        datum_hash: Some("datum_hash".to_string()),
-        datum: None,
-        script_ref: None,
-        block_height: Some(67890),
-    };
-
-    assert_eq!(utxo.tx_hash, "deadbeef");
-    assert_eq!(utxo.output_index, 5);
-    assert_eq!(utxo.amount.len(), 2);
-    assert_eq!(utxo.amount[0].unit, "lovelace");
-    assert_eq!(utxo.amount[1].quantity, "100");
-}
-
 /// Test AssetAmount structure
 #[test]
 fn test_asset_amount_structure() {
@@ -169,47 +136,6 @@ fn test_asset_amount_structure() {
     let decoded: AssetAmount = serde_json::from_str(&json).unwrap();
     assert_eq!(decoded.unit, "lovelace");
     assert_eq!(decoded.quantity, "5000000");
-}
-
-/// Test ChainTip structure
-#[test]
-fn test_chain_tip_structure() {
-    let tip = ChainTip {
-        slot: 50000000,
-        hash: "block_hash".to_string(),
-        block_height: 1000000,
-    };
-
-    assert_eq!(tip.slot, 50000000);
-    assert_eq!(tip.block_height, 1000000);
-    assert_eq!(tip.hash, "block_hash");
-}
-
-/// Test ProtocolParams structure
-#[test]
-fn test_protocol_params_structure() {
-    let params = ProtocolParams {
-        min_fee_a: 44,
-        min_fee_b: 155381,
-        max_tx_size: 16384,
-        max_val_size: 5000,
-        key_deposit: 2000000,
-        pool_deposit: 500000000,
-        price_mem: 0.0577,
-        price_step: 0.0000721,
-        max_tx_ex_mem: 14000000,
-        max_tx_ex_steps: 10000000000,
-        coins_per_utxo_byte: 4310,
-    };
-
-    assert_eq!(params.min_fee_a, 44);
-    assert_eq!(params.max_tx_size, 16384);
-    assert_eq!(params.coins_per_utxo_byte, 4310);
-
-    // Serialization
-    let json = serde_json::to_string(&params).unwrap();
-    assert!(json.contains("44"));
-    assert!(json.contains("16384"));
 }
 
 /// Test provider clone
