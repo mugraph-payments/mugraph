@@ -1,6 +1,122 @@
 //! Tests for node configuration
 
+use clap::Parser;
 use mugraph_node::config::Config;
+
+fn parse_server(args: &[&str]) -> Config {
+    Config::try_parse_from(std::iter::once("mugraph-node").chain(std::iter::once("server")).chain(args.iter().copied()))
+        .expect("config should parse")
+}
+
+#[test]
+fn parse_server_applies_cli_defaults() {
+    let config = parse_server(&[]);
+
+    assert_eq!(config.network(), "preprod");
+    assert_eq!(config.provider_type(), "blockfrost");
+    assert_eq!(config.deposit_confirm_depth(), 15);
+    assert_eq!(config.deposit_expiration_blocks(), 1440);
+    assert_eq!(config.min_deposit_value(), 1_000_000);
+    assert_eq!(config.max_tx_size(), 16_384);
+    assert_eq!(config.max_withdrawal_fee(), 2_000_000);
+    assert_eq!(config.fee_tolerance_pct(), 5);
+    assert!(!config.dev_mode());
+}
+
+#[test]
+fn parse_server_prefers_explicit_cli_overrides() {
+    let config = parse_server(&[
+        "--cardano-network",
+        "mainnet",
+        "--cardano-provider",
+        "maestro",
+        "--cardano-api-key",
+        "maestro_key",
+        "--cardano-provider-url",
+        "https://custom.api.com",
+        "--cardano-payment-sk",
+        "deadbeef",
+        "--xnode-peer-registry-file",
+        "/tmp/peers.json",
+        "--deposit-confirm-depth",
+        "20",
+        "--deposit-expiration-blocks",
+        "2000",
+        "--min-deposit-value",
+        "2000000",
+        "--max-tx-size",
+        "32768",
+        "--max-withdrawal-fee",
+        "3000000",
+        "--fee-tolerance-pct",
+        "10",
+        "--dev-mode",
+    ]);
+
+    assert_eq!(config.network(), "mainnet");
+    assert_eq!(config.provider_type(), "maestro");
+    assert_eq!(config.provider_api_key(), "maestro_key");
+    assert_eq!(config.provider_url(), Some("https://custom.api.com".to_string()));
+    assert_eq!(config.payment_sk(), Some("deadbeef".to_string()));
+    assert_eq!(
+        config.xnode_peer_registry_file(),
+        Some("/tmp/peers.json".to_string())
+    );
+    assert_eq!(config.deposit_confirm_depth(), 20);
+    assert_eq!(config.deposit_expiration_blocks(), 2000);
+    assert_eq!(config.min_deposit_value(), 2_000_000);
+    assert_eq!(config.max_tx_size(), 32_768);
+    assert_eq!(config.max_withdrawal_fee(), 3_000_000);
+    assert_eq!(config.fee_tolerance_pct(), 10);
+    assert!(config.dev_mode());
+}
+
+#[test]
+fn keypair_accepts_valid_secret_key_hex() {
+    let config = parse_server(&["--secret-key", &muhex::encode([7u8; 32])]);
+    let keypair = config.keypair().expect("valid secret key");
+
+    assert_eq!(*keypair.secret_key, [7u8; 32]);
+    assert_eq!(keypair.public_key, keypair.secret_key.public());
+}
+
+#[test]
+fn keypair_rejects_malformed_secret_key_hex() {
+    let config = parse_server(&["--secret-key", "zz-not-hex"]);
+    let err = config.keypair().expect_err("malformed hex must fail");
+
+    assert!(matches!(err, mugraph_core::error::Error::InvalidKey { .. }));
+}
+
+#[test]
+fn keypair_rejects_wrong_length_secret_key_hex() {
+    let config = parse_server(&["--secret-key", &muhex::encode([7u8; 31])]);
+    let err = config.keypair().expect_err("wrong-length hex must fail");
+
+    assert!(format!("{err:?}").contains("Secret key must be 32 bytes"));
+}
+
+#[test]
+fn keypair_is_deterministic_for_same_seed() {
+    let a = parse_server(&["--seed", "42"])
+        .keypair()
+        .expect("seeded keypair a");
+    let b = parse_server(&["--seed", "42"])
+        .keypair()
+        .expect("seeded keypair b");
+
+    assert_eq!(*a.secret_key, *b.secret_key);
+    assert_eq!(a.public_key, b.public_key);
+}
+
+#[test]
+fn keypair_prefers_secret_key_over_seed() {
+    let secret_hex = muhex::encode([9u8; 32]);
+    let config = parse_server(&["--seed", "42", "--secret-key", &secret_hex]);
+    let keypair = config.keypair().expect("secret key takes precedence");
+
+    assert_eq!(*keypair.secret_key, [9u8; 32]);
+}
 
 /// Test configuration parsing with defaults
 #[test]
