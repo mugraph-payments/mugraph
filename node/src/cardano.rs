@@ -3,6 +3,7 @@ mod keys;
 mod validator_artifacts;
 mod wallet;
 
+pub use address::{build_script_address, compute_script_hash};
 pub use keys::{generate_payment_keypair, import_payment_key};
 
 use std::{path::Path, process::Command};
@@ -154,52 +155,6 @@ pub fn compile_validator() -> Result<Vec<u8>> {
 
     // Load the freshly compiled validator
     load_validator_cbor()
-}
-
-/// Compute script hash from CBOR (Blake2b-224).
-/// Per Cardano ledger rules, the hash input is: language_tag || script_cbor
-/// where language_tag is 0x03 for PlutusV3.
-pub fn compute_script_hash(cbor: &[u8]) -> Vec<u8> {
-    use blake2::{Blake2b, Digest, digest::consts::U28};
-
-    type Blake2b224 = Blake2b<U28>;
-    let mut hasher = Blake2b224::new();
-    hasher.update([0x03]); // PlutusV3 tag
-    hasher.update(cbor);
-    hasher.finalize().to_vec()
-}
-
-/// Build script address from hash and network
-/// Uses Shelley address format directly instead of bech32
-pub fn build_script_address(script_hash: &[u8], network: &str) -> Result<String> {
-    // Determine network tag and header byte for script address
-    // Header byte: 0xF0 | network_tag
-    // Network tags: Mainnet = 1, Testnet/Preprod/Preview = 0
-    let (hrp, network_tag) = match network {
-        "mainnet" => ("addr", 1u8), // Mainnet script address
-        "preprod" | "preview" | "testnet" => ("addr_test", 0u8), // Testnet script address
-        _ => {
-            return Err(color_eyre::eyre::eyre!(
-                "Unknown network: {}. Use mainnet, preprod, preview, or testnet",
-                network
-            ));
-        }
-    };
-
-    // Construct address bytes using Shelley binary format
-    // Header byte: 0xF0 (script address type) | network_tag
-    let header: u8 = 0xF0 | network_tag;
-
-    // Address = header (1 byte) + payment part (28 bytes script hash)
-    let mut address_bytes = vec![header];
-    address_bytes.extend_from_slice(script_hash);
-
-    // Encode as bech32 using bech32 crate v0.11 API
-    let hrp = bech32::Hrp::parse(hrp).map_err(|e| color_eyre::eyre::eyre!("Invalid HRP: {}", e))?;
-    let address = bech32::encode::<bech32::Bech32>(hrp, &address_bytes)
-        .map_err(|e| color_eyre::eyre::eyre!("Failed to encode bech32: {}", e))?;
-
-    Ok(address)
 }
 
 /// Create or load Cardano wallet
