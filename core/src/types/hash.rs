@@ -205,8 +205,9 @@ mod tests {
     }
 
     #[proptest]
-    fn prop_digest_deterministic(data: Vec<u8>) {
-        prop_assert_eq!(Hash::digest(&data), Hash::digest(&data));
+    fn prop_digest_matches_blake3_reference(data: Vec<u8>) {
+        let expected = Hash(blake3::hash(&data).into());
+        prop_assert_eq!(Hash::digest(&data), expected);
     }
 
     #[proptest]
