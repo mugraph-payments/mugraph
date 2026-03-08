@@ -1,3 +1,8 @@
+mod address;
+mod keys;
+mod validator_artifacts;
+mod wallet;
+
 use std::{path::Path, process::Command};
 
 use color_eyre::eyre::{Context, Result};
