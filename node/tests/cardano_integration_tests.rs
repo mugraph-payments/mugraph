@@ -1,4 +1,4 @@
-//! Integration tests for Cardano deposit and withdrawal functionality
+//! Smoke tests for Cardano-related helpers and request types.
 
 use mugraph_core::types::{DepositRequest, UtxoReference, WithdrawRequest};
 use mugraph_node::{
@@ -65,9 +65,9 @@ fn test_utxo_info_serialization() {
     assert!(json.contains("lovelace"));
 }
 
-/// Test that deposit request payload round-trips with security-critical fields intact
+/// Smoke test that deposit request serde preserves security-relevant fields.
 #[test]
-fn test_deposit_request_validation() {
+fn deposit_request_serde_roundtrip_preserves_security_fields() {
     let request = DepositRequest {
         utxo: UtxoReference {
             tx_hash: "ab".repeat(32),
@@ -90,9 +90,9 @@ fn test_deposit_request_validation() {
     assert_eq!(decoded.signature.len(), 64);
 }
 
-/// Test that withdrawal request carries CBOR hex that decodes deterministically
+/// Smoke test that withdrawal request carries CBOR hex that decodes deterministically.
 #[test]
-fn test_withdrawal_request_validation() {
+fn withdraw_request_hex_payload_roundtrip() {
     let request = WithdrawRequest {
         notes: vec![Default::default()],
         tx_cbor: hex::encode([0x82u8, 0xA0, 0xA0]),
