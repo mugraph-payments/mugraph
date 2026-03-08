@@ -8,37 +8,7 @@ pub use keys::{generate_payment_keypair, import_payment_key};
 pub use validator_artifacts::{
     compile_validator, get_validator_dir, load_validator_cbor, validator_artifacts_exist,
 };
-
-use color_eyre::eyre::Result;
-use mugraph_core::types::CardanoWallet;
-
-/// Create or load Cardano wallet
-pub async fn setup_cardano_wallet(network: &str, payment_sk: Option<&str>) -> Result<CardanoWallet> {
-    // Generate or import payment keypair
-    let (sk, vk) = if let Some(hex_sk) = payment_sk {
-        import_payment_key(hex_sk)?
-    } else {
-        generate_payment_keypair()?
-    };
-
-    // Compile validator
-    let cbor = compile_validator()?;
-
-    // Compute script hash
-    let script_hash = compute_script_hash(&cbor);
-
-    // Build script address
-    let script_address = build_script_address(&script_hash, network)?;
-
-    Ok(CardanoWallet::new(
-        sk,
-        vk,
-        cbor,
-        script_hash,
-        script_address,
-        network.to_string(),
-    ))
-}
+pub use wallet::setup_cardano_wallet;
 
 #[cfg(test)]
 mod tests {
