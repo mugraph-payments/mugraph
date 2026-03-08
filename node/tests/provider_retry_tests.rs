@@ -66,6 +66,25 @@ async fn spawn_mock(statuses: Vec<StatusCode>) -> (String, Arc<AtomicUsize>) {
     (format!("http://{}", addr), state.hits)
 }
 
+async fn spawn_transport_error_mock(expected_attempts: usize) -> (String, Arc<AtomicUsize>) {
+    let hits = Arc::new(AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind transport error server");
+    let addr = listener.local_addr().expect("local addr");
+    let hits_clone = hits.clone();
+
+    tokio::spawn(async move {
+        while hits_clone.load(Ordering::SeqCst) < expected_attempts {
+            let (stream, _) = listener.accept().await.expect("accept connection");
+            hits_clone.fetch_add(1, Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+
+    (format!("http://{}", addr), hits)
+}
+
 #[derive(Clone)]
 struct AddressUtxoState {
     tx_info_hits: Arc<AtomicUsize>,
@@ -379,6 +398,28 @@ async fn get_tip_retries_transient_errors_and_recovers() {
 
     let tip = provider.get_tip().await.expect("tip after retries");
     assert_eq!(tip.block_height, 10);
+    assert_eq!(hits.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn get_tip_retries_transport_errors_and_reports_network_failure() {
+    let (url, hits) = spawn_transport_error_mock(3).await;
+
+    let provider = Provider::new(
+        "blockfrost",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(url),
+    )
+    .expect("provider");
+
+    let err = provider
+        .get_tip()
+        .await
+        .expect_err("transport failures must fail after retries");
+    let msg = format!("{err}");
+    assert!(msg.contains("network error after 3 attempts"));
+    assert!(!msg.contains("status"));
     assert_eq!(hits.load(Ordering::SeqCst), 3);
 }
 
