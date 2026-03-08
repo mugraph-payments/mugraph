@@ -184,12 +184,11 @@ mod tests {
         prop_assert_eq!(decoded, value);
     }
 
-    /// Algebraic: SecretKey::public() is deterministic.
-    ///
-    /// Calling public() twice on the same key must yield the same PublicKey.
     #[proptest]
-    fn prop_public_key_deterministic(sk: SecretKey) {
-        prop_assert_eq!(sk.public(), sk.public());
+    fn prop_public_key_matches_scalar_multiplication_reference(sk: SecretKey) {
+        let expected = (sk.to_scalar() * crate::crypto::G).into();
+
+        prop_assert_eq!(sk.public(), expected);
     }
 
     /// Algebraic: distinct secret keys produce distinct public keys.
