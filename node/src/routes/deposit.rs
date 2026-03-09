@@ -1773,6 +1773,115 @@ mod handle_deposit_flow_tests {
         spawn_provider_mock_with_outputs(script_address, datum_cbor_hex, tip_height, true).await
     }
 
+    async fn spawn_provider_mock_without_block_height(
+        script_address: String,
+        datum_cbor_hex: String,
+        tip_height: u64,
+    ) -> String {
+        async fn tx_info() -> impl IntoResponse {
+            StatusCode::NOT_FOUND
+        }
+
+        async fn tx_utxos(
+            Path(tx_hash): Path<String>,
+            axum::extract::State(state): axum::extract::State<(String, String)>,
+        ) -> impl IntoResponse {
+            let (script_address, _datum_hex) = state;
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": tx_hash,
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": script_address,
+                        "amount": [{"unit":"lovelace","quantity":"1000000"}],
+                        "data_hash": "datumhash",
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+        }
+
+        async fn datum_cbor(
+            axum::extract::State(state): axum::extract::State<(String, String)>,
+        ) -> impl IntoResponse {
+            let (_script_address, datum_hex) = state;
+            (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
+        }
+
+        let app = Router::new()
+            .route("/blocks/latest", get(move || async move {
+                (StatusCode::OK, axum::Json(json!({"slot": 1000, "hash": "tip", "height": tip_height})))
+            }))
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
+            .with_state((script_address, datum_cbor_hex));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
+    async fn spawn_provider_mock_with_tip_failure(
+        script_address: String,
+        datum_cbor_hex: String,
+    ) -> String {
+        async fn tip() -> impl IntoResponse {
+            (StatusCode::INTERNAL_SERVER_ERROR, "tip failed")
+        }
+
+        async fn tx_info() -> impl IntoResponse {
+            (StatusCode::OK, axum::Json(json!({"block_height": 90})))
+        }
+
+        async fn tx_utxos(
+            Path(tx_hash): Path<String>,
+            axum::extract::State(state): axum::extract::State<(String, String)>,
+        ) -> impl IntoResponse {
+            let (script_address, _datum_hex) = state;
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": tx_hash,
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": script_address,
+                        "amount": [{"unit":"lovelace","quantity":"1000000"}],
+                        "data_hash": "datumhash",
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+        }
+
+        async fn datum_cbor(
+            axum::extract::State(state): axum::extract::State<(String, String)>,
+        ) -> impl IntoResponse {
+            let (_script_address, datum_hex) = state;
+            (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
+        }
+
+        let app = Router::new()
+            .route("/blocks/latest", get(tip))
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
+            .with_state((script_address, datum_cbor_hex));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
     fn prepare_request_and_datum(
         ctx: &Context,
         user_sk: &SigningKey,
@@ -1932,6 +2041,54 @@ mod handle_deposit_flow_tests {
 
         let err = handle_deposit(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("UTxO not found on chain"));
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_rejects_missing_block_height_without_recording_deposit() {
+        let user_sk = SigningKey::from_bytes(&[12u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[23u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url =
+            spawn_provider_mock_without_block_height("addr_test1script".to_string(), datum_cbor_hex, 100)
+                .await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Cannot verify UTxO confirmation depth"));
+
+        let r = ctx.database.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        assert!(deposits.get(&utxo_ref).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_surfaces_tip_lookup_failures_without_recording_deposit() {
+        let user_sk = SigningKey::from_bytes(&[13u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[24u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url =
+            spawn_provider_mock_with_tip_failure("addr_test1script".to_string(), datum_cbor_hex)
+                .await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Failed to get chain tip for confirm depth check"));
+
+        let r = ctx.database.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        assert!(deposits.get(&utxo_ref).unwrap().is_none());
     }
 
     #[tokio::test]
