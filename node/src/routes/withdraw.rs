@@ -546,17 +546,39 @@ async fn validate_user_witnesses(
     let body_hash = hasher.finalize();
     let body_hash_bytes: Vec<u8> = body_hash.to_vec();
 
+    let (witness_key_hashes, verified_witnesses) =
+        verify_witness_set(&tx, &body_hash_bytes)?;
+    let required_signer_hashes = collect_required_signer_hashes(&tx)?;
+
+    ensure_required_signers_have_witnesses(&required_signer_hashes, &witness_key_hashes)?;
+    ensure_expected_owner_hashes_are_bound(
+        expected_user_hashes,
+        &required_signer_hashes,
+        &witness_key_hashes,
+    )?;
+
+    tracing::info!(
+        "Validated {} witness signatures for {} notes",
+        verified_witnesses,
+        notes.len()
+    );
+
+    Ok(())
+}
+
+fn verify_witness_set(
+    tx: &csl::Transaction,
+    body_hash_bytes: &[u8],
+) -> Result<(HashSet<String>, usize), Error> {
     let witness_set = tx.witness_set();
     let mut verified_witnesses = 0usize;
-    let mut witness_key_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut witness_key_hashes = HashSet::new();
 
-    // Verify vkey witnesses
     if let Some(vkeys) = witness_set.vkeys() {
         for (idx, witness) in (&vkeys).into_iter().enumerate() {
             let pk: csl::PublicKey = witness.vkey().public_key();
             let sig = witness.signature();
-            let ok = pk.verify(&body_hash_bytes, &sig);
-            if !ok {
+            if !pk.verify(body_hash_bytes, &sig) {
                 return Err(Error::InvalidSignature {
                     reason: format!("VKey witness {} signature invalid", idx),
                     signature: mugraph_core::types::Signature::default(),
@@ -567,13 +589,11 @@ async fn validate_user_witnesses(
         }
     }
 
-    // Verify bootstrap witnesses (Byron-era) if present
     if let Some(bootstraps) = witness_set.bootstraps() {
         for (idx, witness) in (&bootstraps).into_iter().enumerate() {
             let pk: csl::PublicKey = witness.vkey().public_key();
             let sig = witness.signature();
-            let ok = pk.verify(&body_hash_bytes, &sig);
-            if !ok {
+            if !pk.verify(body_hash_bytes, &sig) {
                 return Err(Error::InvalidSignature {
                     reason: format!("Bootstrap witness {} signature invalid", idx),
                     signature: mugraph_core::types::Signature::default(),
@@ -591,50 +611,44 @@ async fn validate_user_witnesses(
         });
     }
 
-    // Require witness set covers all note owners: we derive owner pubkey hash from notes' blinded sigs.
-    // BlindSignature stores a blinded Signature; we can't invert it, so we encode owner expectation
-    // via required_signers in the transaction. Enforce that required_signers are present.
-    if let Some(required) = tx.body().required_signers() {
-        let mut missing: Vec<String> = Vec::new();
-        for idx in 0..required.len() {
-            let h = required.get(idx);
-            let hex = h.to_hex();
-            if !witness_key_hashes.contains(&hex) {
-                missing.push(hex);
-            }
-        }
-        if !missing.is_empty() {
-            return Err(Error::InvalidSignature {
-                reason: format!("Missing witnesses for required_signers: {:?}", missing),
-                signature: mugraph_core::types::Signature::default(),
-            });
-        }
-    } else {
-        return Err(Error::InvalidSignature {
-            reason: "Transaction missing required_signers; cannot bind witnesses to note owners"
-                .to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        });
+    Ok((witness_key_hashes, verified_witnesses))
+}
+
+fn collect_required_signer_hashes(tx: &csl::Transaction) -> Result<Vec<String>, Error> {
+    let required = tx.body().required_signers().ok_or_else(|| Error::InvalidSignature {
+        reason: "Transaction missing required_signers; cannot bind witnesses to note owners"
+            .to_string(),
+        signature: mugraph_core::types::Signature::default(),
+    })?;
+
+    Ok(required.into_iter().map(|signer| signer.to_hex()).collect())
+}
+
+fn ensure_required_signers_have_witnesses(
+    required_signer_hashes: &[String],
+    witness_key_hashes: &HashSet<String>,
+) -> Result<(), Error> {
+    let missing: Vec<String> = required_signer_hashes
+        .iter()
+        .filter(|signer_hash| !witness_key_hashes.contains(*signer_hash))
+        .cloned()
+        .collect();
+
+    if missing.is_empty() {
+        return Ok(());
     }
 
-    // Check required_signers, if present, are covered by witnesses
-    if let Some(required) = tx.body().required_signers() {
-        for (idx, signer) in required.into_iter().enumerate() {
-            let signer_hex = signer.to_hex();
-            if !witness_key_hashes.contains(&signer_hex) {
-                return Err(Error::InvalidSignature {
-                    reason: format!(
-                        "Missing witness for required_signer {} (index {})",
-                        signer_hex, idx
-                    ),
-                    signature: mugraph_core::types::Signature::default(),
-                });
-            }
-        }
-    }
+    Err(Error::InvalidSignature {
+        reason: format!("Missing witnesses for required_signers: {:?}", missing),
+        signature: mugraph_core::types::Signature::default(),
+    })
+}
 
-    // Bind witnesses to the owners (user_pubkey_hash) found in each input's datum
-    // Every expected hash must appear in both required_signers and in the witness set.
+fn ensure_expected_owner_hashes_are_bound(
+    expected_user_hashes: &HashSet<String>,
+    required_signer_hashes: &[String],
+    witness_key_hashes: &HashSet<String>,
+) -> Result<(), Error> {
     if expected_user_hashes.is_empty() {
         return Err(Error::InvalidSignature {
             reason: "No expected user hashes derived from inputs".to_string(),
@@ -642,18 +656,8 @@ async fn validate_user_witnesses(
         });
     }
 
-    let required = tx
-        .body()
-        .required_signers()
-        .ok_or_else(|| Error::InvalidSignature {
-            reason: "Transaction missing required_signers; cannot bind witnesses to note owners"
-                .to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
-
     for expected in expected_user_hashes {
-        let in_required = required.into_iter().any(|h| h.to_hex() == *expected);
-        if !in_required {
+        if !required_signer_hashes.iter().any(|signer_hash| signer_hash == expected) {
             return Err(Error::InvalidSignature {
                 reason: format!(
                     "Required signer set does not include input owner hash {}",
@@ -670,12 +674,6 @@ async fn validate_user_witnesses(
             });
         }
     }
-
-    tracing::info!(
-        "Validated {} witness signatures for {} notes",
-        verified_witnesses,
-        notes.len()
-    );
 
     Ok(())
 }
@@ -1558,14 +1556,7 @@ mod tests {
         expected.insert(pk_hash.clone());
 
         let tx_body_only = minimal_tx_with_required_signer(&pk_hash, None).body();
-        let body_bytes = tx_body_only.to_bytes();
-
-        // Sign body hash using CSL helper
-        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-        let tx_hash = Blake2b256::digest(&body_bytes);
-        let mut tx_hash_arr = [0u8; 32];
-        tx_hash_arr.copy_from_slice(&tx_hash);
-        let tx_hash_csl = csl::TransactionHash::from_bytes(tx_hash_arr.to_vec()).unwrap();
+        let tx_hash_csl = tx_hash_from_body(&tx_body_only);
         let private = csl::PrivateKey::from_normal_bytes(sk.as_bytes()).unwrap();
         let vkey_witness = csl::make_vkey_witness(&tx_hash_csl, &private);
 
@@ -1576,6 +1567,109 @@ mod tests {
 
         let tx = csl::Transaction::new(&tx_body_only, &witness_set, None);
 
+        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test...".to_string(),
+            "preprod".to_string(),
+        );
+
+        let res = validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_multi_owner_missing_from_required_signers() {
+        let sk1 = SigningKey::from_bytes(&[3u8; 32]);
+        let sk2 = SigningKey::from_bytes(&[4u8; 32]);
+        let pk1_hash = csl::PublicKey::from_bytes(sk1.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_hex();
+        let pk2_hash = csl::PublicKey::from_bytes(sk2.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_hex();
+
+        let expected = HashSet::from([pk1_hash.clone(), pk2_hash.clone()]);
+        let tx_body = minimal_tx_body_with_required_signers(&[pk1_hash.clone()]);
+        let tx_hash_csl = tx_hash_from_body(&tx_body);
+        let witness_set = witness_set_with_vkey_signers(&tx_hash_csl, &[&sk1]);
+        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
+
+        let notes: Vec<BlindSignature> = vec![BlindSignature::default(), BlindSignature::default()];
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test...".to_string(),
+            "preprod".to_string(),
+        );
+
+        let err = validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Required signer set does not include input owner hash"));
+    }
+
+    #[tokio::test]
+    async fn test_multi_owner_missing_witness_for_required_signer() {
+        let sk1 = SigningKey::from_bytes(&[5u8; 32]);
+        let sk2 = SigningKey::from_bytes(&[6u8; 32]);
+        let pk1_hash = csl::PublicKey::from_bytes(sk1.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_hex();
+        let pk2_hash = csl::PublicKey::from_bytes(sk2.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_hex();
+
+        let expected = HashSet::from([pk1_hash.clone(), pk2_hash.clone()]);
+        let tx_body = minimal_tx_body_with_required_signers(&[pk1_hash.clone(), pk2_hash.clone()]);
+        let tx_hash_csl = tx_hash_from_body(&tx_body);
+        let witness_set = witness_set_with_vkey_signers(&tx_hash_csl, &[&sk1]);
+        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
+
+        let notes: Vec<BlindSignature> = vec![BlindSignature::default(), BlindSignature::default()];
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test...".to_string(),
+            "preprod".to_string(),
+        );
+
+        let err = validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Missing witnesses for required_signers"));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_witness_counts_when_valid() {
+        let key = csl::Bip32PrivateKey::generate_ed25519_bip32().unwrap();
+        let byron_address = csl::ByronAddress::from_base58(
+            "Ae2tdPwUPEZ5uzkzh1o2DHECiUi3iugvnnKHRisPgRRP3CTF4KCMvy54Xd3",
+        )
+        .unwrap();
+        let required_hash = key.to_raw_key().to_public().hash().to_hex();
+        let expected = HashSet::from([required_hash.clone()]);
+        let tx_body = minimal_tx_body_with_required_signers(&[required_hash]);
+        let tx_hash_csl = tx_hash_from_body(&tx_body);
+        let bootstrap = csl::make_icarus_bootstrap_witness(&tx_hash_csl, &byron_address, &key);
+
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        let mut bootstraps = csl::BootstrapWitnesses::new();
+        bootstraps.add(&bootstrap);
+        witness_set.set_bootstraps(&bootstraps);
+
+        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
         let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
@@ -1957,10 +2051,34 @@ mod tests {
         assert!(res.is_err());
     }
 
-    fn minimal_tx_with_required_signer(
-        signer_hash_hex: &str,
-        witness_set: Option<csl::TransactionWitnessSet>,
-    ) -> csl::Transaction {
+    fn tx_hash_from_body(body: &csl::TransactionBody) -> csl::TransactionHash {
+        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+        let tx_hash = Blake2b256::digest(body.to_bytes());
+        let mut tx_hash_arr = [0u8; 32];
+        tx_hash_arr.copy_from_slice(&tx_hash);
+        csl::TransactionHash::from_bytes(tx_hash_arr.to_vec()).unwrap()
+    }
+
+    fn witness_set_with_vkey_signers(
+        tx_hash: &csl::TransactionHash,
+        signers: &[&SigningKey],
+    ) -> csl::TransactionWitnessSet {
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        let mut vkeys = csl::Vkeywitnesses::new();
+
+        for signer in signers {
+            let private = csl::PrivateKey::from_normal_bytes(signer.as_bytes()).unwrap();
+            let witness = csl::make_vkey_witness(tx_hash, &private);
+            vkeys.add(&witness);
+        }
+
+        witness_set.set_vkeys(&vkeys);
+        witness_set
+    }
+
+    fn minimal_tx_body_with_required_signers(
+        signer_hash_hexes: &[String],
+    ) -> csl::TransactionBody {
         let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
         let input = csl::TransactionInput::new(&tx_hash, 0);
         let mut inputs = csl::TransactionInputs::new();
@@ -1978,11 +2096,19 @@ mod tests {
 
         let fee = csl::Coin::from_str("170000").unwrap();
         let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let signer_hash = csl::Ed25519KeyHash::from_hex(signer_hash_hex).unwrap();
         let mut required = csl::Ed25519KeyHashes::new();
-        required.add(&signer_hash);
+        for signer_hash_hex in signer_hash_hexes {
+            required.add(&csl::Ed25519KeyHash::from_hex(signer_hash_hex).unwrap());
+        }
         body.set_required_signers(&required);
+        body
+    }
 
+    fn minimal_tx_with_required_signer(
+        signer_hash_hex: &str,
+        witness_set: Option<csl::TransactionWitnessSet>,
+    ) -> csl::Transaction {
+        let body = minimal_tx_body_with_required_signers(&[signer_hash_hex.to_string()]);
         let witness_set = witness_set.unwrap_or_else(csl::TransactionWitnessSet::new);
         csl::Transaction::new(&body, &witness_set, None)
     }
