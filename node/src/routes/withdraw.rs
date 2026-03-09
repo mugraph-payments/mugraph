@@ -2389,6 +2389,59 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn handle_withdraw_mismatched_submit_hash_marks_failed_without_spending_deposit() {
+        let user_sk = SigningKey::from_bytes(&[20u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc3u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            "ee".repeat(32),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        let deposit_ref = mugraph_core::types::UtxoRef::new(input_tx_hash, 0);
+        seed_deposit(&ctx, deposit_ref.clone(), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Provider returned mismatched tx hash"));
+
+        let read_tx = ctx.database.read().unwrap();
+        let notes = read_tx.open_table(NOTES).unwrap();
+        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
+        assert!(notes.get(note_signature).unwrap().is_some());
+
+        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
+        let key = withdrawal_key_from_hex(&request.tx_hash);
+        assert_eq!(
+            withdrawals.get(&key).unwrap().unwrap().value().status,
+            mugraph_core::types::WithdrawalStatus::Failed
+        );
+
+        let deposits = read_tx.open_table(DEPOSITS).unwrap();
+        assert!(!deposits.get(&deposit_ref).unwrap().unwrap().value().spent);
+    }
+
     #[test]
     fn completion_state_failure_returns_error() {
         let result = finalize_withdraw_response(
