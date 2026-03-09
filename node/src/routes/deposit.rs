@@ -1459,6 +1459,123 @@ mod datum_tests {
 }
 
 #[cfg(test)]
+mod amount_validation_tests {
+    use super::*;
+    use crate::provider::{AssetAmount, UtxoInfo};
+
+    fn request_with_output_count(count: usize) -> DepositRequest {
+        DepositRequest {
+            utxo: mugraph_core::types::UtxoReference {
+                tx_hash: "ab".repeat(32),
+                index: 0,
+            },
+            outputs: vec![BlindSignature::default(); count],
+            message: "{}".to_string(),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        }
+    }
+
+    fn utxo_with_amounts(amount: Vec<AssetAmount>) -> UtxoInfo {
+        UtxoInfo {
+            tx_hash: "ab".repeat(32),
+            output_index: 0,
+            address: "addr_test1amountcheck".to_string(),
+            amount,
+            datum_hash: None,
+            datum: None,
+            script_ref: None,
+            block_height: Some(100),
+        }
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_missing_outputs() {
+        let request = request_with_output_count(0);
+        let utxo = utxo_with_amounts(vec![AssetAmount {
+            unit: "lovelace".to_string(),
+            quantity: "1000000".to_string(),
+        }]);
+
+        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("No outputs provided for deposit"));
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_too_few_outputs_for_distinct_assets() {
+        let request = request_with_output_count(1);
+        let utxo = utxo_with_amounts(vec![
+            AssetAmount {
+                unit: "lovelace".to_string(),
+                quantity: "1000000".to_string(),
+            },
+            AssetAmount {
+                unit: format!("{}{}", "11".repeat(28), "746f6b656e"),
+                quantity: "1".to_string(),
+            },
+        ]);
+
+        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("Insufficient outputs"));
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_more_outputs_than_total_units() {
+        let request = request_with_output_count(3);
+        let utxo = utxo_with_amounts(vec![AssetAmount {
+            unit: "lovelace".to_string(),
+            quantity: "2".to_string(),
+        }]);
+
+        let err = validate_deposit_amounts(&request, &utxo, 1).unwrap_err();
+        assert!(format!("{err:?}").contains("Too many outputs"));
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_below_minimum_lovelace() {
+        let request = request_with_output_count(1);
+        let utxo = utxo_with_amounts(vec![AssetAmount {
+            unit: "lovelace".to_string(),
+            quantity: "999999".to_string(),
+        }]);
+
+        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("below minimum"));
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_invalid_asset_quantity() {
+        let request = request_with_output_count(1);
+        let utxo = utxo_with_amounts(vec![AssetAmount {
+            unit: "lovelace".to_string(),
+            quantity: "not-a-number".to_string(),
+        }]);
+
+        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("Invalid asset quantity"));
+    }
+
+    #[test]
+    fn validate_deposit_amounts_accepts_exact_minimum_and_unique_asset_boundary() {
+        let request = request_with_output_count(2);
+        let utxo = utxo_with_amounts(vec![
+            AssetAmount {
+                unit: "lovelace".to_string(),
+                quantity: "1000000".to_string(),
+            },
+            AssetAmount {
+                unit: format!("{}{}", "22".repeat(28), "746f6b656e"),
+                quantity: "1".to_string(),
+            },
+        ]);
+
+        validate_deposit_amounts(&request, &utxo, 1_000_000)
+            .expect("exact minimum and asset-count boundary should pass");
+    }
+}
+
+#[cfg(test)]
 mod handle_deposit_flow_tests {
     use std::sync::Arc;
 
