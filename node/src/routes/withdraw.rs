@@ -1888,7 +1888,8 @@ mod tests {
             .to_hex();
 
         let expected = HashSet::from([pk1_hash.clone(), pk2_hash.clone()]);
-        let tx_body = minimal_tx_body_with_required_signers(&[pk1_hash.clone()]);
+        let tx_body =
+            minimal_tx_body_with_required_signers(std::slice::from_ref(&pk1_hash));
         let tx_hash_csl = tx_hash_from_body(&tx_body);
         let witness_set = witness_set_with_vkey_signers(&tx_hash_csl, &[&sk1]);
         let tx = csl::Transaction::new(&tx_body, &witness_set, None);
@@ -2823,7 +2824,12 @@ mod tests {
             mugraph_core::types::WithdrawalRecord::completed(),
         );
 
-        let err = mark_withdrawal_completed(&ctx, &tx_hash, &[utxo_ref.clone()]).unwrap_err();
+        let err = mark_withdrawal_completed(
+            &ctx,
+            &tx_hash,
+            std::slice::from_ref(&utxo_ref),
+        )
+        .unwrap_err();
         assert!(format!("{err:?}").contains("Withdrawal already completed"));
 
         let read_tx = ctx.database.read().unwrap();

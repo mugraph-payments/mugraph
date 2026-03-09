@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::OnceLock,
 };
 
 use mugraph_node::{
@@ -11,9 +11,9 @@ use mugraph_node::{
 };
 use tempfile::TempDir;
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+fn env_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
 fn test_config(dev_mode: bool, peer_registry_file: Option<String>) -> Config {
@@ -42,7 +42,7 @@ async fn with_db_path<T, Fut>(path: &Path, f: impl FnOnce() -> Fut) -> T
 where
     Fut: Future<Output = T>,
 {
-    let _guard = env_lock().lock().unwrap();
+    let _guard = env_lock().lock().await;
     let previous = std::env::var_os("MUGRAPH_DB_PATH");
     // SAFETY: tests in this file serialize environment mutation through a
     // process-wide mutex and hold it across the async startup call.

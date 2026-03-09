@@ -270,9 +270,7 @@ fn verify_cip8_cose_signature_with_claims(
     // Build Sig_structure bytes using coset helper
     let to_verify = cose.tbs_data(&[]);
 
-    let verifying_key = VerifyingKey::from_bytes(
-        &user_pubkey_bytes.try_into().expect("Length checked"),
-    )
+    let verifying_key = VerifyingKey::from_bytes(&user_pubkey_bytes)
     .map_err(|e| Error::InvalidKey {
         reason: format!("Invalid Ed25519 public key: {}", e),
     })?;
