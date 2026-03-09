@@ -1434,7 +1434,14 @@ mod tests {
             .unwrap()
             .as_secs();
         let record = mugraph_core::types::DepositRecord::with_intent_hash(90, now, now + 3600, intent_hash);
+        seed_deposit_record(ctx, utxo_ref, record);
+    }
 
+    fn seed_deposit_record(
+        ctx: &Context,
+        utxo_ref: mugraph_core::types::UtxoRef,
+        record: mugraph_core::types::DepositRecord,
+    ) {
         let write_tx = ctx.database.write().unwrap();
         {
             let mut table = write_tx.open_table(DEPOSITS).unwrap();
@@ -2151,6 +2158,192 @@ mod tests {
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("Lovelace imbalance"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_already_spent_deposit_without_mutating_state() {
+        let user_sk = SigningKey::from_bytes(&[16u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xbfu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut record = mugraph_core::types::DepositRecord::with_intent_hash(
+            90,
+            now,
+            now + 3600,
+            [0u8; 32],
+        );
+        record.spent = true;
+        seed_deposit_record(
+            &ctx,
+            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
+            record,
+        );
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("deposit already spent"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_expired_deposit_without_mutating_state() {
+        let user_sk = SigningKey::from_bytes(&[17u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc0u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let record = mugraph_core::types::DepositRecord::with_intent_hash(
+            90,
+            now.saturating_sub(3600),
+            now.saturating_sub(1),
+            [0u8; 32],
+        );
+        seed_deposit_record(
+            &ctx,
+            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
+            record,
+        );
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("deposit expired"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_intent_hash_mismatch_without_mutating_state() {
+        let user_sk = SigningKey::from_bytes(&[18u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc1u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(
+            &ctx,
+            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
+            [7u8; 32],
+        );
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Intent hash mismatch"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_missing_deposit_record_without_mutating_state() {
+        let user_sk = SigningKey::from_bytes(&[19u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc2u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("deposit not found"));
         assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
     }
 
