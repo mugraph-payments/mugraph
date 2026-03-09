@@ -19,6 +19,7 @@ use whisky_csl::csl;
 
 use crate::{
     database::{CARDANO_WALLET, NOTES, WITHDRAWALS},
+    deposit_datum::{DepositDatumContext, parse_deposit_datum},
     provider::Provider,
     routes::Context,
     tx_signer::{attach_witness_to_transaction, compute_tx_hash},
@@ -753,7 +754,11 @@ async fn validate_script_inputs_with_deposits(
     let node_pk = csl::PublicKey::from_bytes(&wallet.payment_vk).map_err(|e| Error::InvalidKey {
         reason: format!("Invalid node payment_vk: {}", e),
     })?;
-    let node_pk_hash = node_pk.hash().to_bytes();
+    let node_pk_hash: [u8; 28] = node_pk
+        .hash()
+        .to_bytes()
+        .try_into()
+        .expect("Cardano key hashes are always 28 bytes");
 
     for (i, (tx_hash_bytes, index)) in inputs.iter().enumerate() {
         let tx_hash = hex::encode(tx_hash_bytes);
@@ -790,77 +795,22 @@ async fn validate_script_inputs_with_deposits(
                         ),
                     })?;
 
-                let datum_bytes = hex::decode(datum_hex).map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid datum hex for input {}: {}", i, e),
-                })?;
+                let datum = parse_deposit_datum(
+                    datum_hex,
+                    DepositDatumContext::WithdrawalInput { input_index: i },
+                )?;
 
-                let pd =
-                    csl::PlutusData::from_bytes(datum_bytes).map_err(|e| Error::InvalidInput {
-                        reason: format!("Invalid datum CBOR for input {}: {}", i, e),
-                    })?;
+                required_user_hashes.insert(hex::encode(datum.user_pubkey_hash));
 
-                let constr = pd
-                    .as_constr_plutus_data()
-                    .ok_or_else(|| Error::InvalidInput {
-                        reason: format!("Datum for input {} is not a constructor as expected", i),
-                    })?;
-
-                let alt = constr.alternative().to_str();
-                if alt != "0" {
-                    return Err(Error::InvalidInput {
-                        reason: format!(
-                            "Unexpected datum constructor {} for input {} (expected 0)",
-                            alt, i
-                        ),
-                    });
-                }
-
-                let fields = constr.data();
-                if fields.len() != 3 {
-                    return Err(Error::InvalidInput {
-                        reason: format!(
-                            "Datum for input {} has {} fields (expected 3)",
-                            i,
-                            fields.len()
-                        ),
-                    });
-                }
-
-                // Field 0: user_pubkey_hash
-                let user_hash = fields
-                    .get(0)
-                    .as_bytes()
-                    .ok_or_else(|| Error::InvalidInput {
-                        reason: format!("Datum for input {} missing user_pubkey_hash bytes", i),
-                    })?;
-
-                required_user_hashes.insert(hex::encode(user_hash));
-
-                // Field 1: node_pubkey_hash
-                let node_hash = fields
-                    .get(1)
-                    .as_bytes()
-                    .ok_or_else(|| Error::InvalidInput {
-                        reason: format!("Datum for input {} missing node_pubkey_hash bytes", i),
-                    })?;
-
-                if node_hash != node_pk_hash {
+                if datum.node_pubkey_hash != node_pk_hash {
                     return Err(Error::InvalidInput {
                         reason: format!(
                             "Input {} node_pubkey_hash mismatch; expected our node, got {}",
                             i,
-                            hex::encode(node_hash)
+                            hex::encode(datum.node_pubkey_hash)
                         ),
                     });
                 }
-
-                // Field 2: intent_hash
-                let intent_hash = fields
-                    .get(2)
-                    .as_bytes()
-                    .ok_or_else(|| Error::InvalidInput {
-                        reason: format!("Datum for input {} missing intent_hash bytes", i),
-                    })?;
 
                 // Calculate total value of this UTxO
                 for asset in &utxo_info.amount {
@@ -902,13 +852,13 @@ async fn validate_script_inputs_with_deposits(
 
                         // Ensure intent_hash matches what we recorded (if present)
                         if deposit_record.intent_hash != [0u8; 32]
-                            && intent_hash.as_slice() != deposit_record.intent_hash
+                            && datum.intent_hash != deposit_record.intent_hash
                         {
                             return Err(Error::InvalidInput {
                                 reason: format!(
                                     "Intent hash mismatch for input {}: datum {}, expected {}",
                                     i,
-                                    hex::encode(intent_hash),
+                                    hex::encode(datum.intent_hash),
                                     hex::encode(deposit_record.intent_hash)
                                 ),
                             });

@@ -11,6 +11,7 @@ use whisky_csl::csl;
 use crate::{
     cardano::setup_cardano_wallet,
     database::{CARDANO_WALLET, DEPOSITS},
+    deposit_datum::{DepositDatumContext, parse_deposit_datum},
     provider::{Provider, UtxoInfo},
     routes::Context,
 };
@@ -671,74 +672,7 @@ fn validate_deposit_datum(
             reason: "UTxO missing inline datum; required for deposit validation".to_string(),
         })?;
 
-    let datum_bytes = hex::decode(datum_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid datum hex: {}", e),
-    })?;
-
-    // Parse datum as constructor with three fields
-    let pd = csl::PlutusData::from_bytes(datum_bytes).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid datum CBOR: {}", e),
-    })?;
-
-    let constr = pd
-        .as_constr_plutus_data()
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Datum is not a constructor".to_string(),
-        })?;
-
-    if constr.alternative().to_str() != "0" {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Unexpected datum constructor {}, expected 0",
-                constr.alternative().to_str()
-            ),
-        });
-    }
-
-    let fields = constr.data();
-    if fields.len() != 3 {
-        return Err(Error::InvalidInput {
-            reason: format!("Datum has {} fields (expected 3)", fields.len()),
-        });
-    }
-
-    // Extract datum fields
-    let user_hash = fields
-        .get(0)
-        .as_bytes()
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Datum missing user_pubkey_hash bytes".to_string(),
-        })?;
-    let node_hash = fields
-        .get(1)
-        .as_bytes()
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Datum missing node_pubkey_hash bytes".to_string(),
-        })?;
-    let intent_hash = fields
-        .get(2)
-        .as_bytes()
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Datum missing intent_hash bytes".to_string(),
-        })?;
-
-    if user_hash.len() != 28 || node_hash.len() != 28 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Datum key hash lengths invalid (user {}, node {}, expected 28)",
-                user_hash.len(),
-                node_hash.len()
-            ),
-        });
-    }
-    if intent_hash.len() != 32 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Datum intent_hash length invalid ({} bytes, expected 32)",
-                intent_hash.len()
-            ),
-        });
-    }
+    let datum = parse_deposit_datum(datum_hex, DepositDatumContext::DepositUtxo)?;
 
     // Compute expected hashes
     let message_json: serde_json::Value =
@@ -763,35 +697,39 @@ fn validate_deposit_datum(
         });
     }
 
-    let expected_user_hash = csl::PublicKey::from_bytes(&user_pubkey_bytes)
+    let expected_user_hash: [u8; 28] = csl::PublicKey::from_bytes(&user_pubkey_bytes)
         .map_err(|e| Error::InvalidKey {
             reason: format!("Invalid user public key: {}", e),
         })?
         .hash()
-        .to_bytes();
+        .to_bytes()
+        .try_into()
+        .expect("Cardano key hashes are always 28 bytes");
 
-    let expected_node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+    let expected_node_hash: [u8; 28] = csl::PublicKey::from_bytes(&wallet.payment_vk)
         .map_err(|e| Error::InvalidKey {
             reason: format!("Invalid node payment_vk: {}", e),
         })?
         .hash()
-        .to_bytes();
+        .to_bytes()
+        .try_into()
+        .expect("Cardano key hashes are always 28 bytes");
 
     let expected_intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
 
-    if user_hash != expected_user_hash.as_slice() {
+    if datum.user_pubkey_hash != expected_user_hash {
         return Err(Error::InvalidInput {
             reason: "Datum user_pubkey_hash does not match provided user_pubkey".to_string(),
         });
     }
 
-    if node_hash != expected_node_hash.as_slice() {
+    if datum.node_pubkey_hash != expected_node_hash {
         return Err(Error::InvalidInput {
             reason: "Datum node_pubkey_hash does not match this node".to_string(),
         });
     }
 
-    if intent_hash != expected_intent_hash.as_slice() {
+    if datum.intent_hash != expected_intent_hash {
         return Err(Error::InvalidInput {
             reason: "Datum intent_hash does not match canonical payload".to_string(),
         });
