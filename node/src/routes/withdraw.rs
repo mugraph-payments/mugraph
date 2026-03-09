@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use blake2::{Blake2b, Digest, digest::consts::U32};
+use blake2::Digest;
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
@@ -25,6 +25,34 @@ use crate::{
     tx_signer::{attach_witness_to_transaction, compute_tx_hash},
 };
 
+struct ParsedWithdrawalTx {
+    tx_cbor: Vec<u8>,
+    tx: csl::Transaction,
+    tx_hash: [u8; 32],
+    tx_hash_hex: String,
+}
+
+impl ParsedWithdrawalTx {
+    fn parse(tx_cbor_hex: &str) -> Result<Self, Error> {
+        let tx_cbor = hex::decode(tx_cbor_hex).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid tx_cbor hex: {}", e),
+        })?;
+        let tx = csl::Transaction::from_bytes(tx_cbor.clone()).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid transaction CBOR: {}", e),
+        })?;
+        let tx_hash = compute_tx_hash(&tx_cbor).map_err(|e| Error::InvalidInput {
+            reason: format!("Failed to compute tx hash: {}", e),
+        })?;
+
+        Ok(Self {
+            tx_cbor,
+            tx,
+            tx_hash_hex: hex::encode(tx_hash),
+            tx_hash,
+        })
+    }
+}
+
 /// Handle withdrawal request
 ///
 /// 1. Parse and validate the withdrawal request
@@ -44,27 +72,25 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
 
     // 1. Preflight validation
     let provider = create_provider(ctx)?;
-    let tx_bytes = hex::decode(&request.tx_cbor).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid tx_cbor hex: {}", e),
-    })?;
+    let parsed_tx = ParsedWithdrawalTx::parse(&request.tx_cbor)?;
 
     // 2. Check idempotency via WITHDRAWALS table
     check_idempotency(request, ctx)?;
 
     // 3. Validate transaction size and fee
-    if tx_bytes.len() > ctx.config.max_tx_size() {
+    if parsed_tx.tx_cbor.len() > ctx.config.max_tx_size() {
         return Err(Error::InvalidInput {
             reason: format!(
                 "Transaction size {} bytes exceeds maximum {} bytes",
-                tx_bytes.len(),
+                parsed_tx.tx_cbor.len(),
                 ctx.config.max_tx_size()
             ),
         });
     }
 
     // Validate fee with tolerance
-    let _fee = validate_fee(
-        &tx_bytes,
+    let _fee = validate_parsed_fee(
+        &parsed_tx,
         ctx.config.max_withdrawal_fee(),
         ctx.config.fee_tolerance_pct(),
     )?;
@@ -73,9 +99,7 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     let wallet = load_wallet(ctx)?;
 
     // 5. Verify provided hash matches recomputed hash
-    let computed_hash = hex::encode(compute_tx_hash(&tx_bytes).map_err(|e| Error::InvalidInput {
-        reason: format!("Failed to compute tx hash: {}", e),
-    })?);
+    let computed_hash = parsed_tx.tx_hash_hex.clone();
     if computed_hash != request.tx_hash {
         return Err(Error::InvalidInput {
             reason: format!(
@@ -87,24 +111,30 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
 
     // 6. Ensure all inputs reference script UTxOs and validate deposit state
     let (input_totals, required_user_hashes, consumed_deposits) =
-        validate_script_inputs_with_deposits(&tx_bytes, &wallet, ctx, &provider).await?;
+        validate_script_inputs_with_parsed_tx(&parsed_tx, &wallet, ctx, &provider).await?;
 
     // 6b. Enforce intent and network binding via auxiliary metadata
-    validate_withdraw_intent_metadata(&tx_bytes, &wallet.network)?;
+    validate_withdraw_intent_metadata_with_parsed_tx(&parsed_tx, &wallet.network)?;
 
     // 7. Validate user witnesses (basic count check)
-    validate_user_witnesses(&tx_bytes, &request.notes, &required_user_hashes, &wallet).await?;
+    validate_user_witnesses_with_parsed_tx(
+        &parsed_tx,
+        &request.notes,
+        &required_user_hashes,
+        &wallet,
+    )
+    .await?;
 
     // 8. Validate transaction value balance
-    validate_transaction_balance_with_tolerance(
-        &tx_bytes,
+    validate_transaction_balance_with_parsed_tx(
+        &parsed_tx,
         &input_totals,
         ctx.config.max_withdrawal_fee(),
         ctx.config.fee_tolerance_pct(),
     )?;
 
     // 9. Enforce network consistency and reject change back to the script
-    validate_network_and_change_outputs(&tx_bytes, &wallet)?;
+    validate_network_and_change_outputs_with_parsed_tx(&parsed_tx, &wallet)?;
 
     // 9. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
@@ -113,19 +143,18 @@ pub async fn handle_withdraw(request: &WithdrawRequest, ctx: &Context) -> Result
     // The validator checks that the transaction is properly signed (off-chain verification)
     // No redeemer is needed - all validation happens through witnesses
 
-    let tx_body_hash = crate::tx_signer::compute_tx_hash(&tx_bytes).map_err(|e| Error::Internal {
-        reason: format!("Failed to compute tx hash: {}", e),
+    let signed_cbor = attach_witness_to_transaction(
+        &parsed_tx.tx_cbor,
+        &parsed_tx.tx_hash,
+        &wallet,
+    )
+    .map_err(|e| Error::Internal {
+        reason: format!("Failed to sign transaction: {}", e),
     })?;
-    let signed_cbor =
-        attach_witness_to_transaction(&tx_bytes, &tx_body_hash, &wallet).map_err(|e| {
-            Error::Internal {
-                reason: format!("Failed to sign transaction: {}", e),
-            }
-        })?;
     let signed_cbor_hex = hex::encode(&signed_cbor);
 
     // Calculate change notes before any state changes
-    let change_notes = calculate_change_notes(request, &tx_bytes, &wallet, &ctx.keypair)?;
+    let change_notes = calculate_change_notes(request, &parsed_tx.tx_cbor, &wallet, &ctx.keypair)?;
 
     // 9. Update state atomically BEFORE submitting to provider
     // This ensures we only submit if we can properly track the withdrawal
@@ -441,8 +470,21 @@ async fn submit_transaction(
 ///
 /// # Returns
 /// The fee amount in lovelace if valid
-fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64, tolerance_pct: u8) -> Result<u64, Error> {
-    let fee = extract_transaction_fee(tx_cbor)?;
+fn validate_parsed_fee(
+    parsed_tx: &ParsedWithdrawalTx,
+    max_fee_lovelace: u64,
+    tolerance_pct: u8,
+) -> Result<u64, Error> {
+    let fee = extract_transaction_fee_from_tx(&parsed_tx.tx)?;
+
+    validate_fee_amount(fee, max_fee_lovelace, tolerance_pct)
+}
+
+fn validate_fee_amount(
+    fee: u64,
+    max_fee_lovelace: u64,
+    tolerance_pct: u8,
+) -> Result<u64, Error> {
 
     // Calculate acceptable fee range with tolerance.
     // If tolerance is 5%, fee can be up to 105% of max_fee.
@@ -469,10 +511,7 @@ fn validate_fee(tx_cbor: &[u8], max_fee_lovelace: u64, tolerance_pct: u8) -> Res
 }
 
 /// Extract fee from transaction body CBOR
-fn extract_transaction_fee(tx_cbor: &[u8]) -> Result<u64, Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
+fn extract_transaction_fee_from_tx(tx: &csl::Transaction) -> Result<u64, Error> {
     let fee_str = tx.body().fee().to_str();
     fee_str.parse::<u64>().map_err(|e| Error::InvalidInput {
         reason: format!("Failed to parse fee: {}", e),
@@ -486,11 +525,7 @@ fn extract_transaction_fee(tx_cbor: &[u8]) -> Result<u64, Error> {
 /// - outputs: []TransactionOutput
 /// - fee: Coin
 /// - ... other fields
-fn extract_transaction_inputs(tx_cbor: &[u8]) -> Result<Vec<(Vec<u8>, u32)>, Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
-
+fn extract_transaction_inputs_from_tx(tx: &csl::Transaction) -> Result<Vec<(Vec<u8>, u32)>, Error> {
     let inputs: Vec<(Vec<u8>, u32)> = (&tx.body().inputs())
         .into_iter()
         .map(|input| {
@@ -528,27 +563,44 @@ fn checked_output_index(index: u32, input_pos: usize) -> Result<u16, Error> {
 /// * `tx_cbor` - The transaction CBOR bytes
 /// * `notes` - The notes being withdrawn (for verification)
 /// * `wallet` - The Cardano wallet for address information
+async fn validate_user_witnesses_with_parsed_tx(
+    parsed_tx: &ParsedWithdrawalTx,
+    notes: &[mugraph_core::types::BlindSignature],
+    expected_user_hashes: &HashSet<String>,
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<(), Error> {
+    validate_user_witnesses_from_tx(
+        &parsed_tx.tx,
+        &parsed_tx.tx_hash,
+        notes,
+        expected_user_hashes,
+        wallet,
+    )
+    .await
+}
+
 async fn validate_user_witnesses(
     tx_cbor: &[u8],
     notes: &[mugraph_core::types::BlindSignature],
     expected_user_hashes: &HashSet<String>,
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<(), Error> {
+    let parsed_tx = ParsedWithdrawalTx::parse(&hex::encode(tx_cbor))?;
+    validate_user_witnesses_with_parsed_tx(&parsed_tx, notes, expected_user_hashes, wallet).await
+}
+
+async fn validate_user_witnesses_from_tx(
+    tx: &csl::Transaction,
+    tx_hash: &[u8; 32],
+    notes: &[mugraph_core::types::BlindSignature],
+    expected_user_hashes: &HashSet<String>,
     _wallet: &mugraph_core::types::CardanoWallet,
 ) -> Result<(), Error> {
-    // Parse full transaction using whisky-csl
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid transaction CBOR: {}", e),
-    })?;
-
-    // Compute transaction body hash (BLAKE2b-256 over body bytes)
-    let body_bytes = tx.body().to_bytes();
-    let mut hasher = Blake2b::<U32>::new();
-    hasher.update(&body_bytes);
-    let body_hash = hasher.finalize();
-    let body_hash_bytes: Vec<u8> = body_hash.to_vec();
+    let body_hash_bytes = tx_hash.to_vec();
 
     let (witness_key_hashes, verified_witnesses) =
-        verify_witness_set(&tx, &body_hash_bytes)?;
-    let required_signer_hashes = collect_required_signer_hashes(&tx)?;
+        verify_witness_set(tx, &body_hash_bytes)?;
+    let required_signer_hashes = collect_required_signer_hashes(tx)?;
 
     ensure_required_signers_have_witnesses(&required_signer_hashes, &witness_key_hashes)?;
     ensure_expected_owner_hashes_are_bound(
@@ -720,8 +772,22 @@ fn calculate_change_notes(
 ///
 /// # Returns
 /// A vector of (tx_hash, amount) tuples for each valid input
-async fn validate_script_inputs_with_deposits(
-    tx_cbor: &[u8],
+async fn validate_script_inputs_with_parsed_tx(
+    parsed_tx: &ParsedWithdrawalTx,
+    wallet: &mugraph_core::types::CardanoWallet,
+    ctx: &Context,
+    provider: &Provider,
+) -> Result<(
+    HashMap<String, u128>,
+    HashSet<String>,
+    Vec<mugraph_core::types::UtxoRef>,
+), Error> {
+    let inputs = extract_transaction_inputs_from_tx(&parsed_tx.tx)?;
+    validate_script_inputs_with_extracted_inputs(inputs, wallet, ctx, provider).await
+}
+
+async fn validate_script_inputs_with_extracted_inputs(
+    inputs: Vec<(Vec<u8>, u32)>,
     wallet: &mugraph_core::types::CardanoWallet,
     ctx: &Context,
     provider: &Provider,
@@ -733,8 +799,6 @@ async fn validate_script_inputs_with_deposits(
     use mugraph_core::types::UtxoRef;
 
     use crate::database::DEPOSITS;
-
-    let inputs = extract_transaction_inputs(tx_cbor)?;
 
     if inputs.is_empty() {
         return Err(Error::InvalidInput {
@@ -941,6 +1005,16 @@ fn max_acceptable_fee(max_fee_lovelace: u64, tolerance_pct: u8) -> u64 {
     max_fee_lovelace.saturating_mul(tolerance_factor) / 100
 }
 
+fn validate_transaction_balance_with_parsed_tx(
+    parsed_tx: &ParsedWithdrawalTx,
+    input_totals: &HashMap<String, u128>,
+    max_fee: u64,
+    fee_tolerance_pct: u8,
+) -> Result<(), Error> {
+    let effective_max_fee = max_acceptable_fee(max_fee, fee_tolerance_pct);
+    validate_transaction_balance_from_tx(&parsed_tx.tx, input_totals, effective_max_fee)
+}
+
 fn validate_transaction_balance_with_tolerance(
     tx_cbor: &[u8],
     input_totals: &HashMap<String, u128>,
@@ -972,6 +1046,14 @@ fn validate_transaction_balance(
         reason: format!("Invalid transaction CBOR: {}", e),
     })?;
 
+    validate_transaction_balance_from_tx(&tx, input_totals, max_fee)
+}
+
+fn validate_transaction_balance_from_tx(
+    tx: &csl::Transaction,
+    input_totals: &HashMap<String, u128>,
+    max_fee: u64,
+) -> Result<(), Error> {
     let fee_u128: u128 = tx
         .body()
         .fee()
@@ -1093,11 +1175,25 @@ fn validate_transaction_balance(
 ///
 /// Expect a metadata entry with label 1914 containing a map:
 /// { "network": "<network>", "tx_body_hash": "<hex blake2b-256(body)>" }
+fn validate_withdraw_intent_metadata_with_parsed_tx(
+    parsed_tx: &ParsedWithdrawalTx,
+    network: &str,
+) -> Result<(), Error> {
+    validate_withdraw_intent_metadata_from_tx(&parsed_tx.tx, network)
+}
+
 fn validate_withdraw_intent_metadata(tx_cbor: &[u8], network: &str) -> Result<(), Error> {
     let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid transaction CBOR: {}", e),
     })?;
 
+    validate_withdraw_intent_metadata_from_tx(&tx, network)
+}
+
+fn validate_withdraw_intent_metadata_from_tx(
+    tx: &csl::Transaction,
+    network: &str,
+) -> Result<(), Error> {
     let aux = tx.auxiliary_data().ok_or_else(|| Error::InvalidInput {
         reason: "Transaction missing auxiliary data for intent binding".to_string(),
     })?;
@@ -1169,6 +1265,13 @@ fn validate_withdraw_intent_metadata(tx_cbor: &[u8], network: &str) -> Result<()
 }
 
 /// Validate that outputs stay on the same network and do not return change to the script.
+fn validate_network_and_change_outputs_with_parsed_tx(
+    parsed_tx: &ParsedWithdrawalTx,
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<(), Error> {
+    validate_network_and_change_outputs_from_tx(&parsed_tx.tx, wallet)
+}
+
 fn validate_network_and_change_outputs(
     tx_cbor: &[u8],
     wallet: &mugraph_core::types::CardanoWallet,
@@ -1177,6 +1280,13 @@ fn validate_network_and_change_outputs(
         reason: format!("Invalid transaction CBOR: {}", e),
     })?;
 
+    validate_network_and_change_outputs_from_tx(&tx, wallet)
+}
+
+fn validate_network_and_change_outputs_from_tx(
+    tx: &csl::Transaction,
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<(), Error> {
     let expected_network_id = match wallet.network.as_str() {
         "mainnet" => 1u8,
         _ => 0u8, // preprod/preview/testnet
@@ -1344,6 +1454,26 @@ mod tests {
         fee: u64,
         network: &str,
     ) -> WithdrawRequest {
+        build_withdraw_request_with_balance_check(
+            user_sk,
+            input_tx_hash,
+            input_value,
+            output_value,
+            fee,
+            network,
+            true,
+        )
+    }
+
+    fn build_withdraw_request_with_balance_check(
+        user_sk: &SigningKey,
+        input_tx_hash: [u8; 32],
+        input_value: u64,
+        output_value: u64,
+        fee: u64,
+        network: &str,
+        assert_balanced: bool,
+    ) -> WithdrawRequest {
         let tx_hash = csl::TransactionHash::from_bytes(input_tx_hash.to_vec()).unwrap();
         let input = csl::TransactionInput::new(&tx_hash, 0);
         let mut inputs = csl::TransactionInputs::new();
@@ -1403,7 +1533,9 @@ mod tests {
         let tx_cbor = tx.to_bytes();
         let tx_hash = hex::encode(compute_tx_hash(&tx_cbor).unwrap());
 
-        assert_eq!(input_value, output_value + fee, "test transaction must balance");
+        if assert_balanced {
+            assert_eq!(input_value, output_value + fee, "test transaction must balance");
+        }
 
         WithdrawRequest {
             notes: vec![BlindSignature {
@@ -1897,6 +2029,118 @@ mod tests {
             .unwrap()
             .value()
             .spent);
+    }
+
+    fn assert_preflight_rejection_leaves_state_untouched(ctx: &Context, tx_hash: &str) {
+        let read_tx = ctx.database.read().unwrap();
+        let notes = read_tx.open_table(NOTES).unwrap();
+        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
+        assert!(notes.get(note_signature).unwrap().is_none());
+
+        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
+        let key = withdrawal_key_from_hex(tx_hash);
+        assert!(withdrawals.get(&key).unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_hash_mismatch_does_not_mutate_notes_or_withdrawals() {
+        let user_sk = SigningKey::from_bytes(&[13u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let request = build_withdraw_request(
+            &user_sk,
+            [0xadu8; 32],
+            1_170_000,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let ctx = test_context_with_provider_url(Some("http://127.0.0.1:1".to_string()));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+
+        let mut mismatched = request.clone();
+        mismatched.tx_hash = "ff".repeat(32);
+
+        let err = handle_withdraw(&mismatched, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Transaction hash mismatch"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &mismatched.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_metadata_mismatch_does_not_mutate_notes_or_withdrawals() {
+        let user_sk = SigningKey::from_bytes(&[14u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xbdu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "mainnet",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("network mismatch"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_balance_failure_does_not_mutate_notes_or_withdrawals() {
+        let user_sk = SigningKey::from_bytes(&[15u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xbeu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request_with_balance_check(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_100_000,
+            170_000,
+            "preprod",
+            false,
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Lovelace imbalance"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
     }
 
     #[tokio::test]
