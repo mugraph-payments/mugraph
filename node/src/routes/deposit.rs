@@ -17,6 +17,10 @@ use crate::{
     routes::Context,
 };
 
+struct ParsedDepositClaims {
+    user_pubkey: [u8; 32],
+}
+
 /// Handle deposit request
 ///
 /// 1. Parse and validate the request payload
@@ -33,29 +37,31 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
         request.utxo.index
     );
 
+    let claims = parse_deposit_claims(request)?;
+
     // 1. Load or create Cardano wallet
     let wallet = load_or_create_wallet(ctx).await?;
 
     // 2. Verify CIP-8 signature over canonical payload (strict)
-    verify_deposit_signature(request, &wallet, &ctx.keypair.public_key)?;
+    verify_deposit_signature(request, &claims, &wallet, &ctx.keypair.public_key)?;
 
     // 3. Fetch UTxO from Cardano provider and validate
     let provider = create_provider(ctx)?;
-    let utxo_info = fetch_and_validate_utxo(request, &wallet, &provider, ctx).await?;
-
-    // 3b. Validate datum matches expected user/node hashes and intent
-    validate_deposit_datum(request, &wallet, &utxo_info, &ctx.keypair.public_key)?;
-
-    // 4. Validate outputs cover all assets in UTxO
-    validate_deposit_amounts(request, &utxo_info, ctx.config.min_deposit_value())?;
+    validate_deposit_source(
+        request,
+        &claims,
+        &wallet,
+        &provider,
+        ctx,
+        &ctx.keypair.public_key,
+    )
+    .await?;
 
     // 5. Sign blinded outputs with delegate key
     let signatures = sign_outputs(request, &ctx.keypair)?;
 
     // 6. Record deposit in database
-    record_deposit(request, ctx, &provider, &wallet).await?;
-
-    let deposit_ref = format!("{}:{}", request.utxo.tx_hash, request.utxo.index);
+    let deposit_ref = persist_deposit(request, ctx, &provider, &wallet).await?;
 
     tracing::info!(
         "Deposit processed successfully: {}",
@@ -132,6 +138,52 @@ fn create_provider(ctx: &Context) -> Result<Provider, Error> {
     })
 }
 
+fn parse_deposit_claims(request: &DepositRequest) -> Result<ParsedDepositClaims, Error> {
+    let message_json: serde_json::Value =
+        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid message JSON: {}", e),
+        })?;
+    let user_pubkey_hex = message_json
+        .get("user_pubkey")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| Error::InvalidInput {
+            reason: "Missing user_pubkey in message".to_string(),
+        })?;
+    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
+        reason: format!("Invalid user_pubkey hex: {}", e),
+    })?;
+    let user_pubkey_len = user_pubkey_bytes.len();
+    let user_pubkey: [u8; 32] = user_pubkey_bytes.try_into().map_err(|_| Error::InvalidInput {
+        reason: format!("user_pubkey must be 32 bytes, got {}", user_pubkey_len),
+    })?;
+
+    Ok(ParsedDepositClaims { user_pubkey })
+}
+
+async fn validate_deposit_source(
+    request: &DepositRequest,
+    claims: &ParsedDepositClaims,
+    wallet: &mugraph_core::types::CardanoWallet,
+    provider: &Provider,
+    ctx: &Context,
+    delegate_pk: &PublicKey,
+) -> Result<(), Error> {
+    let utxo_info = fetch_and_validate_utxo(request, wallet, provider, ctx).await?;
+    validate_parsed_deposit_datum(request, claims, wallet, &utxo_info, delegate_pk)?;
+    validate_deposit_amounts(request, &utxo_info, ctx.config.min_deposit_value())?;
+    Ok(())
+}
+
+async fn persist_deposit(
+    request: &DepositRequest,
+    ctx: &Context,
+    provider: &Provider,
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<String, Error> {
+    record_deposit(request, ctx, provider, wallet).await?;
+    Ok(format!("{}:{}", request.utxo.tx_hash, request.utxo.index))
+}
+
 /// Verify CIP-8 signature over canonical deposit payload
 ///
 /// # CIP-8/COSE Support
@@ -146,6 +198,7 @@ fn create_provider(ctx: &Context) -> Result<Provider, Error> {
 /// - Includes network tag in payload to prevent cross-network replay
 fn verify_deposit_signature(
     request: &DepositRequest,
+    claims: &ParsedDepositClaims,
     wallet: &mugraph_core::types::CardanoWallet,
     delegate_pk: &mugraph_core::types::PublicKey,
 ) -> Result<(), Error> {
@@ -153,38 +206,18 @@ fn verify_deposit_signature(
     // Payload = utxo + outputs + delegate pk + script address + nonce + network tag
     let payload = build_canonical_payload(request, delegate_pk, &wallet.script_address);
 
-    verify_cip8_cose_signature(request, &payload)
+    verify_cip8_cose_signature_with_claims(request, claims, &payload)
 }
 
-fn verify_cip8_cose_signature(request: &DepositRequest, payload: &[u8]) -> Result<(), Error> {
+fn verify_cip8_cose_signature_with_claims(
+    request: &DepositRequest,
+    claims: &ParsedDepositClaims,
+    payload: &[u8],
+) -> Result<(), Error> {
     use coset::{CoseSign1, TaggedCborSerializable, iana};
     use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
-    // Parse user_pubkey from message
-    let message_json: serde_json::Value =
-        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid message JSON: {}", e),
-        })?;
-
-    let user_pubkey_hex = message_json
-        .get("user_pubkey")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Missing user_pubkey in message".to_string(),
-        })?;
-
-    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid user_pubkey hex: {}", e),
-    })?;
-
-    if user_pubkey_bytes.len() != 32 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "user_pubkey must be 32 bytes, got {}",
-                user_pubkey_bytes.len()
-            ),
-        });
-    }
+    let user_pubkey_bytes = claims.user_pubkey;
 
     let cose: CoseSign1 =
         CoseSign1::from_tagged_slice(&request.signature).map_err(|e| Error::InvalidSignature {
@@ -256,6 +289,15 @@ fn verify_cip8_cose_signature(request: &DepositRequest, payload: &[u8]) -> Resul
         })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+fn verify_cip8_cose_signature(
+    request: &DepositRequest,
+    payload: &[u8],
+) -> Result<(), Error> {
+    let claims = parse_deposit_claims(request)?;
+    verify_cip8_cose_signature_with_claims(request, &claims, payload)
 }
 
 #[cfg(test)]
@@ -410,6 +452,29 @@ mod tests {
         .into_bytes();
 
         assert_eq!(payload, expected);
+    }
+
+    #[test]
+    fn parsed_deposit_claims_preserve_canonical_payload_bytes() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+        let delegate_pk = PublicKey(pk_bytes.try_into().unwrap());
+
+        let before = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
+        let _claims = parse_deposit_claims(&request).expect("claims parse");
+        let after = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
+
+        assert_eq!(before, after);
     }
 
     #[test]
@@ -701,8 +766,20 @@ fn compute_intent_hash(
 }
 
 /// Validate that the on-chain datum matches the expected user hash, node hash, and intent hash.
+#[cfg(test)]
 fn validate_deposit_datum(
     request: &DepositRequest,
+    wallet: &mugraph_core::types::CardanoWallet,
+    utxo_info: &UtxoInfo,
+    delegate_pk: &PublicKey,
+) -> Result<(), Error> {
+    let claims = parse_deposit_claims(request)?;
+    validate_parsed_deposit_datum(request, &claims, wallet, utxo_info, delegate_pk)
+}
+
+fn validate_parsed_deposit_datum(
+    request: &DepositRequest,
+    claims: &ParsedDepositClaims,
     wallet: &mugraph_core::types::CardanoWallet,
     utxo_info: &UtxoInfo,
     delegate_pk: &PublicKey,
@@ -718,29 +795,7 @@ fn validate_deposit_datum(
     let datum = parse_deposit_datum(datum_hex, DepositDatumContext::DepositUtxo)?;
 
     // Compute expected hashes
-    let message_json: serde_json::Value =
-        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid message JSON: {}", e),
-        })?;
-    let user_pubkey_hex = message_json
-        .get("user_pubkey")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Missing user_pubkey in message".to_string(),
-        })?;
-    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid user_pubkey hex: {}", e),
-    })?;
-    if user_pubkey_bytes.len() != 32 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "user_pubkey must be 32 bytes, got {}",
-                user_pubkey_bytes.len()
-            ),
-        });
-    }
-
-    let expected_user_hash: [u8; 28] = csl::PublicKey::from_bytes(&user_pubkey_bytes)
+    let expected_user_hash: [u8; 28] = csl::PublicKey::from_bytes(&claims.user_pubkey)
         .map_err(|e| Error::InvalidKey {
             reason: format!("Invalid user public key: {}", e),
         })?
@@ -1660,6 +1715,29 @@ mod handle_deposit_flow_tests {
         let deposits = r.open_table(DEPOSITS).unwrap();
         let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
         assert!(deposits.get(&utxo_ref).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn invalid_deposit_message_does_not_record_a_deposit() {
+        let user_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (mut request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        request.message = "{}".to_string();
+
+        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        let err = handle_deposit(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Missing user_pubkey"));
+
+        let r = ctx.database.read().unwrap();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        assert!(deposits.get(&utxo_ref).unwrap().is_none());
     }
 
     #[tokio::test]
