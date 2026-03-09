@@ -1565,6 +1565,78 @@ mod tests {
         }
     }
 
+    fn build_withdraw_request_without_inputs(
+        user_sk: &SigningKey,
+        output_value: u64,
+        fee: u64,
+        network: &str,
+    ) -> WithdrawRequest {
+        let inputs = csl::TransactionInputs::new();
+        let addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+        let output_coin = csl::Coin::from_str(&output_value.to_string()).unwrap();
+        let value = csl::Value::new(&output_coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee_coin = csl::Coin::from_str(&fee.to_string()).unwrap();
+        let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee_coin);
+
+        let pk = user_sk.verifying_key();
+        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap().hash();
+        let mut required = csl::Ed25519KeyHashes::new();
+        required.add(&pk_hash);
+        body.set_required_signers(&required);
+
+        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
+        let body_hash = Blake2b256::digest(body.to_bytes());
+        let tx_body_hash_hex = hex::encode(body_hash);
+
+        let mut metadata_map = csl::MetadataMap::new();
+        metadata_map
+            .insert_str(
+                "network",
+                &csl::TransactionMetadatum::new_text(network.to_string()).unwrap(),
+            )
+            .unwrap();
+        metadata_map
+            .insert_str(
+                "tx_body_hash",
+                &csl::TransactionMetadatum::new_text(tx_body_hash_hex).unwrap(),
+            )
+            .unwrap();
+        let metadatum = csl::TransactionMetadatum::new_map(&metadata_map);
+        let mut general_md = csl::GeneralTransactionMetadata::new();
+        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
+        let mut aux = csl::AuxiliaryData::new();
+        aux.set_metadata(&general_md);
+
+        let tx_hash_csl = csl::TransactionHash::from_bytes(body_hash.to_vec()).unwrap();
+        let private = csl::PrivateKey::from_normal_bytes(user_sk.as_bytes()).unwrap();
+        let witness = csl::make_vkey_witness(&tx_hash_csl, &private);
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        let mut vkeys = csl::Vkeywitnesses::new();
+        vkeys.add(&witness);
+        witness_set.set_vkeys(&vkeys);
+
+        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
+        let tx_cbor = tx.to_bytes();
+
+        WithdrawRequest {
+            notes: vec![BlindSignature {
+                signature: mugraph_core::types::Blinded(
+                    mugraph_core::types::Signature::from([9u8; 32]),
+                ),
+                proof: Default::default(),
+            }],
+            tx_hash: hex::encode(compute_tx_hash(&tx_cbor).unwrap()),
+            tx_cbor: hex::encode(tx_cbor),
+        }
+    }
+
     fn withdrawal_key_from_hex(tx_hash: &str) -> mugraph_core::types::WithdrawalKey {
         let bytes = hex::decode(tx_hash).unwrap();
         let array: [u8; 32] = bytes.try_into().unwrap();
@@ -1626,6 +1698,64 @@ mod tests {
             .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
             .route("/tx/submit", post(submit))
             .with_state((script_address, datum_cbor_hex, input_value, submit_status, submit_hash));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
+    async fn spawn_withdraw_provider_mock_without_inline_datum(
+        script_address: String,
+        input_value: u64,
+    ) -> String {
+        async fn tx_info() -> impl IntoResponse {
+            (StatusCode::OK, axum::Json(json!({"block_height": 90})))
+        }
+
+        async fn tx_utxos(
+            Path(tx_hash): Path<String>,
+            axum::extract::State(state): axum::extract::State<(String, u64)>,
+        ) -> impl IntoResponse {
+            let (script_address, input_value) = state;
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "hash": tx_hash,
+                    "outputs": [{
+                        "output_index": 0,
+                        "address": script_address,
+                        "amount": [{"unit": "lovelace", "quantity": input_value.to_string()}],
+                        "data_hash": null,
+                        "reference_script_hash": null
+                    }]
+                })),
+            )
+        }
+
+        let app = Router::new()
+            .route("/txs/{tx_hash}", get(tx_info))
+            .route("/txs/{tx_hash}/utxos", get(tx_utxos))
+            .with_state((script_address, input_value));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        format!("http://{addr}")
+    }
+
+    async fn spawn_withdraw_provider_mock_with_utxo_failure() -> String {
+        async fn tx_utxos() -> impl IntoResponse {
+            (StatusCode::INTERNAL_SERVER_ERROR, "boom")
+        }
+
+        let app = Router::new().route("/txs/{tx_hash}/utxos", get(tx_utxos));
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -2344,6 +2474,152 @@ mod tests {
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("deposit not found"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_transactions_without_inputs_before_state_mutation() {
+        let user_sk = SigningKey::from_bytes(&[21u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let request = build_withdraw_request_without_inputs(&user_sk, 1_000_000, 170_000, "preprod");
+
+        let ctx = test_context_with_provider_url(Some("http://127.0.0.1:1".to_string()));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("No inputs found in transaction"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_inputs_not_from_script_address() {
+        let user_sk = SigningKey::from_bytes(&[22u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc4u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1different".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("is not from script address"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_inputs_missing_inline_datum() {
+        let user_sk = SigningKey::from_bytes(&[23u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc5u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let provider_url =
+            spawn_withdraw_provider_mock_without_inline_datum("addr_test1script".to_string(), input_value)
+                .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("missing inline datum"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_inputs_with_wrong_node_hash() {
+        let user_sk = SigningKey::from_bytes(&[24u8; 32]);
+        let wrong_node_sk = SigningKey::from_bytes(&[25u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc6u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let wrong_node_hash = csl::PublicKey::from_bytes(wrong_node_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_hex = build_datum_cbor_hex(user_hash, wrong_node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("node_pubkey_hash mismatch"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_surfaces_provider_input_verification_errors_without_mutating_state() {
+        let user_sk = SigningKey::from_bytes(&[26u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xc7u8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let provider_url = spawn_withdraw_provider_mock_with_utxo_failure().await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(&ctx, mugraph_core::types::UtxoRef::new(input_tx_hash, 0), [0u8; 32]);
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Failed to verify input 0"));
         assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
     }
 
