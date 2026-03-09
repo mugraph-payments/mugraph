@@ -260,6 +260,243 @@ fn record_sender_failure(
     state.last_failure = Some(message);
 }
 
+fn emit_snapshot(
+    state: &AppState,
+    oracle: &mut ConservationOracle,
+    max_inflight: usize,
+    throughput: &mut ThroughputTracker,
+    snapshot_tx: &tokio::sync::watch::Sender<AppSnapshot>,
+) {
+    let _ = snapshot_tx.send(state.snapshot(
+        oracle.checks_passed(),
+        max_inflight,
+        throughput.tx_per_sec(),
+        throughput.success_rate(),
+    ));
+}
+
+fn choose_transfer_participants(
+    state: &AppState,
+    rng: &mut StdRng,
+) -> Option<(usize, usize, usize, usize)> {
+    let wallet_count = state.wallets.len();
+    if wallet_count < 2 {
+        return None;
+    }
+
+    let sender_idx = rng.random_range(0..wallet_count);
+    let receiver_idx = {
+        let mut idx = rng.random_range(0..wallet_count - 1);
+        if idx >= sender_idx {
+            idx += 1;
+        }
+        idx
+    };
+
+    Some((
+        sender_idx,
+        receiver_idx,
+        state.wallets[sender_idx].id,
+        state.wallets[receiver_idx].id,
+    ))
+}
+
+fn complete_same_node_transfer(
+    state: &mut AppState,
+    inflight_amounts: &HashMap<Asset, u128>,
+    oracle: &mut ConservationOracle,
+    throughput: &mut ThroughputTracker,
+    pending: &PendingTx,
+    notes: Vec<(usize, Note)>,
+) {
+    throughput.record_ok();
+    apply_successful_tx(state, pending, notes);
+    oracle.assert_conservation(
+        state,
+        inflight_amounts,
+        &format!("after successful tx {}", pending.id),
+    );
+}
+
+fn handle_same_node_completion(
+    state: &mut AppState,
+    inflight_amounts: &mut HashMap<Asset, u128>,
+    oracle: &mut ConservationOracle,
+    throughput: &mut ThroughputTracker,
+    pending: PendingTx,
+    result: std::result::Result<Vec<BlindSignature>, String>,
+) {
+    state.inflight = state.inflight.saturating_sub(1);
+
+    let entry = inflight_amounts.entry(pending.asset).or_default();
+    *entry = entry.saturating_sub(pending.input_amount as u128);
+
+    match result {
+        Ok(outputs) => match materialize_outputs(
+            &pending.refresh,
+            outputs,
+            &pending.owners,
+            pending.delegate,
+        ) {
+            Ok(notes) => {
+                complete_same_node_transfer(
+                    state,
+                    inflight_amounts,
+                    oracle,
+                    throughput,
+                    &pending,
+                    notes,
+                );
+            }
+            Err(e) => {
+                throughput.record_err();
+                record_sender_failure(
+                    state,
+                    pending.sender_id,
+                    pending.asset,
+                    pending.input_note,
+                    format!("tx {} materialization failed: {e:#}", pending.id),
+                );
+                oracle.assert_conservation(
+                    state,
+                    inflight_amounts,
+                    &format!("after materialization failure tx {}", pending.id),
+                );
+            }
+        },
+        Err(reason) => {
+            throughput.record_err();
+            record_sender_failure(
+                state,
+                pending.sender_id,
+                pending.asset,
+                pending.input_note,
+                format!("tx {} failed: {}", pending.id, reason),
+            );
+            oracle.assert_conservation(
+                state,
+                inflight_amounts,
+                &format!("after rpc failure tx {}", pending.id),
+            );
+        }
+    }
+}
+
+fn handle_cross_node_completion(
+    state: &mut AppState,
+    inflight_amounts: &mut HashMap<Asset, u128>,
+    oracle: &mut ConservationOracle,
+    throughput: &mut ThroughputTracker,
+    event: CrossNodeTxEvent,
+) {
+    let CrossNodeTxEvent {
+        id,
+        sender_id,
+        receiver_id,
+        asset,
+        input_amount,
+        input_note,
+        spend_amount,
+        result,
+    } = event;
+
+    state.inflight = state.inflight.saturating_sub(1);
+
+    let entry = inflight_amounts.entry(asset).or_default();
+    *entry = entry.saturating_sub(input_amount as u128);
+
+    match result {
+        Ok(xnode_result) => {
+            throughput.record_ok();
+
+            let recv_key = Asset {
+                policy_id: xnode_result.receiver_note.policy_id,
+                asset_name: xnode_result.receiver_note.asset_name,
+            };
+            state.wallets[receiver_id]
+                .notes
+                .entry(recv_key)
+                .or_default()
+                .push(xnode_result.receiver_note);
+
+            if let Some(change_note) = xnode_result.change_note {
+                let change_key = Asset {
+                    policy_id: change_note.policy_id,
+                    asset_name: change_note.asset_name,
+                };
+                state.wallets[sender_id]
+                    .notes
+                    .entry(change_key)
+                    .or_default()
+                    .push(change_note);
+            }
+
+            state.wallets[sender_id].sent += 1;
+            state.wallets[receiver_id].received += 1;
+            state.total_ok += 1;
+            state.cross_node_ok += 1;
+            state.log(format!(
+                "xnode tx {id} ok sender={sender_id} receiver={receiver_id} amount={spend_amount}"
+            ));
+
+            oracle.assert_conservation(
+                state,
+                inflight_amounts,
+                &format!("after successful cross-node tx {id}"),
+            );
+        }
+        Err(err) => {
+            throughput.record_err();
+
+            if err.recovered_notes.is_empty() {
+                record_sender_failure(
+                    state,
+                    sender_id,
+                    asset,
+                    input_note,
+                    format!("xnode tx {id} failed: {}", err.reason),
+                );
+            } else {
+                let recovered_total: u128 = err
+                    .recovered_notes
+                    .iter()
+                    .map(|(_, note)| note.amount as u128)
+                    .sum();
+                for (owner, note) in err.recovered_notes {
+                    let key = Asset {
+                        policy_id: note.policy_id,
+                        asset_name: note.asset_name,
+                    };
+                    state.wallets[owner]
+                        .notes
+                        .entry(key)
+                        .or_default()
+                        .push(note);
+                }
+
+                let lost = (input_amount as u128).saturating_sub(recovered_total);
+                if lost > 0 {
+                    oracle.record_loss(&asset, lost);
+                }
+
+                state.wallets[sender_id].failures += 1;
+                state.total_err += 1;
+                let msg = format!(
+                    "xnode tx {id} partial failure (recovered {recovered_total}, lost {lost}): {}",
+                    err.reason,
+                );
+                state.log(&msg);
+                state.last_failure = Some(msg);
+            }
+            oracle.assert_conservation(
+                state,
+                inflight_amounts,
+                &format!("after cross-node failure tx {id}"),
+            );
+        }
+    }
+}
+
 pub async fn simulation_owner_loop(
     nodes: Vec<SimNode>,
     mut state: AppState,
@@ -287,12 +524,7 @@ pub async fn simulation_owner_loop(
 
     let max_inflight = config.max_inflight;
 
-    let _ = snapshot_tx.send(state.snapshot(
-        oracle.checks_passed(),
-        max_inflight,
-        throughput.tx_per_sec(),
-        throughput.success_rate(),
-    ));
+    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
 
     let mut tx_id: u64 = 0;
 
@@ -306,22 +538,11 @@ pub async fn simulation_owner_loop(
                     continue;
                 }
 
-                let wallet_count = state.wallets.len();
-                if wallet_count < 2 {
+                let Some((sender_idx, receiver_idx, sender_id, receiver_id)) =
+                    choose_transfer_participants(&state, &mut rng)
+                else {
                     continue;
-                }
-
-                let sender_idx = rng.random_range(0..wallet_count);
-                let receiver_idx = {
-                    let mut idx = rng.random_range(0..wallet_count - 1);
-                    if idx >= sender_idx {
-                        idx += 1;
-                    }
-                    idx
                 };
-
-                let sender_id = state.wallets[sender_idx].id;
-                let receiver_id = state.wallets[receiver_idx].id;
 
                 let Some((asset, input_note)) = reserve_spendable_note(
                     &mut state.wallets[sender_idx],
@@ -356,7 +577,7 @@ pub async fn simulation_owner_loop(
                     tx_id += 1;
                     state.inflight += 1;
                     state.total_sent += 1;
-                    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
 
                     let source_node = nodes
                         .iter()
@@ -414,7 +635,7 @@ pub async fn simulation_owner_loop(
                                 &inflight_amounts,
                                 &format!("after build_refresh failure (tx_id={})", tx_id + 1),
                             );
-                            let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                            emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
                             continue;
                         }
                     };
@@ -450,7 +671,7 @@ pub async fn simulation_owner_loop(
 
                     state.inflight += 1;
                     state.total_sent += 1;
-                    let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
 
                     let client_clone = node.client.clone();
                     let event_tx_clone = event_tx.clone();
@@ -468,7 +689,7 @@ pub async fn simulation_owner_loop(
                     SimCommand::TogglePause => {
                         state.paused = !state.paused;
                         state.log(format!("paused set to {}", state.paused));
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
                     }
                     SimCommand::Quit => {
                         state.shutdown = true;
@@ -476,7 +697,7 @@ pub async fn simulation_owner_loop(
                             "shutting down — conservation checks passed: {}",
                             oracle.checks_passed(),
                         ));
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
                         break;
                     }
                 }
@@ -484,175 +705,25 @@ pub async fn simulation_owner_loop(
             Some(event) = event_rx.recv() => {
                 match event {
                     SimEvent::TxFinished { pending, result } => {
-                        state.inflight = state.inflight.saturating_sub(1);
-
-                        // Remove inflight tracking for this tx
-                        let entry = inflight_amounts.entry(pending.asset).or_default();
-                        *entry = entry.saturating_sub(pending.input_amount as u128);
-
-                        match result {
-                            Ok(outputs) => match materialize_outputs(
-                                &pending.refresh,
-                                outputs,
-                                &pending.owners,
-                                pending.delegate,
-                            ) {
-                                Ok(notes) => {
-                                    throughput.record_ok();
-                                    apply_successful_tx(&mut state, &pending, notes);
-                                    oracle.assert_conservation(
-                                        &state,
-                                        &inflight_amounts,
-                                        &format!("after successful tx {}", pending.id),
-                                    );
-                                }
-                                Err(e) => {
-                                    throughput.record_err();
-                                    record_sender_failure(
-                                        &mut state,
-                                        pending.sender_id,
-                                        pending.asset,
-                                        pending.input_note,
-                                        format!("tx {} materialization failed: {e:#}", pending.id),
-                                    );
-                                    oracle.assert_conservation(
-                                        &state,
-                                        &inflight_amounts,
-                                        &format!("after materialization failure tx {}", pending.id),
-                                    );
-                                }
-                            },
-                            Err(reason) => {
-                                throughput.record_err();
-                                record_sender_failure(
-                                    &mut state,
-                                    pending.sender_id,
-                                    pending.asset,
-                                    pending.input_note,
-                                    format!("tx {} failed: {}", pending.id, reason),
-                                );
-                                oracle.assert_conservation(
-                                    &state,
-                                    &inflight_amounts,
-                                    &format!("after rpc failure tx {}", pending.id),
-                                );
-                            }
-                        }
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                        handle_same_node_completion(
+                            &mut state,
+                            &mut inflight_amounts,
+                            &mut oracle,
+                            &mut throughput,
+                            *pending,
+                            result,
+                        );
+                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
                     }
                     SimEvent::CrossNodeTxFinished(ev) => {
-                        let CrossNodeTxEvent {
-                            id,
-                            sender_id,
-                            receiver_id,
-                            asset,
-                            input_amount,
-                            input_note,
-                            spend_amount,
-                            result,
-                        } = *ev;
-                        state.inflight = state.inflight.saturating_sub(1);
-
-                        let entry = inflight_amounts.entry(asset).or_default();
-                        *entry = entry.saturating_sub(input_amount as u128);
-
-                        match result {
-                            Ok(xnode_result) => {
-                                throughput.record_ok();
-
-                                // Give receiver the emitted note from destination node
-                                let recv_key = Asset {
-                                    policy_id: xnode_result.receiver_note.policy_id,
-                                    asset_name: xnode_result.receiver_note.asset_name,
-                                };
-                                state.wallets[receiver_id]
-                                    .notes
-                                    .entry(recv_key)
-                                    .or_default()
-                                    .push(xnode_result.receiver_note);
-
-                                // Give sender the change note (if any) from source node
-                                if let Some(change_note) = xnode_result.change_note {
-                                    let change_key = Asset {
-                                        policy_id: change_note.policy_id,
-                                        asset_name: change_note.asset_name,
-                                    };
-                                    state.wallets[sender_id]
-                                        .notes
-                                        .entry(change_key)
-                                        .or_default()
-                                        .push(change_note);
-                                }
-
-                                state.wallets[sender_id].sent += 1;
-                                state.wallets[receiver_id].received += 1;
-                                state.total_ok += 1;
-                                state.cross_node_ok += 1;
-                                state.log(format!(
-                                    "xnode tx {id} ok sender={sender_id} receiver={receiver_id} amount={spend_amount}"
-                                ));
-
-                                oracle.assert_conservation(
-                                    &state,
-                                    &inflight_amounts,
-                                    &format!("after successful cross-node tx {id}"),
-                                );
-                            }
-                            Err(err) => {
-                                throughput.record_err();
-
-                                if err.recovered_notes.is_empty() {
-                                    // Nothing was minted; restore the original input note
-                                    record_sender_failure(
-                                        &mut state,
-                                        sender_id,
-                                        asset,
-                                        input_note,
-                                        format!("xnode tx {id} failed: {}", err.reason),
-                                    );
-                                } else {
-                                    // Some notes were already minted before the failure.
-                                    // Distribute them to their intended recipients.
-                                    let recovered_total: u128 = err
-                                        .recovered_notes
-                                        .iter()
-                                        .map(|(_, n)| n.amount as u128)
-                                        .sum();
-                                    for (owner, note) in err.recovered_notes {
-                                        let key = Asset {
-                                            policy_id: note.policy_id,
-                                            asset_name: note.asset_name,
-                                        };
-                                        state.wallets[owner]
-                                            .notes
-                                            .entry(key)
-                                            .or_default()
-                                            .push(note);
-                                    }
-
-                                    // The remaining value is irrecoverably lost
-                                    let lost = (input_amount as u128).saturating_sub(recovered_total);
-                                    if lost > 0 {
-                                        oracle.record_loss(&asset, lost);
-                                    }
-
-                                    state.wallets[sender_id].failures += 1;
-                                    state.total_err += 1;
-                                    let msg = format!(
-                                        "xnode tx {id} partial failure (recovered {recovered_total}, lost {lost}): {}",
-                                        err.reason,
-                                    );
-                                    state.log(&msg);
-                                    state.last_failure = Some(msg);
-                                }
-                                oracle.assert_conservation(
-                                    &state,
-                                    &inflight_amounts,
-                                    &format!("after cross-node failure tx {id}"),
-                                );
-                            }
-                        }
-                        let _ = snapshot_tx.send(state.snapshot(oracle.checks_passed(), max_inflight, throughput.tx_per_sec(), throughput.success_rate()));
+                        handle_cross_node_completion(
+                            &mut state,
+                            &mut inflight_amounts,
+                            &mut oracle,
+                            &mut throughput,
+                            *ev,
+                        );
+                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
                     }
                 }
             }
@@ -660,12 +731,7 @@ pub async fn simulation_owner_loop(
     }
 
     state.shutdown = true;
-    let _ = snapshot_tx.send(state.snapshot(
-        oracle.checks_passed(),
-        max_inflight,
-        throughput.tx_per_sec(),
-        throughput.success_rate(),
-    ));
+    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
 }
 
 #[cfg(test)]
@@ -730,6 +796,159 @@ mod tests {
             notes.push(other);
         }
         assert_eq!(notes.len(), 2);
+    }
+
+    #[test]
+    fn same_node_completion_helper_updates_counters_and_conservation_inputs() {
+        let asset = Asset {
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+        };
+        let input_note = Note {
+            amount: 50,
+            delegate: PublicKey([1u8; 32]),
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([5u8; 32]),
+            signature: Signature([1u8; 32]),
+            dleq: None,
+        };
+        let receiver_note = Note {
+            amount: 50,
+            delegate: PublicKey([2u8; 32]),
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([6u8; 32]),
+            signature: Signature([2u8; 32]),
+            dleq: None,
+        };
+
+        let (refresh, owners) = build_refresh(0, 1, asset, input_note.clone(), 50).unwrap();
+        let pending = PendingTx {
+            id: 7,
+            sender_id: 0,
+            receiver_id: 1,
+            asset,
+            input_amount: 50,
+            input_note: input_note.clone(),
+            spend_amount: 50,
+            refresh,
+            owners,
+            delegate: input_note.delegate,
+        };
+
+        let mut state = AppState {
+            wallets: vec![
+                Wallet {
+                    id: 0,
+                    home_node: 0,
+                    notes: HashMap::from([(asset, vec![input_note.clone()])]),
+                    ..Default::default()
+                },
+                Wallet {
+                    id: 1,
+                    home_node: 0,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let mut oracle = ConservationOracle::new();
+        oracle.seal(&state);
+        state.wallets[0].notes.clear();
+
+        let inflight_amounts = HashMap::new();
+        let mut throughput = ThroughputTracker::new(Duration::from_secs(5));
+        complete_same_node_transfer(
+            &mut state,
+            &inflight_amounts,
+            &mut oracle,
+            &mut throughput,
+            &pending,
+            vec![(1, receiver_note.clone())],
+        );
+
+        assert_eq!(state.wallets[0].sent, 1);
+        assert_eq!(state.wallets[1].received, 1);
+        assert_eq!(state.total_ok, 1);
+        assert_eq!(state.wallets[1].notes.get(&asset).unwrap()[0].amount, 50);
+        assert_eq!(inflight_amounts.get(&asset).copied().unwrap_or(0), 0);
+    }
+
+    #[test]
+    fn cross_node_partial_failure_helper_updates_loss_failure_and_last_failure() {
+        let asset = Asset {
+            policy_id: PolicyId([7u8; 28]),
+            asset_name: AssetName::empty(),
+        };
+        let input_note = Note {
+            amount: 100,
+            delegate: PublicKey([1u8; 32]),
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([5u8; 32]),
+            signature: Signature([1u8; 32]),
+            dleq: None,
+        };
+        let receiver_note = Note {
+            amount: 60,
+            delegate: PublicKey([2u8; 32]),
+            policy_id: asset.policy_id,
+            asset_name: asset.asset_name,
+            nonce: Hash([6u8; 32]),
+            signature: Signature([2u8; 32]),
+            dleq: None,
+        };
+
+        let mut state = AppState {
+            wallets: vec![
+                Wallet {
+                    id: 0,
+                    home_node: 0,
+                    notes: HashMap::from([(asset, vec![input_note.clone()])]),
+                    ..Default::default()
+                },
+                Wallet {
+                    id: 1,
+                    home_node: 1,
+                    ..Default::default()
+                },
+            ],
+            inflight: 1,
+            ..Default::default()
+        };
+        let mut oracle = ConservationOracle::new();
+        oracle.seal(&state);
+        state.wallets[0].notes.clear();
+
+        let mut inflight_amounts = HashMap::new();
+        let mut throughput = ThroughputTracker::new(Duration::from_secs(5));
+        handle_cross_node_completion(
+            &mut state,
+            &mut inflight_amounts,
+            &mut oracle,
+            &mut throughput,
+            CrossNodeTxEvent {
+                id: 8,
+                sender_id: 0,
+                receiver_id: 1,
+                asset,
+                input_amount: 100,
+                input_note: input_note.clone(),
+                spend_amount: 60,
+                result: Err(CrossNodeError {
+                    reason: "change emit failed".to_string(),
+                    recovered_notes: vec![(1, receiver_note.clone())],
+                }),
+            },
+        );
+
+        assert_eq!(state.inflight, 0);
+        assert_eq!(state.total_err, 1);
+        assert_eq!(state.wallets[0].failures, 1);
+        assert_eq!(state.wallets[1].notes.get(&asset).unwrap()[0].amount, 60);
+        assert!(state.last_failure.as_ref().unwrap().contains("partial failure"));
+        assert!(state.last_failure.as_ref().unwrap().contains("lost 40"));
     }
 
     /// Tests that partial cross-node failure with recovered notes correctly
