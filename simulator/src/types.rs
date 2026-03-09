@@ -4,7 +4,14 @@ use std::{
 };
 
 use clap::Parser;
-use mugraph_core::types::{Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh};
+use mugraph_core::types::{
+    Asset,
+    BlindSignature,
+    Note,
+    PolicyId,
+    PublicKey,
+    Refresh,
+};
 use reqwest::Url;
 
 use crate::client::NodeClient;
@@ -113,7 +120,9 @@ impl AppState {
                         let notes = wallet.notes.get(&key);
                         WalletBalance {
                             balance: notes
-                                .map(|v| v.iter().map(|n| n.amount).sum::<u64>())
+                                .map(|v| {
+                                    v.iter().map(|n| n.amount).sum::<u64>()
+                                })
                                 .unwrap_or(0),
                             notes: notes.map(|v| v.len()).unwrap_or(0),
                         }
@@ -142,7 +151,8 @@ impl AppState {
                     {
                         wallets_holding += 1;
                         total_notes += notes.len();
-                        total_supply += notes.iter().map(|n| n.amount).sum::<u64>();
+                        total_supply +=
+                            notes.iter().map(|n| n.amount).sum::<u64>();
                     }
                 }
                 AssetSummary {
@@ -284,13 +294,20 @@ impl ConservationOracle {
                     .iter()
                     .filter_map(|w| {
                         w.notes.get(asset).map(|notes| {
-                            let total: u64 = notes.iter().map(|n| n.amount).sum();
-                            format!("  wallet {}: {} notes, total {}", w.id, notes.len(), total,)
+                            let total: u64 =
+                                notes.iter().map(|n| n.amount).sum();
+                            format!(
+                                "  wallet {}: {} notes, total {}",
+                                w.id,
+                                notes.len(),
+                                total,
+                            )
                         })
                     })
                     .collect();
 
-                let inflight = inflight_amounts.get(asset).copied().unwrap_or(0);
+                let inflight =
+                    inflight_amounts.get(asset).copied().unwrap_or(0);
 
                 panic!(
                     "\n\n=== CONSERVATION VIOLATION ===\n\

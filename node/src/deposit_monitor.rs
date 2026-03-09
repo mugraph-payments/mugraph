@@ -60,9 +60,9 @@ impl DepositMonitor {
             self.config.confirm_depth
         );
 
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(
-            self.config.revalidation_interval,
-        ));
+        let mut interval = tokio::time::interval(
+            tokio::time::Duration::from_secs(self.config.revalidation_interval),
+        );
 
         loop {
             interval.tick().await;
@@ -78,13 +78,13 @@ impl DepositMonitor {
     /// 2. Expiration - if deposit is older than expiration_blocks
     /// 3. Spent - if UTxO was spent (should update status)
     async fn check_deposits(&self) -> Result<(), Error> {
-        let tip = self
-            .provider
-            .get_tip()
-            .await
-            .map_err(|e| Error::NetworkError {
-                reason: format!("Failed to get chain tip: {}", e),
-            })?;
+        let tip =
+            self.provider
+                .get_tip()
+                .await
+                .map_err(|e| Error::NetworkError {
+                    reason: format!("Failed to get chain tip: {}", e),
+                })?;
 
         tracing::debug!(
             "Deposit monitor running at block {} (checking pending deposits)",
@@ -103,7 +103,10 @@ impl DepositMonitor {
         // Load script address once for this pass
         let script_address = self.load_script_address()?;
 
-        tracing::info!("Found {} pending deposits to check", pending_deposits.len());
+        tracing::info!(
+            "Found {} pending deposits to check",
+            pending_deposits.len()
+        );
 
         for (utxo_ref, record) in pending_deposits {
             // Check expiration first (both timestamp and block horizon)
@@ -130,7 +133,8 @@ impl DepositMonitor {
             }
 
             // Skip if already confirmed (we only re-check young deposits)
-            let blocks_elapsed = tip.block_height.saturating_sub(record.block_height);
+            let blocks_elapsed =
+                tip.block_height.saturating_sub(record.block_height);
             if blocks_elapsed >= self.config.confirm_depth {
                 // Deposit is confirmed, no need to re-check
                 continue;
@@ -174,7 +178,9 @@ impl DepositMonitor {
     }
 
     /// Get all pending (unspent) deposits from the database
-    fn get_pending_deposits(&self) -> Result<Vec<(UtxoRef, DepositRecord)>, Error> {
+    fn get_pending_deposits(
+        &self,
+    ) -> Result<Vec<(UtxoRef, DepositRecord)>, Error> {
         let read_tx = self.database.read()?;
         let table = read_tx.open_table(DEPOSITS)?;
 
@@ -208,17 +214,21 @@ impl DepositMonitor {
                 // UTxO exists - verify it still has assets (not emptied)
                 // and is still at our script address (reorg protection)
                 if let Some(expected_addr) = script_address
-                    && utxo_info.address != expected_addr {
-                        tracing::warn!(
-                            "UTxO {} moved from script address (was {}, now {})",
-                            tx_hash,
-                            expected_addr,
-                            utxo_info.address
-                        );
-                        return Ok(false);
-                    }
+                    && utxo_info.address != expected_addr
+                {
+                    tracing::warn!(
+                        "UTxO {} moved from script address (was {}, now {})",
+                        tx_hash,
+                        expected_addr,
+                        utxo_info.address
+                    );
+                    return Ok(false);
+                }
 
-                if !utxo_meets_min_deposit(&utxo_info, self.config.min_deposit_value) {
+                if !utxo_meets_min_deposit(
+                    &utxo_info,
+                    self.config.min_deposit_value,
+                ) {
                     tracing::warn!(
                         "UTxO {} below min deposit value {}",
                         tx_hash,
@@ -275,7 +285,10 @@ impl DepositMonitor {
     }
 
     /// Check if a deposit is valid (exists, confirmed, not expired, not spent)
-    pub async fn is_deposit_valid(&self, utxo_ref: &UtxoRef) -> Result<bool, Error> {
+    pub async fn is_deposit_valid(
+        &self,
+        utxo_ref: &UtxoRef,
+    ) -> Result<bool, Error> {
         let read_tx = self.database.read()?;
         let table = read_tx.open_table(DEPOSITS)?;
 
@@ -296,15 +309,14 @@ impl DepositMonitor {
                 }
 
                 // Check confirmation depth
-                let tip = self
-                    .provider
-                    .get_tip()
-                    .await
-                    .map_err(|e| Error::NetworkError {
+                let tip = self.provider.get_tip().await.map_err(|e| {
+                    Error::NetworkError {
                         reason: format!("Failed to get chain tip: {}", e),
-                    })?;
+                    }
+                })?;
 
-                let blocks_elapsed = tip.block_height.saturating_sub(record.block_height);
+                let blocks_elapsed =
+                    tip.block_height.saturating_sub(record.block_height);
                 if blocks_elapsed < self.config.confirm_depth {
                     return Ok(false); // Not yet confirmed
                 }
@@ -322,11 +334,18 @@ fn secs_since_unix_epoch(now: std::time::SystemTime) -> u64 {
         .unwrap_or(0)
 }
 
-fn is_expired_by_blocks(current_height: u64, deposit_height: u64, expiration_blocks: u64) -> bool {
+fn is_expired_by_blocks(
+    current_height: u64,
+    deposit_height: u64,
+    expiration_blocks: u64,
+) -> bool {
     current_height.saturating_sub(deposit_height) > expiration_blocks
 }
 
-fn utxo_meets_min_deposit(utxo_info: &UtxoInfo, min_deposit_value: u64) -> bool {
+fn utxo_meets_min_deposit(
+    utxo_info: &UtxoInfo,
+    min_deposit_value: u64,
+) -> bool {
     let lovelace = utxo_info
         .amount
         .iter()
@@ -351,12 +370,8 @@ mod tests {
     use serde_json::json;
     use tokio::sync::Mutex;
 
-    use crate::{
-        database::CARDANO_WALLET,
-        provider::AssetAmount,
-    };
-
     use super::*;
+    use crate::{database::CARDANO_WALLET, provider::AssetAmount};
 
     #[derive(Clone)]
     struct MockState {
@@ -365,14 +380,20 @@ mod tests {
     }
 
     async fn latest_block() -> impl IntoResponse {
-        (StatusCode::OK, axum::Json(json!({"slot": 1000, "hash": "h", "height": 100})))
+        (
+            StatusCode::OK,
+            axum::Json(json!({"slot": 1000, "hash": "h", "height": 100})),
+        )
     }
 
     async fn tx_info() -> impl IntoResponse {
         (StatusCode::OK, axum::Json(json!({"block_height": 90})))
     }
 
-    async fn tx_utxos(State(state): State<MockState>, Path(_tx_hash): Path<String>) -> impl IntoResponse {
+    async fn tx_utxos(
+        State(state): State<MockState>,
+        Path(_tx_hash): Path<String>,
+    ) -> impl IntoResponse {
         let status = *state.utxo_status.lock().await;
         match status {
             StatusCode::OK => (
@@ -389,12 +410,17 @@ mod tests {
                 })),
             )
                 .into_response(),
-            StatusCode::NOT_FOUND => (StatusCode::NOT_FOUND, "not found").into_response(),
+            StatusCode::NOT_FOUND => {
+                (StatusCode::NOT_FOUND, "not found").into_response()
+            }
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "boom").into_response(),
         }
     }
 
-    async fn spawn_mock_server(utxo_status: StatusCode, utxo_address: &str) -> String {
+    async fn spawn_mock_server(
+        utxo_status: StatusCode,
+        utxo_address: &str,
+    ) -> String {
         let state = MockState {
             utxo_status: Arc::new(Mutex::new(utxo_status)),
             utxo_address: utxo_address.to_string(),
@@ -406,7 +432,8 @@ mod tests {
             .route("/txs/{tx_hash}/utxos", get(tx_utxos))
             .with_state(state);
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -428,7 +455,11 @@ mod tests {
         db
     }
 
-    fn seed_wallet_and_deposit(db: &Arc<Database>, utxo_ref: UtxoRef, record: DepositRecord) {
+    fn seed_wallet_and_deposit(
+        db: &Arc<Database>,
+        utxo_ref: UtxoRef,
+        record: DepositRecord,
+    ) {
         let w = db.write().unwrap();
         {
             let mut wallet = w.open_table(CARDANO_WALLET).unwrap();
@@ -496,7 +527,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_marks_missing_utxo_as_spent() {
-        let base_url = spawn_mock_server(StatusCode::NOT_FOUND, "addr_test1script").await;
+        let base_url =
+            spawn_mock_server(StatusCode::NOT_FOUND, "addr_test1script").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -532,7 +564,11 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_keeps_unspent_on_transient_provider_error() {
-        let base_url = spawn_mock_server(StatusCode::INTERNAL_SERVER_ERROR, "addr_test1script").await;
+        let base_url = spawn_mock_server(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "addr_test1script",
+        )
+        .await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -568,7 +604,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_marks_time_expired_as_spent_without_chain_lookup() {
-        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1script").await;
+        let base_url =
+            spawn_mock_server(StatusCode::OK, "addr_test1script").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -580,10 +617,18 @@ mod tests {
 
         let utxo_ref = UtxoRef::new([0xeeu8; 32], 0);
         let now = secs_since_unix_epoch(std::time::SystemTime::now());
-        let record = DepositRecord::new(99, now.saturating_sub(3600), now.saturating_sub(1));
+        let record = DepositRecord::new(
+            99,
+            now.saturating_sub(3600),
+            now.saturating_sub(1),
+        );
         seed_wallet_and_deposit(&db, utxo_ref.clone(), record);
 
-        let monitor = DepositMonitor::new(DepositMonitorConfig::default(), db.clone(), provider);
+        let monitor = DepositMonitor::new(
+            DepositMonitorConfig::default(),
+            db.clone(),
+            provider,
+        );
         monitor.check_deposits().await.unwrap();
 
         let r = db.read().unwrap();
@@ -594,7 +639,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_marks_block_horizon_expired_as_spent() {
-        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1script").await;
+        let base_url =
+            spawn_mock_server(StatusCode::OK, "addr_test1script").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),
@@ -631,7 +677,8 @@ mod tests {
 
     #[tokio::test]
     async fn check_deposits_marks_script_address_drift_as_spent() {
-        let base_url = spawn_mock_server(StatusCode::OK, "addr_test1different").await;
+        let base_url =
+            spawn_mock_server(StatusCode::OK, "addr_test1different").await;
         let provider = Provider::new(
             "blockfrost",
             "key".to_string(),

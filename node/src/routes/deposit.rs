@@ -30,7 +30,10 @@ struct ParsedDepositClaims {
 /// 5. Map assets and validate amounts
 /// 6. Sign blinded outputs
 /// 7. Record deposit in database
-pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<Response, Error> {
+pub async fn handle_deposit(
+    request: &DepositRequest,
+    ctx: &Context,
+) -> Result<Response, Error> {
     tracing::info!(
         "Processing deposit request for UTxO: {}:{}",
         &request.utxo.tx_hash[..std::cmp::min(16, request.utxo.tx_hash.len())],
@@ -43,7 +46,12 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
     let wallet = load_or_create_wallet(ctx).await?;
 
     // 2. Verify CIP-8 signature over canonical payload (strict)
-    verify_deposit_signature(request, &claims, &wallet, &ctx.keypair.public_key)?;
+    verify_deposit_signature(
+        request,
+        &claims,
+        &wallet,
+        &ctx.keypair.public_key,
+    )?;
 
     // 3. Fetch UTxO from Cardano provider and validate
     let provider = create_provider(ctx)?;
@@ -75,7 +83,9 @@ pub async fn handle_deposit(request: &DepositRequest, ctx: &Context) -> Result<R
 }
 
 /// Load Cardano wallet from database or create new one
-async fn load_or_create_wallet(ctx: &Context) -> Result<mugraph_core::types::CardanoWallet, Error> {
+async fn load_or_create_wallet(
+    ctx: &Context,
+) -> Result<mugraph_core::types::CardanoWallet, Error> {
     // Try to load existing wallet
     {
         let read_tx = ctx.database.read()?;
@@ -138,10 +148,14 @@ fn create_provider(ctx: &Context) -> Result<Provider, Error> {
     })
 }
 
-fn parse_deposit_claims(request: &DepositRequest) -> Result<ParsedDepositClaims, Error> {
+fn parse_deposit_claims(
+    request: &DepositRequest,
+) -> Result<ParsedDepositClaims, Error> {
     let message_json: serde_json::Value =
-        serde_json::from_str(&request.message).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid message JSON: {}", e),
+        serde_json::from_str(&request.message).map_err(|e| {
+            Error::InvalidInput {
+                reason: format!("Invalid message JSON: {}", e),
+            }
         })?;
     let user_pubkey_hex = message_json
         .get("user_pubkey")
@@ -149,13 +163,20 @@ fn parse_deposit_claims(request: &DepositRequest) -> Result<ParsedDepositClaims,
         .ok_or_else(|| Error::InvalidInput {
             reason: "Missing user_pubkey in message".to_string(),
         })?;
-    let user_pubkey_bytes = hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid user_pubkey hex: {}", e),
-    })?;
+    let user_pubkey_bytes =
+        hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid user_pubkey hex: {}", e),
+        })?;
     let user_pubkey_len = user_pubkey_bytes.len();
-    let user_pubkey: [u8; 32] = user_pubkey_bytes.try_into().map_err(|_| Error::InvalidInput {
-        reason: format!("user_pubkey must be 32 bytes, got {}", user_pubkey_len),
-    })?;
+    let user_pubkey: [u8; 32] =
+        user_pubkey_bytes
+            .try_into()
+            .map_err(|_| Error::InvalidInput {
+                reason: format!(
+                    "user_pubkey must be 32 bytes, got {}",
+                    user_pubkey_len
+                ),
+            })?;
 
     Ok(ParsedDepositClaims { user_pubkey })
 }
@@ -168,9 +189,20 @@ async fn validate_deposit_source(
     ctx: &Context,
     delegate_pk: &PublicKey,
 ) -> Result<(), Error> {
-    let utxo_info = fetch_and_validate_utxo(request, wallet, provider, ctx).await?;
-    validate_parsed_deposit_datum(request, claims, wallet, &utxo_info, delegate_pk)?;
-    validate_deposit_amounts(request, &utxo_info, ctx.config.min_deposit_value())?;
+    let utxo_info =
+        fetch_and_validate_utxo(request, wallet, provider, ctx).await?;
+    validate_parsed_deposit_datum(
+        request,
+        claims,
+        wallet,
+        &utxo_info,
+        delegate_pk,
+    )?;
+    validate_deposit_amounts(
+        request,
+        &utxo_info,
+        ctx.config.min_deposit_value(),
+    )?;
     Ok(())
 }
 
@@ -204,7 +236,8 @@ fn verify_deposit_signature(
 ) -> Result<(), Error> {
     // Build canonical payload
     // Payload = utxo + outputs + delegate pk + script address + nonce + network tag
-    let payload = build_canonical_payload(request, delegate_pk, &wallet.script_address);
+    let payload =
+        build_canonical_payload(request, delegate_pk, &wallet.script_address);
 
     verify_cip8_cose_signature_with_claims(request, claims, &payload)
 }
@@ -219,8 +252,8 @@ fn verify_cip8_cose_signature_with_claims(
 
     let user_pubkey_bytes = claims.user_pubkey;
 
-    let cose: CoseSign1 =
-        CoseSign1::from_tagged_slice(&request.signature).map_err(|e| Error::InvalidSignature {
+    let cose: CoseSign1 = CoseSign1::from_tagged_slice(&request.signature)
+        .map_err(|e| Error::InvalidSignature {
             reason: format!("Invalid COSE_Sign1: {}", e),
             signature: mugraph_core::types::Signature::default(),
         })?;
@@ -236,7 +269,9 @@ fn verify_cip8_cose_signature_with_claims(
             reason: "Missing alg in COSE header".to_string(),
             signature: mugraph_core::types::Signature::default(),
         })?;
-    if alg != coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA) {
+    if alg
+        != coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)
+    {
         return Err(Error::InvalidSignature {
             reason: format!("Unsupported alg {:?}, expected EdDSA", alg),
             signature: mugraph_core::types::Signature::default(),
@@ -244,13 +279,13 @@ fn verify_cip8_cose_signature_with_claims(
     }
 
     // Payload must match
-    let cose_payload = cose
-        .payload
-        .as_ref()
-        .ok_or_else(|| Error::InvalidSignature {
-            reason: "COSE payload missing".to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
+    let cose_payload =
+        cose.payload
+            .as_ref()
+            .ok_or_else(|| Error::InvalidSignature {
+                reason: "COSE payload missing".to_string(),
+                signature: mugraph_core::types::Signature::default(),
+            })?;
 
     if cose_payload != payload {
         return Err(Error::InvalidSignature {
@@ -262,7 +297,10 @@ fn verify_cip8_cose_signature_with_claims(
     let sig_bytes = &cose.signature;
     if sig_bytes.len() != 64 {
         return Err(Error::InvalidSignature {
-            reason: format!("COSE signature must be 64 bytes, got {}", sig_bytes.len()),
+            reason: format!(
+                "COSE signature must be 64 bytes, got {}",
+                sig_bytes.len()
+            ),
             signature: mugraph_core::types::Signature::default(),
         });
     }
@@ -270,21 +308,25 @@ fn verify_cip8_cose_signature_with_claims(
     // Build Sig_structure bytes using coset helper
     let to_verify = cose.tbs_data(&[]);
 
-    let verifying_key = VerifyingKey::from_bytes(&user_pubkey_bytes)
-    .map_err(|e| Error::InvalidKey {
-        reason: format!("Invalid Ed25519 public key: {}", e),
-    })?;
-    let signature = Signature::from_slice(sig_bytes).map_err(|e| Error::InvalidSignature {
-        reason: format!("Invalid signature format: {}", e),
-        signature: mugraph_core::types::Signature::default(),
+    let verifying_key =
+        VerifyingKey::from_bytes(&user_pubkey_bytes).map_err(|e| {
+            Error::InvalidKey {
+                reason: format!("Invalid Ed25519 public key: {}", e),
+            }
+        })?;
+    let signature = Signature::from_slice(sig_bytes).map_err(|e| {
+        Error::InvalidSignature {
+            reason: format!("Invalid signature format: {}", e),
+            signature: mugraph_core::types::Signature::default(),
+        }
     })?;
 
-    verifying_key
-        .verify(&to_verify, &signature)
-        .map_err(|e| Error::InvalidSignature {
+    verifying_key.verify(&to_verify, &signature).map_err(|e| {
+        Error::InvalidSignature {
             reason: format!("COSE signature verification failed: {}", e),
             signature: mugraph_core::types::Signature::default(),
-        })?;
+        }
+    })?;
 
     Ok(())
 }
@@ -302,7 +344,14 @@ fn verify_cip8_cose_signature(
 mod tests {
     use std::sync::atomic::{AtomicU8, Ordering};
 
-    use coset::{CoseSign1, CoseSign1Builder, Header, ProtectedHeader, TaggedCborSerializable, iana};
+    use coset::{
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
+    };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::UtxoReference;
 
@@ -322,7 +371,9 @@ mod tests {
         build_custom_cip8_signature(
             sk,
             Some(payload),
-            Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)),
+            Some(coset::RegisteredLabelWithPrivate::Assigned(
+                iana::Algorithm::EdDSA,
+            )),
             None,
         )
     }
@@ -348,9 +399,12 @@ mod tests {
             signature: vec![],
         }
         .tbs_data(&[]);
-        let signature = signature_override.unwrap_or_else(|| sk.sign(&tbs).to_vec());
+        let signature =
+            signature_override.unwrap_or_else(|| sk.sign(&tbs).to_vec());
 
-        let mut builder = CoseSign1Builder::new().protected(header).signature(signature);
+        let mut builder = CoseSign1Builder::new()
+            .protected(header)
+            .signature(signature);
         if let Some(payload) = payload {
             builder = builder.payload(payload.to_vec());
         }
@@ -366,7 +420,10 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: vec![],
             nonce: 1,
             network: "preprod".to_string(),
@@ -392,7 +449,10 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: vec![],
             nonce: 1,
             network: "preprod".to_string(),
@@ -427,14 +487,18 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: vec![],
             nonce: 1,
             network: "preprod".to_string(),
         };
         let delegate_pk = PublicKey(pk_bytes.try_into().unwrap());
 
-        let payload = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
+        let payload =
+            build_canonical_payload(&request, &delegate_pk, "addr_test1...");
         let expected = serde_json::to_string(&CanonicalPayload {
             utxo: CanonicalUtxo {
                 tx_hash: request.utxo.tx_hash.clone(),
@@ -461,7 +525,10 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: vec![],
             nonce: 1,
             network: "preprod".to_string(),
@@ -554,7 +621,10 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: vec![0u8; 3],
             nonce: 1,
             network: "preprod".to_string(),
@@ -578,8 +648,16 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
-            signature: build_custom_cip8_signature(&sk, Some(b"payload"), None, None),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
+            signature: build_custom_cip8_signature(
+                &sk,
+                Some(b"payload"),
+                None,
+                None,
+            ),
             nonce: 1,
             network: "preprod".to_string(),
         };
@@ -598,11 +676,16 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: build_custom_cip8_signature(
                 &sk,
                 Some(payload),
-                Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::ES256)),
+                Some(coset::RegisteredLabelWithPrivate::Assigned(
+                    iana::Algorithm::ES256,
+                )),
                 None,
             ),
             nonce: 1,
@@ -622,8 +705,18 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
-            signature: build_custom_cip8_signature(&sk, None, Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)), None),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
+            signature: build_custom_cip8_signature(
+                &sk,
+                None,
+                Some(coset::RegisteredLabelWithPrivate::Assigned(
+                    iana::Algorithm::EdDSA,
+                )),
+                None,
+            ),
             nonce: 1,
             network: "preprod".to_string(),
         };
@@ -642,11 +735,16 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: build_custom_cip8_signature(
                 &sk,
                 Some(payload),
-                Some(coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)),
+                Some(coset::RegisteredLabelWithPrivate::Assigned(
+                    iana::Algorithm::EdDSA,
+                )),
                 Some(vec![7u8; 32]),
             ),
             nonce: 1,
@@ -667,13 +765,17 @@ mod tests {
                 index: 0,
             },
             outputs: vec![],
-            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            message: format!(
+                "{{\"user_pubkey\":\"{}\"}}",
+                hex::encode(&pk_bytes)
+            ),
             signature: build_cip8_signature(&sk, payload),
             nonce: 1,
             network: "preprod".to_string(),
         };
 
-        let mut cose = CoseSign1::from_tagged_slice(&request.signature).unwrap();
+        let mut cose =
+            CoseSign1::from_tagged_slice(&request.signature).unwrap();
         cose.signature[0] ^= 0xff;
         request.signature = cose.to_tagged_vec().unwrap();
 
@@ -770,7 +872,13 @@ fn validate_deposit_datum(
     delegate_pk: &PublicKey,
 ) -> Result<(), Error> {
     let claims = parse_deposit_claims(request)?;
-    validate_parsed_deposit_datum(request, &claims, wallet, utxo_info, delegate_pk)
+    validate_parsed_deposit_datum(
+        request,
+        &claims,
+        wallet,
+        utxo_info,
+        delegate_pk,
+    )
 }
 
 fn validate_parsed_deposit_datum(
@@ -781,51 +889,62 @@ fn validate_parsed_deposit_datum(
     delegate_pk: &PublicKey,
 ) -> Result<(), Error> {
     // Datum must be present to bind deposit to identities
-    let datum_hex = utxo_info
-        .datum
-        .as_ref()
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "UTxO missing inline datum; required for deposit validation".to_string(),
-        })?;
+    let datum_hex =
+        utxo_info
+            .datum
+            .as_ref()
+            .ok_or_else(|| Error::InvalidInput {
+                reason:
+                    "UTxO missing inline datum; required for deposit validation"
+                        .to_string(),
+            })?;
 
-    let datum = parse_deposit_datum(datum_hex, DepositDatumContext::DepositUtxo)?;
+    let datum =
+        parse_deposit_datum(datum_hex, DepositDatumContext::DepositUtxo)?;
 
     // Compute expected hashes
-    let expected_user_hash: [u8; 28] = csl::PublicKey::from_bytes(&claims.user_pubkey)
-        .map_err(|e| Error::InvalidKey {
-            reason: format!("Invalid user public key: {}", e),
-        })?
-        .hash()
-        .to_bytes()
-        .try_into()
-        .expect("Cardano key hashes are always 28 bytes");
+    let expected_user_hash: [u8; 28] =
+        csl::PublicKey::from_bytes(&claims.user_pubkey)
+            .map_err(|e| Error::InvalidKey {
+                reason: format!("Invalid user public key: {}", e),
+            })?
+            .hash()
+            .to_bytes()
+            .try_into()
+            .expect("Cardano key hashes are always 28 bytes");
 
-    let expected_node_hash: [u8; 28] = csl::PublicKey::from_bytes(&wallet.payment_vk)
-        .map_err(|e| Error::InvalidKey {
-            reason: format!("Invalid node payment_vk: {}", e),
-        })?
-        .hash()
-        .to_bytes()
-        .try_into()
-        .expect("Cardano key hashes are always 28 bytes");
+    let expected_node_hash: [u8; 28] =
+        csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .map_err(|e| Error::InvalidKey {
+                reason: format!("Invalid node payment_vk: {}", e),
+            })?
+            .hash()
+            .to_bytes()
+            .try_into()
+            .expect("Cardano key hashes are always 28 bytes");
 
-    let expected_intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
+    let expected_intent_hash =
+        compute_intent_hash(request, delegate_pk, &wallet.script_address);
 
     if datum.user_pubkey_hash != expected_user_hash {
         return Err(Error::InvalidInput {
-            reason: "Datum user_pubkey_hash does not match provided user_pubkey".to_string(),
+            reason:
+                "Datum user_pubkey_hash does not match provided user_pubkey"
+                    .to_string(),
         });
     }
 
     if datum.node_pubkey_hash != expected_node_hash {
         return Err(Error::InvalidInput {
-            reason: "Datum node_pubkey_hash does not match this node".to_string(),
+            reason: "Datum node_pubkey_hash does not match this node"
+                .to_string(),
         });
     }
 
     if datum.intent_hash != expected_intent_hash {
         return Err(Error::InvalidInput {
-            reason: "Datum intent_hash does not match canonical payload".to_string(),
+            reason: "Datum intent_hash does not match canonical payload"
+                .to_string(),
         });
     }
 
@@ -865,7 +984,10 @@ async fn fetch_and_validate_utxo(
     // Verify confirm depth (reorg safety)
     // Get current chain tip
     let tip = provider.get_tip().await.map_err(|e| Error::NetworkError {
-        reason: format!("Failed to get chain tip for confirm depth check: {}", e),
+        reason: format!(
+            "Failed to get chain tip for confirm depth check: {}",
+            e
+        ),
     })?;
 
     // Get confirm depth from config
@@ -875,7 +997,8 @@ async fn fetch_and_validate_utxo(
     match utxo_info.block_height {
         Some(utxo_block_height) => {
             let current_height = tip.block_height;
-            let blocks_confirmed = current_height.saturating_sub(utxo_block_height);
+            let blocks_confirmed =
+                current_height.saturating_sub(utxo_block_height);
 
             tracing::info!(
                 "UTxO {}:{} at block {} ({} blocks confirmed, need {})",
@@ -890,7 +1013,10 @@ async fn fetch_and_validate_utxo(
                 return Err(Error::InvalidInput {
                     reason: format!(
                         "UTxO not sufficiently confirmed. Block height: {}, Current: {}, Confirmed: {} blocks, Required: {} blocks",
-                        utxo_block_height, current_height, blocks_confirmed, confirm_depth
+                        utxo_block_height,
+                        current_height,
+                        blocks_confirmed,
+                        confirm_depth
                     ),
                 });
             }
@@ -937,16 +1063,18 @@ fn validate_deposit_amounts(
     min_deposit_value: u64,
 ) -> Result<(), Error> {
     // Build map of assets in UTxO
-    let mut utxo_assets: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut utxo_assets: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
     let mut total_units: u64 = 0;
 
     for asset in &utxo_info.amount {
-        let amount = asset
-            .quantity
-            .parse::<u64>()
-            .map_err(|e| Error::InvalidInput {
-                reason: format!("Invalid asset quantity: {}", e),
-            })?;
+        let amount =
+            asset
+                .quantity
+                .parse::<u64>()
+                .map_err(|e| Error::InvalidInput {
+                    reason: format!("Invalid asset quantity: {}", e),
+                })?;
         utxo_assets.insert(asset.unit.clone(), amount);
         total_units += amount;
     }
@@ -1024,8 +1152,9 @@ fn sign_outputs(
         // Sign the blinded commitment
         // The signature field is Blinded<Signature> which wraps a Signature
         // Access the inner Signature through the Blinded tuple struct
-        let blinded_sig_data: &mugraph_core::types::Blinded<mugraph_core::types::Signature> =
-            &commitment.signature;
+        let blinded_sig_data: &mugraph_core::types::Blinded<
+            mugraph_core::types::Signature,
+        > = &commitment.signature;
         let signature: &mugraph_core::types::Signature = &blinded_sig_data.0;
         let sig_bytes: &[u8; 32] = signature.as_ref();
 
@@ -1071,13 +1200,20 @@ async fn record_deposit(
     })?;
 
     // Compute intent hash for replay protection
-    let intent_hash = compute_intent_hash(request, &ctx.keypair.public_key, &wallet.script_address);
+    let intent_hash = compute_intent_hash(
+        request,
+        &ctx.keypair.public_key,
+        &wallet.script_address,
+    );
 
     let write_tx = ctx.database.write()?;
     {
         let mut table = write_tx.open_table(DEPOSITS)?;
 
-        let utxo_ref = crate::tx_ids::parse_utxo_ref(&request.utxo.tx_hash, request.utxo.index)?;
+        let utxo_ref = crate::tx_ids::parse_utxo_ref(
+            &request.utxo.tx_hash,
+            request.utxo.index,
+        )?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1089,7 +1225,12 @@ async fn record_deposit(
         let expiration_seconds = ctx.config.deposit_expiration_blocks() * 20;
         let expires_at = now + expiration_seconds;
 
-        let record = DepositRecord::with_intent_hash(tip.block_height, now, expires_at, intent_hash);
+        let record = DepositRecord::with_intent_hash(
+            tip.block_height,
+            now,
+            expires_at,
+            intent_hash,
+        );
         insert_deposit_if_absent(&mut table, utxo_ref, record)?;
     }
     write_tx.commit()?;
@@ -1108,10 +1249,7 @@ mod wallet_tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{
-        config::Config,
-        database::Database,
-    };
+    use crate::{config::Config, database::Database};
 
     fn test_context() -> Context {
         let dir = TempDir::new().unwrap();
@@ -1190,8 +1328,10 @@ mod wallet_tests {
             let utxo = UtxoRef::new([1u8; 32], 0);
             let record = mugraph_core::types::DepositRecord::new(1, 1, 100);
 
-            insert_deposit_if_absent(&mut table, utxo.clone(), record.clone()).unwrap();
-            let err = insert_deposit_if_absent(&mut table, utxo, record).unwrap_err();
+            insert_deposit_if_absent(&mut table, utxo.clone(), record.clone())
+                .unwrap();
+            let err =
+                insert_deposit_if_absent(&mut table, utxo, record).unwrap_err();
             assert!(matches!(err, Error::InvalidInput { .. }));
         }
         write_tx.commit().unwrap();
@@ -1282,12 +1422,10 @@ mod datum_tests {
             .expect("valid node key")
             .hash()
             .to_bytes();
-        let intent_hash = compute_intent_hash(request, delegate_pk, &wallet.script_address);
+        let intent_hash =
+            compute_intent_hash(request, delegate_pk, &wallet.script_address);
 
-        mk_datum_hex(
-            121,
-            vec![user_hash, node_hash, intent_hash.to_vec()],
-        )
+        mk_datum_hex(121, vec![user_hash, node_hash, intent_hash.to_vec()])
     }
 
     #[test]
@@ -1302,7 +1440,9 @@ mod datum_tests {
         let utxo = mk_utxo_with_datum_hex(None);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
         assert!(format!("{err:?}").contains("missing inline datum"));
     }
 
@@ -1318,7 +1458,9 @@ mod datum_tests {
         let utxo = mk_utxo_with_datum_hex(Some("00ff".to_string()));
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
         assert!(matches!(err, Error::InvalidInput { .. }));
     }
 
@@ -1336,11 +1478,17 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let datum_hex = mk_valid_datum_hex(&request, &wallet, &delegate_pk, &wrong_user_pk);
+        let datum_hex =
+            mk_valid_datum_hex(&request, &wallet, &delegate_pk, &wrong_user_pk);
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
-        assert!(format!("{err:?}").contains("Datum user_pubkey_hash does not match"));
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
+        assert!(
+            format!("{err:?}")
+                .contains("Datum user_pubkey_hash does not match")
+        );
     }
 
     #[test]
@@ -1355,7 +1503,8 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let datum_hex = mk_valid_datum_hex(&request, &wallet, &delegate_pk, &user_pk);
+        let datum_hex =
+            mk_valid_datum_hex(&request, &wallet, &delegate_pk, &user_pk);
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
         validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
@@ -1374,14 +1523,24 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
-        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
-        let intent_hash = compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
+        let user_hash = csl::PublicKey::from_bytes(&user_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let intent_hash =
+            compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
 
-        let datum_hex = mk_datum_hex(122, vec![user_hash, node_hash, intent_hash.to_vec()]);
+        let datum_hex =
+            mk_datum_hex(122, vec![user_hash, node_hash, intent_hash.to_vec()]);
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
         assert!(format!("{err:?}").contains("Unexpected datum constructor"));
     }
 
@@ -1397,13 +1556,21 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
-        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(&user_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
 
         let datum_hex = mk_datum_hex(121, vec![user_hash, node_hash]);
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
         assert!(format!("{err:?}").contains("expected 3"));
     }
 
@@ -1421,15 +1588,30 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
-        let wrong_node_hash = csl::PublicKey::from_bytes(&wrong_node_pk).unwrap().hash().to_bytes();
-        let intent_hash = compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
+        let user_hash = csl::PublicKey::from_bytes(&user_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let wrong_node_hash = csl::PublicKey::from_bytes(&wrong_node_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let intent_hash =
+            compute_intent_hash(&request, &delegate_pk, &wallet.script_address);
 
-        let datum_hex = mk_datum_hex(121, vec![user_hash, wrong_node_hash, intent_hash.to_vec()]);
+        let datum_hex = mk_datum_hex(
+            121,
+            vec![user_hash, wrong_node_hash, intent_hash.to_vec()],
+        );
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
-        assert!(format!("{err:?}").contains("node_pubkey_hash does not match this node"));
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
+        assert!(
+            format!("{err:?}")
+                .contains("node_pubkey_hash does not match this node")
+        );
     }
 
     #[test]
@@ -1444,15 +1626,27 @@ mod datum_tests {
         let wallet = mk_wallet(&node_pk);
         let delegate_pk = PublicKey([3u8; 32]);
 
-        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
-        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
+        let user_hash = csl::PublicKey::from_bytes(&user_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
         let wrong_intent = vec![9u8; 32];
 
-        let datum_hex = mk_datum_hex(121, vec![user_hash, node_hash, wrong_intent]);
+        let datum_hex =
+            mk_datum_hex(121, vec![user_hash, node_hash, wrong_intent]);
         let utxo = mk_utxo_with_datum_hex(Some(datum_hex));
 
-        let err = validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk).unwrap_err();
-        assert!(format!("{err:?}").contains("intent_hash does not match canonical payload"));
+        let err =
+            validate_deposit_datum(&request, &wallet, &utxo, &delegate_pk)
+                .unwrap_err();
+        assert!(
+            format!("{err:?}")
+                .contains("intent_hash does not match canonical payload")
+        );
     }
 }
 
@@ -1496,7 +1690,8 @@ mod amount_validation_tests {
             quantity: "1000000".to_string(),
         }]);
 
-        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
         assert!(format!("{err:?}").contains("No outputs provided for deposit"));
     }
 
@@ -1514,7 +1709,8 @@ mod amount_validation_tests {
             },
         ]);
 
-        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
         assert!(format!("{err:?}").contains("Insufficient outputs"));
     }
 
@@ -1538,7 +1734,8 @@ mod amount_validation_tests {
             quantity: "999999".to_string(),
         }]);
 
-        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
         assert!(format!("{err:?}").contains("below minimum"));
     }
 
@@ -1550,12 +1747,14 @@ mod amount_validation_tests {
             quantity: "not-a-number".to_string(),
         }]);
 
-        let err = validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
         assert!(format!("{err:?}").contains("Invalid asset quantity"));
     }
 
     #[test]
-    fn validate_deposit_amounts_accepts_exact_minimum_and_unique_asset_boundary() {
+    fn validate_deposit_amounts_accepts_exact_minimum_and_unique_asset_boundary()
+     {
         let request = request_with_output_count(2);
         let utxo = utxo_with_amounts(vec![
             AssetAmount {
@@ -1584,7 +1783,14 @@ mod handle_deposit_flow_tests {
         response::IntoResponse,
         routing::get,
     };
-    use coset::{CoseSign1, CoseSign1Builder, Header, ProtectedHeader, TaggedCborSerializable, iana};
+    use coset::{
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
+    };
     use ed25519_dalek::{Signer, SigningKey};
     use pallas_codec::minicbor;
     use pallas_primitives::{
@@ -1596,10 +1802,7 @@ mod handle_deposit_flow_tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{
-        config::Config,
-        database::Database,
-    };
+    use crate::{config::Config, database::Database};
 
     fn build_cip8_signature(sk: &SigningKey, payload: &[u8]) -> Vec<u8> {
         let header = Header {
@@ -1691,7 +1894,11 @@ mod handle_deposit_flow_tests {
         w.commit().unwrap();
     }
 
-    fn mk_datum_cbor_hex(user_hash: Vec<u8>, node_hash: Vec<u8>, intent_hash: Vec<u8>) -> String {
+    fn mk_datum_cbor_hex(
+        user_hash: Vec<u8>,
+        node_hash: Vec<u8>,
+        intent_hash: Vec<u8>,
+    ) -> String {
         let datum = PlutusData::Constr(Constr {
             tag: 121,
             any_constructor: None,
@@ -1717,7 +1924,11 @@ mod handle_deposit_flow_tests {
 
         async fn tx_utxos(
             Path(tx_hash): Path<String>,
-            axum::extract::State(state): axum::extract::State<(String, String, bool)>,
+            axum::extract::State(state): axum::extract::State<(
+                String,
+                String,
+                bool,
+            )>,
         ) -> impl IntoResponse {
             let (script_address, _datum_hex, include_output) = state;
 
@@ -1743,7 +1954,11 @@ mod handle_deposit_flow_tests {
         }
 
         async fn datum_cbor(
-            axum::extract::State(state): axum::extract::State<(String, String, bool)>,
+            axum::extract::State(state): axum::extract::State<(
+                String,
+                String,
+                bool,
+            )>,
         ) -> impl IntoResponse {
             let (_script_address, datum_hex, _include_output) = state;
             (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
@@ -1758,7 +1973,8 @@ mod handle_deposit_flow_tests {
             .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
             .with_state((script_address, datum_cbor_hex, include_output));
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -1767,8 +1983,18 @@ mod handle_deposit_flow_tests {
         format!("http://{addr}")
     }
 
-    async fn spawn_provider_mock(script_address: String, datum_cbor_hex: String, tip_height: u64) -> String {
-        spawn_provider_mock_with_outputs(script_address, datum_cbor_hex, tip_height, true).await
+    async fn spawn_provider_mock(
+        script_address: String,
+        datum_cbor_hex: String,
+        tip_height: u64,
+    ) -> String {
+        spawn_provider_mock_with_outputs(
+            script_address,
+            datum_cbor_hex,
+            tip_height,
+            true,
+        )
+        .await
     }
 
     async fn spawn_provider_mock_without_block_height(
@@ -1816,7 +2042,8 @@ mod handle_deposit_flow_tests {
             .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
             .with_state((script_address, datum_cbor_hex));
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -1871,7 +2098,8 @@ mod handle_deposit_flow_tests {
             .route("/scripts/datum/{datum_hash}/cbor", get(datum_cbor))
             .with_state((script_address, datum_cbor_hex));
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -1906,12 +2134,27 @@ mod handle_deposit_flow_tests {
             t.get("wallet").unwrap().unwrap().value()
         };
 
-        let intent = compute_intent_hash(&request, &ctx.keypair.public_key, &wallet.script_address);
-        let user_hash = csl::PublicKey::from_bytes(&user_pk).unwrap().hash().to_bytes();
-        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk).unwrap().hash().to_bytes();
-        let datum_cbor_hex = mk_datum_cbor_hex(user_hash, node_hash, intent.to_vec());
+        let intent = compute_intent_hash(
+            &request,
+            &ctx.keypair.public_key,
+            &wallet.script_address,
+        );
+        let user_hash = csl::PublicKey::from_bytes(&user_pk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let datum_cbor_hex =
+            mk_datum_cbor_hex(user_hash, node_hash, intent.to_vec());
 
-        let payload = build_canonical_payload(&request, &ctx.keypair.public_key, "addr_test1script");
+        let payload = build_canonical_payload(
+            &request,
+            &ctx.keypair.public_key,
+            "addr_test1script",
+        );
         request.signature = build_cip8_signature(user_sk, &payload);
 
         (request, datum_cbor_hex)
@@ -1924,13 +2167,21 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
-        let response = handle_deposit(&request, &ctx).await.expect("deposit accepted");
+        let response = handle_deposit(&request, &ctx)
+            .await
+            .expect("deposit accepted");
         assert!(matches!(response, Response::Deposit { .. }));
 
         let r = ctx.database.read().unwrap();
@@ -1946,10 +2197,16 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (mut request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (mut request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
         request.message = "{}".to_string();
 
-        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -1969,10 +2226,16 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
         // tx block is 90 in mock; tip 92 => 2 confirmations < configured depth 5.
-        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 92).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            92,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -1992,10 +2255,16 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
         // tx block is 90 in mock; tip 95 => exactly 5 confirmations, which should pass.
-        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 95).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            95,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -2012,9 +2281,15 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url = spawn_provider_mock("addr_test1different".to_string(), datum_cbor_hex, 100).await;
+        let url = spawn_provider_mock(
+            "addr_test1different".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -2029,11 +2304,16 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url =
-            spawn_provider_mock_with_outputs("addr_test1script".to_string(), datum_cbor_hex, 100, false)
-                .await;
+        let url = spawn_provider_mock_with_outputs(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+            false,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -2042,22 +2322,30 @@ mod handle_deposit_flow_tests {
     }
 
     #[tokio::test]
-    async fn handle_deposit_rejects_missing_block_height_without_recording_deposit() {
+    async fn handle_deposit_rejects_missing_block_height_without_recording_deposit()
+     {
         let user_sk = SigningKey::from_bytes(&[12u8; 32]);
         let node_sk = SigningKey::from_bytes(&[23u8; 32]);
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url =
-            spawn_provider_mock_without_block_height("addr_test1script".to_string(), datum_cbor_hex, 100)
-                .await;
+        let url = spawn_provider_mock_without_block_height(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
         let err = handle_deposit(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("Cannot verify UTxO confirmation depth"));
+        assert!(
+            format!("{err:?}")
+                .contains("Cannot verify UTxO confirmation depth")
+        );
 
         let r = ctx.database.read().unwrap();
         let deposits = r.open_table(DEPOSITS).unwrap();
@@ -2066,22 +2354,29 @@ mod handle_deposit_flow_tests {
     }
 
     #[tokio::test]
-    async fn handle_deposit_surfaces_tip_lookup_failures_without_recording_deposit() {
+    async fn handle_deposit_surfaces_tip_lookup_failures_without_recording_deposit()
+     {
         let user_sk = SigningKey::from_bytes(&[13u8; 32]);
         let node_sk = SigningKey::from_bytes(&[24u8; 32]);
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url =
-            spawn_provider_mock_with_tip_failure("addr_test1script".to_string(), datum_cbor_hex)
-                .await;
+        let url = spawn_provider_mock_with_tip_failure(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
         let err = handle_deposit(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("Failed to get chain tip for confirm depth check"));
+        assert!(
+            format!("{err:?}")
+                .contains("Failed to get chain tip for confirm depth check")
+        );
 
         let r = ctx.database.read().unwrap();
         let deposits = r.open_table(DEPOSITS).unwrap();
@@ -2096,10 +2391,16 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, _datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, _datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
         // Provider serves malformed/incorrect datum payload.
-        let url = spawn_provider_mock("addr_test1script".to_string(), "00".to_string(), 100).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            "00".to_string(),
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
@@ -2114,13 +2415,21 @@ mod handle_deposit_flow_tests {
         let node_pk = node_sk.verifying_key().to_bytes();
 
         let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
-        let (request, datum_cbor_hex) = prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
 
-        let url = spawn_provider_mock("addr_test1script".to_string(), datum_cbor_hex, 100).await;
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
         let ctx = mk_context(url);
         insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
 
-        handle_deposit(&request, &ctx).await.expect("first deposit accepted");
+        handle_deposit(&request, &ctx)
+            .await
+            .expect("first deposit accepted");
         let err = handle_deposit(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("already processed"));
     }

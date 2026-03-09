@@ -17,7 +17,10 @@ use super::{
 };
 
 impl BlockfrostProvider {
-    pub(super) async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
+    pub(super) async fn get_tx_block_height(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<u64>> {
         let url = format!("{}/txs/{}", self.base_url, tx_hash);
         let resp = send_with_retry(
             || self.client.get(&url).header("project_id", &self.api_key),
@@ -93,7 +96,10 @@ impl BlockfrostProvider {
         Ok(None)
     }
 
-    pub(super) async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
+    pub(super) async fn get_address_utxos(
+        &self,
+        address: &str,
+    ) -> Result<Vec<UtxoInfo>> {
         let base_url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
         let mut all = Vec::new();
@@ -124,15 +130,22 @@ impl BlockfrostProvider {
             let block_height = match utxo.block_height {
                 Some(height) => Some(height),
                 None => {
-                    let tx_url = format!("{}/txs/{}", self.base_url, utxo.tx_hash);
+                    let tx_url =
+                        format!("{}/txs/{}", self.base_url, utxo.tx_hash);
                     let tx_info: BlockfrostTxInfo = send_with_retry(
-                        || self.client.get(&tx_url).header("project_id", &self.api_key),
+                        || {
+                            self.client
+                                .get(&tx_url)
+                                .header("project_id", &self.api_key)
+                        },
                         "Failed to fetch transaction info from Blockfrost",
                     )
                     .await?
                     .json()
                     .await
-                    .context("Failed to parse Blockfrost transaction response")?;
+                    .context(
+                        "Failed to parse Blockfrost transaction response",
+                    )?;
                     Some(tx_info.block_height)
                 }
             };
@@ -159,7 +172,10 @@ impl BlockfrostProvider {
         Ok(results)
     }
 
-    pub(super) async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
+    pub(super) async fn submit_tx(
+        &self,
+        tx_cbor: &[u8],
+    ) -> Result<SubmitResponse> {
         let url = format!("{}/tx/submit", self.base_url);
         let response = send_with_retry(
             || {
@@ -222,13 +238,25 @@ impl BlockfrostProvider {
             min_fee_a: parse_required("min_fee_a", &response.min_fee_a)?,
             min_fee_b: parse_required("min_fee_b", &response.min_fee_b)?,
             max_tx_size: parse_required("max_tx_size", &response.max_tx_size)?,
-            max_val_size: parse_required("max_val_size", &response.max_val_size)?,
+            max_val_size: parse_required(
+                "max_val_size",
+                &response.max_val_size,
+            )?,
             key_deposit: parse_required("key_deposit", &response.key_deposit)?,
-            pool_deposit: parse_required("pool_deposit", &response.pool_deposit)?,
+            pool_deposit: parse_required(
+                "pool_deposit",
+                &response.pool_deposit,
+            )?,
             price_mem: parse_required("price_mem", &response.price_mem)?,
             price_step: parse_required("price_step", &response.price_step)?,
-            max_tx_ex_mem: parse_required("max_tx_ex_mem", &response.max_tx_ex_mem)?,
-            max_tx_ex_steps: parse_required("max_tx_ex_steps", &response.max_tx_ex_steps)?,
+            max_tx_ex_mem: parse_required(
+                "max_tx_ex_mem",
+                &response.max_tx_ex_mem,
+            )?,
+            max_tx_ex_steps: parse_required(
+                "max_tx_ex_steps",
+                &response.max_tx_ex_steps,
+            )?,
             coins_per_utxo_byte: parse_required(
                 "coins_per_utxo_size",
                 &response.coins_per_utxo_size,
@@ -236,8 +264,12 @@ impl BlockfrostProvider {
         })
     }
 
-    pub(super) async fn fetch_datum_cbor(&self, datum_hash: &str) -> Result<Option<String>> {
-        let url = format!("{}/scripts/datum/{}/cbor", self.base_url, datum_hash);
+    pub(super) async fn fetch_datum_cbor(
+        &self,
+        datum_hash: &str,
+    ) -> Result<Option<String>> {
+        let url =
+            format!("{}/scripts/datum/{}/cbor", self.base_url, datum_hash);
         let resp = send_with_retry(
             || self.client.get(&url).header("project_id", &self.api_key),
             "Failed to fetch datum CBOR from Blockfrost",
@@ -330,7 +362,12 @@ struct BlockfrostEpochParams {
 
 #[cfg(test)]
 mod tests {
-    use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
+    use axum::{
+        Router,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::get,
+    };
     use serde_json::json;
 
     use super::*;
@@ -346,7 +383,10 @@ mod tests {
 
     async fn spawn_datum_mock(ok_status: StatusCode) -> String {
         async fn datum_ok() -> impl IntoResponse {
-            (StatusCode::OK, axum::Json(json!({"cbor": "d8799f581c01ff"})))
+            (
+                StatusCode::OK,
+                axum::Json(json!({"cbor": "d8799f581c01ff"})),
+            )
         }
 
         async fn datum_missing() -> impl IntoResponse {
@@ -358,12 +398,16 @@ mod tests {
         }
 
         let app = match ok_status {
-            StatusCode::OK => Router::new().route("/scripts/datum/{datum_hash}/cbor", get(datum_ok)),
-            StatusCode::NOT_FOUND => Router::new().route("/scripts/datum/{datum_hash}/cbor", get(datum_missing)),
-            _ => Router::new().route("/scripts/datum/{datum_hash}/cbor", get(datum_boom)),
+            StatusCode::OK => Router::new()
+                .route("/scripts/datum/{datum_hash}/cbor", get(datum_ok)),
+            StatusCode::NOT_FOUND => Router::new()
+                .route("/scripts/datum/{datum_hash}/cbor", get(datum_missing)),
+            _ => Router::new()
+                .route("/scripts/datum/{datum_hash}/cbor", get(datum_boom)),
         };
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -373,12 +417,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn blockfrost_fetch_datum_cbor_returns_none_on_404_and_error_on_non_404() {
+    async fn blockfrost_fetch_datum_cbor_returns_none_on_404_and_error_on_non_404()
+     {
         let ok = provider(spawn_datum_mock(StatusCode::OK).await);
         let missing = provider(spawn_datum_mock(StatusCode::NOT_FOUND).await);
-        let failing = provider(spawn_datum_mock(StatusCode::INTERNAL_SERVER_ERROR).await);
+        let failing =
+            provider(spawn_datum_mock(StatusCode::INTERNAL_SERVER_ERROR).await);
 
-        assert_eq!(ok.fetch_datum_cbor("hash").await.unwrap(), Some("d8799f581c01ff".to_string()));
+        assert_eq!(
+            ok.fetch_datum_cbor("hash").await.unwrap(),
+            Some("d8799f581c01ff".to_string())
+        );
         assert!(missing.fetch_datum_cbor("hash").await.unwrap().is_none());
 
         let err = failing.fetch_datum_cbor("hash").await.unwrap_err();

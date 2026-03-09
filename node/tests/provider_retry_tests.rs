@@ -66,7 +66,9 @@ async fn spawn_mock(statuses: Vec<StatusCode>) -> (String, Arc<AtomicUsize>) {
     (format!("http://{}", addr), state.hits)
 }
 
-async fn spawn_transport_error_mock(expected_attempts: usize) -> (String, Arc<AtomicUsize>) {
+async fn spawn_transport_error_mock(
+    expected_attempts: usize,
+) -> (String, Arc<AtomicUsize>) {
     let hits = Arc::new(AtomicUsize::new(0));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -76,7 +78,8 @@ async fn spawn_transport_error_mock(expected_attempts: usize) -> (String, Arc<At
 
     tokio::spawn(async move {
         while hits_clone.load(Ordering::SeqCst) < expected_attempts {
-            let (stream, _) = listener.accept().await.expect("accept connection");
+            let (stream, _) =
+                listener.accept().await.expect("accept connection");
             hits_clone.fetch_add(1, Ordering::SeqCst);
             drop(stream);
         }
@@ -102,7 +105,10 @@ async fn spawn_observation_mock(
         State((_height, tx_block_height)): State<(u64, Option<u64>)>,
     ) -> impl IntoResponse {
         match tx_block_height {
-            Some(height) => (StatusCode::OK, axum::Json(json!({"block_height": height}))).into_response(),
+            Some(height) => {
+                (StatusCode::OK, axum::Json(json!({"block_height": height})))
+                    .into_response()
+            }
             None => StatusCode::NOT_FOUND.into_response(),
         }
     }
@@ -180,7 +186,11 @@ async fn tx_info_for_address_utxos(
 ) -> impl IntoResponse {
     state.tx_info_hits.fetch_add(1, Ordering::SeqCst);
     let block_height = if tx_hash.starts_with("22") { 88 } else { 55 };
-    (StatusCode::OK, axum::Json(json!({"block_height": block_height}))).into_response()
+    (
+        StatusCode::OK,
+        axum::Json(json!({"block_height": block_height})),
+    )
+        .into_response()
 }
 
 async fn spawn_address_utxos_mock() -> (String, Arc<AtomicUsize>) {
@@ -261,9 +271,11 @@ async fn spawn_submit_mock(ok: bool) -> String {
 
 async fn spawn_protocol_params_mock(valid: bool) -> String {
     let app = if valid {
-        Router::new().route("/epochs/latest/parameters", get(protocol_params_ok))
+        Router::new()
+            .route("/epochs/latest/parameters", get(protocol_params_ok))
     } else {
-        Router::new().route("/epochs/latest/parameters", get(protocol_params_bad))
+        Router::new()
+            .route("/epochs/latest/parameters", get(protocol_params_bad))
     };
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -276,12 +288,18 @@ async fn spawn_protocol_params_mock(valid: bool) -> String {
 }
 
 fn assert_maestro_api_key(headers: &HeaderMap) {
-    assert_eq!(headers.get("api-key").and_then(|v| v.to_str().ok()), Some("test-key"));
+    assert_eq!(
+        headers.get("api-key").and_then(|v| v.to_str().ok()),
+        Some("test-key")
+    );
 }
 
 async fn maestro_latest_block(headers: HeaderMap) -> impl IntoResponse {
     assert_maestro_api_key(&headers);
-    (StatusCode::OK, axum::Json(json!({"slot": 77, "hash": "def", "height": 20})))
+    (
+        StatusCode::OK,
+        axum::Json(json!({"slot": 77, "hash": "def", "height": 20})),
+    )
 }
 
 async fn maestro_protocol_params_ok(headers: HeaderMap) -> impl IntoResponse {
@@ -318,7 +336,10 @@ async fn maestro_protocol_params_bad(headers: HeaderMap) -> impl IntoResponse {
     }))
 }
 
-async fn maestro_submit_ok(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+async fn maestro_submit_ok(
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
     assert_maestro_api_key(&headers);
     assert!(!body.is_empty(), "submitted tx body should not be empty");
     (StatusCode::OK, axum::Json(json!({"hash": "cd".repeat(32)})))
@@ -329,7 +350,10 @@ async fn maestro_submit_bad(headers: HeaderMap) -> impl IntoResponse {
     (StatusCode::BAD_REQUEST, "bad tx body")
 }
 
-async fn maestro_output(Path((tx_hash, index)): Path<(String, u16)>, headers: HeaderMap) -> impl IntoResponse {
+async fn maestro_output(
+    Path((tx_hash, index)): Path<(String, u16)>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
     assert_maestro_api_key(&headers);
     if tx_hash.starts_with("ff") {
         return StatusCode::NOT_FOUND.into_response();
@@ -350,7 +374,10 @@ async fn maestro_output(Path((tx_hash, index)): Path<(String, u16)>, headers: He
         .into_response()
 }
 
-async fn maestro_tx_info(Path(tx_hash): Path<String>, headers: HeaderMap) -> impl IntoResponse {
+async fn maestro_tx_info(
+    Path(tx_hash): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
     assert_maestro_api_key(&headers);
     if tx_hash.starts_with("ff") {
         return StatusCode::NOT_FOUND.into_response();
@@ -388,7 +415,10 @@ async fn maestro_address_utxos(
     }
 }
 
-async fn spawn_maestro_mock(valid_params: bool, submit_ok_status: bool) -> String {
+async fn spawn_maestro_mock(
+    valid_params: bool,
+    submit_ok_status: bool,
+) -> String {
     let app = Router::new()
         .route("/blocks/latest", get(maestro_latest_block))
         .route(
@@ -408,7 +438,10 @@ async fn spawn_maestro_mock(valid_params: bool, submit_ok_status: bool) -> Strin
             },
         )
         .route("/transactions/{tx_hash}", get(maestro_tx_info))
-        .route("/transactions/{tx_hash}/outputs/{index}", get(maestro_output))
+        .route(
+            "/transactions/{tx_hash}/outputs/{index}",
+            get(maestro_output),
+        )
         .route("/addresses/{address}/utxos", get(maestro_address_utxos));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -422,7 +455,12 @@ async fn spawn_maestro_mock(valid_params: bool, submit_ok_status: bool) -> Strin
 
 #[tokio::test]
 async fn get_tip_retries_transient_errors_and_recovers() {
-    let (url, hits) = spawn_mock(vec![StatusCode::TOO_MANY_REQUESTS, StatusCode::INTERNAL_SERVER_ERROR, StatusCode::OK]).await;
+    let (url, hits) = spawn_mock(vec![
+        StatusCode::TOO_MANY_REQUESTS,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        StatusCode::OK,
+    ])
+    .await;
 
     let provider = Provider::new(
         "blockfrost",
@@ -461,7 +499,8 @@ async fn get_tip_retries_transport_errors_and_reports_network_failure() {
 
 #[tokio::test]
 async fn get_tip_does_not_retry_non_retriable_4xx() {
-    let (url, hits) = spawn_mock(vec![StatusCode::BAD_REQUEST, StatusCode::OK]).await;
+    let (url, hits) =
+        spawn_mock(vec![StatusCode::BAD_REQUEST, StatusCode::OK]).await;
 
     let provider = Provider::new(
         "blockfrost",
@@ -540,7 +579,10 @@ async fn submit_tx_parses_successful_blockfrost_response() {
     )
     .expect("provider");
 
-    let response = provider.submit_tx(&[0xde, 0xad, 0xbe, 0xef]).await.expect("submit ok");
+    let response = provider
+        .submit_tx(&[0xde, 0xad, 0xbe, 0xef])
+        .await
+        .expect("submit ok");
     assert_eq!(response.tx_hash, "ab".repeat(32));
 }
 
@@ -575,7 +617,10 @@ async fn get_protocol_params_parses_numeric_fields() {
     )
     .expect("provider");
 
-    let params = provider.get_protocol_params().await.expect("protocol params");
+    let params = provider
+        .get_protocol_params()
+        .await
+        .expect("protocol params");
     assert_eq!(params.min_fee_a, 44);
     assert_eq!(params.max_tx_size, 16_384);
     assert_eq!(params.coins_per_utxo_byte, 4_310);
@@ -645,7 +690,10 @@ async fn maestro_get_protocol_params_parses_numeric_fields() {
     )
     .expect("provider");
 
-    let params = provider.get_protocol_params().await.expect("protocol params");
+    let params = provider
+        .get_protocol_params()
+        .await
+        .expect("protocol params");
     assert_eq!(params.min_fee_a, 44);
     assert_eq!(params.max_tx_size, 16_384);
     assert_eq!(params.coins_per_utxo_byte, 4_310);

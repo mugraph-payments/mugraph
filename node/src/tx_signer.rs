@@ -5,12 +5,16 @@ use whisky_csl::csl;
 
 /// Sign transaction body hash with the node's payment key
 /// Returns the 64-byte Ed25519 signature
-pub fn sign_transaction_body(tx_body_hash: &[u8; 32], signing_key_bytes: &[u8]) -> Result<Vec<u8>> {
-    let signing_key = SigningKey::from_bytes(
-        signing_key_bytes
-            .try_into()
-            .map_err(|_| color_eyre::eyre::eyre!("Invalid signing key length, expected 32 bytes"))?,
-    );
+pub fn sign_transaction_body(
+    tx_body_hash: &[u8; 32],
+    signing_key_bytes: &[u8],
+) -> Result<Vec<u8>> {
+    let signing_key =
+        SigningKey::from_bytes(signing_key_bytes.try_into().map_err(|_| {
+            color_eyre::eyre::eyre!(
+                "Invalid signing key length, expected 32 bytes"
+            )
+        })?);
 
     let signature = signing_key.sign(tx_body_hash);
     Ok(signature.to_bytes().to_vec())
@@ -22,15 +26,20 @@ pub fn build_node_witness(
     signing_key_bytes: &[u8],
     verifying_key_bytes: &[u8],
 ) -> Result<VKeyWitness> {
-    let signature_bytes = sign_transaction_body(tx_body_hash, signing_key_bytes)?;
+    let signature_bytes =
+        sign_transaction_body(tx_body_hash, signing_key_bytes)?;
 
     Ok(VKeyWitness {
         vkey: verifying_key_bytes.try_into().map_err(|_| {
-            color_eyre::eyre::eyre!("Invalid verifying key length, expected 32 bytes")
+            color_eyre::eyre::eyre!(
+                "Invalid verifying key length, expected 32 bytes"
+            )
         })?,
-        signature: signature_bytes
-            .try_into()
-            .map_err(|_| color_eyre::eyre::eyre!("Invalid signature length, expected 64 bytes"))?,
+        signature: signature_bytes.try_into().map_err(|_| {
+            color_eyre::eyre::eyre!(
+                "Invalid signature length, expected 64 bytes"
+            )
+        })?,
     })
 }
 
@@ -52,13 +61,14 @@ pub fn attach_witness_to_transaction(
     );
 
     // Parse transaction
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).context("Invalid transaction CBOR")?;
+    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec())
+        .context("Invalid transaction CBOR")?;
 
     // Build witness using CSL helpers
     let priv_key = csl::PrivateKey::from_normal_bytes(&wallet.payment_sk)
         .context("Invalid payment signing key")?;
-    let tx_hash =
-        csl::TransactionHash::from_bytes(tx_body_hash.to_vec()).context("Invalid tx hash bytes")?;
+    let tx_hash = csl::TransactionHash::from_bytes(tx_body_hash.to_vec())
+        .context("Invalid tx hash bytes")?;
     let vkey_witness = csl::make_vkey_witness(&tx_hash, &priv_key);
 
     // Merge witness into witness set
@@ -128,7 +138,8 @@ mod tests {
         assert_eq!(signature.len(), 64);
 
         use ed25519_dalek::{Signature as EdSignature, Verifier, VerifyingKey};
-        let verifying_key = VerifyingKey::from_bytes(&vk.try_into().unwrap()).unwrap();
+        let verifying_key =
+            VerifyingKey::from_bytes(&vk.try_into().unwrap()).unwrap();
         let sig = EdSignature::from_slice(&signature).unwrap();
         assert!(verifying_key.verify(&message, &sig).is_ok());
     }

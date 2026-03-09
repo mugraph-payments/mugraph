@@ -113,8 +113,12 @@ impl TransferLifecycle {
                 if confirmed {
                     self.source = SourceLaneState::Confirmed;
                     self.destination = match self.destination {
-                        DestinationLaneState::Credited => DestinationLaneState::Credited,
-                        DestinationLaneState::Invalidated => DestinationLaneState::Invalidated,
+                        DestinationLaneState::Credited => {
+                            DestinationLaneState::Credited
+                        }
+                        DestinationLaneState::Invalidated => {
+                            DestinationLaneState::Invalidated
+                        }
                         _ => DestinationLaneState::CreditEligible,
                     };
                     self.chain = TransferChainState::Confirmed;
@@ -124,7 +128,8 @@ impl TransferLifecycle {
                     }
                 } else if self.source != SourceLaneState::Confirmed {
                     self.source = SourceLaneState::Confirming;
-                    if self.destination == DestinationLaneState::NoticeReceived {
+                    if self.destination == DestinationLaneState::NoticeReceived
+                    {
                         self.destination = DestinationLaneState::ChainObserved;
                     }
                     self.chain = TransferChainState::Confirming;
@@ -146,7 +151,8 @@ impl TransferLifecycle {
                 self.settlement = TransferSettlementState::Invalidated;
                 self.credit = if matches!(
                     self.credit,
-                    TransferCreditState::Credited | TransferCreditState::Reversed
+                    TransferCreditState::Credited
+                        | TransferCreditState::Reversed
                 ) {
                     TransferCreditState::Reversed
                 } else {
@@ -157,7 +163,10 @@ impl TransferLifecycle {
         }
     }
 
-    pub fn to_status_payload(&self, updated_at: String) -> TransferStatusPayload {
+    pub fn to_status_payload(
+        &self,
+        updated_at: String,
+    ) -> TransferStatusPayload {
         TransferStatusPayload {
             source_state: self.source.as_status_str().to_string(),
             destination_state: self.destination.as_status_str().to_string(),
@@ -267,15 +276,23 @@ fn settlement_state_for_status(
     }
 }
 
-pub fn status_payload_from_record(record: &CrossNodeTransferRecord) -> TransferStatusPayload {
+pub fn status_payload_from_record(
+    record: &CrossNodeTransferRecord,
+) -> TransferStatusPayload {
     let chain_state = parse_persisted_chain_state(&record.chain_state);
     let credit_state = parse_persisted_credit_state(&record.credit_state);
 
     TransferStatusPayload {
         source_state: source_state_for_chain(chain_state.clone()).to_string(),
-        destination_state: destination_state_for_status(chain_state.clone(), credit_state.clone())
-            .to_string(),
-        settlement_state: settlement_state_for_status(chain_state.clone(), credit_state.clone()),
+        destination_state: destination_state_for_status(
+            chain_state.clone(),
+            credit_state.clone(),
+        )
+        .to_string(),
+        settlement_state: settlement_state_for_status(
+            chain_state.clone(),
+            credit_state.clone(),
+        ),
         chain_state,
         credit_state,
         tx_hash: record.tx_hash.clone(),
@@ -286,13 +303,15 @@ pub fn status_payload_from_record(record: &CrossNodeTransferRecord) -> TransferS
 
 pub fn apply_retry_exhaustion_to_record(record: &mut CrossNodeTransferRecord) {
     let current_chain_state = parse_persisted_chain_state(&record.chain_state);
-    let next_chain_state = if current_chain_state == TransferChainState::Confirmed {
-        TransferChainState::Confirmed
-    } else {
-        TransferChainState::Invalidated
-    };
+    let next_chain_state =
+        if current_chain_state == TransferChainState::Confirmed {
+            TransferChainState::Confirmed
+        } else {
+            TransferChainState::Invalidated
+        };
 
-    record.credit_state = persisted_credit_state(TransferCreditState::Held).to_string();
+    record.credit_state =
+        persisted_credit_state(TransferCreditState::Held).to_string();
     record.chain_state = persisted_chain_state(next_chain_state).to_string();
 }
 
@@ -408,7 +427,13 @@ mod tests {
             ),
         ];
 
-        for (record, expected_source, expected_destination, expected_settlement) in cases {
+        for (
+            record,
+            expected_source,
+            expected_destination,
+            expected_settlement,
+        ) in cases
+        {
             let payload = status_payload_from_record(&record);
             assert_eq!(payload.source_state, expected_source);
             assert_eq!(payload.destination_state, expected_destination);

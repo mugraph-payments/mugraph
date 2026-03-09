@@ -6,7 +6,9 @@ use color_eyre::eyre::{Context, Result};
 pub fn get_validator_dir() -> Result<std::path::PathBuf> {
     let validator_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .ok_or_else(|| color_eyre::eyre::eyre!("Failed to get parent directory"))?
+        .ok_or_else(|| {
+            color_eyre::eyre::eyre!("Failed to get parent directory")
+        })?
         .join("validator");
 
     if !validator_dir.exists() {
@@ -32,9 +34,13 @@ pub fn validator_artifacts_exist() -> Result<bool> {
         .and_then(|m| m.modified())
         .ok();
 
-    let dirs_to_check = [validator_dir.join("validators"), validator_dir.join("lib")];
+    let dirs_to_check =
+        [validator_dir.join("validators"), validator_dir.join("lib")];
 
-    fn any_ak_newer_than(dir: &Path, plutus_time: Option<std::time::SystemTime>) -> Result<bool> {
+    fn any_ak_newer_than(
+        dir: &Path,
+        plutus_time: Option<std::time::SystemTime>,
+    ) -> Result<bool> {
         if !dir.exists() {
             return Ok(false);
         }
@@ -46,11 +52,13 @@ pub fn validator_artifacts_exist() -> Result<bool> {
                     return Ok(true);
                 }
             } else if path.extension().is_some_and(|ext| ext == "ak")
-                && let Ok(source_modified) = std::fs::metadata(&path).and_then(|m| m.modified())
-                    && let Some(plutus_time) = plutus_time
-                        && source_modified > plutus_time {
-                            return Ok(true);
-                        }
+                && let Ok(source_modified) =
+                    std::fs::metadata(&path).and_then(|m| m.modified())
+                && let Some(plutus_time) = plutus_time
+                && source_modified > plutus_time
+            {
+                return Ok(true);
+            }
         }
         Ok(false)
     }
@@ -63,11 +71,13 @@ pub fn validator_artifacts_exist() -> Result<bool> {
 
     let aiken_toml = validator_dir.join("aiken.toml");
     if aiken_toml.exists()
-        && let Ok(toml_modified) = std::fs::metadata(&aiken_toml).and_then(|m| m.modified())
-            && let Some(plutus_time) = plutus_modified
-                && toml_modified > plutus_time {
-                    return Ok(false);
-                }
+        && let Ok(toml_modified) =
+            std::fs::metadata(&aiken_toml).and_then(|m| m.modified())
+        && let Some(plutus_time) = plutus_modified
+        && toml_modified > plutus_time
+    {
+        return Ok(false);
+    }
 
     Ok(true)
 }
@@ -77,16 +87,18 @@ pub fn load_validator_cbor() -> Result<Vec<u8>> {
     let validator_dir = get_validator_dir()?;
     let plutus_json_path = validator_dir.join("plutus.json");
 
-    let plutus_content =
-        std::fs::read_to_string(&plutus_json_path).context("Failed to read plutus.json")?;
+    let plutus_content = std::fs::read_to_string(&plutus_json_path)
+        .context("Failed to read plutus.json")?;
 
-    let plutus_json: serde_json::Value =
-        serde_json::from_str(&plutus_content).context("Failed to parse plutus.json")?;
+    let plutus_json: serde_json::Value = serde_json::from_str(&plutus_content)
+        .context("Failed to parse plutus.json")?;
 
     let validators = plutus_json
         .get("validators")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| color_eyre::eyre::eyre!("No validators found in plutus.json"))?;
+        .ok_or_else(|| {
+        color_eyre::eyre::eyre!("No validators found in plutus.json")
+    })?;
 
     if validators.is_empty() {
         return Err(color_eyre::eyre::eyre!(
@@ -97,9 +109,12 @@ pub fn load_validator_cbor() -> Result<Vec<u8>> {
     let compiled_code = validators[0]
         .get("compiledCode")
         .and_then(|c| c.as_str())
-        .ok_or_else(|| color_eyre::eyre::eyre!("Missing compiledCode in validator"))?;
+        .ok_or_else(|| {
+            color_eyre::eyre::eyre!("Missing compiledCode in validator")
+        })?;
 
-    let cbor = hex::decode(compiled_code).context("Failed to decode CBOR hex")?;
+    let cbor =
+        hex::decode(compiled_code).context("Failed to decode CBOR hex")?;
 
     Ok(cbor)
 }

@@ -32,7 +32,8 @@ fn signed_note(keypair: &Keypair, amount: u64) -> Note {
     };
 
     let blind = crypto::blind_note(&mut rng, &note);
-    let signed = crypto::sign_blinded(&mut rng, &keypair.secret_key, &blind.point);
+    let signed =
+        crypto::sign_blinded(&mut rng, &keypair.secret_key, &blind.point);
     note.signature = crypto::unblind_signature(
         &signed.signature,
         &blind.factor,
@@ -61,7 +62,8 @@ fn refresh_success_returns_output_and_marks_inputs_spent() {
         .build()
         .unwrap();
 
-    let response = refresh(&refresh_tx, keypair, &db).expect("refresh accepted");
+    let response =
+        refresh(&refresh_tx, keypair, &db).expect("refresh accepted");
     let Response::Transaction { outputs } = response else {
         panic!("expected refresh transaction response");
     };
@@ -70,7 +72,11 @@ fn refresh_success_returns_output_and_marks_inputs_spent() {
     let read_tx = db.read().unwrap();
     let table = read_tx.open_table(NOTES).unwrap();
     assert!(table.get(note.signature).unwrap().is_some());
-    assert_eq!(table.iter().unwrap().count(), 2, "zero marker + spent input");
+    assert_eq!(
+        table.iter().unwrap().count(),
+        2,
+        "zero marker + spent input"
+    );
 }
 
 #[test]
@@ -96,8 +102,14 @@ fn refresh_rejects_already_spent_note_without_extra_writes() {
         .unwrap();
 
     let err = refresh(&refresh_tx, keypair, &db).unwrap_err();
-    assert!(matches!(err, Error::AlreadySpent { signature } if signature == note.signature));
-    assert_eq!(note_row_count(&db), 2, "zero marker + pre-seeded spent note");
+    assert!(
+        matches!(err, Error::AlreadySpent { signature } if signature == note.signature)
+    );
+    assert_eq!(
+        note_row_count(&db),
+        2,
+        "zero marker + pre-seeded spent note"
+    );
 }
 
 #[test]
@@ -120,7 +132,11 @@ fn refresh_rejects_invalid_signature_without_burning_note() {
     let read_tx = db.read().unwrap();
     let table = read_tx.open_table(NOTES).unwrap();
     assert!(table.get(note.signature).unwrap().is_none());
-    assert_eq!(table.iter().unwrap().count(), 1, "only zero marker should remain");
+    assert_eq!(
+        table.iter().unwrap().count(),
+        1,
+        "only zero marker should remain"
+    );
 }
 
 #[test]
@@ -148,11 +164,17 @@ fn refresh_is_atomic_when_a_later_input_is_already_spent() {
         .unwrap();
 
     let err = refresh(&refresh_tx, keypair, &db).unwrap_err();
-    assert!(matches!(err, Error::AlreadySpent { signature } if signature == note2.signature));
+    assert!(
+        matches!(err, Error::AlreadySpent { signature } if signature == note2.signature)
+    );
 
     let read_tx = db.read().unwrap();
     let table = read_tx.open_table(NOTES).unwrap();
     assert!(table.get(note1.signature).unwrap().is_none());
     assert!(table.get(note2.signature).unwrap().is_some());
-    assert_eq!(table.iter().unwrap().count(), 2, "zero marker + pre-seeded spent note");
+    assert_eq!(
+        table.iter().unwrap().count(),
+        2,
+        "zero marker + pre-seeded spent note"
+    );
 }

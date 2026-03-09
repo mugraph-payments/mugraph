@@ -109,7 +109,9 @@ trait CorruptFallback {
     fn corrupt_fallback() -> Self;
 }
 
-fn deserialize_or_fallback<T: DeserializeOwned + CorruptFallback>(data: &[u8]) -> T {
+fn deserialize_or_fallback<T: DeserializeOwned + CorruptFallback>(
+    data: &[u8],
+) -> T {
     bincode::deserialize(data).unwrap_or_else(|_| T::corrupt_fallback())
 }
 
@@ -279,7 +281,9 @@ impl WithdrawalRecord {
 }
 
 /// UTxO identifier (tx_hash + index)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct UtxoRef {
     /// Transaction hash (32 bytes)
     pub tx_hash: [u8; 32],
@@ -310,7 +314,9 @@ impl UtxoRef {
 }
 
 /// Withdrawal key with network discriminator
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct WithdrawalKey {
     /// Network identifier byte
     pub network: u8,
@@ -444,7 +450,8 @@ impl Value for CrossNodeTransferRecord {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).expect("Failed to serialize CrossNodeTransferRecord")
+        bincode::serialize(value)
+            .expect("Failed to serialize CrossNodeTransferRecord")
     }
 
     fn type_name() -> redb::TypeName {
@@ -472,7 +479,8 @@ impl Value for CrossNodeMessageRecord {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).expect("Failed to serialize CrossNodeMessageRecord")
+        bincode::serialize(value)
+            .expect("Failed to serialize CrossNodeMessageRecord")
     }
 
     fn type_name() -> redb::TypeName {
@@ -500,7 +508,8 @@ impl Value for IdempotencyRecord {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).expect("Failed to serialize IdempotencyRecord")
+        bincode::serialize(value)
+            .expect("Failed to serialize IdempotencyRecord")
     }
 
     fn type_name() -> redb::TypeName {
@@ -528,7 +537,8 @@ impl Value for TransferAuditEvent {
         Self: 'a,
         Self: 'b,
     {
-        bincode::serialize(value).expect("Failed to serialize TransferAuditEvent")
+        bincode::serialize(value)
+            .expect("Failed to serialize TransferAuditEvent")
     }
 
     fn type_name() -> redb::TypeName {
@@ -645,7 +655,8 @@ mod tests {
 
     #[test]
     fn malformed_withdrawal_record_bytes_fail_closed_without_panicking() {
-        let value = <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
+        let value =
+            <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
         assert_eq!(value.status, WithdrawalStatus::Failed);
     }
 

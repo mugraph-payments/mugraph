@@ -48,7 +48,12 @@ impl RefreshBuilder {
         self.inputs.len()
     }
 
-    pub fn output(mut self, policy_id: PolicyId, asset_name: AssetName, amount: u64) -> Self {
+    pub fn output(
+        mut self,
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        amount: u64,
+    ) -> Self {
         let asset = Asset {
             policy_id,
             asset_name,
@@ -133,9 +138,8 @@ mod tests {
     use proptest::prelude::*;
     use test_strategy::proptest;
 
-    use crate::types::*;
-
     use super::*;
+    use crate::types::*;
 
     #[proptest]
     fn prop_builder_produces_verifiable_refresh(
@@ -145,7 +149,8 @@ mod tests {
         nonce: Hash,
         signature: Signature,
         #[strategy(1u64..=500_000)] amount: u64,
-        #[strategy(proptest::collection::vec(1u64..=500_000, 1..=4))] split_weights: Vec<u64>,
+        #[strategy(proptest::collection::vec(1u64..=500_000, 1..=4))]
+        split_weights: Vec<u64>,
     ) {
         let note = Note {
             amount,
@@ -195,9 +200,11 @@ mod tests {
             dleq: None,
         };
 
-        let builder = RefreshBuilder::new()
-            .input(note)
-            .output(policy_id, asset_name, amount + 1);
+        let builder = RefreshBuilder::new().input(note).output(
+            policy_id,
+            asset_name,
+            amount + 1,
+        );
 
         prop_assert!(builder.build().is_err());
     }
@@ -213,8 +220,10 @@ mod tests {
         policy_id: PolicyId,
         asset_name: AssetName,
         delegate: PublicKey,
-        #[strategy(proptest::collection::vec(1u64..=100_000, 2..=4))] input_amounts: Vec<u64>,
-        #[strategy(proptest::collection::vec(1u64..=100_000, 1..=4))] split_weights: Vec<u64>,
+        #[strategy(proptest::collection::vec(1u64..=100_000, 2..=4))]
+        input_amounts: Vec<u64>,
+        #[strategy(proptest::collection::vec(1u64..=100_000, 1..=4))]
+        split_weights: Vec<u64>,
     ) {
         let total_input: u64 = input_amounts.iter().sum();
 

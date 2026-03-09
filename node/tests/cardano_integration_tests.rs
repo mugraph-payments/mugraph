@@ -1,7 +1,11 @@
 //! Smoke tests for Cardano-related helpers and request types.
 
 use mugraph_node::{
-    cardano::{build_script_address, compute_script_hash, generate_payment_keypair},
+    cardano::{
+        build_script_address,
+        compute_script_hash,
+        generate_payment_keypair,
+    },
     provider::{Provider, UtxoInfo},
 };
 
@@ -63,4 +67,3 @@ fn test_utxo_info_serialization() {
     assert!(json.contains("abc123"));
     assert!(json.contains("lovelace"));
 }
-

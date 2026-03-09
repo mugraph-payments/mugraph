@@ -75,11 +75,15 @@ where
     T: std::str::FromStr,
     <T as std::str::FromStr>::Err: std::fmt::Display,
 {
-    value
-        .parse::<T>()
-        .map_err(|e| color_eyre::eyre::eyre!("invalid protocol param {field}={value}: {e}"))
+    value.parse::<T>().map_err(|e| {
+        color_eyre::eyre::eyre!("invalid protocol param {field}={value}: {e}")
+    })
 }
 
-pub(super) fn with_pagination(base_url: &str, page: usize, count: usize) -> String {
+pub(super) fn with_pagination(
+    base_url: &str,
+    page: usize,
+    count: usize,
+) -> String {
     format!("{base_url}?page={page}&count={count}")
 }

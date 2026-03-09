@@ -1,8 +1,15 @@
 use mugraph_core::types::{
-    CrossNodeMessageRecord, CrossNodeTransferRecord, TransferAuditEvent,
+    CrossNodeMessageRecord,
+    CrossNodeTransferRecord,
+    TransferAuditEvent,
 };
 use mugraph_node::{
-    database::{CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG},
+    database::{
+        CROSS_NODE_MESSAGES,
+        CROSS_NODE_TRANSFERS,
+        Database,
+        TRANSFER_AUDIT_LOG,
+    },
     lifecycle::{
         LifecycleEvent,
         SourceLaneState,
@@ -93,7 +100,12 @@ fn restart_recovery_is_idempotent_and_converges_to_manual_review() {
 
     // Run enough passes to force exhaustion path.
     for i in 0..20u64 {
-        reconcile_once(&db_restarted, RetryPolicy::default(), 10_000 + (i * 1_000)).unwrap();
+        reconcile_once(
+            &db_restarted,
+            RetryPolicy::default(),
+            10_000 + (i * 1_000),
+        )
+        .unwrap();
     }
 
     let r = db_restarted.read().unwrap();
@@ -107,7 +119,9 @@ fn restart_recovery_is_idempotent_and_converges_to_manual_review() {
     for row in audits.iter().unwrap() {
         let (_k, v) = row.unwrap();
         let event = v.value();
-        if event.transfer_id == "tr-1" && event.event_type == "reconciler.manual_review" {
+        if event.transfer_id == "tr-1"
+            && event.event_type == "reconciler.manual_review"
+        {
             saw_manual_review = true;
             break;
         }
@@ -134,9 +148,18 @@ fn shared_helpers_preserve_manual_review_mapping() {
 
     assert_eq!(record.chain_state, "invalidated");
     assert_eq!(record.credit_state, "held");
-    assert_eq!(payload.chain_state, mugraph_core::types::TransferChainState::Invalidated);
-    assert_eq!(payload.credit_state, mugraph_core::types::TransferCreditState::Held);
-    assert_eq!(payload.settlement_state, mugraph_core::types::TransferSettlementState::ManualReview);
+    assert_eq!(
+        payload.chain_state,
+        mugraph_core::types::TransferChainState::Invalidated
+    );
+    assert_eq!(
+        payload.credit_state,
+        mugraph_core::types::TransferCreditState::Held
+    );
+    assert_eq!(
+        payload.settlement_state,
+        mugraph_core::types::TransferSettlementState::ManualReview
+    );
 }
 
 // M3-SEC-05/M3-OBS-08: deep reorg invalidation is deterministic.
@@ -262,6 +285,10 @@ fn audit_timeline_reconstruction_orders_events_for_transfer() {
     let kinds: Vec<_> = timeline.into_iter().map(|e| e.event_type).collect();
     assert_eq!(
         kinds,
-        vec!["transfer.initiated", "transfer.notice.accepted", "transfer.confirmed"]
+        vec![
+            "transfer.initiated",
+            "transfer.notice.accepted",
+            "transfer.confirmed"
+        ]
     );
 }

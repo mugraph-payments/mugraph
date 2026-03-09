@@ -5,7 +5,15 @@ use crate::types::*;
 pub const COMMITMENT_INPUT_SIZE: usize = 136;
 
 #[derive(
-    Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, test_strategy::Arbitrary,
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Hash,
+    test_strategy::Arbitrary,
 )]
 pub struct Note {
     pub amount: u64,
@@ -23,7 +31,11 @@ impl Note {
         let mut output = [0u8; COMMITMENT_INPUT_SIZE];
 
         output[0..32].copy_from_slice(self.delegate.as_ref());
-        write_asset_bytes(&self.policy_id, &self.asset_name, &mut output[32..96]);
+        write_asset_bytes(
+            &self.policy_id,
+            &self.asset_name,
+            &mut output[32..96],
+        );
         output[96..104].copy_from_slice(&self.amount.to_le_bytes());
         output[104..136].copy_from_slice(self.nonce.as_ref());
 

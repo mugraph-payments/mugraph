@@ -4,7 +4,13 @@ use rand::{prelude::*, rngs::StdRng};
 use crate::{
     crypto,
     types::{
-        AssetName, DleqProofWithBlinding, Hash, Keypair, Note, PolicyId, Signature,
+        AssetName,
+        DleqProofWithBlinding,
+        Hash,
+        Keypair,
+        Note,
+        PolicyId,
+        Signature,
     },
 };
 
@@ -14,7 +20,12 @@ pub fn rng() -> impl Strategy<Value = StdRng> {
 
 /// Strategy that produces a cryptographically valid Note signed by the given keypair.
 pub fn valid_note(keypair: Keypair) -> impl Strategy<Value = Note> {
-    (rng(), any::<PolicyId>(), any::<AssetName>(), 1u64..=1_000_000)
+    (
+        rng(),
+        any::<PolicyId>(),
+        any::<AssetName>(),
+        1u64..=1_000_000,
+    )
         .prop_map(move |(mut rng, policy_id, asset_name, amount)| {
             let mut note = Note {
                 delegate: keypair.public_key,
@@ -27,8 +38,11 @@ pub fn valid_note(keypair: Keypair) -> impl Strategy<Value = Note> {
             };
 
             let blind = crypto::blind_note(&mut rng, &note);
-            let signed =
-                crypto::sign_blinded(&mut rng, &keypair.secret_key, &blind.point);
+            let signed = crypto::sign_blinded(
+                &mut rng,
+                &keypair.secret_key,
+                &blind.point,
+            );
             note.signature = crypto::unblind_signature(
                 &signed.signature,
                 &blind.factor,

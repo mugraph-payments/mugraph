@@ -1,8 +1,15 @@
 use mugraph_core::types::{
-    CrossNodeMessageRecord, CrossNodeTransferRecord, IdempotencyRecord, TransferAuditEvent,
+    CrossNodeMessageRecord,
+    CrossNodeTransferRecord,
+    IdempotencyRecord,
+    TransferAuditEvent,
 };
 use mugraph_node::database::{
-    CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, IDEMPOTENCY_KEYS, TRANSFER_AUDIT_LOG,
+    CROSS_NODE_MESSAGES,
+    CROSS_NODE_TRANSFERS,
+    Database,
+    IDEMPOTENCY_KEYS,
+    TRANSFER_AUDIT_LOG,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;

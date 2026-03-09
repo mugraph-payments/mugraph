@@ -6,7 +6,10 @@ mod wallet;
 pub use address::{build_script_address, compute_script_hash};
 pub use keys::{generate_payment_keypair, import_payment_key};
 pub use validator_artifacts::{
-    compile_validator, get_validator_dir, load_validator_cbor, validator_artifacts_exist,
+    compile_validator,
+    get_validator_dir,
+    load_validator_cbor,
+    validator_artifacts_exist,
 };
 pub use wallet::setup_cardano_wallet;
 
@@ -60,7 +63,10 @@ mod tests {
     fn compute_script_hash_matches_known_vector() {
         let cbor = vec![0x00, 0x01, 0x02, 0x03];
         let hash = compute_script_hash(&cbor);
-        assert_eq!(hex::encode(hash), "7c4412a4936b244f2f1c645bf039c49d57b8cd18108b1a9ae5220a42");
+        assert_eq!(
+            hex::encode(hash),
+            "7c4412a4936b244f2f1c645bf039c49d57b8cd18108b1a9ae5220a42"
+        );
     }
 
     #[test]

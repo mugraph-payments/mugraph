@@ -4,8 +4,12 @@ use clap::Parser;
 use mugraph_node::config::Config;
 
 fn parse_server(args: &[&str]) -> Config {
-    Config::try_parse_from(std::iter::once("mugraph-node").chain(std::iter::once("server")).chain(args.iter().copied()))
-        .expect("config should parse")
+    Config::try_parse_from(
+        std::iter::once("mugraph-node")
+            .chain(std::iter::once("server"))
+            .chain(args.iter().copied()),
+    )
+    .expect("config should parse")
 }
 
 #[test]
@@ -56,7 +60,10 @@ fn parse_server_prefers_explicit_cli_overrides() {
     assert_eq!(config.network(), "mainnet");
     assert_eq!(config.provider_type(), "maestro");
     assert_eq!(config.provider_api_key(), "maestro_key");
-    assert_eq!(config.provider_url(), Some("https://custom.api.com".to_string()));
+    assert_eq!(
+        config.provider_url(),
+        Some("https://custom.api.com".to_string())
+    );
     assert_eq!(config.payment_sk(), Some("deadbeef".to_string()));
     assert_eq!(
         config.xnode_peer_registry_file(),
@@ -248,7 +255,11 @@ fn test_network_bytes() {
             fee_tolerance_pct: 5,
             dev_mode: false,
         };
-        assert_eq!(config.network_byte(), expected, "unexpected network byte for {network}");
+        assert_eq!(
+            config.network_byte(),
+            expected,
+            "unexpected network byte for {network}"
+        );
     }
 }
 

@@ -32,9 +32,8 @@ pub fn reconstruct_transfer_timeline(
 mod tests {
     use mugraph_core::types::TransferAuditEvent;
 
-    use crate::database::TRANSFER_AUDIT_LOG;
-
     use super::*;
+    use crate::database::TRANSFER_AUDIT_LOG;
 
     fn temp_db() -> Database {
         let path = std::env::temp_dir().join(format!(

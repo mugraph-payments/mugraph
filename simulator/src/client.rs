@@ -1,7 +1,15 @@
 use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr, eyre};
-use mugraph_core::types::{AssetName, Note, PolicyId, PublicKey, Refresh, Request, Response};
+use mugraph_core::types::{
+    AssetName,
+    Note,
+    PolicyId,
+    PublicKey,
+    Refresh,
+    Request,
+    Response,
+};
 use reqwest::Url;
 
 #[derive(Clone)]
@@ -43,8 +51,12 @@ impl NodeClient {
     pub async fn public_key(&self) -> Result<PublicKey> {
         match self.rpc(&Request::Info).await? {
             Response::Info { delegate_pk, .. } => Ok(delegate_pk),
-            Response::Error { reason } => Err(eyre!("public_key failed: {}", reason)),
-            other => Err(eyre!("unexpected response for public_key: {:?}", other)),
+            Response::Error { reason } => {
+                Err(eyre!("public_key failed: {}", reason))
+            }
+            other => {
+                Err(eyre!("unexpected response for public_key: {:?}", other))
+            }
         }
     }
 
@@ -59,7 +71,12 @@ impl NodeClient {
         Ok(res.json().await?)
     }
 
-    pub async fn emit(&self, policy_id: PolicyId, asset_name: AssetName, amount: u64) -> Result<Note> {
+    pub async fn emit(
+        &self,
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        amount: u64,
+    ) -> Result<Note> {
         match self
             .rpc(&Request::Emit {
                 policy_id,
@@ -74,10 +91,15 @@ impl NodeClient {
         }
     }
 
-    pub async fn refresh(&self, refresh: &Refresh) -> Result<Vec<mugraph_core::types::BlindSignature>> {
+    pub async fn refresh(
+        &self,
+        refresh: &Refresh,
+    ) -> Result<Vec<mugraph_core::types::BlindSignature>> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
-            Response::Error { reason } => Err(eyre!("refresh failed: {}", reason)),
+            Response::Error { reason } => {
+                Err(eyre!("refresh failed: {}", reason))
+            }
             other => Err(eyre!("unexpected response for refresh: {:?}", other)),
         }
     }

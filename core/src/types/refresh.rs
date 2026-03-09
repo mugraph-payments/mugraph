@@ -40,7 +40,11 @@ impl Atom {
         output[0..32].copy_from_slice(self.delegate.as_ref());
         let mut asset_bytes = [0u8; ASSET_ID_BYTES_SIZE];
         let asset = &assets[self.asset_id as usize];
-        write_asset_bytes(&asset.policy_id, &asset.asset_name, &mut asset_bytes);
+        write_asset_bytes(
+            &asset.policy_id,
+            &asset.asset_name,
+            &mut asset_bytes,
+        );
         output[32..96].copy_from_slice(&asset_bytes);
         output[96..104].copy_from_slice(&self.amount.to_le_bytes());
         output[104..136].copy_from_slice(self.nonce.as_ref());
@@ -132,56 +136,62 @@ mod tests {
             1u64..=500_000,
             proptest::collection::vec(1u64..=500_000, 1..=4),
         )
-            .prop_map(|(delegate, asset, input_amount, split_weights)| {
-                let total_weight: u64 = split_weights.iter().sum();
-                let mut output_amounts: Vec<u64> = split_weights
-                    .iter()
-                    .map(|w| input_amount * w / total_weight)
-                    .collect();
+            .prop_map(
+                |(delegate, asset, input_amount, split_weights)| {
+                    let total_weight: u64 = split_weights.iter().sum();
+                    let mut output_amounts: Vec<u64> = split_weights
+                        .iter()
+                        .map(|w| input_amount * w / total_weight)
+                        .collect();
 
-                // Distribute remainder to first output to guarantee exact balance
-                let output_sum: u64 = output_amounts.iter().sum();
-                if output_sum < input_amount {
-                    output_amounts[0] += input_amount - output_sum;
-                }
+                    // Distribute remainder to first output to guarantee exact balance
+                    let output_sum: u64 = output_amounts.iter().sum();
+                    if output_sum < input_amount {
+                        output_amounts[0] += input_amount - output_sum;
+                    }
 
-                let mut input_mask = BitSet32::new();
-                input_mask.insert(0);
+                    let mut input_mask = BitSet32::new();
+                    input_mask.insert(0);
 
-                let mut atoms = vec![Atom {
-                    delegate,
-                    asset_id: 0,
-                    amount: input_amount,
-                    nonce: Hash::default(),
-                    signature: Some(0),
-                }];
-
-                for amount in &output_amounts {
-                    atoms.push(Atom {
+                    let mut atoms = vec![Atom {
                         delegate,
                         asset_id: 0,
-                        amount: *amount,
+                        amount: input_amount,
                         nonce: Hash::default(),
-                        signature: None,
-                    });
-                }
+                        signature: Some(0),
+                    }];
 
-                Refresh {
-                    input_mask,
-                    atoms,
-                    asset_ids: vec![asset],
-                    signatures: vec![Signature::default()],
-                }
-            })
+                    for amount in &output_amounts {
+                        atoms.push(Atom {
+                            delegate,
+                            asset_id: 0,
+                            amount: *amount,
+                            nonce: Hash::default(),
+                            signature: None,
+                        });
+                    }
+
+                    Refresh {
+                        input_mask,
+                        atoms,
+                        asset_ids: vec![asset],
+                        signatures: vec![Signature::default()],
+                    }
+                },
+            )
     }
 
     #[proptest]
-    fn prop_balanced_refresh_verifies(#[strategy(balanced_refresh())] refresh: Refresh) {
+    fn prop_balanced_refresh_verifies(
+        #[strategy(balanced_refresh())] refresh: Refresh,
+    ) {
         prop_assert!(refresh.verify().is_ok());
     }
 
     #[proptest]
-    fn prop_unbalanced_refresh_fails(#[strategy(balanced_refresh())] mut refresh: Refresh) {
+    fn prop_unbalanced_refresh_fails(
+        #[strategy(balanced_refresh())] mut refresh: Refresh,
+    ) {
         // Find first output atom index
         let output_idx = refresh
             .atoms
@@ -190,7 +200,8 @@ mod tests {
             .position(|(i, _)| refresh.is_output(i));
 
         if let Some(idx) = output_idx {
-            refresh.atoms[idx].amount = refresh.atoms[idx].amount.saturating_add(1);
+            refresh.atoms[idx].amount =
+                refresh.atoms[idx].amount.saturating_add(1);
             prop_assert!(refresh.verify().is_err());
         }
     }
@@ -211,11 +222,21 @@ mod tests {
         )
             .prop_filter("assets must differ", |(_d, a, b, ..)| a != b)
             .prop_map(
-                |(delegate, asset_a, asset_b, amount_a, amount_b, weights_a, weights_b)| {
+                |(
+                    delegate,
+                    asset_a,
+                    asset_b,
+                    amount_a,
+                    amount_b,
+                    weights_a,
+                    weights_b,
+                )| {
                     fn split(amount: u64, weights: &[u64]) -> Vec<u64> {
                         let total_w: u64 = weights.iter().sum();
-                        let mut out: Vec<u64> =
-                            weights.iter().map(|w| amount * w / total_w).collect();
+                        let mut out: Vec<u64> = weights
+                            .iter()
+                            .map(|w| amount * w / total_w)
+                            .collect();
                         let sum: u64 = out.iter().sum();
                         if sum < amount {
                             out[0] += amount - sum;
@@ -270,7 +291,10 @@ mod tests {
                         input_mask,
                         atoms,
                         asset_ids: vec![asset_a, asset_b],
-                        signatures: vec![Signature::default(), Signature::default()],
+                        signatures: vec![
+                            Signature::default(),
+                            Signature::default(),
+                        ],
                     }
                 },
             )
@@ -280,7 +304,9 @@ mod tests {
     ///
     /// Validates the per-asset balance check path with 2 independent assets.
     #[proptest]
-    fn prop_multi_asset_balanced_verifies(#[strategy(multi_asset_refresh())] refresh: Refresh) {
+    fn prop_multi_asset_balanced_verifies(
+        #[strategy(multi_asset_refresh())] refresh: Refresh,
+    ) {
         prop_assert!(refresh.verify().is_ok());
     }
 
@@ -294,17 +320,23 @@ mod tests {
         #[strategy(multi_asset_refresh())] mut refresh: Refresh,
     ) {
         // Find first output for asset 0 and first output for asset 1
-        let out_a = refresh.atoms.iter().enumerate().position(|(i, a)| {
-            refresh.is_output(i) && a.asset_id == 0
-        });
-        let out_b = refresh.atoms.iter().enumerate().position(|(i, a)| {
-            refresh.is_output(i) && a.asset_id == 1
-        });
+        let out_a = refresh
+            .atoms
+            .iter()
+            .enumerate()
+            .position(|(i, a)| refresh.is_output(i) && a.asset_id == 0);
+        let out_b = refresh
+            .atoms
+            .iter()
+            .enumerate()
+            .position(|(i, a)| refresh.is_output(i) && a.asset_id == 1);
 
         if let (Some(ia), Some(ib)) = (out_a, out_b) {
             // Shift 1 unit from asset A output to asset B output
-            refresh.atoms[ia].amount = refresh.atoms[ia].amount.saturating_sub(1);
-            refresh.atoms[ib].amount = refresh.atoms[ib].amount.saturating_add(1);
+            refresh.atoms[ia].amount =
+                refresh.atoms[ia].amount.saturating_sub(1);
+            refresh.atoms[ib].amount =
+                refresh.atoms[ib].amount.saturating_add(1);
             // Global sum unchanged, but per-asset balance broken
             prop_assert!(refresh.verify().is_err());
         }

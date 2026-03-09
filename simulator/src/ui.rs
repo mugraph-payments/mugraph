@@ -62,8 +62,9 @@ fn render_ui(
             Span::styled(node_label, Style::default().fg(Color::Cyan)),
         ]);
 
-        let conservation = Paragraph::new(conservation_line)
-            .block(Block::default().borders(Borders::ALL).title("Conservation"));
+        let conservation = Paragraph::new(conservation_line).block(
+            Block::default().borders(Borders::ALL).title("Conservation"),
+        );
         f.render_widget(conservation, layout[0]);
 
         // === Health metrics ===
@@ -96,7 +97,11 @@ fn render_ui(
                 Span::raw("   paused: "),
                 Span::styled(
                     format!("{paused}"),
-                    Style::default().fg(if paused { Color::Yellow } else { Color::Green }),
+                    Style::default().fg(if paused {
+                        Color::Yellow
+                    } else {
+                        Color::Green
+                    }),
                 ),
             ]),
             Line::from(vec![
@@ -191,8 +196,10 @@ fn render_ui(
                     .iter()
                     .enumerate()
                     .map(|(i, w)| {
-                        let total_balance: u64 = w.balances.iter().map(|b| b.balance).sum();
-                        let total_notes: usize = w.balances.iter().map(|b| b.notes).sum();
+                        let total_balance: u64 =
+                            w.balances.iter().map(|b| b.balance).sum();
+                        let total_notes: usize =
+                            w.balances.iter().map(|b| b.notes).sum();
                         Row::new([
                             format!("{}", w.id),
                             format!("N{}", w.home_node),
@@ -219,8 +226,11 @@ fn render_ui(
                     ],
                 )
                 .header(
-                    Row::new(["id", "home", "balance", "notes", "sent", "recv", "fail"])
-                        .style(Style::default().add_modifier(Modifier::BOLD)),
+                    Row::new([
+                        "id", "home", "balance", "notes", "sent", "recv",
+                        "fail",
+                    ])
+                    .style(Style::default().add_modifier(Modifier::BOLD)),
                 )
                 .block(Block::default().borders(Borders::ALL).title("Wallets"))
                 .column_spacing(2);
@@ -236,7 +246,8 @@ fn render_ui(
             .take(4)
             .map(|l| ListItem::new(l.clone()))
             .collect();
-        let log_block = List::new(logs).block(Block::default().borders(Borders::ALL).title("Log"));
+        let log_block = List::new(logs)
+            .block(Block::default().borders(Borders::ALL).title("Log"));
         f.render_widget(log_block, layout[3]);
 
         // === Controls (single line, no border) ===

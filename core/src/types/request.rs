@@ -2,8 +2,15 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::types::{
-    AssetName, BlindSignature, PolicyId, Refresh, TransferAckPayload, TransferInitPayload,
-    TransferNoticePayload, TransferStatusQueryPayload, XNodeEnvelope,
+    AssetName,
+    BlindSignature,
+    PolicyId,
+    Refresh,
+    TransferAckPayload,
+    TransferInitPayload,
+    TransferNoticePayload,
+    TransferStatusQueryPayload,
+    XNodeEnvelope,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
@@ -99,9 +106,18 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::types::{
-        Refresh, Request, TransferAckPayload, TransferAckStatus, TransferInitPayload,
-        TransferNoticePayload, TransferNoticeStage, TransferQueryType, TransferStatusQueryPayload,
-        XNodeAuth, XNodeEnvelope, XNodeMessageType,
+        Refresh,
+        Request,
+        TransferAckPayload,
+        TransferAckStatus,
+        TransferInitPayload,
+        TransferNoticePayload,
+        TransferNoticeStage,
+        TransferQueryType,
+        TransferStatusQueryPayload,
+        XNodeAuth,
+        XNodeEnvelope,
+        XNodeMessageType,
     };
 
     #[proptest]
@@ -141,7 +157,10 @@ mod tests {
         let request: Request = Request::Info;
         let expected = Value::Object({
             let mut map = serde_json::Map::new();
-            map.insert("m".to_string(), Value::String("public_key".to_string()));
+            map.insert(
+                "m".to_string(),
+                Value::String("public_key".to_string()),
+            );
             map
         });
 

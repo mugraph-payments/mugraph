@@ -39,20 +39,13 @@ pub enum Response {
         change_notes: Vec<BlindSignature>,
     },
     #[serde(rename = "cross_node_transfer_create")]
-    CrossNodeTransferCreate {
-        transfer_id: String,
-        accepted: bool,
-    },
+    CrossNodeTransferCreate { transfer_id: String, accepted: bool },
     #[serde(rename = "cross_node_transfer_notify")]
-    CrossNodeTransferNotify {
-        accepted: bool,
-    },
+    CrossNodeTransferNotify { accepted: bool },
     #[serde(rename = "cross_node_transfer_status")]
     CrossNodeTransferStatus(Box<XNodeEnvelope<TransferStatusPayload>>),
     #[serde(rename = "cross_node_transfer_ack")]
-    CrossNodeTransferAck {
-        accepted: bool,
-    },
+    CrossNodeTransferAck { accepted: bool },
     #[serde(rename = "error")]
     Error { reason: String },
 }
@@ -63,8 +56,14 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::types::{
-        Response, TransferChainState, TransferCreditState, TransferSettlementState,
-        TransferStatusPayload, XNodeAuth, XNodeEnvelope, XNodeMessageType,
+        Response,
+        TransferChainState,
+        TransferCreditState,
+        TransferSettlementState,
+        TransferStatusPayload,
+        XNodeAuth,
+        XNodeEnvelope,
+        XNodeMessageType,
     };
 
     #[proptest]
@@ -77,34 +76,35 @@ mod tests {
 
     #[test]
     fn test_cross_node_transfer_status_serialization() {
-        let response = Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
-            m: "xnode".to_string(),
-            version: "3.0".to_string(),
-            message_type: XNodeMessageType::TransferStatus,
-            message_id: "mid-1".to_string(),
-            transfer_id: "tr-1".to_string(),
-            idempotency_key: "ik-1".to_string(),
-            correlation_id: "corr-1".to_string(),
-            origin_node_id: "node://a".to_string(),
-            destination_node_id: "node://b".to_string(),
-            sent_at: "2026-02-26T18:00:00Z".to_string(),
-            expires_at: None,
-            payload: TransferStatusPayload {
-                source_state: "confirming".to_string(),
-                destination_state: "credit_eligible".to_string(),
-                settlement_state: TransferSettlementState::Confirming,
-                chain_state: TransferChainState::Confirming,
-                credit_state: TransferCreditState::Eligible,
-                tx_hash: Some("abcd".to_string()),
-                confirmations_observed: 5,
-                updated_at: "2026-02-26T18:00:00Z".to_string(),
-            },
-            auth: XNodeAuth {
-                alg: "Ed25519".to_string(),
-                kid: "k1".to_string(),
-                sig: "sig".to_string(),
-            },
-        }));
+        let response =
+            Response::CrossNodeTransferStatus(Box::new(XNodeEnvelope {
+                m: "xnode".to_string(),
+                version: "3.0".to_string(),
+                message_type: XNodeMessageType::TransferStatus,
+                message_id: "mid-1".to_string(),
+                transfer_id: "tr-1".to_string(),
+                idempotency_key: "ik-1".to_string(),
+                correlation_id: "corr-1".to_string(),
+                origin_node_id: "node://a".to_string(),
+                destination_node_id: "node://b".to_string(),
+                sent_at: "2026-02-26T18:00:00Z".to_string(),
+                expires_at: None,
+                payload: TransferStatusPayload {
+                    source_state: "confirming".to_string(),
+                    destination_state: "credit_eligible".to_string(),
+                    settlement_state: TransferSettlementState::Confirming,
+                    chain_state: TransferChainState::Confirming,
+                    credit_state: TransferCreditState::Eligible,
+                    tx_hash: Some("abcd".to_string()),
+                    confirmations_observed: 5,
+                    updated_at: "2026-02-26T18:00:00Z".to_string(),
+                },
+                auth: XNodeAuth {
+                    alg: "Ed25519".to_string(),
+                    kid: "k1".to_string(),
+                    sig: "sig".to_string(),
+                },
+            }));
 
         let value = serde_json::to_value(&response).unwrap();
         assert_eq!(value["m"], "cross_node_transfer_status");

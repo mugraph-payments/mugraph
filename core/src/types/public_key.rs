@@ -144,7 +144,10 @@ impl TryFrom<Vec<u8>> for PublicKey {
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         if value.len() != 32 {
             return Err(Error::InvalidKey {
-                reason: format!("Public key must be 32 bytes, got {}", value.len()),
+                reason: format!(
+                    "Public key must be 32 bytes, got {}",
+                    value.len()
+                ),
             });
         }
 
@@ -162,7 +165,10 @@ impl TryFrom<&[u8]> for PublicKey {
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         if value.len() != 32 {
             return Err(Error::InvalidKey {
-                reason: format!("Public key must be 32 bytes, got {}", value.len()),
+                reason: format!(
+                    "Public key must be 32 bytes, got {}",
+                    value.len()
+                ),
             });
         }
 

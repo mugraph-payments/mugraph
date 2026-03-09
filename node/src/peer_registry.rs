@@ -22,12 +22,19 @@ pub struct TrustedPeer {
 impl PeerRegistry {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         let path = path.as_ref();
-        let contents = fs::read_to_string(path).map_err(|e| Error::InvalidInput {
-            reason: format!("failed to read peer registry {}: {e}", path.display()),
-        })?;
+        let contents =
+            fs::read_to_string(path).map_err(|e| Error::InvalidInput {
+                reason: format!(
+                    "failed to read peer registry {}: {e}",
+                    path.display()
+                ),
+            })?;
 
         serde_json::from_str(&contents).map_err(|e| Error::InvalidInput {
-            reason: format!("invalid peer registry JSON {}: {e}", path.display()),
+            reason: format!(
+                "invalid peer registry JSON {}: {e}",
+                path.display()
+            ),
         })
     }
 
@@ -46,13 +53,22 @@ impl PeerRegistry {
 
             if reqwest::Url::parse(&peer.endpoint).is_err() {
                 return Err(Error::InvalidInput {
-                    reason: format!("peer {} endpoint is not a valid URL", peer.node_id),
+                    reason: format!(
+                        "peer {} endpoint is not a valid URL",
+                        peer.node_id
+                    ),
                 });
             }
 
-            let key_bytes = muhex::decode(&peer.public_key_hex).map_err(|e| Error::InvalidInput {
-                reason: format!("peer {} public_key_hex is not valid hex: {e}", peer.node_id),
-            })?;
+            let key_bytes =
+                muhex::decode(&peer.public_key_hex).map_err(|e| {
+                    Error::InvalidInput {
+                        reason: format!(
+                            "peer {} public_key_hex is not valid hex: {e}",
+                            peer.node_id
+                        ),
+                    }
+                })?;
 
             if key_bytes.len() != 32 {
                 return Err(Error::InvalidInput {

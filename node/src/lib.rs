@@ -5,17 +5,17 @@ use color_eyre::eyre::Result;
 pub mod cardano;
 pub mod config;
 pub mod database;
+pub(crate) mod deposit_datum;
 pub mod deposit_monitor;
 pub mod lifecycle;
+pub(crate) mod network;
 pub mod observability;
 pub mod peer_registry;
 pub mod provider;
 pub mod reconciler;
 pub mod routes;
-pub mod tx_signer;
-pub(crate) mod deposit_datum;
-pub(crate) mod network;
 pub(crate) mod tx_ids;
+pub mod tx_signer;
 
 use config::Config;
 

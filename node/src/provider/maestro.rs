@@ -17,7 +17,10 @@ use super::{
 };
 
 impl MaestroProvider {
-    pub(super) async fn get_tx_block_height(&self, tx_hash: &str) -> Result<Option<u64>> {
+    pub(super) async fn get_tx_block_height(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<u64>> {
         let url = format!("{}/transactions/{}", self.base_url, tx_hash);
         let resp = send_with_retry(
             || self.client.get(&url).header("api-key", &self.api_key),
@@ -81,7 +84,10 @@ impl MaestroProvider {
         }))
     }
 
-    pub(super) async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
+    pub(super) async fn get_address_utxos(
+        &self,
+        address: &str,
+    ) -> Result<Vec<UtxoInfo>> {
         let base_url = format!("{}/addresses/{}/utxos", self.base_url, address);
 
         let mut all = Vec::new();
@@ -129,7 +135,10 @@ impl MaestroProvider {
             .collect())
     }
 
-    pub(super) async fn submit_tx(&self, tx_cbor: &[u8]) -> Result<SubmitResponse> {
+    pub(super) async fn submit_tx(
+        &self,
+        tx_cbor: &[u8],
+    ) -> Result<SubmitResponse> {
         let url = format!("{}/transactions", self.base_url);
         let response: MaestroSubmitResponse = send_with_retry(
             || {
@@ -184,13 +193,25 @@ impl MaestroProvider {
             min_fee_a: parse_required("min_fee_a", &response.min_fee_a)?,
             min_fee_b: parse_required("min_fee_b", &response.min_fee_b)?,
             max_tx_size: parse_required("max_tx_size", &response.max_tx_size)?,
-            max_val_size: parse_required("max_val_size", &response.max_val_size)?,
+            max_val_size: parse_required(
+                "max_val_size",
+                &response.max_val_size,
+            )?,
             key_deposit: parse_required("key_deposit", &response.key_deposit)?,
-            pool_deposit: parse_required("pool_deposit", &response.pool_deposit)?,
+            pool_deposit: parse_required(
+                "pool_deposit",
+                &response.pool_deposit,
+            )?,
             price_mem: parse_required("price_mem", &response.price_mem)?,
             price_step: parse_required("price_step", &response.price_step)?,
-            max_tx_ex_mem: parse_required("max_tx_ex_mem", &response.max_tx_ex_mem)?,
-            max_tx_ex_steps: parse_required("max_tx_ex_steps", &response.max_tx_ex_steps)?,
+            max_tx_ex_mem: parse_required(
+                "max_tx_ex_mem",
+                &response.max_tx_ex_mem,
+            )?,
+            max_tx_ex_steps: parse_required(
+                "max_tx_ex_steps",
+                &response.max_tx_ex_steps,
+            )?,
             coins_per_utxo_byte: parse_required(
                 "coins_per_utxo_byte",
                 &response.coins_per_utxo_byte,

@@ -109,9 +109,14 @@ impl Provider {
             "blockfrost" => {
                 let base_url = custom_url.unwrap_or_else(|| {
                     typed_network
-                        .map(|network| network.blockfrost_base_url().to_string())
+                        .map(|network| {
+                            network.blockfrost_base_url().to_string()
+                        })
                         .unwrap_or_else(|| {
-                            format!("https://cardano-{}.blockfrost.io/api/v0", network)
+                            format!(
+                                "https://cardano-{}.blockfrost.io/api/v0",
+                                network
+                            )
                         })
                 });
 
@@ -126,7 +131,9 @@ impl Provider {
                 let base_url = custom_url.unwrap_or_else(|| {
                     typed_network
                         .map(|_| "https://api.gomaestro.org/v1".to_string())
-                        .unwrap_or_else(|| "https://api.gomaestro.org/v1".to_string())
+                        .unwrap_or_else(|| {
+                            "https://api.gomaestro.org/v1".to_string()
+                        })
                 });
 
                 Ok(Self::Maestro(MaestroProvider {
@@ -149,15 +156,26 @@ impl Provider {
         output_index: u16,
     ) -> Result<Option<UtxoInfo>> {
         match self {
-            Self::Blockfrost(provider) => provider.get_utxo(tx_hash, output_index).await,
-            Self::Maestro(provider) => provider.get_utxo(tx_hash, output_index).await,
+            Self::Blockfrost(provider) => {
+                provider.get_utxo(tx_hash, output_index).await
+            }
+            Self::Maestro(provider) => {
+                provider.get_utxo(tx_hash, output_index).await
+            }
         }
     }
 
-    pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<UtxoInfo>> {
+    pub async fn get_address_utxos(
+        &self,
+        address: &str,
+    ) -> Result<Vec<UtxoInfo>> {
         match self {
-            Self::Blockfrost(provider) => provider.get_address_utxos(address).await,
-            Self::Maestro(provider) => provider.get_address_utxos(address).await,
+            Self::Blockfrost(provider) => {
+                provider.get_address_utxos(address).await
+            }
+            Self::Maestro(provider) => {
+                provider.get_address_utxos(address).await
+            }
         }
     }
 
@@ -191,8 +209,12 @@ impl Provider {
     ) -> Result<TxChainObservation> {
         let tip = self.get_tip().await?;
         let tx_block_height = match self {
-            Self::Blockfrost(provider) => provider.get_tx_block_height(tx_hash).await?,
-            Self::Maestro(provider) => provider.get_tx_block_height(tx_hash).await?,
+            Self::Blockfrost(provider) => {
+                provider.get_tx_block_height(tx_hash).await?
+            }
+            Self::Maestro(provider) => {
+                provider.get_tx_block_height(tx_hash).await?
+            }
         };
 
         Ok(evaluate_tx_observation(
@@ -309,6 +331,9 @@ mod tests {
             2,
             100,
         );
-        assert_eq!(url, "https://api.example/addresses/addr/utxos?page=2&count=100");
+        assert_eq!(
+            url,
+            "https://api.example/addresses/addr/utxos?page=2&count=100"
+        );
     }
 }

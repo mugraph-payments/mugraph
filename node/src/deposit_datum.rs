@@ -20,7 +20,10 @@ impl DepositDatumContext {
             reason: match self {
                 Self::DepositUtxo => format!("Invalid datum hex: {}", err),
                 Self::WithdrawalInput { input_index } => {
-                    format!("Invalid datum hex for input {}: {}", input_index, err)
+                    format!(
+                        "Invalid datum hex for input {}: {}",
+                        input_index, err
+                    )
                 }
             },
         }
@@ -31,7 +34,10 @@ impl DepositDatumContext {
             reason: match self {
                 Self::DepositUtxo => format!("Invalid datum CBOR: {}", err),
                 Self::WithdrawalInput { input_index } => {
-                    format!("Invalid datum CBOR for input {}: {}", input_index, err)
+                    format!(
+                        "Invalid datum CBOR for input {}: {}",
+                        input_index, err
+                    )
                 }
             },
         }
@@ -42,7 +48,10 @@ impl DepositDatumContext {
             reason: match self {
                 Self::DepositUtxo => "Datum is not a constructor".to_string(),
                 Self::WithdrawalInput { input_index } => {
-                    format!("Datum for input {} is not a constructor as expected", input_index)
+                    format!(
+                        "Datum for input {} is not a constructor as expected",
+                        input_index
+                    )
                 }
             },
         }
@@ -52,7 +61,10 @@ impl DepositDatumContext {
         Error::InvalidInput {
             reason: match self {
                 Self::DepositUtxo => {
-                    format!("Unexpected datum constructor {}, expected 0", actual)
+                    format!(
+                        "Unexpected datum constructor {}, expected 0",
+                        actual
+                    )
                 }
                 Self::WithdrawalInput { input_index } => format!(
                     "Unexpected datum constructor {} for input {} (expected 0)",
@@ -65,7 +77,9 @@ impl DepositDatumContext {
     fn wrong_field_count(self, actual: usize) -> Error {
         Error::InvalidInput {
             reason: match self {
-                Self::DepositUtxo => format!("Datum has {} fields (expected 3)", actual),
+                Self::DepositUtxo => {
+                    format!("Datum has {} fields (expected 3)", actual)
+                }
                 Self::WithdrawalInput { input_index } => format!(
                     "Datum for input {} has {} fields (expected 3)",
                     input_index, actual
@@ -105,15 +119,24 @@ impl DepositDatumContext {
     fn missing_intent_hash(self) -> Error {
         Error::InvalidInput {
             reason: match self {
-                Self::DepositUtxo => "Datum missing intent_hash bytes".to_string(),
+                Self::DepositUtxo => {
+                    "Datum missing intent_hash bytes".to_string()
+                }
                 Self::WithdrawalInput { input_index } => {
-                    format!("Datum for input {} missing intent_hash bytes", input_index)
+                    format!(
+                        "Datum for input {} missing intent_hash bytes",
+                        input_index
+                    )
                 }
             },
         }
     }
 
-    fn invalid_key_hash_lengths(self, user_len: usize, node_len: usize) -> Error {
+    fn invalid_key_hash_lengths(
+        self,
+        user_len: usize,
+        node_len: usize,
+    ) -> Error {
         Error::InvalidInput {
             reason: format!(
                 "Datum key hash lengths invalid (user {}, node {}, expected 28)",
@@ -136,10 +159,14 @@ pub fn parse_deposit_datum(
     datum_hex: &str,
     context: DepositDatumContext,
 ) -> Result<DepositDatum, Error> {
-    let datum_bytes = hex::decode(datum_hex).map_err(|e| context.invalid_hex(&e))?;
-    let pd = csl::PlutusData::from_bytes(datum_bytes).map_err(|e| context.invalid_cbor(&e))?;
+    let datum_bytes =
+        hex::decode(datum_hex).map_err(|e| context.invalid_hex(&e))?;
+    let pd = csl::PlutusData::from_bytes(datum_bytes)
+        .map_err(|e| context.invalid_cbor(&e))?;
 
-    let constr = pd.as_constr_plutus_data().ok_or_else(|| context.not_constructor())?;
+    let constr = pd
+        .as_constr_plutus_data()
+        .ok_or_else(|| context.not_constructor())?;
     let alternative = constr.alternative().to_str();
     if alternative != "0" {
         return Err(context.unexpected_constructor(&alternative));
@@ -167,12 +194,20 @@ pub fn parse_deposit_datum(
     let node_pubkey_hash_len = node_pubkey_hash.len();
     let intent_hash_len = intent_hash.len();
 
-    let user_pubkey_hash: [u8; 28] = user_pubkey_hash.try_into().map_err(|_| {
-        context.invalid_key_hash_lengths(user_pubkey_hash_len, node_pubkey_hash_len)
-    })?;
-    let node_pubkey_hash: [u8; 28] = node_pubkey_hash.try_into().map_err(|_| {
-        context.invalid_key_hash_lengths(user_pubkey_hash_len, node_pubkey_hash_len)
-    })?;
+    let user_pubkey_hash: [u8; 28] =
+        user_pubkey_hash.try_into().map_err(|_| {
+            context.invalid_key_hash_lengths(
+                user_pubkey_hash_len,
+                node_pubkey_hash_len,
+            )
+        })?;
+    let node_pubkey_hash: [u8; 28] =
+        node_pubkey_hash.try_into().map_err(|_| {
+            context.invalid_key_hash_lengths(
+                user_pubkey_hash_len,
+                node_pubkey_hash_len,
+            )
+        })?;
     let intent_hash: [u8; 32] = intent_hash
         .try_into()
         .map_err(|_| context.invalid_intent_hash_length(intent_hash_len))?;
@@ -188,7 +223,12 @@ pub fn parse_deposit_datum(
 mod tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
-    use pallas_primitives::{alonzo::PlutusData, BoundedBytes, Constr, MaybeIndefArray};
+    use pallas_primitives::{
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
+    };
 
     use super::*;
 
@@ -211,19 +251,26 @@ mod tests {
     fn deposit_datum_parser_extracts_user_node_and_intent_bytes() {
         let user_sk = SigningKey::from_bytes(&[1u8; 32]);
         let node_sk = SigningKey::from_bytes(&[2u8; 32]);
-        let user_hash = csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-            .expect("valid user key")
-            .hash()
-            .to_bytes();
-        let node_hash = csl::PublicKey::from_bytes(node_sk.verifying_key().as_bytes())
-            .expect("valid node key")
-            .hash()
-            .to_bytes();
+        let user_hash =
+            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+                .expect("valid user key")
+                .hash()
+                .to_bytes();
+        let node_hash =
+            csl::PublicKey::from_bytes(node_sk.verifying_key().as_bytes())
+                .expect("valid node key")
+                .hash()
+                .to_bytes();
         let intent_hash = [9u8; 32];
-        let datum_hex = mk_datum_hex(vec![user_hash.clone(), node_hash.clone(), intent_hash.to_vec()]);
+        let datum_hex = mk_datum_hex(vec![
+            user_hash.clone(),
+            node_hash.clone(),
+            intent_hash.to_vec(),
+        ]);
 
-        let parsed = parse_deposit_datum(&datum_hex, DepositDatumContext::DepositUtxo)
-            .expect("datum parses");
+        let parsed =
+            parse_deposit_datum(&datum_hex, DepositDatumContext::DepositUtxo)
+                .expect("datum parses");
 
         assert_eq!(parsed.user_pubkey_hash.as_slice(), user_hash.as_slice());
         assert_eq!(parsed.node_pubkey_hash.as_slice(), node_hash.as_slice());
@@ -231,9 +278,11 @@ mod tests {
     }
 
     #[test]
-    fn deposit_and_withdraw_callers_preserve_distinct_error_paths_after_shared_parse() {
-        let deposit_err = parse_deposit_datum("not-hex", DepositDatumContext::DepositUtxo)
-            .expect_err("deposit path should fail");
+    fn deposit_and_withdraw_callers_preserve_distinct_error_paths_after_shared_parse()
+     {
+        let deposit_err =
+            parse_deposit_datum("not-hex", DepositDatumContext::DepositUtxo)
+                .expect_err("deposit path should fail");
         assert!(format!("{deposit_err:?}").contains("Invalid datum hex:"));
 
         let withdraw_err = parse_deposit_datum(
@@ -241,6 +290,9 @@ mod tests {
             DepositDatumContext::WithdrawalInput { input_index: 4 },
         )
         .expect_err("withdraw path should fail");
-        assert!(format!("{withdraw_err:?}").contains("Invalid datum hex for input 4:"));
+        assert!(
+            format!("{withdraw_err:?}")
+                .contains("Invalid datum hex for input 4:")
+        );
     }
 }

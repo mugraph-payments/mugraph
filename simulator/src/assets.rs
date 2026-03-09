@@ -1,7 +1,7 @@
+use mugraph_core::types::{AssetName, PolicyId};
 use rand::{rngs::StdRng, seq::SliceRandom};
 
 use crate::types::SimAsset;
-use mugraph_core::types::{AssetName, PolicyId};
 
 #[derive(Debug, Clone, Copy)]
 struct CardanoAssetDef {
@@ -212,9 +212,14 @@ pub fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
         .cycle()
         .take(count)
         .map(|def| {
-            let policy_bytes = muhex::decode(def.policy_id).expect("policy_id must be hex");
+            let policy_bytes =
+                muhex::decode(def.policy_id).expect("policy_id must be hex");
             SimAsset {
-                policy_id: PolicyId(policy_bytes.try_into().expect("policy_id must be 28 bytes")),
+                policy_id: PolicyId(
+                    policy_bytes
+                        .try_into()
+                        .expect("policy_id must be 28 bytes"),
+                ),
                 asset_name: AssetName::new(def.asset_name.as_bytes())
                     .expect("asset_name must be <= 32 bytes"),
                 name: def.asset_name,
@@ -223,4 +228,3 @@ pub fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
         })
         .collect()
 }
-

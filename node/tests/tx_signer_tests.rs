@@ -14,9 +14,10 @@ fn build_min_tx() -> csl::Transaction {
     let mut inputs = csl::TransactionInputs::new();
     inputs.add(&input);
 
-    let addr =
-        csl::Address::from_bech32("addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh")
-            .unwrap();
+    let addr = csl::Address::from_bech32(
+        "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+    )
+    .unwrap();
     let coin = csl::Coin::from_str("1000000").unwrap();
     let value = csl::Value::new(&coin);
     let output = csl::TransactionOutput::new(&addr, &value);
@@ -37,8 +38,10 @@ fn test_attach_witness_with_existing_witnesses() {
     // Minimal transaction
     let mut tx = build_min_tx();
     let mut witness_set = tx.witness_set();
-    let dummy_vkey = csl::Vkey::new(&csl::PublicKey::from_bytes(&[0u8; 32]).unwrap());
-    let dummy_sig = csl::Ed25519Signature::from_bytes([0u8; 64].to_vec()).unwrap();
+    let dummy_vkey =
+        csl::Vkey::new(&csl::PublicKey::from_bytes(&[0u8; 32]).unwrap());
+    let dummy_sig =
+        csl::Ed25519Signature::from_bytes([0u8; 64].to_vec()).unwrap();
     let existing = csl::Vkeywitness::new(&dummy_vkey, &dummy_sig);
     let mut vkeys = csl::Vkeywitnesses::new();
     vkeys.add(&existing);
@@ -94,7 +97,8 @@ fn test_witness_attachment_preserves_structure() {
         "preprod".to_string(),
     );
 
-    let new_tx = attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
+    let new_tx =
+        attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
     let parsed = csl::Transaction::from_bytes(new_tx).unwrap();
     assert!(parsed.is_valid());
     assert!(parsed.auxiliary_data().is_some());
@@ -175,7 +179,8 @@ fn test_compute_tx_hash_various_sizes() {
     let outputs2 = tx1.body().outputs();
     let fee2 = csl::Coin::from_str("200000").unwrap();
     let body2 = csl::TransactionBody::new_tx_body(&inputs2, &outputs2, &fee2);
-    let tx2 = csl::Transaction::new(&body2, &tx1.witness_set(), tx1.auxiliary_data());
+    let tx2 =
+        csl::Transaction::new(&body2, &tx1.witness_set(), tx1.auxiliary_data());
 
     let hash2 = compute_tx_hash(&tx2.to_bytes()).unwrap();
     assert_eq!(hash2.len(), 32);
@@ -199,7 +204,8 @@ fn test_witness_attachment_cbor_validity() {
         "preprod".to_string(),
     );
 
-    let new_tx = attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
+    let new_tx =
+        attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
     let parsed = csl::Transaction::from_bytes(new_tx).unwrap();
     let vkeys = parsed.witness_set().vkeys().unwrap();
     assert_eq!(vkeys.len(), 1);
@@ -226,7 +232,8 @@ fn test_witness_signature_valid() {
         "preprod".to_string(),
     );
 
-    let new_tx = attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
+    let new_tx =
+        attach_witness_to_transaction(&tx_cbor, &tx_hash, &wallet).unwrap();
     let parsed = csl::Transaction::from_bytes(new_tx).unwrap();
     let witness = parsed.witness_set().vkeys().unwrap().get(0);
     let stored_vk = witness.vkey().public_key().as_bytes();

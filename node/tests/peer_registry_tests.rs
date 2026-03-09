@@ -4,7 +4,9 @@ use mugraph_node::peer_registry::PeerRegistry;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-fn write_temp(contents: &str) -> Result<tempfile::NamedTempFile, std::io::Error> {
+fn write_temp(
+    contents: &str,
+) -> Result<tempfile::NamedTempFile, std::io::Error> {
     let mut f = tempfile::NamedTempFile::new()?;
     f.write_all(contents.as_bytes())?;
     Ok(f)
@@ -68,7 +70,9 @@ fn rejects_duplicate_node_and_kid() -> TestResult {
     )?;
 
     let registry = PeerRegistry::load(file.path())?;
-    let err = registry.validate().expect_err("must reject duplicate node+kid");
+    let err = registry
+        .validate()
+        .expect_err("must reject duplicate node+kid");
     assert!(err.to_string().contains("duplicate"));
     Ok(())
 }
@@ -91,7 +95,9 @@ fn rejects_non_ed25519_auth_alg() -> TestResult {
     )?;
 
     let registry = PeerRegistry::load(file.path())?;
-    let err = registry.validate().expect_err("must reject non-ed25519 auth alg");
+    let err = registry
+        .validate()
+        .expect_err("must reject non-ed25519 auth alg");
     assert!(err.to_string().contains("Ed25519"));
     Ok(())
 }

@@ -1,7 +1,14 @@
 use mugraph_core::types::{
-    TransferChainState, TransferSettlementState, XNodeMessageType, validate_envelope_basics,
+    TransferChainState,
+    TransferSettlementState,
+    XNodeMessageType,
+    validate_envelope_basics,
 };
-use mugraph_node::lifecycle::{DestinationLaneState, LifecycleEvent, TransferLifecycle};
+use mugraph_node::lifecycle::{
+    DestinationLaneState,
+    LifecycleEvent,
+    TransferLifecycle,
+};
 use proptest::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -87,8 +94,16 @@ fn mixed_version_scenario_rejects_unsupported_major() {
         },
     };
 
-    let err = validate_envelope_basics(&envelope, XNodeMessageType::TransferNotice, 3).unwrap_err();
-    assert_eq!(err.code, mugraph_core::types::XNodeProtocolErrorCode::UnsupportedVersion);
+    let err = validate_envelope_basics(
+        &envelope,
+        XNodeMessageType::TransferNotice,
+        3,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err.code,
+        mugraph_core::types::XNodeProtocolErrorCode::UnsupportedVersion
+    );
 }
 
 proptest! {

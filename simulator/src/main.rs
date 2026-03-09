@@ -86,7 +86,8 @@ async fn main() -> Result<()> {
         max_inflight: args.max_inflight,
     };
 
-    let (snapshot_tx, snapshot_rx) = watch::channel(state.snapshot(0, args.max_inflight, 0.0, 100.0));
+    let (snapshot_tx, snapshot_rx) =
+        watch::channel(state.snapshot(0, args.max_inflight, 0.0, 100.0));
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
 
@@ -97,12 +98,15 @@ async fn main() -> Result<()> {
         snapshot_tx,
     };
 
-    let mut owner_handle = tokio::spawn(simulation_owner_loop(nodes, state, rng, config, channels));
+    let mut owner_handle = tokio::spawn(simulation_owner_loop(
+        nodes, state, rng, config, channels,
+    ));
 
     let terminal = ratatui::init();
     let ui_cmd_tx = cmd_tx.clone();
-    let mut ui_handle =
-        tokio::task::spawn_blocking(move || ui_loop(snapshot_rx, ui_cmd_tx, terminal));
+    let mut ui_handle = tokio::task::spawn_blocking(move || {
+        ui_loop(snapshot_rx, ui_cmd_tx, terminal)
+    });
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {

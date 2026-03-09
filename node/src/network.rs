@@ -85,7 +85,8 @@ mod tests {
     #[test]
     fn cardano_network_roundtrips_to_exact_lowercase_strings() {
         for raw in ["mainnet", "preprod", "preview", "testnet"] {
-            let network = CardanoNetwork::parse(raw).expect("known network must parse");
+            let network =
+                CardanoNetwork::parse(raw).expect("known network must parse");
             assert_eq!(network.as_str(), raw);
         }
     }

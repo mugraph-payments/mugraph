@@ -143,7 +143,10 @@ pub struct XNodeProtocolError {
     pub detail: String,
 }
 
-pub fn validate_version(version: &str, supported_major: u16) -> Result<(), XNodeProtocolError> {
+pub fn validate_version(
+    version: &str,
+    supported_major: u16,
+) -> Result<(), XNodeProtocolError> {
     let Some((major, _minor)) = version.split_once('.') else {
         return Err(XNodeProtocolError {
             code: XNodeProtocolErrorCode::UnsupportedVersion,
@@ -168,7 +171,9 @@ pub fn validate_version(version: &str, supported_major: u16) -> Result<(), XNode
     Ok(())
 }
 
-pub fn parse_message_type(value: &str) -> Result<XNodeMessageType, XNodeProtocolError> {
+pub fn parse_message_type(
+    value: &str,
+) -> Result<XNodeMessageType, XNodeProtocolError> {
     match value {
         "transfer_init" => Ok(XNodeMessageType::TransferInit),
         "transfer_notice" => Ok(XNodeMessageType::TransferNotice),
@@ -190,7 +195,8 @@ pub fn validate_envelope_basics<T>(
     if envelope.m != "xnode" {
         return Err(XNodeProtocolError {
             code: XNodeProtocolErrorCode::SchemaValidationFailed,
-            detail: "xnode envelope discriminator (m) must be 'xnode'".to_string(),
+            detail: "xnode envelope discriminator (m) must be 'xnode'"
+                .to_string(),
         });
     }
 
@@ -292,8 +298,9 @@ mod tests {
             },
         };
 
-        let err = validate_envelope_basics(&env, XNodeMessageType::TransferInit, 3)
-            .unwrap_err();
+        let err =
+            validate_envelope_basics(&env, XNodeMessageType::TransferInit, 3)
+                .unwrap_err();
         assert_eq!(err.code, XNodeProtocolErrorCode::SchemaValidationFailed);
     }
 
@@ -323,8 +330,9 @@ mod tests {
             },
         };
 
-        let err = validate_envelope_basics(&env, XNodeMessageType::TransferNotice, 3)
-            .unwrap_err();
+        let err =
+            validate_envelope_basics(&env, XNodeMessageType::TransferNotice, 3)
+                .unwrap_err();
         assert_eq!(err.code, XNodeProtocolErrorCode::SchemaValidationFailed);
     }
 

@@ -17,7 +17,10 @@ pub fn compute_script_hash(cbor: &[u8]) -> Vec<u8> {
 
 /// Build script address from hash and network
 /// Uses Shelley address format directly instead of bech32
-pub fn build_script_address(script_hash: &[u8], network: &str) -> Result<String> {
+pub fn build_script_address(
+    script_hash: &[u8],
+    network: &str,
+) -> Result<String> {
     let network = CardanoNetwork::parse(network)
         .map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
 
@@ -28,7 +31,9 @@ pub fn build_script_address(script_hash: &[u8], network: &str) -> Result<String>
     let hrp = bech32::Hrp::parse(network.address_hrp())
         .map_err(|e| color_eyre::eyre::eyre!("Invalid HRP: {}", e))?;
     let address = bech32::encode::<bech32::Bech32>(hrp, &address_bytes)
-        .map_err(|e| color_eyre::eyre::eyre!("Failed to encode bech32: {}", e))?;
+        .map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to encode bech32: {}", e)
+        })?;
 
     Ok(address)
 }

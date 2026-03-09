@@ -42,9 +42,10 @@ pub struct Context {
 
 fn default_database_path() -> std::path::PathBuf {
     if let Ok(path) = std::env::var("MUGRAPH_DB_PATH")
-        && !path.trim().is_empty() {
-            return std::path::PathBuf::from(path);
-        }
+        && !path.trim().is_empty()
+    {
+        return std::path::PathBuf::from(path);
+    }
 
     if let Ok(home) = std::env::var("HOME") {
         return std::path::PathBuf::from(home)
@@ -80,7 +81,9 @@ pub async fn router(config: Config) -> Result<Router, Error> {
     };
 
     if config.dev_mode() {
-        tracing::warn!("dev mode enabled — skipping Cardano wallet, deposit monitor, and reconciler");
+        tracing::warn!(
+            "dev mode enabled — skipping Cardano wallet, deposit monitor, and reconciler"
+        );
     } else {
         // Initialize Cardano wallet on startup
         initialize_cardano_wallet(&config, &database).await?;
@@ -110,7 +113,10 @@ pub async fn router(config: Config) -> Result<Router, Error> {
 
 /// Initialize Cardano wallet on startup
 /// Loads existing wallet or creates a new one with compiled validator
-async fn initialize_cardano_wallet(config: &Config, database: &Database) -> Result<(), Error> {
+async fn initialize_cardano_wallet(
+    config: &Config,
+    database: &Database,
+) -> Result<(), Error> {
     // Check if wallet already exists
     {
         let read_tx = database.read()?;
@@ -151,7 +157,10 @@ async fn initialize_cardano_wallet(config: &Config, database: &Database) -> Resu
 }
 
 /// Start the deposit monitor background task
-fn start_deposit_monitor(config: &Config, database: Arc<Database>) -> Result<(), Error> {
+fn start_deposit_monitor(
+    config: &Config,
+    database: Arc<Database>,
+) -> Result<(), Error> {
     // Create provider for the monitor using config
     let provider = Provider::new(
         &config.provider_type(),
@@ -203,7 +212,10 @@ pub async fn health() -> &'static str {
 }
 
 #[tracing::instrument(skip_all)]
-pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Json<Response> {
+pub async fn rpc(
+    State(ctx): State<Context>,
+    Json(request): Json<Request>,
+) -> Json<Response> {
     match request {
         Request::Refresh(t) => match refresh(&t, ctx.keypair, &ctx.database) {
             Ok(response) => Json(response),
@@ -213,7 +225,8 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
         },
         Request::Info => {
             // Load cardano script address if available
-            let script_address = load_cardano_script_address(&ctx.database).ok();
+            let script_address =
+                load_cardano_script_address(&ctx.database).ok();
             Json(Response::Info {
                 delegate_pk: ctx.keypair.public_key,
                 cardano_script_address: script_address,
@@ -230,7 +243,13 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
                 });
             }
             let mut rng = rand::rng();
-            match emit_note(&ctx.keypair, policy_id, asset_name, amount, &mut rng) {
+            match emit_note(
+                &ctx.keypair,
+                policy_id,
+                asset_name,
+                amount,
+                &mut rng,
+            ) {
                 Ok(note) => Json(Response::Emit(Box::new(note))),
                 Err(e) => Json(Response::Error {
                     reason: e.to_string(),
@@ -277,12 +296,14 @@ pub async fn rpc(State(ctx): State<Context>, Json(request): Json<Request>) -> Js
                 }),
             }
         }
-        Request::CrossNodeTransferAck(request) => match cross_node::handle_ack(&request, &ctx) {
-            Ok(response) => Json(response),
-            Err(e) => Json(Response::Error {
-                reason: e.to_string(),
-            }),
-        },
+        Request::CrossNodeTransferAck(request) => {
+            match cross_node::handle_ack(&request, &ctx) {
+                Ok(response) => Json(response),
+                Err(e) => Json(Response::Error {
+                    reason: e.to_string(),
+                }),
+            }
+        }
     }
 }
 
@@ -366,7 +387,8 @@ mod tests {
         let mut canonical = env.clone();
         canonical.auth.sig.clear();
         let body = serde_json::to_vec(&canonical).unwrap();
-        let mut payload = Vec::with_capacity("mugraph_xnode_auth_v1".len() + body.len());
+        let mut payload =
+            Vec::with_capacity("mugraph_xnode_auth_v1".len() + body.len());
         payload.extend_from_slice(b"mugraph_xnode_auth_v1");
         payload.extend_from_slice(&body);
         env.auth.sig = muhex::encode(sk.sign(&payload).to_bytes());
@@ -389,7 +411,8 @@ mod tests {
         let registry_path = write_registry(&signer);
         let config = test_config(Some(registry_path.clone()));
         let keypair = config.keypair().unwrap();
-        let peer_registry = Some(Arc::new(PeerRegistry::load(registry_path).unwrap()));
+        let peer_registry =
+            Some(Arc::new(PeerRegistry::load(registry_path).unwrap()));
 
         Context {
             keypair,
@@ -412,7 +435,9 @@ mod tests {
         {
             let w = ctx.database.write().unwrap();
             {
-                let mut t = w.open_table(crate::database::CROSS_NODE_TRANSFERS).unwrap();
+                let mut t = w
+                    .open_table(crate::database::CROSS_NODE_TRANSFERS)
+                    .unwrap();
                 t.insert(
                     "tr-1",
                     &CrossNodeTransferRecord {
@@ -456,12 +481,15 @@ mod tests {
                 sig: String::new(),
             },
         };
-        let request = Request::CrossNodeTransferNotify(sign_notice(notice, &signer));
+        let request =
+            Request::CrossNodeTransferNotify(sign_notice(notice, &signer));
 
         let Json(response) = rpc(State(ctx), Json(request)).await;
         assert!(matches!(
             response,
-            mugraph_core::types::Response::CrossNodeTransferNotify { accepted: true }
+            mugraph_core::types::Response::CrossNodeTransferNotify {
+                accepted: true
+            }
         ));
     }
 

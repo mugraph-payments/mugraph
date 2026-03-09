@@ -17,4 +17,3 @@ fn withdraw_request_serde_roundtrip_preserves_tx_hash() {
     assert_eq!(decoded.tx_cbor, request.tx_cbor);
     assert_eq!(decoded.notes.len(), request.notes.len());
 }
-

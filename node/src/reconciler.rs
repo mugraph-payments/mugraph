@@ -9,7 +9,12 @@ use redb::ReadableTable;
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::{
-    database::{CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG},
+    database::{
+        CROSS_NODE_MESSAGES,
+        CROSS_NODE_TRANSFERS,
+        Database,
+        TRANSFER_AUDIT_LOG,
+    },
     lifecycle::apply_retry_exhaustion_to_record,
 };
 
@@ -34,7 +39,11 @@ impl Default for RetryPolicy {
     }
 }
 
-pub async fn reconciler_loop(database: Arc<Database>, tick: Duration, policy: RetryPolicy) {
+pub async fn reconciler_loop(
+    database: Arc<Database>,
+    tick: Duration,
+    policy: RetryPolicy,
+) {
     let mut ticker = interval(tick);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -46,7 +55,11 @@ pub async fn reconciler_loop(database: Arc<Database>, tick: Duration, policy: Re
     }
 }
 
-pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Result<(), Error> {
+pub fn reconcile_once(
+    database: &Database,
+    policy: RetryPolicy,
+    now: u64,
+) -> Result<(), Error> {
     let mut pending = Vec::new();
 
     {
@@ -72,7 +85,9 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                 continue;
             }
 
-            let due_at = message.updated_at.saturating_add(next_retry_delay_secs(&message, policy));
+            let due_at = message
+                .updated_at
+                .saturating_add(next_retry_delay_secs(&message, policy));
             if now >= due_at {
                 pending.push(RetryAction::Retry(message));
             }
@@ -92,10 +107,12 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
         for action in pending {
             match action {
                 RetryAction::Retry(mut message) => {
-                    message.attempt_count = message.attempt_count.saturating_add(1);
+                    message.attempt_count =
+                        message.attempt_count.saturating_add(1);
                     message.updated_at = now;
 
-                    let exhausted_after_increment = message.attempt_count >= policy.max_attempts;
+                    let exhausted_after_increment =
+                        message.attempt_count >= policy.max_attempts;
                     if exhausted_after_increment {
                         message.direction = "terminal".to_string();
                     }
@@ -118,7 +135,12 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                     );
 
                     if exhausted_after_increment {
-                        handle_exhaustion(&message, now, &mut transfers, &mut audits)?;
+                        handle_exhaustion(
+                            &message,
+                            now,
+                            &mut transfers,
+                            &mut audits,
+                        )?;
                     } else {
                         write_audit(
                             &mut audits,
@@ -139,7 +161,12 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
                         "reason" => "already_exhausted".to_string()
                     )
                     .increment(1);
-                    handle_exhaustion(&message, now, &mut transfers, &mut audits)?;
+                    handle_exhaustion(
+                        &message,
+                        now,
+                        &mut transfers,
+                        &mut audits,
+                    )?;
                     message.direction = "terminal".to_string();
                     message.updated_at = now;
                     messages.insert(message.message_id.as_str(), &message)?;
@@ -156,7 +183,11 @@ pub fn reconcile_once(database: &Database, policy: RetryPolicy, now: u64) -> Res
 fn handle_exhaustion(
     message: &CrossNodeMessageRecord,
     now: u64,
-    transfers: &mut redb::Table<'_, &str, mugraph_core::types::CrossNodeTransferRecord>,
+    transfers: &mut redb::Table<
+        '_,
+        &str,
+        mugraph_core::types::CrossNodeTransferRecord,
+    >,
     audits: &mut redb::Table<'_, &str, TransferAuditEvent>,
 ) -> Result<(), Error> {
     // Lost ACK is advisory and must not block convergence.
@@ -173,7 +204,8 @@ fn handle_exhaustion(
             audits,
             &message.transfer_id,
             "reconciler.ack_exhausted",
-            "ack retries exhausted; convergence remains chain-authoritative".to_string(),
+            "ack retries exhausted; convergence remains chain-authoritative"
+                .to_string(),
             now,
         );
     }
@@ -267,7 +299,10 @@ enum RetryAction {
     Exhausted(CrossNodeMessageRecord),
 }
 
-fn next_retry_delay_secs(message: &CrossNodeMessageRecord, policy: RetryPolicy) -> u64 {
+fn next_retry_delay_secs(
+    message: &CrossNodeMessageRecord,
+    policy: RetryPolicy,
+) -> u64 {
     let exp = message.attempt_count.saturating_sub(1).min(31);
     let backoff = policy
         .base_backoff_secs
@@ -278,7 +313,10 @@ fn next_retry_delay_secs(message: &CrossNodeMessageRecord, policy: RetryPolicy) 
     backoff.saturating_add(jitter)
 }
 
-fn deterministic_jitter_secs(message: &CrossNodeMessageRecord, base: u64) -> u64 {
+fn deterministic_jitter_secs(
+    message: &CrossNodeMessageRecord,
+    base: u64,
+) -> u64 {
     if base == 0 {
         return 0;
     }
@@ -316,9 +354,8 @@ mod tests {
     use mugraph_core::types::CrossNodeTransferRecord;
     use proptest::prelude::*;
 
-    use crate::database::CROSS_NODE_TRANSFERS;
-
     use super::*;
+    use crate::database::CROSS_NODE_TRANSFERS;
 
     fn temp_db() -> Database {
         let path = std::env::temp_dir().join(format!(
@@ -447,7 +484,9 @@ mod tests {
         for row in audits.iter().unwrap() {
             let (_k, v) = row.unwrap();
             let evt = v.value();
-            if evt.transfer_id == "tr-3" && evt.event_type == "reconciler.manual_review" {
+            if evt.transfer_id == "tr-3"
+                && evt.event_type == "reconciler.manual_review"
+            {
                 manual_review_count += 1;
             }
         }

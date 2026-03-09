@@ -58,7 +58,11 @@ pub enum Config {
         deposit_confirm_depth: u64,
 
         /// Number of blocks after which unclaimed deposits expire (default: 1440)
-        #[clap(long, env = "DEPOSIT_EXPIRATION_BLOCKS", default_value = "1440")]
+        #[clap(
+            long,
+            env = "DEPOSIT_EXPIRATION_BLOCKS",
+            default_value = "1440"
+        )]
         deposit_expiration_blocks: u64,
 
         /// Minimum deposit value in lovelace
@@ -108,7 +112,10 @@ impl Config {
 
     pub(crate) fn cardano_network(
         &self,
-    ) -> std::result::Result<CardanoNetwork, crate::network::InvalidCardanoNetwork> {
+    ) -> std::result::Result<
+        CardanoNetwork,
+        crate::network::InvalidCardanoNetwork,
+    > {
         CardanoNetwork::parse(&self.network())
     }
 
@@ -117,7 +124,9 @@ impl Config {
     /// Uses distinct bytes for supported networks to avoid cross-network key collisions
     /// when a database is reused across environments.
     pub fn network_byte(&self) -> u8 {
-        self.cardano_network().map(CardanoNetwork::network_byte).unwrap_or(0)
+        self.cardano_network()
+            .map(CardanoNetwork::network_byte)
+            .unwrap_or(0)
     }
 
     /// Get the provider type
@@ -261,8 +270,10 @@ impl Config {
                 secret_key: Some(secret_key),
                 ..
             } => {
-                let key_bytes = muhex::decode(secret_key).map_err(|e| Error::InvalidKey {
-                    reason: e.to_string(),
+                let key_bytes = muhex::decode(secret_key).map_err(|e| {
+                    Error::InvalidKey {
+                        reason: e.to_string(),
+                    }
                 })?;
 
                 if key_bytes.len() != 32 {
@@ -271,7 +282,8 @@ impl Config {
                     });
                 }
 
-                let key: [u8; 32] = key_bytes.try_into().expect("Already validated length");
+                let key: [u8; 32] =
+                    key_bytes.try_into().expect("Already validated length");
                 let secret_key = SecretKey::from(key);
 
                 Ok(Keypair {

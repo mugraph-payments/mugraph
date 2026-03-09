@@ -4,11 +4,7 @@ use std::{
     sync::OnceLock,
 };
 
-use mugraph_node::{
-    config::Config,
-    database::Database,
-    routes::router,
-};
+use mugraph_node::{config::Config, database::Database, routes::router};
 use tempfile::TempDir;
 
 fn env_lock() -> &'static tokio::sync::Mutex<()> {
@@ -51,9 +47,7 @@ where
     }
     let result = f().await;
     match previous {
-        Some(value) => unsafe {
-            std::env::set_var("MUGRAPH_DB_PATH", value)
-        },
+        Some(value) => unsafe { std::env::set_var("MUGRAPH_DB_PATH", value) },
         None => unsafe { std::env::remove_var("MUGRAPH_DB_PATH") },
     }
     result
@@ -69,8 +63,12 @@ async fn router_starts_in_dev_mode_and_creates_migrated_database() {
     })
     .await;
 
-    let _ = built.expect("dev-mode router should start without chain dependencies");
-    assert!(db_path.exists(), "router should create the configured database path");
+    let _ =
+        built.expect("dev-mode router should start without chain dependencies");
+    assert!(
+        db_path.exists(),
+        "router should create the configured database path"
+    );
 
     let reopened = Database::setup(PathBuf::from(&db_path)).unwrap();
     assert_eq!(reopened.schema_version().unwrap(), 3);

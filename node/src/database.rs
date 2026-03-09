@@ -31,17 +31,20 @@ use redb::{
     backends::FileBackend,
 };
 
-pub const NOTES: TableDefinition<Signature, bool> = TableDefinition::new("notes");
+pub const NOTES: TableDefinition<Signature, bool> =
+    TableDefinition::new("notes");
 
 /// Schema version key for database migrations
-pub const SCHEMA_VERSION: TableDefinition<&str, u64> = TableDefinition::new("schema_version");
+pub const SCHEMA_VERSION: TableDefinition<&str, u64> =
+    TableDefinition::new("schema_version");
 
 /// Cardano wallet data (single row with key "wallet")
 pub const CARDANO_WALLET: TableDefinition<&str, CardanoWallet> =
     TableDefinition::new("cardano_wallet");
 
 /// Deposits indexed by UTxO reference (tx_hash[32] + index[2])
-pub const DEPOSITS: TableDefinition<UtxoRef, DepositRecord> = TableDefinition::new("deposits");
+pub const DEPOSITS: TableDefinition<UtxoRef, DepositRecord> =
+    TableDefinition::new("deposits");
 
 /// Withdrawals indexed by network[1] + tx_hash[32]
 pub const WITHDRAWALS: TableDefinition<WithdrawalKey, WithdrawalRecord> =
@@ -65,7 +68,8 @@ pub const TRANSFER_AUDIT_LOG: TableDefinition<&str, TransferAuditEvent> =
 
 const METRIC_DB_READ: &str = "mugraph.node.database.read";
 const METRIC_DB_WRITE: &str = "mugraph.node.database.write";
-const METRIC_DB_WRITE_OPEN_TABLE: &str = "mugraph.node.database.write.open_table";
+const METRIC_DB_WRITE_OPEN_TABLE: &str =
+    "mugraph.node.database.write.open_table";
 const METRIC_DB_WRITE_COMMIT: &str = "mugraph.node.database.write.commit";
 
 #[derive(Debug)]
@@ -110,9 +114,10 @@ impl Database {
     pub fn setup(path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = path.into();
         if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
 
         let is_new = !path.exists();
         let file = OpenOptions::new()
@@ -128,7 +133,10 @@ impl Database {
         })
     }
 
-    fn setup_with_backend<B: StorageBackend>(backend: B, should_setup: bool) -> Result<Redb, Error> {
+    fn setup_with_backend<B: StorageBackend>(
+        backend: B,
+        should_setup: bool,
+    ) -> Result<Redb, Error> {
         let db = Builder::new().create_with_backend(backend)?;
 
         if should_setup {

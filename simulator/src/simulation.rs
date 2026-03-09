@@ -4,7 +4,15 @@ use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
-    types::{Asset, BlindSignature, DleqProofWithBlinding, Hash, Note, PublicKey, Refresh},
+    types::{
+        Asset,
+        BlindSignature,
+        DleqProofWithBlinding,
+        Hash,
+        Note,
+        PublicKey,
+        Refresh,
+    },
 };
 use rand::{Rng, rngs::StdRng};
 use tokio::time::{MissedTickBehavior, interval};
@@ -119,9 +127,9 @@ pub fn materialize_outputs(
             continue;
         }
 
-        let signature = output_iter
-            .next()
-            .ok_or_else(|| eyre!("missing signature for output {}", atom_idx))?;
+        let signature = output_iter.next().ok_or_else(|| {
+            eyre!("missing signature for output {}", atom_idx)
+        })?;
 
         let asset = refresh
             .asset_ids
@@ -139,7 +147,11 @@ pub fn materialize_outputs(
             return Err(eyre!("invalid DLEQ proof for output {}", atom_idx));
         }
 
-        if !crypto::verify(&delegate, commitment.as_ref(), signature.signature.0)? {
+        if !crypto::verify(
+            &delegate,
+            commitment.as_ref(),
+            signature.signature.0,
+        )? {
             return Err(eyre!("invalid signature for output {}", atom_idx));
         }
 
@@ -205,7 +217,9 @@ async fn cross_node_transfer(
                 .emit(asset.policy_id, asset.asset_name, change_amount)
                 .await
                 .map_err(|e| CrossNodeError {
-                    reason: format!("change emit failed after receiver note minted: {e}"),
+                    reason: format!(
+                        "change emit failed after receiver note minted: {e}"
+                    ),
                     // The receiver note was already minted — include it for recovery
                     recovered_notes: vec![(receiver_id, receiver_note.clone())],
                 })?,
@@ -220,7 +234,11 @@ async fn cross_node_transfer(
     })
 }
 
-fn apply_successful_tx(state: &mut AppState, pending: &PendingTx, notes: Vec<(usize, Note)>) {
+fn apply_successful_tx(
+    state: &mut AppState,
+    pending: &PendingTx,
+    notes: Vec<(usize, Note)>,
+) {
     for (owner, note) in notes {
         let key = Asset {
             policy_id: note.policy_id,
@@ -238,7 +256,10 @@ fn apply_successful_tx(state: &mut AppState, pending: &PendingTx, notes: Vec<(us
     state.total_ok += 1;
     state.log(format!(
         "tx {} ok sender={} receiver={} amount={}",
-        pending.id, pending.sender_id, pending.receiver_id, pending.spend_amount
+        pending.id,
+        pending.sender_id,
+        pending.receiver_id,
+        pending.spend_amount
     ));
 }
 
@@ -474,7 +495,8 @@ fn handle_cross_node_completion(
                         .push(note);
                 }
 
-                let lost = (input_amount as u128).saturating_sub(recovered_total);
+                let lost =
+                    (input_amount as u128).saturating_sub(recovered_total);
                 if lost > 0 {
                     oracle.record_loss(&asset, lost);
                 }
@@ -524,7 +546,13 @@ pub async fn simulation_owner_loop(
 
     let max_inflight = config.max_inflight;
 
-    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
+    emit_snapshot(
+        &state,
+        &mut oracle,
+        max_inflight,
+        &mut throughput,
+        &snapshot_tx,
+    );
 
     let mut tx_id: u64 = 0;
 
@@ -731,7 +759,13 @@ pub async fn simulation_owner_loop(
     }
 
     state.shutdown = true;
-    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
+    emit_snapshot(
+        &state,
+        &mut oracle,
+        max_inflight,
+        &mut throughput,
+        &snapshot_tx,
+    );
 }
 
 #[cfg(test)]
@@ -773,7 +807,9 @@ mod tests {
 
         notes.swap_remove(0);
 
-        let Some(pos) = notes.iter().position(|n| n.signature == target.signature) else {
+        let Some(pos) =
+            notes.iter().position(|n| n.signature == target.signature)
+        else {
             panic!("target note missing");
         };
 
@@ -823,7 +859,8 @@ mod tests {
             dleq: None,
         };
 
-        let (refresh, owners) = build_refresh(0, 1, asset, input_note.clone(), 50).unwrap();
+        let (refresh, owners) =
+            build_refresh(0, 1, asset, input_note.clone(), 50).unwrap();
         let pending = PendingTx {
             id: 7,
             sender_id: 0,
@@ -876,7 +913,8 @@ mod tests {
     }
 
     #[test]
-    fn cross_node_partial_failure_helper_updates_loss_failure_and_last_failure() {
+    fn cross_node_partial_failure_helper_updates_loss_failure_and_last_failure()
+    {
         let asset = Asset {
             policy_id: PolicyId([7u8; 28]),
             asset_name: AssetName::empty(),
@@ -947,7 +985,13 @@ mod tests {
         assert_eq!(state.total_err, 1);
         assert_eq!(state.wallets[0].failures, 1);
         assert_eq!(state.wallets[1].notes.get(&asset).unwrap()[0].amount, 60);
-        assert!(state.last_failure.as_ref().unwrap().contains("partial failure"));
+        assert!(
+            state
+                .last_failure
+                .as_ref()
+                .unwrap()
+                .contains("partial failure")
+        );
         assert!(state.last_failure.as_ref().unwrap().contains("lost 40"));
     }
 
@@ -1014,7 +1058,11 @@ mod tests {
         let mut oracle = ConservationOracle::new();
 
         // Seal with the input note present
-        state.wallets[0].notes.entry(asset).or_default().push(input_note.clone());
+        state.wallets[0]
+            .notes
+            .entry(asset)
+            .or_default()
+            .push(input_note.clone());
         oracle.seal(&state);
 
         // Reserve: remove note, track as inflight
@@ -1045,12 +1093,19 @@ mod tests {
                 policy_id: note.policy_id,
                 asset_name: note.asset_name,
             };
-            state.wallets[owner].notes.entry(key).or_default().push(note);
+            state.wallets[owner]
+                .notes
+                .entry(key)
+                .or_default()
+                .push(note);
         }
 
         // Record the irrecoverable loss
         let lost = (input_amount as u128).saturating_sub(recovered_total);
-        assert_eq!(lost, 40, "40 units of value were lost (change never minted)");
+        assert_eq!(
+            lost, 40,
+            "40 units of value were lost (change never minted)"
+        );
         oracle.record_loss(&asset, lost);
 
         // Conservation check passes: oracle expected 100, reduced by 40 → expects 60
@@ -1120,7 +1175,11 @@ mod tests {
 
         let mut oracle = ConservationOracle::new();
 
-        state.wallets[0].notes.entry(asset).or_default().push(input_note.clone());
+        state.wallets[0]
+            .notes
+            .entry(asset)
+            .or_default()
+            .push(input_note.clone());
         oracle.seal(&state);
 
         // Reserve
@@ -1159,7 +1218,12 @@ mod tests {
         assert_eq!(sender_balance, 100);
     }
 
-    fn make_note(amount: u64, delegate: PublicKey, asset: Asset, sig_byte: u8) -> Note {
+    fn make_note(
+        amount: u64,
+        delegate: PublicKey,
+        asset: Asset,
+        sig_byte: u8,
+    ) -> Note {
         Note {
             amount,
             delegate,

@@ -78,7 +78,11 @@ pub fn handle_create(
     request: &XNodeEnvelope<mugraph_core::types::TransferInitPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    let decision = match enforce_command_security(request, XNodeMessageType::TransferInit, ctx) {
+    let decision = match enforce_command_security(
+        request,
+        XNodeMessageType::TransferInit,
+        ctx,
+    ) {
         Ok(d) => d,
         Err(e) => {
             let mut event = "transfer.replay_rejected";
@@ -105,8 +109,13 @@ pub fn handle_create(
                 );
             }
             emit_receive_metrics("transfer_init", "rejected");
-            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
-                tracing::error!("failed to write reject audit event: {}", audit_err);
+            if let Err(audit_err) =
+                audit_reject(ctx, &request.transfer_id, event, e.to_string())
+            {
+                tracing::error!(
+                    "failed to write reject audit event: {}",
+                    audit_err
+                );
             }
             return Err(e);
         }
@@ -175,7 +184,11 @@ pub fn handle_notify(
     request: &XNodeEnvelope<mugraph_core::types::TransferNoticePayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    let decision = match enforce_command_security(request, XNodeMessageType::TransferNotice, ctx) {
+    let decision = match enforce_command_security(
+        request,
+        XNodeMessageType::TransferNotice,
+        ctx,
+    ) {
         Ok(d) => d,
         Err(e) => {
             let mut event = "transfer.replay_rejected";
@@ -196,8 +209,13 @@ pub fn handle_notify(
                 );
             }
             emit_receive_metrics("transfer_notice", "rejected");
-            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
-                tracing::error!("failed to write reject audit event: {}", audit_err);
+            if let Err(audit_err) =
+                audit_reject(ctx, &request.transfer_id, event, e.to_string())
+            {
+                tracing::error!(
+                    "failed to write reject audit event: {}",
+                    audit_err
+                );
             }
             return Err(e);
         }
@@ -235,9 +253,15 @@ pub fn handle_notify(
                     .unwrap_or(updated.confirmations_observed)
                     .max(updated.confirmations_observed);
                 updated.chain_state = match request.payload.notice_stage {
-                    mugraph_core::types::TransferNoticeStage::Submitted => "submitted",
-                    mugraph_core::types::TransferNoticeStage::Confirmed => "confirming",
-                    mugraph_core::types::TransferNoticeStage::Finalized => "confirmed",
+                    mugraph_core::types::TransferNoticeStage::Submitted => {
+                        "submitted"
+                    }
+                    mugraph_core::types::TransferNoticeStage::Confirmed => {
+                        "confirming"
+                    }
+                    mugraph_core::types::TransferNoticeStage::Finalized => {
+                        "confirmed"
+                    }
                 }
                 .to_string();
                 updated.updated_at = now;
@@ -274,15 +298,22 @@ pub fn handle_status(
     request: &XNodeEnvelope<mugraph_core::types::TransferStatusQueryPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    enforce_query_security(request, XNodeMessageType::TransferStatusQuery, ctx)?;
+    enforce_query_security(
+        request,
+        XNodeMessageType::TransferStatusQuery,
+        ctx,
+    )?;
 
     let transfer = {
         let read_tx = ctx.database.read()?;
-        let table = read_tx.open_table(crate::database::CROSS_NODE_TRANSFERS)?;
+        let table =
+            read_tx.open_table(crate::database::CROSS_NODE_TRANSFERS)?;
         table
             .get(request.transfer_id.as_str())?
             .map(|v| v.value())
-            .ok_or_else(|| protocol_reject("TRANSFER_NOT_FOUND", "transfer not found"))?
+            .ok_or_else(|| {
+                protocol_reject("TRANSFER_NOT_FOUND", "transfer not found")
+            })?
     };
 
     let payload = status_payload_from_record(&transfer);
@@ -324,14 +355,20 @@ pub fn handle_status(
 
     sign_status_response(&mut response_envelope, ctx)?;
 
-    Ok(Response::CrossNodeTransferStatus(Box::new(response_envelope)))
+    Ok(Response::CrossNodeTransferStatus(Box::new(
+        response_envelope,
+    )))
 }
 
 pub fn handle_ack(
     request: &XNodeEnvelope<mugraph_core::types::TransferAckPayload>,
     ctx: &Context,
 ) -> Result<Response, Error> {
-    let decision = match enforce_command_security(request, XNodeMessageType::TransferAck, ctx) {
+    let decision = match enforce_command_security(
+        request,
+        XNodeMessageType::TransferAck,
+        ctx,
+    ) {
         Ok(d) => d,
         Err(e) => {
             let mut event = "transfer.replay_rejected";
@@ -352,8 +389,13 @@ pub fn handle_ack(
                 );
             }
             emit_receive_metrics("transfer_ack", "rejected");
-            if let Err(audit_err) = audit_reject(ctx, &request.transfer_id, event, e.to_string()) {
-                tracing::error!("failed to write reject audit event: {}", audit_err);
+            if let Err(audit_err) =
+                audit_reject(ctx, &request.transfer_id, event, e.to_string())
+            {
+                tracing::error!(
+                    "failed to write reject audit event: {}",
+                    audit_err
+                );
             }
             return Err(e);
         }
@@ -373,7 +415,8 @@ fn enforce_command_security<T: Serialize + Clone>(
     expected_message_type: XNodeMessageType,
     ctx: &Context,
 ) -> Result<IdempotencyDecision, Error> {
-    validate_envelope_basics(request, expected_message_type.clone(), 3).map_err(Error::from)?;
+    validate_envelope_basics(request, expected_message_type.clone(), 3)
+        .map_err(Error::from)?;
     validate_freshness(
         &request.sent_at,
         request.expires_at.as_deref(),
@@ -381,7 +424,11 @@ fn enforce_command_security<T: Serialize + Clone>(
     )?;
     validate_destination_binding(request, &ctx.config.xnode_node_id())?;
     validate_auth_signature(request, ctx)?;
-    check_replay_and_idempotency(request, message_type_key(&expected_message_type), ctx)
+    check_replay_and_idempotency(
+        request,
+        message_type_key(&expected_message_type),
+        ctx,
+    )
 }
 
 fn enforce_query_security<T: Serialize + Clone>(
@@ -389,7 +436,8 @@ fn enforce_query_security<T: Serialize + Clone>(
     expected_message_type: XNodeMessageType,
     ctx: &Context,
 ) -> Result<(), Error> {
-    validate_envelope_basics(request, expected_message_type, 3).map_err(Error::from)?;
+    validate_envelope_basics(request, expected_message_type, 3)
+        .map_err(Error::from)?;
     validate_query_freshness(&request.sent_at, now_secs() as i64)?;
     validate_destination_binding(request, &ctx.config.xnode_node_id())?;
     validate_auth_signature(request, ctx)?;
@@ -406,7 +454,10 @@ fn message_type_key(message_type: &XNodeMessageType) -> &'static str {
     }
 }
 
-fn emit_chain_metrics(record: &CrossNodeTransferRecord, payload: &TransferStatusPayload) {
+fn emit_chain_metrics(
+    record: &CrossNodeTransferRecord,
+    payload: &TransferStatusPayload,
+) {
     metrics::histogram!("mugraph_m3_chain_confirmation_depth")
         .record(payload.confirmations_observed as f64);
     metrics::histogram!("mugraph_m3_settlement_latency_seconds")
@@ -476,7 +527,11 @@ fn audit_status_events<T>(
     })
 }
 
-fn validate_freshness(sent_at: &str, expires_at: Option<&str>, now: i64) -> Result<(), Error> {
+fn validate_freshness(
+    sent_at: &str,
+    expires_at: Option<&str>,
+    now: i64,
+) -> Result<(), Error> {
     let sent_at = DateTime::parse_from_rfc3339(sent_at)
         .map_err(|e| {
             protocol_reject(
@@ -623,7 +678,9 @@ fn validate_auth_signature<T: Serialize + Clone>(
                 && p.kid == request.auth.kid
                 && p.auth_alg == request.auth.alg
         })
-        .ok_or_else(|| protocol_reject("UNKNOWN_KEY_ID", "untrusted origin node or key id"))?;
+        .ok_or_else(|| {
+            protocol_reject("UNKNOWN_KEY_ID", "untrusted origin node or key id")
+        })?;
 
     let pubkey = muhex::decode(&peer.public_key_hex).map_err(|e| {
         protocol_reject(
@@ -631,12 +688,14 @@ fn validate_auth_signature<T: Serialize + Clone>(
             format!("invalid trusted peer public key hex: {e}"),
         )
     })?;
-    let verifying_key = VerifyingKey::from_bytes(&pubkey.as_slice().try_into().map_err(|_| {
-        protocol_reject(
-            "SCHEMA_VALIDATION_FAILED",
-            "trusted peer public key must be 32 bytes",
-        )
-    })?)
+    let verifying_key = VerifyingKey::from_bytes(
+        &pubkey.as_slice().try_into().map_err(|_| {
+            protocol_reject(
+                "SCHEMA_VALIDATION_FAILED",
+                "trusted peer public key must be 32 bytes",
+            )
+        })?,
+    )
     .map_err(|e| {
         protocol_reject(
             "SCHEMA_VALIDATION_FAILED",
@@ -658,9 +717,12 @@ fn validate_auth_signature<T: Serialize + Clone>(
     })?;
 
     let payload = canonical_auth_payload(request)?;
-    verifying_key
-        .verify(&payload, &sig)
-        .map_err(|e| protocol_reject("INVALID_SIGNATURE", format!("invalid auth signature: {e}")))?;
+    verifying_key.verify(&payload, &sig).map_err(|e| {
+        protocol_reject(
+            "INVALID_SIGNATURE",
+            format!("invalid auth signature: {e}"),
+        )
+    })?;
 
     Ok(())
 }
@@ -674,7 +736,10 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
     let now = now_secs();
     let tuple_key = format!(
         "{}::{}::{}::{}",
-        request.origin_node_id, request.transfer_id, message_type, request.idempotency_key
+        request.origin_node_id,
+        request.transfer_id,
+        message_type,
+        request.idempotency_key
     );
 
     let write_tx = ctx.database.write()?;
@@ -688,7 +753,10 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
                 "message_type" => message_type.to_string()
             )
             .increment(1);
-            return Err(protocol_reject("REPLAY_DETECTED", "duplicate message_id"));
+            return Err(protocol_reject(
+                "REPLAY_DETECTED",
+                "duplicate message_id",
+            ));
         }
 
         let existing = idempotency.get(tuple_key.as_str())?.map(|v| v.value());
@@ -754,7 +822,9 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
     Ok(decision)
 }
 
-fn request_hash<T: Serialize + Clone>(request: &XNodeEnvelope<T>) -> Result<String, Error> {
+fn request_hash<T: Serialize + Clone>(
+    request: &XNodeEnvelope<T>,
+) -> Result<String, Error> {
     let payload = canonical_idempotency_payload(request)?;
     let mut hasher = Hasher::new();
     hasher.update(&payload);
@@ -798,12 +868,13 @@ fn sign_status_response<T: Serialize + Clone>(
         )
     })?;
 
-    let sk_bytes: [u8; 32] = wallet.payment_sk.as_slice().try_into().map_err(|_| {
-        protocol_reject(
-            "SCHEMA_VALIDATION_FAILED",
-            "wallet payment signing key must be 32 bytes",
-        )
-    })?;
+    let sk_bytes: [u8; 32] =
+        wallet.payment_sk.as_slice().try_into().map_err(|_| {
+            protocol_reject(
+                "SCHEMA_VALIDATION_FAILED",
+                "wallet payment signing key must be 32 bytes",
+            )
+        })?;
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&sk_bytes);
     let payload = canonical_auth_payload(envelope)?;
     let sig = signing_key.sign(&payload);
@@ -820,7 +891,8 @@ fn audit_event<T>(
     let write_tx = ctx.database.write()?;
     {
         let mut table = write_tx.open_table(TRANSFER_AUDIT_LOG)?;
-        let event_id = format!("{}:{}:{}", request.transfer_id, event_type, now_nanos());
+        let event_id =
+            format!("{}:{}:{}", request.transfer_id, event_type, now_nanos());
         table.insert(
             event_id.clone().as_str(),
             &TransferAuditEvent {
@@ -854,7 +926,8 @@ fn audit_reject(
     let write_tx = ctx.database.write()?;
     {
         let mut table = write_tx.open_table(TRANSFER_AUDIT_LOG)?;
-        let event_id = format!("{}:{}:{}", transfer_id, event_type, now_nanos());
+        let event_id =
+            format!("{}:{}:{}", transfer_id, event_type, now_nanos());
         table.insert(
             event_id.clone().as_str(),
             &TransferAuditEvent {
@@ -973,7 +1046,8 @@ mod tests {
 
         let config = test_config_with_registry(registry_path);
         let keypair = config.keypair().unwrap();
-        let registry = crate::peer_registry::PeerRegistry::load(registry_path).unwrap();
+        let registry =
+            crate::peer_registry::PeerRegistry::load(registry_path).unwrap();
 
         Context {
             keypair,
@@ -995,11 +1069,15 @@ mod tests {
         (Utc::now() + chrono::Duration::seconds(secs)).to_rfc3339()
     }
 
-    fn sign_envelope<T: Serialize + Clone>(env: &mut XNodeEnvelope<T>, sk: &SigningKey) {
+    fn sign_envelope<T: Serialize + Clone>(
+        env: &mut XNodeEnvelope<T>,
+        sk: &SigningKey,
+    ) {
         let mut canonical = env.clone();
         canonical.auth.sig.clear();
         let body = serde_json::to_vec(&canonical).unwrap();
-        let mut payload = Vec::with_capacity(AUTH_DOMAIN_SEP.len() + body.len());
+        let mut payload =
+            Vec::with_capacity(AUTH_DOMAIN_SEP.len() + body.len());
         payload.extend_from_slice(AUTH_DOMAIN_SEP);
         payload.extend_from_slice(&body);
         let sig = sk.sign(&payload);
@@ -1029,7 +1107,12 @@ mod tests {
         }
     }
 
-    fn seed_transfer(ctx: &Context, transfer_id: &str, chain_state: &str, credit_state: &str) {
+    fn seed_transfer(
+        ctx: &Context,
+        transfer_id: &str,
+        chain_state: &str,
+        credit_state: &str,
+    ) {
         let w = ctx.database.write().unwrap();
         {
             let mut table = w.open_table(CROSS_NODE_TRANSFERS).unwrap();
@@ -1055,7 +1138,10 @@ mod tests {
 
     #[test]
     fn receive_metric_name_is_not_send_metric() {
-        assert_eq!(M3_MESSAGE_RECEIVE_COUNTER, "mugraph_m3_message_receive_total");
+        assert_eq!(
+            M3_MESSAGE_RECEIVE_COUNTER,
+            "mugraph_m3_message_receive_total"
+        );
     }
 
     #[test]
@@ -1099,7 +1185,10 @@ mod tests {
         let err = handle_create(&request, &ctx).unwrap_err();
         match err {
             Error::InvalidInput { reason } => {
-                assert!(reason.contains("AUTHZ_DENIED") || reason.contains("failed to read peer registry"));
+                assert!(
+                    reason.contains("AUTHZ_DENIED")
+                        || reason.contains("failed to read peer registry")
+                );
             }
             _ => panic!("expected InvalidInput authz error"),
         }
@@ -1174,7 +1263,9 @@ mod tests {
 
         let err = handle_create(&request_b, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("IDEMPOTENCY_CONFLICT")),
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("IDEMPOTENCY_CONFLICT"))
+            }
             _ => panic!("expected InvalidInput conflict"),
         }
     }
@@ -1198,7 +1289,9 @@ mod tests {
 
         let err = handle_create(&second, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("TRANSFER_ALREADY_EXISTS")),
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("TRANSFER_ALREADY_EXISTS"))
+            }
             _ => panic!("expected duplicate transfer_id rejection"),
         }
     }
@@ -1216,7 +1309,9 @@ mod tests {
 
         let err = handle_create(&request, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("AUTHZ_DENIED")),
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("AUTHZ_DENIED"))
+            }
             _ => panic!("expected InvalidInput authz error"),
         }
     }
@@ -1235,7 +1330,9 @@ mod tests {
 
         let err = handle_create(&request, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("REPLAY_DETECTED")),
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("REPLAY_DETECTED"))
+            }
             _ => panic!("expected InvalidInput replay error"),
         }
     }
@@ -1249,12 +1346,15 @@ mod tests {
 
         let mut request = create_request();
         request.sent_at = now_rfc3339_offset(0);
-        request.expires_at = Some(now_rfc3339_offset(MAX_COMMAND_EXPIRY_HORIZON_SECS + 60));
+        request.expires_at =
+            Some(now_rfc3339_offset(MAX_COMMAND_EXPIRY_HORIZON_SECS + 60));
         sign_envelope(&mut request, &signer);
 
         let err = handle_create(&request, &ctx).unwrap_err();
         match err {
-            Error::InvalidInput { reason } => assert!(reason.contains("SCHEMA_VALIDATION_FAILED")),
+            Error::InvalidInput { reason } => {
+                assert!(reason.contains("SCHEMA_VALIDATION_FAILED"))
+            }
             _ => panic!("expected InvalidInput schema error"),
         }
     }
@@ -1291,7 +1391,10 @@ mod tests {
             Response::CrossNodeTransferStatus(env) => {
                 assert_eq!(env.payload.source_state, "submitted");
                 assert_eq!(env.payload.destination_state, "chain_observed");
-                assert_eq!(env.payload.chain_state, TransferChainState::Submitted);
+                assert_eq!(
+                    env.payload.chain_state,
+                    TransferChainState::Submitted
+                );
                 assert_eq!(env.payload.credit_state, TransferCreditState::None);
             }
             _ => panic!("unexpected response variant"),
@@ -1360,10 +1463,14 @@ mod tests {
         for row in table.iter().unwrap() {
             let (_k, v) = row.unwrap();
             let evt = v.value();
-            if evt.transfer_id == "tr-status" && evt.event_type == "transfer.confirmed" {
+            if evt.transfer_id == "tr-status"
+                && evt.event_type == "transfer.confirmed"
+            {
                 confirmed = true;
             }
-            if evt.transfer_id == "tr-status" && evt.event_type == "transfer.credited" {
+            if evt.transfer_id == "tr-status"
+                && evt.event_type == "transfer.credited"
+            {
                 credited = true;
             }
         }
@@ -1408,11 +1515,16 @@ mod tests {
             updated_at: "1".to_string(),
         };
 
-        let err = audit_status_events_with(&ctx, &request, &payload, |_event_type, _reason| {
-            Err(Error::Internal {
-                reason: "audit failed".to_string(),
-            })
-        })
+        let err = audit_status_events_with(
+            &ctx,
+            &request,
+            &payload,
+            |_event_type, _reason| {
+                Err(Error::Internal {
+                    reason: "audit failed".to_string(),
+                })
+            },
+        )
         .unwrap_err();
         assert!(format!("{err:?}").contains("audit failed"));
     }
@@ -1525,7 +1637,11 @@ mod tests {
 
         let read = ctx.database.read().unwrap();
         let table = read.open_table(CROSS_NODE_TRANSFERS).unwrap();
-        let record = table.get(create.transfer_id.as_str()).unwrap().unwrap().value();
+        let record = table
+            .get(create.transfer_id.as_str())
+            .unwrap()
+            .unwrap()
+            .value();
         assert_eq!(record.tx_hash.as_deref(), Some("abcd"));
         assert_eq!(record.confirmations_observed, 6);
         assert_ne!(record.chain_state, "unknown");
