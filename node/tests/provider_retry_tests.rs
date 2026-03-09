@@ -11,7 +11,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use mugraph_node::provider::Provider;
+use mugraph_node::provider::{Provider, TxSettlementState};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -83,6 +83,42 @@ async fn spawn_transport_error_mock(expected_attempts: usize) -> (String, Arc<At
     });
 
     (format!("http://{}", addr), hits)
+}
+
+async fn spawn_observation_mock(
+    tip_height: u64,
+    tx_block_height: Option<u64>,
+) -> String {
+    async fn latest_block_with_height(
+        State((height, _tx_block_height)): State<(u64, Option<u64>)>,
+    ) -> impl IntoResponse {
+        (
+            StatusCode::OK,
+            axum::Json(json!({"slot": 42, "hash": "abc", "height": height})),
+        )
+    }
+
+    async fn tx_info_with_height(
+        State((_height, tx_block_height)): State<(u64, Option<u64>)>,
+    ) -> impl IntoResponse {
+        match tx_block_height {
+            Some(height) => (StatusCode::OK, axum::Json(json!({"block_height": height}))).into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+
+    let app = Router::new()
+        .route("/blocks/latest", get(latest_block_with_height))
+        .route("/txs/{tx_hash}", get(tx_info_with_height))
+        .with_state((tip_height, tx_block_height));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    format!("http://{addr}")
 }
 
 #[derive(Clone)]
@@ -682,4 +718,55 @@ async fn maestro_get_address_utxos_paginates_and_maps_assets() {
     assert_eq!(utxos[0].output_index, 0);
     assert_eq!(utxos[0].block_height, None);
     assert_eq!(utxos[1].datum_hash.as_deref(), Some("abcd"));
+}
+
+#[tokio::test]
+async fn observe_tx_status_combines_tip_and_tx_height_consistently() {
+    let confirming_url = spawn_observation_mock(100, Some(90)).await;
+    let confirming_provider = Provider::new(
+        "blockfrost",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(confirming_url),
+    )
+    .expect("provider");
+    let confirming = confirming_provider
+        .observe_tx_status(&"11".repeat(32), 12, 3, false)
+        .await
+        .expect("confirming observation");
+    assert_eq!(confirming.tx_block_height, Some(90));
+    assert_eq!(confirming.tip_height, 100);
+    assert_eq!(confirming.confirmations, 11);
+    assert_eq!(confirming.state, TxSettlementState::Confirming);
+
+    let confirmed_url = spawn_observation_mock(101, Some(90)).await;
+    let confirmed_provider = Provider::new(
+        "blockfrost",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(confirmed_url),
+    )
+    .expect("provider");
+    let confirmed = confirmed_provider
+        .observe_tx_status(&"22".repeat(32), 12, 3, false)
+        .await
+        .expect("confirmed observation");
+    assert_eq!(confirmed.confirmations, 12);
+    assert_eq!(confirmed.state, TxSettlementState::Confirmed);
+
+    let invalidated_url = spawn_observation_mock(101, None).await;
+    let invalidated_provider = Provider::new(
+        "blockfrost",
+        "test-key".to_string(),
+        "preprod".to_string(),
+        Some(invalidated_url),
+    )
+    .expect("provider");
+    let invalidated = invalidated_provider
+        .observe_tx_status(&"33".repeat(32), 12, 3, true)
+        .await
+        .expect("invalidated observation");
+    assert_eq!(invalidated.tx_block_height, None);
+    assert_eq!(invalidated.confirmations, 0);
+    assert_eq!(invalidated.state, TxSettlementState::Invalidated);
 }
