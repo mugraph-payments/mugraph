@@ -828,12 +828,7 @@ async fn fetch_and_validate_utxo(
     }
 
     // Validate tx_hash shape early; uniqueness is enforced atomically during record_deposit().
-    let tx_hash = hex::decode(&request.utxo.tx_hash).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid tx_hash hex: {}", e),
-    })?;
-    let _tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
-        reason: "tx_hash must be 32 bytes".to_string(),
-    })?;
+    let _tx_hash_array = crate::tx_ids::parse_tx_hash(&request.utxo.tx_hash)?;
 
     // Verify confirm depth (reorg safety)
     // Get current chain tip
@@ -1050,14 +1045,7 @@ async fn record_deposit(
     {
         let mut table = write_tx.open_table(DEPOSITS)?;
 
-        let tx_hash = hex::decode(&request.utxo.tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
-        let utxo_ref = UtxoRef::new(tx_hash_array, request.utxo.index);
+        let utxo_ref = crate::tx_ids::parse_utxo_ref(&request.utxo.tx_hash, request.utxo.index)?;
 
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

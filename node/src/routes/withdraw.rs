@@ -10,7 +10,6 @@ use mugraph_core::{
         Response,
         Signature,
         WithdrawRequest,
-        WithdrawalKey,
         WithdrawalRecord,
         WithdrawalStatus,
     },
@@ -244,16 +243,9 @@ fn check_idempotency(request: &WithdrawRequest, ctx: &Context) -> Result<(), Err
     let read_tx = ctx.database.read()?;
     let table = read_tx.open_table(WITHDRAWALS)?;
 
-    let tx_hash = hex::decode(&request.tx_hash).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid tx_hash hex: {}", e),
-    })?;
-    let tx_hash_array: [u8; 32] = tx_hash.try_into().map_err(|_| Error::InvalidInput {
-        reason: "tx_hash must be 32 bytes".to_string(),
-    })?;
-
     // Use network byte from config
     let network_byte = ctx.config.network_byte();
-    let key = WithdrawalKey::new(network_byte, tx_hash_array);
+    let key = crate::tx_ids::parse_withdrawal_key(&request.tx_hash, network_byte)?;
 
     if let Some(record) = table.get(key)? {
         let record = record.value();
@@ -284,15 +276,8 @@ fn atomic_burn_and_record_pending(
     ctx: &Context,
     tx_hash: &str,
 ) -> Result<(), Error> {
-    let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid tx_hash hex: {}", e),
-    })?;
-    let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
-        reason: "tx_hash must be 32 bytes".to_string(),
-    })?;
-
     let network_byte = ctx.config.network_byte();
-    let key = WithdrawalKey::new(network_byte, tx_hash_array);
+    let key = crate::tx_ids::parse_withdrawal_key(tx_hash, network_byte)?;
 
     // Retry path after ambiguous submission: notes are already burned for this tx.
     {
@@ -356,15 +341,8 @@ fn mark_withdrawal_failed(ctx: &Context, tx_hash: &str) -> Result<(), Error> {
     {
         let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
 
-        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
         let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+        let key = crate::tx_ids::parse_withdrawal_key(tx_hash, network_byte)?;
         let record = WithdrawalRecord::failed();
         withdrawals_table.insert(key, &record)?;
     }
@@ -386,15 +364,8 @@ fn mark_withdrawal_completed(
     {
         let mut withdrawals_table = write_tx.open_table(WITHDRAWALS)?;
 
-        let tx_hash_bytes = hex::decode(tx_hash).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid tx_hash hex: {}", e),
-        })?;
-        let tx_hash_array: [u8; 32] = tx_hash_bytes.try_into().map_err(|_| Error::InvalidInput {
-            reason: "tx_hash must be 32 bytes".to_string(),
-        })?;
-
         let network_byte = ctx.config.network_byte();
-        let key = WithdrawalKey::new(network_byte, tx_hash_array);
+        let key = crate::tx_ids::parse_withdrawal_key(tx_hash, network_byte)?;
 
         let existing = withdrawals_table.get(&key)?.map(|v| v.value());
         let Some(existing) = existing else {
