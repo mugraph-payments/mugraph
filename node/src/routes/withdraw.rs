@@ -1450,6 +1450,19 @@ mod tests {
         write_tx.commit().unwrap();
     }
 
+    fn seed_withdrawal_record(
+        ctx: &Context,
+        tx_hash: &str,
+        record: mugraph_core::types::WithdrawalRecord,
+    ) {
+        let write_tx = ctx.database.write().unwrap();
+        {
+            let mut table = write_tx.open_table(WITHDRAWALS).unwrap();
+            table.insert(&withdrawal_key_from_hex(tx_hash), &record).unwrap();
+        }
+        write_tx.commit().unwrap();
+    }
+
     fn build_datum_cbor_hex(user_hash: Vec<u8>, node_hash: Vec<u8>, intent_hash: Vec<u8>) -> String {
         let datum = PlutusData::Constr(Constr {
             tag: 121,
@@ -2778,6 +2791,44 @@ mod tests {
         let mismatched = "cd".repeat(32);
         let err = mark_withdrawal_completed(&ctx, &mismatched, &[]).unwrap_err();
         assert!(format!("{err:?}").contains("Pending withdrawal not found"));
+    }
+
+    #[test]
+    fn completed_withdrawals_are_not_retryable() {
+        let ctx = test_context();
+        let request = WithdrawRequest {
+            tx_hash: "ab".repeat(32),
+            tx_cbor: "00".to_string(),
+            notes: vec![],
+        };
+        seed_withdrawal_record(
+            &ctx,
+            &request.tx_hash,
+            mugraph_core::types::WithdrawalRecord::completed(),
+        );
+
+        let err = check_idempotency(&request, &ctx).unwrap_err();
+        assert!(format!("{err:?}").contains("Withdrawal already completed"));
+    }
+
+    #[test]
+    fn completion_rejects_already_completed_withdrawal_without_mutating_deposits() {
+        let ctx = test_context();
+        let tx_hash = "cd".repeat(32);
+        let utxo_ref = mugraph_core::types::UtxoRef::new([0xd0u8; 32], 0);
+        seed_deposit(&ctx, utxo_ref.clone(), [0u8; 32]);
+        seed_withdrawal_record(
+            &ctx,
+            &tx_hash,
+            mugraph_core::types::WithdrawalRecord::completed(),
+        );
+
+        let err = mark_withdrawal_completed(&ctx, &tx_hash, &[utxo_ref.clone()]).unwrap_err();
+        assert!(format!("{err:?}").contains("Withdrawal already completed"));
+
+        let read_tx = ctx.database.read().unwrap();
+        let deposits = read_tx.open_table(DEPOSITS).unwrap();
+        assert!(!deposits.get(&utxo_ref).unwrap().unwrap().value().spent);
     }
 
     #[test]
