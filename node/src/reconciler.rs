@@ -8,7 +8,10 @@ use mugraph_core::{
 use redb::ReadableTable;
 use tokio::time::{MissedTickBehavior, interval};
 
-use crate::database::{CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG};
+use crate::{
+    database::{CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG},
+    lifecycle::apply_retry_exhaustion_to_record,
+};
 
 const DEFAULT_MAX_ATTEMPTS: u32 = 12;
 const BASE_BACKOFF_SECS: u64 = 2;
@@ -182,10 +185,7 @@ fn handle_exhaustion(
     };
 
     if let Some(mut transfer) = maybe_transfer {
-        transfer.credit_state = "held".to_string();
-        if transfer.chain_state != "confirmed" {
-            transfer.chain_state = "invalidated".to_string();
-        }
+        apply_retry_exhaustion_to_record(&mut transfer);
         transfer.updated_at = now;
         transfers.insert(message.transfer_id.as_str(), &transfer)?;
     }

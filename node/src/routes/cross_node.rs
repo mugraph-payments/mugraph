@@ -31,6 +31,7 @@ use crate::{
         IDEMPOTENCY_KEYS,
         TRANSFER_AUDIT_LOG,
     },
+    lifecycle::status_payload_from_record,
     routes::Context,
 };
 
@@ -402,83 +403,6 @@ fn message_type_key(message_type: &XNodeMessageType) -> &'static str {
         XNodeMessageType::TransferStatusQuery => "transfer_status_query",
         XNodeMessageType::TransferStatus => "transfer_status",
         XNodeMessageType::TransferAck => "transfer_ack",
-    }
-}
-
-/// Deterministic internal->external status mapping for M3 status contract.
-fn status_payload_from_record(record: &CrossNodeTransferRecord) -> TransferStatusPayload {
-    let chain_state = parse_chain_state(&record.chain_state);
-    let credit_state = parse_credit_state(&record.credit_state);
-
-    let source_state = match chain_state {
-        TransferChainState::Unknown => "requested",
-        TransferChainState::Submitted => "submitted",
-        TransferChainState::Confirming => "confirming",
-        TransferChainState::Confirmed => "confirmed",
-        TransferChainState::Invalidated => "invalidated",
-    }
-    .to_string();
-
-    let destination_state = match (chain_state.clone(), credit_state.clone()) {
-        (_, TransferCreditState::Credited) => "credited",
-        (_, TransferCreditState::Eligible) => "credit_eligible",
-        (TransferChainState::Invalidated, _) => "invalidated",
-        (
-            TransferChainState::Submitted
-            | TransferChainState::Confirming
-            | TransferChainState::Confirmed,
-            _,
-        ) => "chain_observed",
-        (TransferChainState::Unknown, _) => "notice_received",
-    }
-    .to_string();
-
-    let settlement_state = match chain_state {
-        TransferChainState::Unknown => TransferSettlementState::NotSubmitted,
-        TransferChainState::Submitted => TransferSettlementState::Submitted,
-        TransferChainState::Confirming => TransferSettlementState::Confirming,
-        TransferChainState::Confirmed => match credit_state {
-            TransferCreditState::Held => TransferSettlementState::ManualReview,
-            _ => TransferSettlementState::Confirmed,
-        },
-        TransferChainState::Invalidated => {
-            if credit_state == TransferCreditState::Held {
-                TransferSettlementState::ManualReview
-            } else {
-                TransferSettlementState::Invalidated
-            }
-        }
-    };
-
-    TransferStatusPayload {
-        source_state,
-        destination_state,
-        settlement_state,
-        chain_state,
-        credit_state,
-        tx_hash: record.tx_hash.clone(),
-        confirmations_observed: record.confirmations_observed,
-        updated_at: record.updated_at.to_string(),
-    }
-}
-
-fn parse_chain_state(value: &str) -> TransferChainState {
-    match value {
-        "submitted" => TransferChainState::Submitted,
-        "confirming" => TransferChainState::Confirming,
-        "confirmed" => TransferChainState::Confirmed,
-        "invalidated" => TransferChainState::Invalidated,
-        _ => TransferChainState::Unknown,
-    }
-}
-
-fn parse_credit_state(value: &str) -> TransferCreditState {
-    match value {
-        "eligible" => TransferCreditState::Eligible,
-        "credited" => TransferCreditState::Credited,
-        "held" => TransferCreditState::Held,
-        "reversed" => TransferCreditState::Reversed,
-        _ => TransferCreditState::None,
     }
 }
 

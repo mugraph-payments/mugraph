@@ -3,7 +3,13 @@ use mugraph_core::types::{
 };
 use mugraph_node::{
     database::{CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG},
-    lifecycle::{LifecycleEvent, SourceLaneState, TransferLifecycle},
+    lifecycle::{
+        LifecycleEvent,
+        SourceLaneState,
+        TransferLifecycle,
+        apply_retry_exhaustion_to_record,
+        status_payload_from_record,
+    },
     observability::reconstruct_transfer_timeline,
     provider::{TxSettlementState, evaluate_tx_observation},
     reconciler::{RetryPolicy, reconcile_once},
@@ -107,6 +113,30 @@ fn restart_recovery_is_idempotent_and_converges_to_manual_review() {
         }
     }
     assert!(saw_manual_review);
+}
+
+#[test]
+fn shared_helpers_preserve_manual_review_mapping() {
+    let mut record = CrossNodeTransferRecord {
+        transfer_id: "tr-helper".to_string(),
+        source_node_id: "node://a".to_string(),
+        destination_node_id: "node://b".to_string(),
+        tx_hash: Some("txhash".to_string()),
+        chain_state: "confirming".to_string(),
+        credit_state: "none".to_string(),
+        confirmations_observed: 2,
+        created_at: 1,
+        updated_at: 2,
+    };
+
+    apply_retry_exhaustion_to_record(&mut record);
+    let payload = status_payload_from_record(&record);
+
+    assert_eq!(record.chain_state, "invalidated");
+    assert_eq!(record.credit_state, "held");
+    assert_eq!(payload.chain_state, mugraph_core::types::TransferChainState::Invalidated);
+    assert_eq!(payload.credit_state, mugraph_core::types::TransferCreditState::Held);
+    assert_eq!(payload.settlement_state, mugraph_core::types::TransferSettlementState::ManualReview);
 }
 
 // M3-SEC-05/M3-OBS-08: deep reorg invalidation is deterministic.
