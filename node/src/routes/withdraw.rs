@@ -20,6 +20,7 @@ use whisky_csl::csl;
 use crate::{
     database::{CARDANO_WALLET, NOTES, WITHDRAWALS},
     deposit_datum::{DepositDatumContext, parse_deposit_datum},
+    network::CardanoNetwork,
     provider::Provider,
     routes::Context,
     tx_signer::{attach_witness_to_transaction, compute_tx_hash},
@@ -579,6 +580,7 @@ async fn validate_user_witnesses_with_parsed_tx(
     .await
 }
 
+#[cfg(test)]
 async fn validate_user_witnesses(
     tx_cbor: &[u8],
     notes: &[mugraph_core::types::BlindSignature],
@@ -1015,6 +1017,7 @@ fn validate_transaction_balance_with_parsed_tx(
     validate_transaction_balance_from_tx(&parsed_tx.tx, input_totals, effective_max_fee)
 }
 
+#[cfg(test)]
 fn validate_transaction_balance_with_tolerance(
     tx_cbor: &[u8],
     input_totals: &HashMap<String, u128>,
@@ -1037,6 +1040,7 @@ fn validate_transaction_balance_with_tolerance(
 ///
 /// # Returns
 /// Ok if the balance is valid, Err otherwise
+#[cfg(test)]
 fn validate_transaction_balance(
     tx_cbor: &[u8],
     input_totals: &HashMap<String, u128>,
@@ -1182,6 +1186,7 @@ fn validate_withdraw_intent_metadata_with_parsed_tx(
     validate_withdraw_intent_metadata_from_tx(&parsed_tx.tx, network)
 }
 
+#[cfg(test)]
 fn validate_withdraw_intent_metadata(tx_cbor: &[u8], network: &str) -> Result<(), Error> {
     let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| Error::InvalidInput {
         reason: format!("Invalid transaction CBOR: {}", e),
@@ -1194,6 +1199,10 @@ fn validate_withdraw_intent_metadata_from_tx(
     tx: &csl::Transaction,
     network: &str,
 ) -> Result<(), Error> {
+    let expected_network = CardanoNetwork::parse(network).map_err(|e| Error::InvalidInput {
+        reason: e.to_string(),
+    })?;
+
     let aux = tx.auxiliary_data().ok_or_else(|| Error::InvalidInput {
         reason: "Transaction missing auxiliary data for intent binding".to_string(),
     })?;
@@ -1231,7 +1240,7 @@ fn validate_withdraw_intent_metadata_from_tx(
         match key_txt.as_str() {
             "network" => {
                 if let Ok(n_txt) = val.as_text() {
-                    network_ok = n_txt == network;
+                    network_ok = CardanoNetwork::parse(&n_txt).ok() == Some(expected_network);
                 }
             }
             "tx_body_hash" => {
@@ -1272,6 +1281,7 @@ fn validate_network_and_change_outputs_with_parsed_tx(
     validate_network_and_change_outputs_from_tx(&parsed_tx.tx, wallet)
 }
 
+#[cfg(test)]
 fn validate_network_and_change_outputs(
     tx_cbor: &[u8],
     wallet: &mugraph_core::types::CardanoWallet,
@@ -1287,10 +1297,11 @@ fn validate_network_and_change_outputs_from_tx(
     tx: &csl::Transaction,
     wallet: &mugraph_core::types::CardanoWallet,
 ) -> Result<(), Error> {
-    let expected_network_id = match wallet.network.as_str() {
-        "mainnet" => 1u8,
-        _ => 0u8, // preprod/preview/testnet
-    };
+    let expected_network_id = CardanoNetwork::parse(&wallet.network)
+        .map_err(|e| Error::InvalidInput {
+            reason: e.to_string(),
+        })?
+        .address_network_id();
 
     for (idx, output) in (&tx.body().outputs()).into_iter().enumerate() {
         let addr = output.address();

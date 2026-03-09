@@ -1,6 +1,8 @@
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::network::CardanoNetwork;
+
 mod blockfrost;
 mod common;
 mod maestro;
@@ -101,13 +103,16 @@ impl Provider {
             ));
         }
 
+        let typed_network = CardanoNetwork::parse(&network).ok();
+
         match provider_type {
             "blockfrost" => {
-                let base_url = custom_url.unwrap_or_else(|| match network.as_str() {
-                    "mainnet" => "https://cardano-mainnet.blockfrost.io/api/v0".to_string(),
-                    "preprod" => "https://cardano-preprod.blockfrost.io/api/v0".to_string(),
-                    "preview" => "https://cardano-preview.blockfrost.io/api/v0".to_string(),
-                    _ => format!("https://cardano-{}.blockfrost.io/api/v0", network),
+                let base_url = custom_url.unwrap_or_else(|| {
+                    typed_network
+                        .map(|network| network.blockfrost_base_url().to_string())
+                        .unwrap_or_else(|| {
+                            format!("https://cardano-{}.blockfrost.io/api/v0", network)
+                        })
                 });
 
                 Ok(Self::Blockfrost(BlockfrostProvider {
@@ -118,9 +123,10 @@ impl Provider {
                 }))
             }
             "maestro" => {
-                let base_url = custom_url.unwrap_or_else(|| match network.as_str() {
-                    "mainnet" | "preprod" => "https://api.gomaestro.org/v1".to_string(),
-                    _ => "https://api.gomaestro.org/v1".to_string(),
+                let base_url = custom_url.unwrap_or_else(|| {
+                    typed_network
+                        .map(|_| "https://api.gomaestro.org/v1".to_string())
+                        .unwrap_or_else(|| "https://api.gomaestro.org/v1".to_string())
                 });
 
                 Ok(Self::Maestro(MaestroProvider {

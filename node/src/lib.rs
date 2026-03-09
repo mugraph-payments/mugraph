@@ -14,6 +14,7 @@ pub mod reconciler;
 pub mod routes;
 pub mod tx_signer;
 pub(crate) mod deposit_datum;
+pub(crate) mod network;
 pub(crate) mod tx_ids;
 
 use config::Config;

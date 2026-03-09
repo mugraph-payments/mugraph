@@ -9,6 +9,8 @@ use mugraph_core::{
 use rand::{Rng, SeedableRng, rng};
 use rand_chacha::ChaCha20Rng;
 
+use crate::network::CardanoNetwork;
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Parser)]
 pub enum Config {
@@ -104,18 +106,18 @@ impl Config {
         }
     }
 
+    pub(crate) fn cardano_network(
+        &self,
+    ) -> std::result::Result<CardanoNetwork, crate::network::InvalidCardanoNetwork> {
+        CardanoNetwork::parse(&self.network())
+    }
+
     /// Get a network namespace byte for DB keys.
     ///
     /// Uses distinct bytes for supported networks to avoid cross-network key collisions
     /// when a database is reused across environments.
     pub fn network_byte(&self) -> u8 {
-        match self.network().as_str() {
-            "mainnet" => 1,
-            "preprod" => 0,
-            "preview" => 2,
-            "testnet" => 3,
-            _ => 0,
-        }
+        self.cardano_network().map(CardanoNetwork::network_byte).unwrap_or(0)
     }
 
     /// Get the provider type

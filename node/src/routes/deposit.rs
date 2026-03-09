@@ -12,6 +12,7 @@ use crate::{
     cardano::setup_cardano_wallet,
     database::{CARDANO_WALLET, DEPOSITS},
     deposit_datum::{DepositDatumContext, parse_deposit_datum},
+    network::CardanoNetwork,
     provider::{Provider, UtxoInfo},
     routes::Context,
 };
@@ -80,7 +81,11 @@ async fn load_or_create_wallet(ctx: &Context) -> Result<mugraph_core::types::Car
 
     // Create new wallet if not found
     // Use config for network and payment key
-    let network = ctx.config.network();
+    let network = ctx
+        .config
+        .cardano_network()
+        .map(|network| network.as_str().to_string())
+        .unwrap_or_else(|_| ctx.config.network());
     let payment_sk = ctx.config.payment_sk();
 
     let wallet = setup_cardano_wallet(&network, payment_sk.as_deref())
@@ -374,6 +379,40 @@ mod tests {
     }
 
     #[test]
+    fn network_wrapper_preserves_canonical_deposit_payload_bytes() {
+        let (_sk, pk_bytes) = gen_key();
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![],
+            message: format!("{{\"user_pubkey\":\"{}\"}}", hex::encode(&pk_bytes)),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+        let delegate_pk = PublicKey(pk_bytes.try_into().unwrap());
+
+        let payload = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
+        let expected = serde_json::to_string(&CanonicalPayload {
+            utxo: CanonicalUtxo {
+                tx_hash: request.utxo.tx_hash.clone(),
+                index: request.utxo.index,
+            },
+            outputs: vec![],
+            delegate_pk: hex::encode(delegate_pk.0),
+            script_address: "addr_test1...".to_string(),
+            nonce: request.nonce,
+            network: request.network.clone(),
+        })
+        .unwrap()
+        .into_bytes();
+
+        assert_eq!(payload, expected);
+    }
+
+    #[test]
     fn test_cip8_verification_rejects_missing_user_pubkey() {
         let (_sk, pk_bytes) = gen_key();
         let request = DepositRequest {
@@ -620,6 +659,10 @@ fn build_canonical_payload(
         .map(|o| hex::encode(o.signature.0.0))
         .collect();
 
+    let network = CardanoNetwork::parse(&request.network)
+        .map(|network| network.as_str().to_string())
+        .unwrap_or_else(|_| request.network.clone());
+
     let payload = CanonicalPayload {
         utxo: CanonicalUtxo {
             tx_hash: request.utxo.tx_hash.clone(),
@@ -629,7 +672,7 @@ fn build_canonical_payload(
         delegate_pk: hex::encode(delegate_pk.0),
         script_address: script_address.to_string(),
         nonce: request.nonce,
-        network: request.network.clone(),
+        network,
     };
 
     // Serialize to canonical JSON (no extra whitespace, sorted keys)

@@ -198,6 +198,32 @@ fn direct_server_config_getters_preserve_explicit_overrides() {
     assert_eq!(config.fee_tolerance_pct(), 10);
 }
 
+#[test]
+fn network_getter_preserves_exact_lowercase_strings() {
+    for network in ["mainnet", "preprod", "preview", "testnet"] {
+        let config = Config::Server {
+            addr: "0.0.0.0:9999".parse().unwrap(),
+            seed: None,
+            secret_key: None,
+            cardano_network: network.to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: None,
+            cardano_provider_url: None,
+            cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
+            xnode_node_id: "node://local".to_string(),
+            deposit_confirm_depth: 15,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: None,
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2000000,
+            fee_tolerance_pct: 5,
+            dev_mode: false,
+        };
+        assert_eq!(config.network(), network);
+    }
+}
+
 /// Test network namespace byte mapping
 #[test]
 fn test_network_bytes() {
