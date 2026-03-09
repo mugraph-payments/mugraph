@@ -455,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn parsed_deposit_claims_preserve_canonical_payload_bytes() {
+    fn parse_deposit_claims_decodes_exact_user_pubkey_bytes() {
         let (_sk, pk_bytes) = gen_key();
         let request = DepositRequest {
             utxo: UtxoReference {
@@ -468,13 +468,11 @@ mod tests {
             nonce: 1,
             network: "preprod".to_string(),
         };
-        let delegate_pk = PublicKey(pk_bytes.try_into().unwrap());
 
-        let before = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
-        let _claims = parse_deposit_claims(&request).expect("claims parse");
-        let after = build_canonical_payload(&request, &delegate_pk, "addr_test1...");
+        let claims = parse_deposit_claims(&request).expect("claims parse");
+        let expected: [u8; 32] = pk_bytes.try_into().expect("32-byte pubkey");
 
-        assert_eq!(before, after);
+        assert_eq!(claims.user_pubkey, expected);
     }
 
     #[test]
