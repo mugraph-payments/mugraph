@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "node", "simulator"]
+members = ["core", "node", "simulator", "./wallet/src-tauri"]
 
 [workspace.dependencies]
 mugraph-core = { path = "./core" }

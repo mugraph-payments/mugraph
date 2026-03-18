@@ -4,7 +4,7 @@ let
 
   inherit (prev) callPackage mkShell;
   inherit (prev.lib) optionals;
-  inherit (prev.stdenv) isDarwin;
+  inherit (prev.stdenv) isDarwin isLinux;
   inherit (prev.darwin.apple_sdk.frameworks) SystemConfiguration;
 
   checks.pre-commit = callPackage ./pre-commit-hook.nix { };
@@ -48,16 +48,23 @@ let
     packages = [
       checks.pre-commit.enabledPackages
       lib.rust
+      scripts
+
       prev.aiken
+      prev.bun
       prev.cargo-machete
       prev.cargo-nextest
       prev.cargo-pgo
+      prev.cargo-tauri
       prev.cargo-watch
       prev.openssl
       prev.pkg-config
       prev.protobuf
       prev.samply
-      scripts
+    ]
+    ++ optionals isLinux [
+      prev.glib
+      prev.libsoup_3
     ]
     ++ optionals isDarwin [ SystemConfiguration ];
   };
