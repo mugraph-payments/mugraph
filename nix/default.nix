@@ -64,7 +64,9 @@ let
     ]
     ++ optionals isLinux [
       prev.glib
+      prev.gtk3
       prev.libsoup_3
+      prev.webkitgtk_4_1
     ]
     ++ optionals isDarwin [ SystemConfiguration ];
   };
