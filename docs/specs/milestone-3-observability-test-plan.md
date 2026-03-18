@@ -35,25 +35,25 @@ Retry/security events should add:
 
 ## 3) Metrics
 
-Prefix: `mugraph_m3_`.
+Prefix: `mugraph_`.
 
 Metric split:
 - on-chain convergence metrics (submission/confirmation/reorg)
 - off-chain coordination metrics (messages/retries/duplicates/replay)
 
 Core metrics (full names):
-- `mugraph_m3_transfers_initiated_total`
-- `mugraph_m3_transfers_terminal_total{terminal_state}`
-- `mugraph_m3_chain_submission_total{result,provider}`
-- `mugraph_m3_chain_confirmation_depth`
-- `mugraph_m3_settlement_latency_seconds`
-- `mugraph_m3_reorg_events_total{severity}`
-- `mugraph_m3_message_send_total{message_type,result}`
-- `mugraph_m3_message_retries_total{message_type,reason}`
-- `mugraph_m3_duplicate_messages_total{message_type}`
-- `mugraph_m3_replay_rejections_total{message_type}`
-- `mugraph_m3_idempotency_conflicts_total{operation}`
-- `mugraph_m3_stuck_transfers_gauge{state}`
+- `mugraph_transfers_initiated_total`
+- `mugraph_transfers_terminal_total{terminal_state}`
+- `mugraph_chain_submission_total{result,provider}`
+- `mugraph_chain_confirmation_depth`
+- `mugraph_settlement_latency_seconds`
+- `mugraph_reorg_events_total{severity}`
+- `mugraph_message_send_total{message_type,result}`
+- `mugraph_message_retries_total{message_type,reason}`
+- `mugraph_duplicate_messages_total{message_type}`
+- `mugraph_replay_rejections_total{message_type}`
+- `mugraph_idempotency_conflicts_total{operation}`
+- `mugraph_stuck_transfers_gauge{state}`
 
 ## 4) Traces/logs/audits
 

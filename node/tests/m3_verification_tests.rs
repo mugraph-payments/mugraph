@@ -26,7 +26,7 @@ use redb::ReadableTable;
 
 fn temp_db_path(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "mugraph-m3-verification-{tag}-{}.db",
+        "mugraph-verification-{tag}-{}.db",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

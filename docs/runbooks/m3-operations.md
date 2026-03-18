@@ -8,7 +8,7 @@ This runbook covers cross-node M3 operational handling for invalidation, manual-
 
 Trigger signals:
 - `chain_state=invalidated`
-- `mugraph_m3_reorg_events_total{severity="deep"}` increases
+- `mugraph_reorg_events_total{severity="deep"}` increases
 - audit entries: `transfer.invalidated` or `reconciler.manual_review`
 
 Operator actions:

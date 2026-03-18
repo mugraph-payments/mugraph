@@ -119,7 +119,7 @@ pub fn reconcile_once(
                     messages.insert(message.message_id.as_str(), &message)?;
 
                     metrics::counter!(
-                        "mugraph_m3_message_retries_total",
+                        "mugraph_message_retries_total",
                         "message_type" => message.message_type.clone(),
                         "reason" => if exhausted_after_increment { "exhausted".to_string() } else { "scheduled".to_string() }
                     )
@@ -156,7 +156,7 @@ pub fn reconcile_once(
                 }
                 RetryAction::Exhausted(mut message) => {
                     metrics::counter!(
-                        "mugraph_m3_message_retries_total",
+                        "mugraph_message_retries_total",
                         "message_type" => message.message_type.clone(),
                         "reason" => "already_exhausted".to_string()
                     )
@@ -223,7 +223,7 @@ fn handle_exhaustion(
     }
 
     metrics::counter!(
-        "mugraph_m3_transfers_terminal_total",
+        "mugraph_transfers_terminal_total",
         "terminal_state" => "manual_review".to_string()
     )
     .increment(1);
@@ -268,8 +268,8 @@ fn emit_stuck_transfer_gauges(database: &Database) -> Result<(), Error> {
         }
     }
 
-    metrics::gauge!("mugraph_m3_stuck_transfers_gauge", "state" => "held".to_string()).set(held as f64);
-    metrics::gauge!("mugraph_m3_stuck_transfers_gauge", "state" => "invalidated".to_string()).set(invalidated as f64);
+    metrics::gauge!("mugraph_stuck_transfers_gauge", "state" => "held".to_string()).set(held as f64);
+    metrics::gauge!("mugraph_stuck_transfers_gauge", "state" => "invalidated".to_string()).set(invalidated as f64);
     Ok(())
 }
 

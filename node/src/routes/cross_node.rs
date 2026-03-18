@@ -55,7 +55,7 @@ fn error_code(reason: &str) -> &str {
     reason.split(':').next().unwrap_or("INTERNAL_ERROR")
 }
 
-const M3_MESSAGE_RECEIVE_COUNTER: &str = "mugraph_m3_message_receive_total";
+const M3_MESSAGE_RECEIVE_COUNTER: &str = "mugraph_message_receive_total";
 
 fn emit_receive_metrics(message_type: &str, result: &str) {
     metrics::counter!(
@@ -90,10 +90,10 @@ pub fn handle_create(
                 let code = error_code(reason);
                 event = reject_audit_event(code);
                 if code == "REPLAY_DETECTED" {
-                    metrics::counter!("mugraph_m3_replay_rejections_total", "message_type" => "transfer_init".to_string()).increment(1);
+                    metrics::counter!("mugraph_replay_rejections_total", "message_type" => "transfer_init".to_string()).increment(1);
                 }
                 if code == "IDEMPOTENCY_CONFLICT" {
-                    metrics::counter!("mugraph_m3_idempotency_conflicts_total", "operation" => "transfer_init".to_string()).increment(1);
+                    metrics::counter!("mugraph_idempotency_conflicts_total", "operation" => "transfer_init".to_string()).increment(1);
                 }
                 tracing::warn!(
                     transfer_id = %request.transfer_id,
@@ -150,7 +150,7 @@ pub fn handle_create(
         }
         write_tx.commit()?;
 
-        metrics::counter!("mugraph_m3_transfers_initiated_total").increment(1);
+        metrics::counter!("mugraph_transfers_initiated_total").increment(1);
         audit_event(
             ctx,
             request,
@@ -158,7 +158,7 @@ pub fn handle_create(
             "accepted create command".to_string(),
         )?;
     } else {
-        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_init".to_string()).increment(1);
+        metrics::counter!("mugraph_duplicate_messages_total", "message_type" => "transfer_init".to_string()).increment(1);
     }
 
     emit_receive_metrics("transfer_init", "accepted");
@@ -233,7 +233,7 @@ pub fn handle_notify(
     }
 
     if decision == IdempotencyDecision::DuplicateSameRequest {
-        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_notice".to_string()).increment(1);
+        metrics::counter!("mugraph_duplicate_messages_total", "message_type" => "transfer_notice".to_string()).increment(1);
     } else {
         let now = now_secs();
         let write_tx = ctx.database.write()?;
@@ -402,7 +402,7 @@ pub fn handle_ack(
     };
 
     if decision == IdempotencyDecision::DuplicateSameRequest {
-        metrics::counter!("mugraph_m3_duplicate_messages_total", "message_type" => "transfer_ack".to_string()).increment(1);
+        metrics::counter!("mugraph_duplicate_messages_total", "message_type" => "transfer_ack".to_string()).increment(1);
     }
 
     emit_receive_metrics("transfer_ack", "accepted");
@@ -458,9 +458,9 @@ fn emit_chain_metrics(
     record: &CrossNodeTransferRecord,
     payload: &TransferStatusPayload,
 ) {
-    metrics::histogram!("mugraph_m3_chain_confirmation_depth")
+    metrics::histogram!("mugraph_chain_confirmation_depth")
         .record(payload.confirmations_observed as f64);
-    metrics::histogram!("mugraph_m3_settlement_latency_seconds")
+    metrics::histogram!("mugraph_settlement_latency_seconds")
         .record(record.updated_at.saturating_sub(record.created_at) as f64);
 
     let result = if record.tx_hash.is_some() {
@@ -469,14 +469,14 @@ fn emit_chain_metrics(
         "missing"
     };
     metrics::counter!(
-        "mugraph_m3_chain_submission_total",
+        "mugraph_chain_submission_total",
         "result" => result.to_string(),
         "provider" => "local_store".to_string()
     )
     .increment(1);
 
     if payload.chain_state == TransferChainState::Invalidated {
-        metrics::counter!("mugraph_m3_reorg_events_total", "severity" => "deep".to_string())
+        metrics::counter!("mugraph_reorg_events_total", "severity" => "deep".to_string())
             .increment(1);
     }
     if matches!(
@@ -485,7 +485,7 @@ fn emit_chain_metrics(
             | TransferSettlementState::Invalidated
             | TransferSettlementState::ManualReview
     ) {
-        metrics::counter!("mugraph_m3_transfers_terminal_total", "terminal_state" => format!("{:?}", payload.settlement_state).to_lowercase()).increment(1);
+        metrics::counter!("mugraph_transfers_terminal_total", "terminal_state" => format!("{:?}", payload.settlement_state).to_lowercase()).increment(1);
     }
 }
 
@@ -749,7 +749,7 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
 
         if messages.get(request.message_id.as_str())?.is_some() {
             metrics::counter!(
-                "mugraph_m3_replay_rejections_total",
+                "mugraph_replay_rejections_total",
                 "message_type" => message_type.to_string()
             )
             .increment(1);
@@ -778,7 +778,7 @@ fn check_replay_and_idempotency<T: Serialize + Clone>(
                 IdempotencyDecision::DuplicateSameRequest
             } else {
                 metrics::counter!(
-                    "mugraph_m3_idempotency_conflicts_total",
+                    "mugraph_idempotency_conflicts_total",
                     "operation" => message_type.to_string()
                 )
                 .increment(1);
@@ -1140,7 +1140,7 @@ mod tests {
     fn receive_metric_name_is_not_send_metric() {
         assert_eq!(
             M3_MESSAGE_RECEIVE_COUNTER,
-            "mugraph_m3_message_receive_total"
+            "mugraph_message_receive_total"
         );
     }
 
