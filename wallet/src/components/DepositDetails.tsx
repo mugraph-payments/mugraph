@@ -3,6 +3,7 @@ interface DepositDetailsProps {
   delegatePkShort: string;
   latestDepositReference: string;
   pendingActivityCount: number;
+  isEmpty?: boolean;
 }
 
 function DetailField({
@@ -27,22 +28,32 @@ export function DepositDetails({
   delegatePkShort,
   latestDepositReference,
   pendingActivityCount,
+  isEmpty = false,
 }: DepositDetailsProps) {
   return (
     <div className="mt-4 rounded-[1.5rem] border border-white/10 bg-white/[0.02] p-4">
       <p className="text-sm leading-6 text-slate-300">
-        Deposit tracking keeps the funding target, delegate context, and latest
-        on-chain deposit reference in one place while new notes are moving into
-        the wallet inventory.
+        {isEmpty
+          ? "Deposit tracking is unavailable in the empty preview because there is no funding target or activity history loaded yet."
+          : "Deposit tracking keeps the funding target, delegate context, and latest on-chain deposit reference in one place while new notes are moving into the wallet inventory."}
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <DetailField label="Funding target" value={scriptAddressShort} />
-        <DetailField label="Delegate" value={delegatePkShort} />
-        <DetailField label="Latest deposit ref" value={latestDepositReference} />
+        <DetailField
+          label="Funding target"
+          value={isEmpty ? "Unavailable in empty preview" : scriptAddressShort}
+        />
+        <DetailField
+          label="Delegate"
+          value={isEmpty ? "Unavailable in empty preview" : delegatePkShort}
+        />
+        <DetailField
+          label="Latest deposit ref"
+          value={isEmpty ? "No deposit reference yet" : latestDepositReference}
+        />
         <DetailField
           label="Pending activity"
-          value={`${pendingActivityCount} item${pendingActivityCount === 1 ? "" : "s"}`}
+          value={isEmpty ? "0 items" : `${pendingActivityCount} item${pendingActivityCount === 1 ? "" : "s"}`}
         />
       </div>
     </div>

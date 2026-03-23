@@ -39,31 +39,18 @@ export function ActionDetailPanel({
         </span>
       </div>
 
-      {isEmptyPreview ? (
-        <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
-          <p className="text-sm leading-6 text-slate-300">
-            No action detail is available in this preview yet.
-          </p>
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            Switch back to the ready preview to inspect concrete receive,
-            deposit, send, and withdraw guidance. The empty preview keeps this
-            region intentional without replacing the action grid or collapsing
-            the secondary layout.
-          </p>
-        </div>
-      ) : null}
-
-      {!isEmptyPreview && action.id === "receive" ? (
+      {action.id === "receive" ? (
         <ReceiveDetails
           label={view.identity.label}
           delegatePkShort={view.identity.delegatePkShort}
           scriptAddressShort={view.identity.scriptAddressShort}
           networkLabel={view.identity.networkLabel}
           lastSyncedRelative={view.identity.lastSyncedRelative}
+          isEmpty={isEmptyPreview}
         />
       ) : null}
 
-      {!isEmptyPreview && action.id === "deposit" ? (
+      {action.id === "deposit" ? (
         <DepositDetails
           scriptAddressShort={view.identity.scriptAddressShort}
           delegatePkShort={view.identity.delegatePkShort}
@@ -71,18 +58,20 @@ export function ActionDetailPanel({
             latestDeposit?.referenceShort ?? "No deposit reference"
           }
           pendingActivityCount={walletState.summary.pendingActivityCount}
+          isEmpty={isEmptyPreview}
         />
       ) : null}
 
-      {!isEmptyPreview && action.id === "send" ? (
+      {action.id === "send" ? (
         <SendDetails
           noteCount={walletState.summary.noteCount}
           topAssetLabel={topAsset}
           pendingActivityCount={walletState.summary.pendingActivityCount}
+          isEmpty={isEmptyPreview}
         />
       ) : null}
 
-      {!isEmptyPreview && action.id === "withdraw" ? (
+      {action.id === "withdraw" ? (
         <WithdrawDetails
           latestWithdrawReference={
             latestWithdraw?.referenceShort ?? "No withdraw reference"
@@ -90,6 +79,7 @@ export function ActionDetailPanel({
           pendingActivityCount={walletState.summary.pendingActivityCount}
           scriptAddressShort={view.identity.scriptAddressShort}
           topAssetLabel={topAsset}
+          isEmpty={isEmptyPreview}
         />
       ) : null}
     </section>
