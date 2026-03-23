@@ -14,7 +14,7 @@ interface WalletHomeScreenProps {
   summaryMetrics: WalletSummaryMetricView[];
   assets: WalletAssetView[];
   activity: WalletActivityView[];
-  onPrimaryActionSelect: (actionId: WalletActionKind) => void;
+  onPrimaryActionSelect: (actionId: Extract<WalletActionKind, "send" | "receive">) => void;
 }
 
 function findMetric(

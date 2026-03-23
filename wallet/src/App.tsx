@@ -3,6 +3,7 @@ import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
+import { WalletActionScreen } from "./components/WalletActionScreen";
 import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
@@ -27,6 +28,9 @@ function App() {
   >(walletShellState.activeAction);
   const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>(
     walletShellState.activeDestination,
+  );
+  const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(
+    null,
   );
   const [sendDraft, setSendDraft] = useState<WalletSendDraft>(
     walletActionDrafts.send,
@@ -80,16 +84,43 @@ function App() {
   }));
   const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
 
+  function handleDestinationSelect(destination: WalletActiveDestination) {
+    setActiveDestination(destination);
+    if (destination !== "home") {
+      setActiveConsumerAction(null);
+    }
+  }
+
+  function handlePrimaryActionSelect(actionId: "send" | "receive") {
+    setSelectedActionId(actionId);
+    setActiveConsumerAction(actionId);
+  }
+
   const activeDestinationPanel = (() => {
     switch (activeDestination) {
       case "home":
-        return (
+        return activeConsumerAction ? (
+          <WalletActionScreen
+            activeAction={activeConsumerAction}
+            actions={view.actions}
+            onActionSelect={handlePrimaryActionSelect}
+            onClose={() => setActiveConsumerAction(null)}
+            sendDraft={sendDraft}
+            onSendDraftChange={setSendDraft}
+            receiveDraft={receiveDraft}
+            onReceiveDraftChange={setReceiveDraft}
+            assetOptions={assetOptions}
+            identity={view.identity}
+            noteCount={walletState.summary.noteCount}
+            pendingActivityCount={walletState.summary.pendingActivityCount}
+          />
+        ) : (
           <WalletHomeScreen
             identity={view.identity}
             summaryMetrics={view.summaryMetrics}
             assets={view.assets}
             activity={view.activity}
-            onPrimaryActionSelect={setSelectedActionId}
+            onPrimaryActionSelect={handlePrimaryActionSelect}
           />
         );
       case "assets":
@@ -165,7 +196,7 @@ function App() {
 
         <WalletBottomNav
           activeDestination={activeDestination}
-          onDestinationSelect={setActiveDestination}
+          onDestinationSelect={handleDestinationSelect}
         />
       </div>
     </div>
