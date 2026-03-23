@@ -92,6 +92,10 @@ select {
 }
 
 @layer components {
+ .wallet-phone-shell {
+  max-width: 30rem;
+ }
+
  .wallet-panel {
   @apply rounded-3xl border backdrop-blur-xl;
   background: var(--wallet-surface-strong);
