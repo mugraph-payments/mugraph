@@ -15,7 +15,7 @@ interface WalletWorkspaceProps {
   notes: ReactNode;
   activity: ReactNode;
   actionNav: ReactNode;
-  secondary: ReactNode;
+  actionPanel: ReactNode;
 }
 
 interface RegionToggleButtonProps {
@@ -61,7 +61,7 @@ export function WalletWorkspace({
   notes,
   activity,
   actionNav,
-  secondary,
+  actionPanel,
 }: WalletWorkspaceProps) {
   const showPrimary = !isCompactLayout || activeRegion === "primary";
   const showSecondary = !isCompactLayout || activeRegion === "secondary";
@@ -135,7 +135,7 @@ export function WalletWorkspace({
               </p>
             </div>
             {actionNav}
-            {secondary}
+            {actionPanel}
           </aside>
         ) : null}
       </div>

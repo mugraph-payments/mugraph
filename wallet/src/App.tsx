@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActionDetailPanel } from "./components/ActionDetailPanel";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
+import { WalletActionPanel } from "./components/WalletActionPanel";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletSidebar } from "./components/WalletSidebar";
 import { WalletWorkspace } from "./components/WalletWorkspace";
-import { walletShellState, walletState } from "./data/stubWallet";
-import { buildWalletShellViewModel, createWalletView } from "./lib/walletView";
+import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
+import {
+  buildWalletActionDraftsView,
+  buildWalletShellViewModel,
+  createWalletView,
+} from "./lib/walletView";
 import type { WalletActiveRegion, WalletActiveSection } from "./types/wallet";
 
 function getIsCompactLayout() {
@@ -47,6 +51,10 @@ function App() {
   }, []);
 
   const view = useMemo(() => createWalletView(walletState), []);
+  const draftViews = useMemo(
+    () => buildWalletActionDraftsView(walletState, walletActionDrafts),
+    [],
+  );
   const shellView = useMemo(
     () =>
       buildWalletShellViewModel(walletState, {
@@ -59,6 +67,7 @@ function App() {
   const selectedAction =
     view.actions.find((action) => action.id === selectedActionId) ??
     view.actions[0];
+  const selectedActionDraft = draftViews[selectedAction.id];
 
   function handleActionSelect(actionId: typeof selectedActionId) {
     setSelectedActionId(actionId);
@@ -119,8 +128,11 @@ function App() {
               onActionSelect={handleActionSelect}
             />
           }
-          secondary={
-            <ActionDetailPanel action={selectedAction} previewStateId="ready" />
+          actionPanel={
+            <WalletActionPanel
+              action={selectedAction}
+              draft={selectedActionDraft}
+            />
           }
         />
       }
