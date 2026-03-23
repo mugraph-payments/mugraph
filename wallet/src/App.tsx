@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
-import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
@@ -131,11 +130,6 @@ function App() {
             delegatePkShort={view.identity.delegatePkShort}
             scriptAddressShort={view.identity.scriptAddressShort}
             lastSyncedRelative={view.identity.lastSyncedRelative}
-          />
-
-          <HeroSummary
-            identity={view.identity}
-            summaryMetrics={view.summaryMetrics}
           />
 
           {activeDestinationPanel}
