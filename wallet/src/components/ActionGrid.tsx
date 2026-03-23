@@ -10,6 +10,8 @@ import type { WalletActionKind } from "../types/wallet";
 
 interface ActionGridProps {
   actions: WalletActionView[];
+  selectedActionId: WalletActionKind;
+  onActionSelect: (actionId: WalletActionKind) => void;
 }
 
 const actionIcons: Record<
@@ -22,7 +24,11 @@ const actionIcons: Record<
   withdraw: ArrowCircleUp,
 };
 
-export function ActionGrid({ actions }: ActionGridProps) {
+export function ActionGrid({
+  actions,
+  selectedActionId,
+  onActionSelect,
+}: ActionGridProps) {
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -43,11 +49,18 @@ export function ActionGrid({ actions }: ActionGridProps) {
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {actions.map((action) => {
           const Icon = actionIcons[action.id];
+          const isSelected = action.id === selectedActionId;
 
           return (
-            <div
+            <button
               key={action.id}
-              className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4"
+              type="button"
+              onClick={() => onActionSelect(action.id)}
+              className={`rounded-[1.5rem] border p-4 text-left transition-colors ${
+                isSelected
+                  ? "border-teal-300/30 bg-teal-400/10"
+                  : "border-white/10 bg-white/[0.03]"
+              }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-400/10 text-teal-100 ring-1 ring-teal-300/20">
@@ -66,7 +79,7 @@ export function ActionGrid({ actions }: ActionGridProps) {
                   {action.helper}
                 </p>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

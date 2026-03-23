@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ActionDetailPanel } from "./components/ActionDetailPanel";
 import { ActionGrid } from "./components/ActionGrid";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AppShell } from "./components/AppShell";
@@ -8,11 +10,12 @@ import { WalletHeader } from "./components/WalletHeader";
 import { walletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
 
-const panelClassName =
-  "rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur";
-
 function App() {
   const view = createWalletView(walletState);
+  const [selectedActionId, setSelectedActionId] = useState(view.actions[0]?.id);
+  const selectedAction =
+    view.actions.find((action) => action.id === selectedActionId) ??
+    view.actions[0];
 
   return (
     <AppShell
@@ -31,7 +34,11 @@ function App() {
             summaryMetrics={view.summaryMetrics}
           />
 
-          <ActionGrid actions={view.actions} />
+          <ActionGrid
+            actions={view.actions}
+            selectedActionId={selectedAction.id}
+            onActionSelect={setSelectedActionId}
+          />
 
           <AssetPanel assets={view.assets} />
 
@@ -40,20 +47,7 @@ function App() {
           <ActivityPanel activity={view.activity} />
         </>
       }
-      secondary={
-        <section className={panelClassName}>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Detail region
-          </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
-            Selected action details land here next
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            This region stays visible on compact screens and becomes a distinct
-            secondary column at larger breakpoints.
-          </p>
-        </section>
-      }
+      secondary={<ActionDetailPanel action={selectedAction} />}
     />
   );
 }
