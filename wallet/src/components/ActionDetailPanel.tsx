@@ -1,3 +1,4 @@
+import type { WalletPreviewStateId } from "../data/walletPreviewStates";
 import { walletState } from "../data/stubWallet";
 import { createWalletView, type WalletActionView } from "../lib/walletView";
 import { DepositDetails } from "./DepositDetails";
@@ -7,15 +8,20 @@ import { WithdrawDetails } from "./WithdrawDetails";
 
 interface ActionDetailPanelProps {
   action: WalletActionView;
+  previewStateId: WalletPreviewStateId;
 }
 
-export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
+export function ActionDetailPanel({
+  action,
+  previewStateId,
+}: ActionDetailPanelProps) {
   const view = createWalletView(walletState);
   const latestDeposit =
     view.activity.find((item) => item.kindLabel === "Deposit") ?? null;
   const latestWithdraw =
     view.activity.find((item) => item.kindLabel === "Withdraw") ?? null;
   const topAsset = view.assets[0]?.balanceLabel ?? "No holdings";
+  const isEmptyPreview = previewStateId === "empty";
 
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
@@ -33,7 +39,21 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         </span>
       </div>
 
-      {action.id === "receive" ? (
+      {isEmptyPreview ? (
+        <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm leading-6 text-slate-300">
+            No action detail is available in this preview yet.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            Switch back to the ready preview to inspect concrete receive,
+            deposit, send, and withdraw guidance. The empty preview keeps this
+            region intentional without replacing the action grid or collapsing
+            the secondary layout.
+          </p>
+        </div>
+      ) : null}
+
+      {!isEmptyPreview && action.id === "receive" ? (
         <ReceiveDetails
           label={view.identity.label}
           delegatePkShort={view.identity.delegatePkShort}
@@ -43,7 +63,7 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         />
       ) : null}
 
-      {action.id === "deposit" ? (
+      {!isEmptyPreview && action.id === "deposit" ? (
         <DepositDetails
           scriptAddressShort={view.identity.scriptAddressShort}
           delegatePkShort={view.identity.delegatePkShort}
@@ -54,7 +74,7 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         />
       ) : null}
 
-      {action.id === "send" ? (
+      {!isEmptyPreview && action.id === "send" ? (
         <SendDetails
           noteCount={walletState.summary.noteCount}
           topAssetLabel={topAsset}
@@ -62,7 +82,7 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         />
       ) : null}
 
-      {action.id === "withdraw" ? (
+      {!isEmptyPreview && action.id === "withdraw" ? (
         <WithdrawDetails
           latestWithdrawReference={
             latestWithdraw?.referenceShort ?? "No withdraw reference"

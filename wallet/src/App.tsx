@@ -68,7 +68,12 @@ function App() {
           <ActivityPanel activity={view.activity} />
         </>
       }
-      secondary={<ActionDetailPanel action={selectedAction} />}
+      secondary={
+        <ActionDetailPanel
+          action={selectedAction}
+          previewStateId={previewStateId}
+        />
+      }
     />
   );
 }
