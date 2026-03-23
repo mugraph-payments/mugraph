@@ -59,6 +59,7 @@ function App() {
             actions={view.actions}
             selectedActionId={selectedAction.id}
             onActionSelect={setSelectedActionId}
+            previewStateId={previewStateId}
           />
 
           <AssetPanel assets={view.assets} />
