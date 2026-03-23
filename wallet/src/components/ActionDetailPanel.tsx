@@ -2,6 +2,8 @@ import { walletState } from "../data/stubWallet";
 import { createWalletView, type WalletActionView } from "../lib/walletView";
 import { DepositDetails } from "./DepositDetails";
 import { ReceiveDetails } from "./ReceiveDetails";
+import { SendDetails } from "./SendDetails";
+import { WithdrawDetails } from "./WithdrawDetails";
 
 interface ActionDetailPanelProps {
   action: WalletActionView;
@@ -11,6 +13,9 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
   const view = createWalletView(walletState);
   const latestDeposit =
     view.activity.find((item) => item.kindLabel === "Deposit") ?? null;
+  const latestWithdraw =
+    view.activity.find((item) => item.kindLabel === "Withdraw") ?? null;
+  const topAsset = view.assets[0]?.balanceLabel ?? "No holdings";
 
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
@@ -49,15 +54,23 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         />
       ) : null}
 
-      {action.id !== "receive" && action.id !== "deposit" ? (
-        <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
-          <p className="text-sm leading-6 text-slate-300">{action.helper}</p>
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            This framework keeps the selected action detail visible without
-            replacing the action grid. The next steps will swap this placeholder
-            for action-specific send and withdraw surfaces.
-          </p>
-        </div>
+      {action.id === "send" ? (
+        <SendDetails
+          noteCount={walletState.summary.noteCount}
+          topAssetLabel={topAsset}
+          pendingActivityCount={walletState.summary.pendingActivityCount}
+        />
+      ) : null}
+
+      {action.id === "withdraw" ? (
+        <WithdrawDetails
+          latestWithdrawReference={
+            latestWithdraw?.referenceShort ?? "No withdraw reference"
+          }
+          pendingActivityCount={walletState.summary.pendingActivityCount}
+          scriptAddressShort={view.identity.scriptAddressShort}
+          topAssetLabel={topAsset}
+        />
       ) : null}
     </section>
   );
