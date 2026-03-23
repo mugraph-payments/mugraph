@@ -6,11 +6,30 @@ interface StatusChipProps {
   tone?: WalletTone;
 }
 
-const toneClasses: Record<WalletTone, string> = {
-  neutral: "border-white/10 bg-white/5 text-slate-200",
-  positive: "border-teal-400/20 bg-teal-400/10 text-teal-100",
-  warning: "border-amber-400/20 bg-amber-400/10 text-amber-100",
-  critical: "border-rose-400/20 bg-rose-400/10 text-rose-100",
+const toneClasses: Record<
+  WalletTone,
+  { container: string; label: string; value: string }
+> = {
+  neutral: {
+    container: "border-white/10 bg-white/5",
+    label: "text-slate-500",
+    value: "text-slate-200",
+  },
+  positive: {
+    container: "border-teal-400/20 bg-teal-400/10",
+    label: "text-teal-200/75",
+    value: "text-teal-100",
+  },
+  warning: {
+    container: "border-amber-400/25 bg-amber-400/12",
+    label: "text-amber-200/75",
+    value: "text-amber-100",
+  },
+  critical: {
+    container: "border-rose-400/25 bg-rose-400/12",
+    label: "text-rose-200/75",
+    value: "text-rose-100",
+  },
 };
 
 export function StatusChip({
@@ -18,12 +37,14 @@ export function StatusChip({
   value,
   tone = "neutral",
 }: StatusChipProps) {
+  const classes = toneClasses[tone];
+
   return (
     <div
-      className={`rounded-full border px-3 py-1 text-xs ${toneClasses[tone]}`}
+      className={`rounded-full border px-3 py-1 text-xs ${classes.container}`}
     >
-      <span className="text-slate-500">{label}</span>{" "}
-      <span>{value}</span>
+      <span className={classes.label}>{label}</span>{" "}
+      <span className={classes.value}>{value}</span>
     </div>
   );
 }
