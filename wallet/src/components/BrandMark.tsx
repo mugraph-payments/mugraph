@@ -17,15 +17,17 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
         />
       </div>
 
-      <div className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.3em] text-teal-300/70">
-          Mugraph wallet
+      <div className="space-y-0.5">
+        <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-teal-300/75">
+          Mugraph Wallet
         </p>
         {!compact ? (
           <p className="text-sm font-medium text-slate-100">
-            Private Cardano payments workspace
+            Private Cardano payments
           </p>
-        ) : null}
+        ) : (
+          <p className="text-xs text-slate-400">Wallet home</p>
+        )}
       </div>
     </div>
   );
