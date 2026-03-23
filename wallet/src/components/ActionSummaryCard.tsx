@@ -23,13 +23,12 @@ export function ActionSummaryCard({
 }: ActionSummaryCardProps) {
   return (
     <div
-      className={`rounded-[1.5rem] border p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] ${toneClasses[tone]}`}
+      className={`rounded-[1.5rem] border p-4 ${toneClasses[tone]}`}
+      style={{ boxShadow: "var(--wallet-card-shadow)" }}
     >
-      <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-        {eyebrow}
-      </p>
-      <h3 className="mt-2 text-base font-medium text-slate-100">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
+      <p className="wallet-kicker text-slate-500">{eyebrow}</p>
+      <h3 className="wallet-heading mt-2 text-base font-medium text-slate-100">{title}</h3>
+      <p className="wallet-copy mt-2 text-sm leading-6 text-slate-300">{description}</p>
       {footer ? <div className="mt-4">{footer}</div> : null}
     </div>
   );

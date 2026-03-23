@@ -2,6 +2,7 @@ import type { WalletPreviewStateId } from "../data/walletPreviewStates";
 import type { WalletReceiveDraft } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { DraftProgress } from "./DraftProgress";
 
 interface ReceiveAssetOption {
   id: string;
@@ -83,8 +84,15 @@ export function ReceiveDetails({
     assetOptions.find((option) => option.id === draft.assetId) ?? null;
   const requestedAmount = parsePositiveAmount(draft.requestedAmountInput);
   const requestLabel = draft.requestLabel.trim();
-  const isReady = Boolean(selectedAsset && requestLabel);
+  const requestedAmountIsSatisfied =
+    !draft.requestedAmountInput.trim() || requestedAmount !== null;
+  const isReady = Boolean(selectedAsset && requestLabel && requestedAmountIsSatisfied);
   const shareModeLabel = draft.shareMode === "qr" ? "QR request" : "Address request";
+  const completedCount = [
+    Boolean(selectedAsset),
+    Boolean(requestLabel),
+    requestedAmountIsSatisfied,
+  ].filter(Boolean).length;
   const summaryTitle = isReady
     ? `Ready to generate ${shareModeLabel.toLowerCase()}`
     : "Finish the receive task";
@@ -111,18 +119,24 @@ export function ReceiveDetails({
           <button
             type="button"
             disabled={!isReady}
-            className="w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+            className="wallet-interactive w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500 disabled:active:scale-100"
           >
             Generate request
           </button>
         }
       />
 
+      <DraftProgress
+        label="Draft progress"
+        completed={completedCount}
+        total={3}
+        summary="The receive flow keeps only the share details up front, then leaves the delivery format to the final handoff."
+        tone={isReady ? "positive" : "warning"}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Asset
-          </span>
+          <span className="wallet-kicker text-slate-500">Asset</span>
           <select
             value={draft.assetId}
             onChange={(event) =>
@@ -131,7 +145,7 @@ export function ReceiveDetails({
                 assetId: event.target.value,
               })
             }
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition focus:border-teal-300/30"
+            className="wallet-input"
           >
             <option value="">Select an asset</option>
             {assetOptions.map((asset) => (
@@ -143,9 +157,7 @@ export function ReceiveDetails({
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Requested amount
-          </span>
+          <span className="wallet-kicker text-slate-500">Requested amount</span>
           <input
             type="text"
             inputMode="decimal"
@@ -157,14 +169,13 @@ export function ReceiveDetails({
               })
             }
             placeholder="Optional"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            aria-invalid={draft.requestedAmountInput.trim() ? requestedAmount === null : undefined}
+            className="wallet-input wallet-data"
           />
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Request label
-          </span>
+          <span className="wallet-kicker text-slate-500">Request label</span>
           <input
             type="text"
             value={draft.requestLabel}
@@ -175,14 +186,12 @@ export function ReceiveDetails({
               })
             }
             placeholder="Invoice, desk top-up, or operator note"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            className="wallet-input"
           />
         </label>
 
         <fieldset className="grid gap-2 sm:col-span-2">
-          <legend className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Share mode
-          </legend>
+          <legend className="wallet-kicker text-slate-500">Share mode</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             {[
               { id: "address", label: "Address request", copy: "Share the funding target directly." },
@@ -194,20 +203,21 @@ export function ReceiveDetails({
                 <button
                   key={option.id}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() =>
                     onDraftChange({
                       ...draft,
                       shareMode: option.id as WalletReceiveDraft["shareMode"],
                     })
                   }
-                  className={`rounded-[1.25rem] border p-4 text-left transition-colors ${
+                  className={`wallet-choice ${
                     isSelected
                       ? "border-teal-300/30 bg-teal-400/10"
                       : "border-white/10 bg-white/[0.03]"
                   }`}
                 >
-                  <p className="text-sm font-medium text-slate-100">{option.label}</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">{option.copy}</p>
+                  <p className="wallet-heading text-sm font-medium text-slate-100">{option.label}</p>
+                  <p className="wallet-copy mt-2 text-sm leading-6 text-slate-400">{option.copy}</p>
                 </button>
               );
             })}

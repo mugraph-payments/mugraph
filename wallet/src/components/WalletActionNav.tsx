@@ -35,16 +35,14 @@ export function WalletActionNav({
       initial={prefersReducedMotion ? false : { opacity: 0.98, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur sm:p-5"
+      className="wallet-panel p-4 sm:p-5"
     >
       <div className="flex flex-col gap-1">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-          Wallet actions
-        </p>
-        <h2 className="text-lg font-semibold tracking-tight text-slate-50 sm:text-xl">
+        <p className="wallet-kicker text-slate-500">Wallet actions</p>
+        <h2 className="wallet-heading text-lg font-semibold tracking-tight text-slate-50 sm:text-xl">
           Choose the active flow
         </h2>
-        <p className="text-sm leading-6 text-slate-400">
+        <p className="wallet-copy text-sm leading-6 text-slate-400">
           Send, receive, deposit, and withdraw stay grouped in one action lane.
         </p>
       </div>
@@ -57,11 +55,12 @@ export function WalletActionNav({
             <motion.button
               key={action.id}
               type="button"
+              aria-pressed={action.isActive}
               onClick={() => onActionSelect(action.id)}
               whileHover={prefersReducedMotion ? undefined : { y: -1 }}
               whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
               transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              className={`min-w-0 rounded-[1.5rem] border p-3.5 text-left transition-colors ${
+              className={`wallet-interactive min-w-0 rounded-[1.5rem] border p-3.5 text-left ${
                 action.isActive
                   ? "border-teal-300/30 bg-teal-400/10"
                   : "border-white/10 bg-white/[0.03]"
@@ -77,16 +76,14 @@ export function WalletActionNav({
                 >
                   <Icon className="h-5 w-5" weight="duotone" />
                 </div>
-                <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                  {action.id}
-                </span>
+                <span className="wallet-kicker text-slate-500">{action.id}</span>
               </div>
 
               <div className="mt-3 space-y-1.5">
-                <h3 className="text-base font-medium text-slate-100">
+                <h3 className="wallet-heading text-base font-medium text-slate-100">
                   {action.label}
                 </h3>
-                <p className="text-sm leading-5 text-slate-400">
+                <p className="wallet-copy text-sm leading-5 text-slate-400">
                   {action.helper}
                 </p>
               </div>

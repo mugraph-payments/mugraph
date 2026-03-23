@@ -37,23 +37,21 @@ export function AssetRow({ asset }: AssetRowProps) {
   const TrendIcon = trend.icon;
 
   return (
-    <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+    <article className="wallet-card p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-200">
+            <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-200">
               {asset.ticker}
             </span>
-            <span className="min-w-0 break-words text-sm text-slate-400">
+            <span className="wallet-copy min-w-0 break-words text-sm text-slate-400">
               {asset.name}
             </span>
           </div>
 
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-              Balance
-            </p>
-            <p className="break-words text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
+            <p className="wallet-kicker text-slate-500">Balance</p>
+            <p className="wallet-data break-words text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
               {asset.balanceLabel}
             </p>
           </div>
@@ -63,28 +61,22 @@ export function AssetRow({ asset }: AssetRowProps) {
           className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-xs ${trendClasses[asset.trendTone]}`}
         >
           <TrendIcon className="h-4 w-4" weight="bold" />
-          <span>{trend.label}</span>
+          <span className="wallet-data">{trend.label}</span>
         </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Notes
-          </p>
-          <p className="mt-2 text-sm text-slate-100">{asset.noteCountLabel}</p>
+        <div className="wallet-subtle-card p-3">
+          <p className="wallet-kicker text-slate-500">Notes</p>
+          <p className="wallet-data mt-2 text-sm text-slate-100">{asset.noteCountLabel}</p>
         </div>
-        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Share
-          </p>
-          <p className="mt-2 text-sm text-slate-100">{asset.shareLabel}</p>
+        <div className="wallet-subtle-card p-3">
+          <p className="wallet-kicker text-slate-500">Share</p>
+          <p className="wallet-data mt-2 text-sm text-slate-100">{asset.shareLabel}</p>
         </div>
-        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Trend
-          </p>
-          <p className="mt-2 text-sm text-slate-100">{trend.label}</p>
+        <div className="wallet-subtle-card p-3">
+          <p className="wallet-kicker text-slate-500">Trend</p>
+          <p className="wallet-data mt-2 text-sm text-slate-100">{trend.label}</p>
         </div>
       </div>
     </article>

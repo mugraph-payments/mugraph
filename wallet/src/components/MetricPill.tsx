@@ -41,10 +41,8 @@ export function MetricPill({
 
   return (
     <div className={`rounded-[1.25rem] border px-4 py-3 ${classes.shell}`}>
-      <p className={`text-[11px] uppercase tracking-[0.22em] ${classes.label}`}>
-        {label}
-      </p>
-      <p className={`mt-2 text-lg font-semibold tracking-tight ${classes.value}`}>
+      <p className={`wallet-kicker ${classes.label}`}>{label}</p>
+      <p className={`wallet-data mt-2 text-lg font-semibold tracking-tight ${classes.value}`}>
         {value}
       </p>
     </div>

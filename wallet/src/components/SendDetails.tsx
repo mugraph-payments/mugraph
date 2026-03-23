@@ -2,6 +2,7 @@ import type { WalletPreviewStateId } from "../data/walletPreviewStates";
 import type { WalletSendDraft } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { DraftProgress } from "./DraftProgress";
 
 interface SendAssetOption {
   id: string;
@@ -88,6 +89,9 @@ export function SendDetails({
     amount === null ? "Enter a valid amount" : null,
     !recipient ? "Add a recipient" : null,
   ].filter((item): item is string => item !== null);
+  const completedCount = [Boolean(selectedAsset), amount !== null, Boolean(recipient)].filter(
+    Boolean,
+  ).length;
 
   const summaryTitle = isReady
     ? `Ready to review ${draft.amountInput.trim()} ${selectedAsset?.label ?? "transfer"}`
@@ -107,18 +111,24 @@ export function SendDetails({
           <button
             type="button"
             disabled={!isReady}
-            className="w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+            className="wallet-interactive w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500 disabled:active:scale-100"
           >
             Review transfer
           </button>
         }
       />
 
+      <DraftProgress
+        label="Draft progress"
+        completed={completedCount}
+        total={3}
+        summary="Only the required send fields stay in this first step so the handoff stays easy to review."
+        tone={isReady ? "positive" : "warning"}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Asset
-          </span>
+          <span className="wallet-kicker text-slate-500">Asset</span>
           <select
             value={draft.assetId}
             onChange={(event) =>
@@ -127,7 +137,7 @@ export function SendDetails({
                 assetId: event.target.value,
               })
             }
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition focus:border-teal-300/30"
+            className="wallet-input"
           >
             <option value="">Select an asset</option>
             {assetOptions.map((asset) => (
@@ -139,9 +149,7 @@ export function SendDetails({
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Amount
-          </span>
+          <span className="wallet-kicker text-slate-500">Amount</span>
           <input
             type="text"
             inputMode="decimal"
@@ -153,14 +161,13 @@ export function SendDetails({
               })
             }
             placeholder="0.00"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            aria-invalid={draft.amountInput.trim() ? amount === null : undefined}
+            className="wallet-input wallet-data"
           />
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Recipient
-          </span>
+          <span className="wallet-kicker text-slate-500">Recipient</span>
           <input
             type="text"
             value={draft.recipient}
@@ -171,14 +178,12 @@ export function SendDetails({
               })
             }
             placeholder="addr..."
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            className="wallet-input wallet-code"
           />
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Memo
-          </span>
+          <span className="wallet-kicker text-slate-500">Memo</span>
           <textarea
             value={draft.memo}
             onChange={(event) =>
@@ -189,7 +194,7 @@ export function SendDetails({
             }
             rows={3}
             placeholder="Optional note for operators"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            className="wallet-input min-h-[6.5rem] resize-y"
           />
         </label>
       </div>

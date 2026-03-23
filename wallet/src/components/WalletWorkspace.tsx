@@ -38,7 +38,7 @@ function RegionToggleButton({
       type="button"
       aria-pressed={isActive}
       onClick={() => onRegionChange(region)}
-      className={`flex-1 rounded-full border px-3 py-2 text-sm transition-colors ${
+      className={`wallet-interactive flex-1 rounded-full border px-3 text-sm font-medium transition-colors ${
         isActive
           ? "border-teal-300/30 bg-teal-400/10 text-teal-50"
           : "border-white/10 bg-white/[0.03] text-slate-300"
@@ -82,19 +82,21 @@ export function WalletWorkspace({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-clip">
       {isCompactLayout ? (
-        <div className="flex items-center gap-2 rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-2 backdrop-blur">
-          <RegionToggleButton
-            label="Wallet"
-            region="primary"
-            activeRegion={activeRegion}
-            onRegionChange={onRegionChange}
-          />
-          <RegionToggleButton
-            label="Actions"
-            region="secondary"
-            activeRegion={activeRegion}
-            onRegionChange={onRegionChange}
-          />
+        <div className="wallet-panel p-2">
+          <div className="flex items-center gap-2">
+            <RegionToggleButton
+              label="Wallet"
+              region="primary"
+              activeRegion={activeRegion}
+              onRegionChange={onRegionChange}
+            />
+            <RegionToggleButton
+              label="Actions"
+              region="secondary"
+              activeRegion={activeRegion}
+              onRegionChange={onRegionChange}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -102,9 +104,7 @@ export function WalletWorkspace({
         {showPrimary ? (
           <section className="grid min-w-0 content-start gap-4 overflow-x-clip">
             <div className="px-1">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                Wallet region
-              </p>
+              <p className="wallet-kicker text-slate-500">Wallet region</p>
             </div>
 
             {isCompactLayout ? (
@@ -130,9 +130,7 @@ export function WalletWorkspace({
         {showSecondary ? (
           <aside className="grid min-w-0 content-start gap-4 overflow-x-clip lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
             <div className="px-1">
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                Action region
-              </p>
+              <p className="wallet-kicker text-slate-500">Action region</p>
             </div>
             {actionNav}
             {actionPanel}

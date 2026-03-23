@@ -2,6 +2,7 @@ import type { WalletPreviewStateId } from "../data/walletPreviewStates";
 import type { WalletWithdrawDraft } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { DraftProgress } from "./DraftProgress";
 
 interface WithdrawAssetOption {
   id: string;
@@ -93,6 +94,11 @@ export function WithdrawDetails({
     amount === null ? "Enter a valid amount" : null,
     !destinationAddress ? "Add a destination address" : null,
   ].filter((item): item is string => item !== null);
+  const completedCount = [
+    Boolean(selectedAsset),
+    amount !== null,
+    Boolean(destinationAddress),
+  ].filter(Boolean).length;
 
   const summaryTitle = isReady
     ? `Ready to review ${draft.amountInput.trim()} ${selectedAsset?.label ?? "withdrawal"}`
@@ -112,18 +118,24 @@ export function WithdrawDetails({
           <button
             type="button"
             disabled={!isReady}
-            className="w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+            className="wallet-interactive w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500 disabled:active:scale-100"
           >
             Review withdrawal
           </button>
         }
       />
 
+      <DraftProgress
+        label="Draft progress"
+        completed={completedCount}
+        total={3}
+        summary="Withdrawal prep keeps the mandatory settlement details visible first so the last review step stays short."
+        tone={isReady ? "positive" : "warning"}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Settlement asset
-          </span>
+          <span className="wallet-kicker text-slate-500">Settlement asset</span>
           <select
             value={draft.assetId}
             onChange={(event) =>
@@ -132,7 +144,7 @@ export function WithdrawDetails({
                 assetId: event.target.value,
               })
             }
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition focus:border-teal-300/30"
+            className="wallet-input"
           >
             <option value="">Select an asset</option>
             {assetOptions.map((asset) => (
@@ -144,9 +156,7 @@ export function WithdrawDetails({
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Amount
-          </span>
+          <span className="wallet-kicker text-slate-500">Amount</span>
           <input
             type="text"
             inputMode="decimal"
@@ -158,14 +168,13 @@ export function WithdrawDetails({
               })
             }
             placeholder="0.00"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            aria-invalid={draft.amountInput.trim() ? amount === null : undefined}
+            className="wallet-input wallet-data"
           />
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Destination address
-          </span>
+          <span className="wallet-kicker text-slate-500">Destination address</span>
           <input
             type="text"
             value={draft.destinationAddress}
@@ -176,14 +185,12 @@ export function WithdrawDetails({
               })
             }
             placeholder="addr..."
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            className="wallet-input wallet-code"
           />
         </label>
 
         <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            Reference
-          </span>
+          <span className="wallet-kicker text-slate-500">Reference</span>
           <input
             type="text"
             value={draft.reference}
@@ -194,7 +201,7 @@ export function WithdrawDetails({
               })
             }
             placeholder="Settlement note or treasury tag"
-            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+            className="wallet-input"
           />
         </label>
       </div>

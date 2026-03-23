@@ -84,17 +84,15 @@ export function WalletActionPanel({
     : draft.missingRequirements.join(" • ");
 
   return (
-    <section className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
+    <section className="wallet-panel p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Action panel
-          </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
+          <p className="wallet-kicker text-slate-500">Action panel</p>
+          <h2 className="wallet-heading mt-2 text-xl font-semibold tracking-tight text-slate-50">
             {action.label} is selected
           </h2>
         </div>
-        <span className="self-start rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-300">
+        <span className="wallet-kicker self-start rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
           {action.id}
         </span>
       </div>

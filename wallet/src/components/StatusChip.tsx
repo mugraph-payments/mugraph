@@ -48,17 +48,16 @@ export function StatusChip({
     <motion.div
       initial={prefersReducedMotion ? false : { opacity: 0.96, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
       className={`border text-xs will-change-transform ${classes.container} ${
         compact
           ? "grid gap-1 rounded-[1.15rem] px-3 py-2.5"
           : "inline-flex items-center gap-2 rounded-full px-3 py-1.5"
       }`}
+      style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}
     >
-      <span className={`text-[10px] font-medium tracking-[0.14em] ${classes.label}`}>
-        {label}
-      </span>
-      <span className={`text-[11px] font-semibold tracking-[0.01em] ${classes.value}`}>
+      <span className={`wallet-kicker ${classes.label}`}>{label}</span>
+      <span className={`wallet-data text-[11px] font-semibold tracking-[0.01em] ${classes.value}`}>
         {value}
       </span>
     </motion.div>

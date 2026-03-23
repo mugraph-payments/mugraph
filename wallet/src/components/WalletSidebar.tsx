@@ -19,11 +19,9 @@ function IdentityRow({
   value: string;
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-3">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 break-all text-sm text-slate-100">{value}</p>
+    <div className="wallet-subtle-card p-3">
+      <p className="wallet-kicker text-slate-500">{label}</p>
+      <p className="wallet-code mt-2 break-all text-sm text-slate-100">{value}</p>
     </div>
   );
 }
@@ -38,15 +36,13 @@ export function WalletSidebar({
   lastSyncedRelative,
 }: WalletSidebarProps) {
   return (
-    <aside className="hidden self-start rounded-[2rem] border border-white/10 bg-slate-950/60 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur lg:grid lg:max-h-[calc(100dvh-9rem)] lg:content-start lg:gap-4 lg:overflow-y-auto lg:overscroll-contain xl:sticky xl:top-4">
+    <aside className="wallet-panel hidden self-start p-4 lg:grid lg:max-h-[calc(100dvh-9rem)] lg:content-start lg:gap-4 lg:overflow-y-auto lg:overscroll-contain xl:sticky xl:top-4">
       <div className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-          Wallet identity
-        </p>
-        <h2 className="text-lg font-semibold tracking-tight text-slate-50 xl:text-xl">
+        <p className="wallet-kicker text-slate-500">Wallet identity</p>
+        <h2 className="wallet-heading text-lg font-semibold tracking-tight text-slate-50 xl:text-xl">
           {label}
         </h2>
-        <p className="text-sm leading-6 text-slate-400">
+        <p className="wallet-copy text-sm leading-6 text-slate-400">
           Keep delegate and funding context visible while moving through wallet actions.
         </p>
       </div>

@@ -13,7 +13,7 @@ export function WalletSectionTabs({
   onSectionChange,
 }: WalletSectionTabsProps) {
   return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-2 backdrop-blur">
+    <div className="wallet-panel p-2">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {sections.map((section) => {
           const isActive = section.id === activeSection;
@@ -24,16 +24,14 @@ export function WalletSectionTabs({
               type="button"
               aria-pressed={isActive}
               onClick={() => onSectionChange(section.id)}
-              className={`min-w-0 rounded-[1rem] border px-3 py-3 text-left transition-colors ${
+              className={`wallet-interactive min-w-0 rounded-[1rem] border px-3 py-3 text-left transition-colors ${
                 isActive
                   ? "border-teal-300/30 bg-teal-400/10 text-teal-50"
                   : "border-white/10 bg-white/[0.03] text-slate-300"
               }`}
             >
-              <p className="truncate text-xs uppercase tracking-[0.22em] text-slate-500">
-                {section.label}
-              </p>
-              <p className="mt-1 hidden text-xs leading-5 text-inherit/80 sm:block">
+              <p className="wallet-kicker truncate text-slate-500">{section.label}</p>
+              <p className="wallet-copy mt-1 hidden text-xs leading-5 text-inherit/80 sm:block">
                 {section.description}
               </p>
             </button>

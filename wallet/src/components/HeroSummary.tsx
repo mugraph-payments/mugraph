@@ -45,18 +45,16 @@ export function HeroSummary({
 
   return (
     <section
-      className={`rounded-[2rem] border p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur sm:p-5 ${tone.shell}`}
+      className={`wallet-panel p-4 sm:p-5 ${tone.shell}`}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-3">
           <div className="space-y-1">
-            <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>
-              Wallet overview
-            </p>
-            <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
+            <p className={`wallet-kicker ${tone.eyebrow}`}>Wallet overview</p>
+            <h2 className="wallet-heading text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
               Available balance and queue status
             </h2>
-            <p className={`text-sm leading-6 ${tone.copy}`}>
+            <p className={`wallet-copy text-sm leading-6 ${tone.copy}`}>
               Quick wallet totals, note availability, and pending work.
             </p>
           </div>
