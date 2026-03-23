@@ -142,7 +142,7 @@ function App() {
           onRegionChange={setActiveRegion}
           onSectionChange={handleSectionChange}
           overview={
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_20rem] xl:items-start">
               <HeroSummary
                 identity={view.identity}
                 summaryMetrics={view.summaryMetrics}

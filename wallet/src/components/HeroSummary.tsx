@@ -13,27 +13,27 @@ interface HeroSummaryProps {
 
 const summaryToneClasses: Record<
   WalletTone,
-  { shell: string; eyebrow: string; accent: string }
+  { shell: string; eyebrow: string; copy: string }
 > = {
   neutral: {
     shell: "border-white/10 bg-slate-950/60",
-    eyebrow: "text-teal-300/70",
-    accent: "text-slate-400",
+    eyebrow: "text-slate-500",
+    copy: "text-slate-400",
   },
   positive: {
-    shell: "border-teal-400/15 bg-[linear-gradient(180deg,rgba(20,184,166,0.12),rgba(2,6,23,0.72))]",
-    eyebrow: "text-teal-200/80",
-    accent: "text-teal-100/75",
+    shell: "border-teal-300/20 bg-teal-400/[0.08]",
+    eyebrow: "text-teal-200/75",
+    copy: "text-slate-300",
   },
   warning: {
-    shell: "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.12),rgba(2,6,23,0.72))]",
-    eyebrow: "text-amber-200/80",
-    accent: "text-amber-100/75",
+    shell: "border-amber-300/20 bg-amber-400/[0.08]",
+    eyebrow: "text-amber-200/75",
+    copy: "text-slate-300",
   },
   critical: {
-    shell: "border-rose-400/20 bg-[linear-gradient(180deg,rgba(244,63,94,0.12),rgba(2,6,23,0.72))]",
-    eyebrow: "text-rose-200/80",
-    accent: "text-rose-100/75",
+    shell: "border-rose-300/20 bg-rose-400/[0.08]",
+    eyebrow: "text-rose-200/75",
+    copy: "text-slate-300",
   },
 };
 
@@ -45,47 +45,44 @@ export function HeroSummary({
 
   return (
     <section
-      className={`rounded-[2rem] border p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur ${tone.shell}`}
+      className={`rounded-[2rem] border p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur sm:p-5 ${tone.shell}`}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
-          <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>
-            Portfolio summary
-          </p>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-50 sm:text-3xl">
-              {identity.label}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-3">
+          <div className="space-y-1">
+            <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>
+              Wallet overview
+            </p>
+            <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
+              Available balance and queue status
             </h2>
-            <p className={`max-w-2xl text-sm leading-6 sm:text-base ${tone.accent}`}>
-              Track the wallet posture at a glance before dropping into actions,
-              notes, and settlement details.
+            <p className={`text-sm leading-6 ${tone.copy}`}>
+              Quick wallet totals, note availability, and pending work.
             </p>
           </div>
+
           <div className="flex flex-wrap gap-2">
-            <StatusChip label="Network" value={identity.networkLabel} />
+            <StatusChip label="Network" value={identity.networkLabel} compact />
             <StatusChip
               label="Status"
               value={identity.statusLabel}
               tone={identity.statusTone}
+              compact
             />
-            <StatusChip
-              label="Last sync"
-              value={identity.lastSyncedRelative}
-              tone={identity.statusTone === "positive" ? "neutral" : identity.statusTone}
-            />
+            <StatusChip label="Last sync" value={identity.lastSyncedRelative} compact />
           </div>
         </div>
-      </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {summaryMetrics.map((metric) => (
-          <MetricPill
-            key={metric.id}
-            label={metric.label}
-            value={metric.value}
-            tone={metric.tone}
-          />
-        ))}
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:min-w-[24rem] xl:grid-cols-2">
+          {summaryMetrics.map((metric) => (
+            <MetricPill
+              key={metric.id}
+              label={metric.label}
+              value={metric.value}
+              tone={metric.tone}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );
