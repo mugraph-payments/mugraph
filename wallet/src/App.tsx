@@ -1,31 +1,20 @@
 import { useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
-import { WalletActionNav } from "./components/WalletActionNav";
-import { WalletActionPanel } from "./components/WalletActionPanel";
 import { WalletActionScreen } from "./components/WalletActionScreen";
 import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
 import { WalletSettingsScreen } from "./components/WalletSettingsScreen";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
-import {
-  buildWalletActionDraftsView,
-  buildWalletShellViewModel,
-  createWalletView,
-} from "./lib/walletView";
+import { createWalletView } from "./lib/walletView";
 import type {
   WalletActiveDestination,
-  WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
-  WalletWithdrawDraft,
 } from "./types/wallet";
 
 function App() {
-  const [selectedActionId, setSelectedActionId] = useState<
-    ReturnType<typeof createWalletView>["actions"][number]["id"]
-  >(walletShellState.activeAction);
   const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>(
     walletShellState.activeDestination,
   );
@@ -38,51 +27,12 @@ function App() {
   const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(
     walletActionDrafts.receive,
   );
-  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(
-    walletActionDrafts.deposit,
-  );
-  const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
-    walletActionDrafts.withdraw,
-  );
-
   const view = useMemo(() => createWalletView(walletState), []);
-  const latestDeposit = useMemo(
-    () => view.activity.find((item) => item.kindLabel === "Deposit") ?? null,
-    [view.activity],
-  );
-  const latestWithdraw = useMemo(
-    () => view.activity.find((item) => item.kindLabel === "Withdraw") ?? null,
-    [view.activity],
-  );
-  const draftViews = useMemo(
-    () =>
-      buildWalletActionDraftsView(walletState, {
-        ...walletActionDrafts,
-        send: sendDraft,
-        receive: receiveDraft,
-        deposit: depositDraft,
-        withdraw: withdrawDraft,
-      }),
-    [depositDraft, receiveDraft, sendDraft, withdrawDraft],
-  );
-  const shellView = useMemo(
-    () =>
-      buildWalletShellViewModel(walletState, {
-        activeDestination,
-        activeAction: selectedActionId,
-      }),
-    [activeDestination, selectedActionId],
-  );
-  const selectedAction =
-    view.actions.find((action) => action.id === selectedActionId) ??
-    view.actions[0];
-  const selectedActionDraft = draftViews[selectedAction.id];
   const assetOptions = view.assets.map((asset) => ({
     id: asset.id,
     label: asset.ticker,
     balanceLabel: asset.balanceLabel,
   }));
-  const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
 
   function handleDestinationSelect(destination: WalletActiveDestination) {
     setActiveDestination(destination);
@@ -92,7 +42,6 @@ function App() {
   }
 
   function handlePrimaryActionSelect(actionId: "send" | "receive") {
-    setSelectedActionId(actionId);
     setActiveConsumerAction(actionId);
   }
 
@@ -152,46 +101,6 @@ function App() {
 
         <main className="grid min-h-0 flex-1 content-start gap-5 pb-24">
           {activeDestinationPanel}
-
-          <WalletActionNav
-            actions={shellView.actions}
-            onActionSelect={setSelectedActionId}
-          />
-
-          <WalletActionPanel
-            action={selectedAction}
-            draft={selectedActionDraft}
-            sendDraft={sendDraft}
-            onSendDraftChange={setSendDraft}
-            receiveDraft={receiveDraft}
-            onReceiveDraftChange={setReceiveDraft}
-            depositDraft={depositDraft}
-            onDepositDraftChange={setDepositDraft}
-            withdrawDraft={withdrawDraft}
-            onWithdrawDraftChange={setWithdrawDraft}
-            assetOptions={assetOptions}
-            receiveContext={{
-              label: view.identity.label,
-              delegatePkShort: view.identity.delegatePkShort,
-              scriptAddressShort: view.identity.scriptAddressShort,
-              networkLabel: view.identity.networkLabel,
-              lastSyncedRelative: view.identity.lastSyncedRelative,
-            }}
-            depositContext={{
-              scriptAddressShort: view.identity.scriptAddressShort,
-              delegatePkShort: view.identity.delegatePkShort,
-              latestDepositReference:
-                latestDeposit?.referenceShort ?? "No deposit reference",
-            }}
-            withdrawContext={{
-              latestWithdrawReference:
-                latestWithdraw?.referenceShort ?? "No withdraw reference",
-              scriptAddressShort: view.identity.scriptAddressShort,
-              topAssetLabel,
-            }}
-            noteCount={walletState.summary.noteCount}
-            pendingActivityCount={walletState.summary.pendingActivityCount}
-          />
         </main>
 
         <WalletBottomNav
