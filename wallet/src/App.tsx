@@ -7,6 +7,7 @@ import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
 import { WalletHeader } from "./components/WalletHeader";
+import { WalletSidebar } from "./components/WalletSidebar";
 import { WalletWorkspace } from "./components/WalletWorkspace";
 import { walletShellState, walletState } from "./data/stubWallet";
 import { buildWalletShellViewModel, createWalletView } from "./lib/walletView";
@@ -79,6 +80,7 @@ function App() {
           label={view.identity.label}
           networkLabel={view.identity.networkLabel}
           statusLabel={view.identity.statusLabel}
+          statusTone={view.identity.statusTone}
           lastSyncedRelative={view.identity.lastSyncedRelative}
         />
       }
@@ -91,19 +93,31 @@ function App() {
           onRegionChange={setActiveRegion}
           onSectionChange={handleSectionChange}
           overview={
-            <>
-              <HeroSummary
-                identity={view.identity}
-                summaryMetrics={view.summaryMetrics}
-              />
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
+              <div className="grid gap-4">
+                <HeroSummary
+                  identity={view.identity}
+                  summaryMetrics={view.summaryMetrics}
+                />
 
-              <ActionGrid
-                actions={view.actions}
-                selectedActionId={selectedAction.id}
-                onActionSelect={handleActionSelect}
-                previewStateId="ready"
+                <ActionGrid
+                  actions={view.actions}
+                  selectedActionId={selectedAction.id}
+                  onActionSelect={handleActionSelect}
+                  previewStateId="ready"
+                />
+              </div>
+
+              <WalletSidebar
+                label={view.identity.label}
+                networkLabel={view.identity.networkLabel}
+                statusLabel={view.identity.statusLabel}
+                statusTone={view.identity.statusTone}
+                delegatePkShort={view.identity.delegatePkShort}
+                scriptAddressShort={view.identity.scriptAddressShort}
+                lastSyncedRelative={view.identity.lastSyncedRelative}
               />
-            </>
+            </div>
           }
           holdings={<AssetPanel assets={view.assets} />}
           notes={<NotesPanel notes={view.notes} />}

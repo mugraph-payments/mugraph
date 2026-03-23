@@ -5,6 +5,7 @@ interface StatusChipProps {
   label: string;
   value: string;
   tone?: WalletTone;
+  compact?: boolean;
 }
 
 const toneClasses: Record<
@@ -37,6 +38,7 @@ export function StatusChip({
   label,
   value,
   tone = "neutral",
+  compact = false,
 }: StatusChipProps) {
   const classes = toneClasses[tone];
   const prefersReducedMotion = useReducedMotion();
@@ -46,7 +48,9 @@ export function StatusChip({
       initial={prefersReducedMotion ? false : { opacity: 0.96, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-      className={`rounded-full border px-3 py-1 text-xs will-change-transform ${classes.container}`}
+      className={`border text-xs will-change-transform ${classes.container} ${
+        compact ? "rounded-2xl px-3 py-2" : "rounded-full px-3 py-1"
+      }`}
     >
       <span className={classes.label}>{label}</span>{" "}
       <span className={classes.value}>{value}</span>
