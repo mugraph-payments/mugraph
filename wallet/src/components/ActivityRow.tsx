@@ -33,19 +33,19 @@ export function ActivityRow({ activity }: ActivityRowProps) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="wallet-kicker text-slate-500">{activity.kindLabel}</span>
-            <span className="text-sm text-slate-400">{activity.createdAtRelative}</span>
+            <span className="text-base text-slate-400">{activity.createdAtRelative}</span>
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <div>
               <p className="wallet-kicker text-slate-500">Amount</p>
-              <p className="wallet-data mt-1 text-lg font-semibold text-slate-50">
+              <p className="wallet-data mt-1 text-xl font-semibold text-slate-50">
                 {activity.amountLabel}
               </p>
             </div>
             <div className="sm:col-span-2">
               <p className="wallet-kicker text-slate-500">Summary</p>
-              <p className="wallet-copy mt-1 text-sm leading-6 text-slate-400">
+              <p className="wallet-copy mt-1 text-base leading-7 text-slate-400">
                 {activity.summary}
               </p>
             </div>
@@ -57,7 +57,7 @@ export function ActivityRow({ activity }: ActivityRowProps) {
             label={activity.statusLabel}
             tone={activity.statusTone}
           />
-          <span className="wallet-code text-sm text-slate-500">{activity.referenceShort}</span>
+          <span className="wallet-code text-base text-slate-500">{activity.referenceShort}</span>
         </div>
       </div>
     </article>

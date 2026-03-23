@@ -44,23 +44,23 @@ export function AssetRow({ asset }: AssetRowProps) {
             <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200">
               {asset.ticker}
             </span>
-            <span className="text-sm text-slate-400">{asset.name}</span>
+            <span className="text-base text-slate-400">{asset.name}</span>
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <div>
               <p className="wallet-kicker text-slate-500">Balance</p>
-              <p className="wallet-data mt-1 text-lg font-semibold text-slate-50">
+              <p className="wallet-data mt-1 text-xl font-semibold text-slate-50">
                 {asset.balanceLabel}
               </p>
             </div>
             <div>
               <p className="wallet-kicker text-slate-500">Share</p>
-              <p className="wallet-data mt-1 text-sm text-slate-100">{asset.shareLabel}</p>
+              <p className="wallet-data mt-1 text-base text-slate-100">{asset.shareLabel}</p>
             </div>
             <div>
               <p className="wallet-kicker text-slate-500">Notes</p>
-              <p className="wallet-data mt-1 text-sm text-slate-100">{asset.noteCountLabel}</p>
+              <p className="wallet-data mt-1 text-base text-slate-100">{asset.noteCountLabel}</p>
             </div>
           </div>
         </div>

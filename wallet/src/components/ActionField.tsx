@@ -5,9 +5,9 @@ interface ActionFieldProps {
 
 export function ActionField({ label, value }: ActionFieldProps) {
   return (
-    <div className="wallet-subtle-card p-3">
+    <div className="wallet-subtle-card p-3.5">
       <p className="wallet-kicker text-slate-500">{label}</p>
-      <p className="wallet-data mt-2 break-words text-sm text-slate-100">{value}</p>
+      <p className="wallet-data mt-2 break-words text-base leading-6 text-slate-100">{value}</p>
     </div>
   );
 }
