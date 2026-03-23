@@ -519,7 +519,7 @@ function getWalletShellSectionDescription(
 ): string {
   switch (section) {
     case "overview":
-      return "Wallet posture and summary metrics.";
+      return "Your balance, actions, and latest wallet updates.";
     case "holdings":
       return "Asset balances and note density.";
     case "notes":
