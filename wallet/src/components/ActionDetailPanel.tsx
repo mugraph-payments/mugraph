@@ -1,10 +1,17 @@
-import type { WalletActionView } from "../lib/walletView";
+import { walletState } from "../data/stubWallet";
+import { createWalletView, type WalletActionView } from "../lib/walletView";
+import { DepositDetails } from "./DepositDetails";
+import { ReceiveDetails } from "./ReceiveDetails";
 
 interface ActionDetailPanelProps {
   action: WalletActionView;
 }
 
 export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
+  const view = createWalletView(walletState);
+  const latestDeposit =
+    view.activity.find((item) => item.kindLabel === "Deposit") ?? null;
+
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -21,14 +28,37 @@ export function ActionDetailPanel({ action }: ActionDetailPanelProps) {
         </span>
       </div>
 
-      <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
-        <p className="text-sm leading-6 text-slate-300">{action.helper}</p>
-        <p className="mt-3 text-sm leading-6 text-slate-400">
-          This framework keeps the selected action detail visible without
-          replacing the action grid. The next steps will swap this placeholder
-          for action-specific receive, deposit, send, and withdraw surfaces.
-        </p>
-      </div>
+      {action.id === "receive" ? (
+        <ReceiveDetails
+          label={view.identity.label}
+          delegatePkShort={view.identity.delegatePkShort}
+          scriptAddressShort={view.identity.scriptAddressShort}
+          networkLabel={view.identity.networkLabel}
+          lastSyncedRelative={view.identity.lastSyncedRelative}
+        />
+      ) : null}
+
+      {action.id === "deposit" ? (
+        <DepositDetails
+          scriptAddressShort={view.identity.scriptAddressShort}
+          delegatePkShort={view.identity.delegatePkShort}
+          latestDepositReference={
+            latestDeposit?.referenceShort ?? "No deposit reference"
+          }
+          pendingActivityCount={walletState.summary.pendingActivityCount}
+        />
+      ) : null}
+
+      {action.id !== "receive" && action.id !== "deposit" ? (
+        <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm leading-6 text-slate-300">{action.helper}</p>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            This framework keeps the selected action detail visible without
+            replacing the action grid. The next steps will swap this placeholder
+            for action-specific send and withdraw surfaces.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
