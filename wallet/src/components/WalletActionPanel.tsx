@@ -3,12 +3,14 @@ import type {
   WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
+  WalletWithdrawDraft,
 } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
 import { DepositDetails } from "./DepositDetails";
 import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
+import { WithdrawDetails } from "./WithdrawDetails";
 
 interface AssetOption {
   id: string;
@@ -30,6 +32,12 @@ interface DepositContext {
   latestDepositReference: string;
 }
 
+interface WithdrawContext {
+  latestWithdrawReference: string;
+  scriptAddressShort: string;
+  topAssetLabel: string;
+}
+
 interface WalletActionPanelProps {
   action: WalletActionView;
   draft: WalletActionDraftView;
@@ -39,9 +47,12 @@ interface WalletActionPanelProps {
   onReceiveDraftChange: (draft: WalletReceiveDraft) => void;
   depositDraft: WalletDepositDraft;
   onDepositDraftChange: (draft: WalletDepositDraft) => void;
+  withdrawDraft: WalletWithdrawDraft;
+  onWithdrawDraftChange: (draft: WalletWithdrawDraft) => void;
   assetOptions: AssetOption[];
   receiveContext: ReceiveContext;
   depositContext: DepositContext;
+  withdrawContext: WithdrawContext;
   noteCount: number;
   pendingActivityCount: number;
 }
@@ -55,9 +66,12 @@ export function WalletActionPanel({
   onReceiveDraftChange,
   depositDraft,
   onDepositDraftChange,
+  withdrawDraft,
+  onWithdrawDraftChange,
   assetOptions,
   receiveContext,
   depositContext,
+  withdrawContext,
   noteCount,
   pendingActivityCount,
 }: WalletActionPanelProps) {
@@ -113,6 +127,16 @@ export function WalletActionPanel({
           draft={depositDraft}
           assetOptions={assetOptions}
           onDraftChange={onDepositDraftChange}
+        />
+      ) : action.id === "withdraw" ? (
+        <WithdrawDetails
+          latestWithdrawReference={withdrawContext.latestWithdrawReference}
+          pendingActivityCount={pendingActivityCount}
+          scriptAddressShort={withdrawContext.scriptAddressShort}
+          topAssetLabel={withdrawContext.topAssetLabel}
+          draft={withdrawDraft}
+          assetOptions={assetOptions}
+          onDraftChange={onWithdrawDraftChange}
         />
       ) : (
         <>

@@ -21,6 +21,7 @@ import type {
   WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
+  WalletWithdrawDraft,
 } from "./types/wallet";
 
 function getIsCompactLayout() {
@@ -49,6 +50,9 @@ function App() {
   const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(
     walletActionDrafts.deposit,
   );
+  const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
+    walletActionDrafts.withdraw,
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 1023px)");
@@ -70,6 +74,10 @@ function App() {
     () => view.activity.find((item) => item.kindLabel === "Deposit") ?? null,
     [view.activity],
   );
+  const latestWithdraw = useMemo(
+    () => view.activity.find((item) => item.kindLabel === "Withdraw") ?? null,
+    [view.activity],
+  );
   const draftViews = useMemo(
     () =>
       buildWalletActionDraftsView(walletState, {
@@ -77,8 +85,9 @@ function App() {
         send: sendDraft,
         receive: receiveDraft,
         deposit: depositDraft,
+        withdraw: withdrawDraft,
       }),
-    [depositDraft, receiveDraft, sendDraft],
+    [depositDraft, receiveDraft, sendDraft, withdrawDraft],
   );
   const shellView = useMemo(
     () =>
@@ -98,6 +107,7 @@ function App() {
     label: asset.ticker,
     balanceLabel: asset.balanceLabel,
   }));
+  const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
 
   function handleActionSelect(actionId: typeof selectedActionId) {
     setSelectedActionId(actionId);
@@ -168,6 +178,8 @@ function App() {
               onReceiveDraftChange={setReceiveDraft}
               depositDraft={depositDraft}
               onDepositDraftChange={setDepositDraft}
+              withdrawDraft={withdrawDraft}
+              onWithdrawDraftChange={setWithdrawDraft}
               assetOptions={assetOptions}
               receiveContext={{
                 label: view.identity.label,
@@ -181,6 +193,12 @@ function App() {
                 delegatePkShort: view.identity.delegatePkShort,
                 latestDepositReference:
                   latestDeposit?.referenceShort ?? "No deposit reference",
+              }}
+              withdrawContext={{
+                latestWithdrawReference:
+                  latestWithdraw?.referenceShort ?? "No withdraw reference",
+                scriptAddressShort: view.identity.scriptAddressShort,
+                topAssetLabel,
               }}
               noteCount={walletState.summary.noteCount}
               pendingActivityCount={walletState.summary.pendingActivityCount}
