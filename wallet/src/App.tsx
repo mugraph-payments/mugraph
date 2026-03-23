@@ -9,8 +9,8 @@ import { NotesPanel } from "./components/NotesPanel";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletWorkspace } from "./components/WalletWorkspace";
 import { walletShellState, walletState } from "./data/stubWallet";
-import { createWalletView } from "./lib/walletView";
-import type { WalletActiveRegion } from "./types/wallet";
+import { buildWalletShellViewModel, createWalletView } from "./lib/walletView";
+import type { WalletActiveRegion, WalletActiveSection } from "./types/wallet";
 
 function getIsCompactLayout() {
   return window.matchMedia("(max-width: 1023px)").matches;
@@ -22,6 +22,9 @@ function App() {
   >(walletShellState.activeAction);
   const [activeRegion, setActiveRegion] = useState<WalletActiveRegion>(
     walletShellState.activeRegion,
+  );
+  const [activeSection, setActiveSection] = useState<WalletActiveSection>(
+    walletShellState.activeSection,
   );
   const [isCompactLayout, setIsCompactLayout] = useState(() =>
     getIsCompactLayout(),
@@ -43,6 +46,15 @@ function App() {
   }, []);
 
   const view = useMemo(() => createWalletView(walletState), []);
+  const shellView = useMemo(
+    () =>
+      buildWalletShellViewModel(walletState, {
+        activeRegion,
+        activeSection,
+        activeAction: selectedActionId,
+      }),
+    [activeRegion, activeSection, selectedActionId],
+  );
   const selectedAction =
     view.actions.find((action) => action.id === selectedActionId) ??
     view.actions[0];
@@ -53,6 +65,11 @@ function App() {
     if (isCompactLayout) {
       setActiveRegion("secondary");
     }
+  }
+
+  function handleSectionChange(section: WalletActiveSection) {
+    setActiveSection(section);
+    setActiveRegion("primary");
   }
 
   return (
@@ -69,8 +86,11 @@ function App() {
         <WalletWorkspace
           isCompactLayout={isCompactLayout}
           activeRegion={activeRegion}
+          activeSection={activeSection}
+          sections={shellView.sections}
           onRegionChange={setActiveRegion}
-          primary={
+          onSectionChange={handleSectionChange}
+          overview={
             <>
               <HeroSummary
                 identity={view.identity}
@@ -83,14 +103,11 @@ function App() {
                 onActionSelect={handleActionSelect}
                 previewStateId="ready"
               />
-
-              <AssetPanel assets={view.assets} />
-
-              <NotesPanel notes={view.notes} />
-
-              <ActivityPanel activity={view.activity} />
             </>
           }
+          holdings={<AssetPanel assets={view.assets} />}
+          notes={<NotesPanel notes={view.notes} />}
+          activity={<ActivityPanel activity={view.activity} />}
           secondary={
             <ActionDetailPanel action={selectedAction} previewStateId="ready" />
           }

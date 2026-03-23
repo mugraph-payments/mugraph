@@ -1,11 +1,19 @@
 import type { ReactNode } from "react";
-import type { WalletActiveRegion } from "../types/wallet";
+import type { WalletShellSectionView } from "../lib/walletView";
+import type { WalletActiveRegion, WalletActiveSection } from "../types/wallet";
+import { WalletSectionTabs } from "./WalletSectionTabs";
 
 interface WalletWorkspaceProps {
   isCompactLayout: boolean;
   activeRegion: WalletActiveRegion;
+  activeSection: WalletActiveSection;
+  sections: WalletShellSectionView[];
   onRegionChange: (region: WalletActiveRegion) => void;
-  primary: ReactNode;
+  onSectionChange: (section: WalletActiveSection) => void;
+  overview: ReactNode;
+  holdings: ReactNode;
+  notes: ReactNode;
+  activity: ReactNode;
   secondary: ReactNode;
 }
 
@@ -43,12 +51,31 @@ function RegionToggleButton({
 export function WalletWorkspace({
   isCompactLayout,
   activeRegion,
+  activeSection,
+  sections,
   onRegionChange,
-  primary,
+  onSectionChange,
+  overview,
+  holdings,
+  notes,
+  activity,
   secondary,
 }: WalletWorkspaceProps) {
   const showPrimary = !isCompactLayout || activeRegion === "primary";
   const showSecondary = !isCompactLayout || activeRegion === "secondary";
+
+  const compactPrimarySection = (() => {
+    switch (activeSection) {
+      case "overview":
+        return overview;
+      case "holdings":
+        return holdings;
+      case "notes":
+        return notes;
+      case "activity":
+        return activity;
+    }
+  })();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -77,7 +104,24 @@ export function WalletWorkspace({
                 Wallet region
               </p>
             </div>
-            {primary}
+
+            {isCompactLayout ? (
+              <>
+                <WalletSectionTabs
+                  sections={sections}
+                  activeSection={activeSection}
+                  onSectionChange={onSectionChange}
+                />
+                {compactPrimarySection}
+              </>
+            ) : (
+              <>
+                {overview}
+                {holdings}
+                {notes}
+                {activity}
+              </>
+            )}
           </section>
         ) : null}
 
