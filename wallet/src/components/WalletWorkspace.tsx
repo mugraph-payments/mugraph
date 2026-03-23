@@ -14,6 +14,7 @@ interface WalletWorkspaceProps {
   holdings: ReactNode;
   notes: ReactNode;
   activity: ReactNode;
+  actionNav: ReactNode;
   secondary: ReactNode;
 }
 
@@ -59,6 +60,7 @@ export function WalletWorkspace({
   holdings,
   notes,
   activity,
+  actionNav,
   secondary,
 }: WalletWorkspaceProps) {
   const showPrimary = !isCompactLayout || activeRegion === "primary";
@@ -132,6 +134,7 @@ export function WalletWorkspace({
                 Action region
               </p>
             </div>
+            {actionNav}
             {secondary}
           </aside>
         ) : null}

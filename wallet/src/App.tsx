@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActionDetailPanel } from "./components/ActionDetailPanel";
-import { ActionGrid } from "./components/ActionGrid";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
+import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletSidebar } from "./components/WalletSidebar";
 import { WalletWorkspace } from "./components/WalletWorkspace";
@@ -94,19 +94,10 @@ function App() {
           onSectionChange={handleSectionChange}
           overview={
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-              <div className="grid gap-4">
-                <HeroSummary
-                  identity={view.identity}
-                  summaryMetrics={view.summaryMetrics}
-                />
-
-                <ActionGrid
-                  actions={view.actions}
-                  selectedActionId={selectedAction.id}
-                  onActionSelect={handleActionSelect}
-                  previewStateId="ready"
-                />
-              </div>
+              <HeroSummary
+                identity={view.identity}
+                summaryMetrics={view.summaryMetrics}
+              />
 
               <WalletSidebar
                 label={view.identity.label}
@@ -122,6 +113,12 @@ function App() {
           holdings={<AssetPanel assets={view.assets} />}
           notes={<NotesPanel notes={view.notes} />}
           activity={<ActivityPanel activity={view.activity} />}
+          actionNav={
+            <WalletActionNav
+              actions={shellView.actions}
+              onActionSelect={handleActionSelect}
+            />
+          }
           secondary={
             <ActionDetailPanel action={selectedAction} previewStateId="ready" />
           }
