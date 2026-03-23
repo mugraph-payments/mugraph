@@ -7,7 +7,6 @@ import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
 import { WalletSettingsScreen } from "./components/WalletSettingsScreen";
-import { WalletSidebar } from "./components/WalletSidebar";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
 import {
   buildWalletActionDraftsView,
@@ -120,16 +119,6 @@ function App() {
         />
 
         <main className="grid min-h-0 flex-1 content-start gap-5 pb-24">
-          <WalletSidebar
-            label={view.identity.label}
-            networkLabel={view.identity.networkLabel}
-            statusLabel={view.identity.statusLabel}
-            statusTone={view.identity.statusTone}
-            delegatePkShort={view.identity.delegatePkShort}
-            scriptAddressShort={view.identity.scriptAddressShort}
-            lastSyncedRelative={view.identity.lastSyncedRelative}
-          />
-
           {activeDestinationPanel}
 
           <WalletActionNav
