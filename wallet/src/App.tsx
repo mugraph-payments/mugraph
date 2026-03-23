@@ -1,4 +1,5 @@
 import { ActionGrid } from "./components/ActionGrid";
+import { ActivityPanel } from "./components/ActivityPanel";
 import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
@@ -9,21 +10,6 @@ import { createWalletView } from "./lib/walletView";
 
 const panelClassName =
   "rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur";
-
-function ShellRegion({
-  title,
-  copy,
-}: {
-  title: string;
-  copy: string;
-}) {
-  return (
-    <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-4">
-      <h3 className="text-sm font-medium text-slate-100">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{copy}</p>
-    </div>
-  );
-}
 
 function App() {
   const view = createWalletView(walletState);
@@ -51,12 +37,7 @@ function App() {
 
           <NotesPanel notes={view.notes} />
 
-          <section className={`${panelClassName} grid gap-4`}>
-            <ShellRegion
-              title="Timeline lane"
-              copy="Recent activity and status context will live here with room for compact cards and denser desktop views."
-            />
-          </section>
+          <ActivityPanel activity={view.activity} />
         </>
       }
       secondary={
