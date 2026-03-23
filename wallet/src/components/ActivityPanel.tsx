@@ -14,7 +14,7 @@ function EmptyPanelBody({
   copy: string;
 }) {
   return (
-    <div className="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-5">
+    <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-5">
       <h3 className="text-sm font-medium text-slate-100">{title}</h3>
       <p className="mt-2 max-w-xl text-sm leading-6 text-slate-400">{copy}</p>
     </div>
@@ -30,30 +30,30 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
       whileInView={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur"
+      className="rounded-[2rem] border border-white/10 bg-slate-950/60 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur sm:p-5"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-1">
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-            Recent activity
+            History
           </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Deposits, refreshes, and withdrawals stay in one readable lane
+          <h2 className="text-xl font-semibold tracking-tight text-slate-50">
+            Wallet activity lane
           </h2>
         </div>
         <p className="max-w-xl text-sm leading-6 text-slate-400">
-          The activity timeline keeps kind, status, amount, summary, reference,
-          and relative timing visible without turning into a dense audit log.
+          Follow deposits, refreshes, and withdrawals in one compact history
+          lane without expanding into a full audit view.
         </p>
       </div>
 
       {activity.length === 0 ? (
         <EmptyPanelBody
-          title="No activity is recorded in this preview"
-          copy="Use the ready preview to inspect the timeline. The empty preview keeps the activity lane intentional when there are no deposits, refreshes, or withdrawals to show."
+          title="No activity is recorded"
+          copy="This wallet preview has no deposits, refreshes, or withdrawals yet. The history lane stays visible so the empty state still feels intentional."
         />
       ) : (
-        <div className="mt-5 grid gap-3 overflow-x-clip">
+        <div className="mt-4 grid gap-3 overflow-x-clip">
           {activity.map((item, index) => (
             <motion.div
               key={item.id}

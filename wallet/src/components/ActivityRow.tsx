@@ -24,23 +24,30 @@ export function ActivityRow({ activity }: ActivityRowProps) {
   const KindIcon = kindIcons[activity.kindLabel] ?? ArrowsClockwise;
 
   return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
+    <article className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-teal-400/10 text-teal-100 ring-1 ring-teal-300/20">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-400/10 text-teal-100 ring-1 ring-teal-300/20">
               <KindIcon className="h-5 w-5" weight="duotone" />
             </div>
             <span className="text-sm font-medium text-slate-100">
               {activity.kindLabel}
             </span>
-            <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
+            <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
               {activity.createdAtRelative}
             </span>
           </div>
-          <p className="text-lg font-semibold tracking-tight text-slate-50">
-            {activity.amountLabel}
-          </p>
+
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
+              Amount
+            </p>
+            <p className="break-words text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
+              {activity.amountLabel}
+            </p>
+          </div>
+
           <p className="text-sm leading-6 text-slate-400">{activity.summary}</p>
         </div>
 
@@ -49,40 +56,40 @@ export function ActivityRow({ activity }: ActivityRowProps) {
             label={activity.statusLabel}
             tone={activity.statusTone}
           />
-          <span className="text-xs uppercase tracking-[0.22em] text-slate-500">
+          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
             {activity.referenceShort}
           </span>
         </div>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
             Kind
           </p>
-          <p className="mt-1 text-sm text-slate-200">{activity.kindLabel}</p>
+          <p className="mt-2 text-sm text-slate-100">{activity.kindLabel}</p>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
             Status
           </p>
-          <p className="mt-1 text-sm text-slate-200">{activity.statusLabel}</p>
+          <p className="mt-2 text-sm text-slate-100">{activity.statusLabel}</p>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+        <div className="rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
             Amount
           </p>
-          <p className="mt-1 text-sm text-slate-200">{activity.amountLabel}</p>
+          <p className="mt-2 text-sm text-slate-100">{activity.amountLabel}</p>
         </div>
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+        <div className="min-w-0 rounded-[1rem] border border-white/10 bg-slate-950/50 p-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
             Reference
           </p>
-          <p className="mt-1 truncate text-sm text-slate-200">
+          <p className="mt-2 truncate text-sm text-slate-100" title={activity.referenceShort}>
             {activity.referenceShort}
           </p>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

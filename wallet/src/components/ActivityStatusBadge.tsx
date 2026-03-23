@@ -18,7 +18,7 @@ export function ActivityStatusBadge({
 }: ActivityStatusBadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs ${toneClasses[tone]}`}
+      className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.22em] ${toneClasses[tone]}`}
     >
       {label}
     </span>
