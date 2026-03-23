@@ -9,22 +9,22 @@ const actionPresets: WalletActionPreset[] = [
   {
     id: "send",
     label: "Send",
-    helper: "Prepare a private transfer from the current note inventory.",
+    helper: "Send funds from your wallet using the notes you already hold.",
   },
   {
     id: "receive",
     label: "Receive",
-    helper: "Show the active script address and delegate details.",
+    helper: "Share your wallet details to receive funds.",
   },
   {
     id: "deposit",
     label: "Deposit",
-    helper: "Track a Cardano funding UTxO before it becomes spendable notes.",
+    helper: "Track incoming Cardano funds before they become available in your wallet.",
   },
   {
     id: "withdraw",
     label: "Withdraw",
-    helper: "Assemble a withdrawal transaction for on-chain settlement.",
+    helper: "Move wallet funds out to a destination address.",
   },
 ];
 
@@ -39,7 +39,7 @@ export const walletActionDrafts: WalletActionDrafts = {
     amountInput: "250",
     recipient:
       "addr_test1qpf0m9k4m8s0q2s5f9e6z7h0d4v8u5k3w9q7p2c6n4y8m2s9d3q",
-    memo: "Operator transfer",
+    memo: "Rent payment",
   },
   receive: {
     assetId: "asset-usdm",
@@ -52,20 +52,20 @@ export const walletActionDrafts: WalletActionDrafts = {
     amountInput: "1500",
     sourceAddress:
       "addr_test1vzr8n2gk6tq9f0d8m4r3y5u7w2c1p6s9a0n3h8j4k7l2m5q6x8",
-    reference: "Desk top-up",
+    reference: "Savings top-up",
   },
   withdraw: {
     assetId: "asset-ada",
     amountInput: "750",
     destinationAddress:
       "addr1q8d5m3l9v2k7s4h0p6r1n8x5c3z9t6y2u7w4q0m8e1l5k3p9s7n",
-    reference: "Treasury settlement",
+    reference: "Cash out",
   },
 };
 
 export const walletState: WalletState = {
   identity: {
-    label: "Delegate Desk Wallet",
+    label: "Everyday Wallet",
     mode: "stub",
     network: "preprod",
     status: "ready",
@@ -191,7 +191,7 @@ export const walletState: WalletState = {
       status: "pending",
       assetTicker: "ADA",
       amount: 1500,
-      summary: "Withdrawal transaction assembled and waiting for submission.",
+      summary: "Transfer is ready and waiting for network submission.",
       reference: "tx_draft_9924",
       createdAt: "2026-03-18T09:31:00Z",
     },
@@ -201,7 +201,7 @@ export const walletState: WalletState = {
       status: "completed",
       assetTicker: "USDM",
       amount: 450,
-      summary: "Split one deposit note into three spendable output notes.",
+      summary: "One note was refreshed into smaller spendable notes.",
       reference: "refresh_17ab",
       createdAt: "2026-03-18T08:54:00Z",
     },
@@ -211,7 +211,7 @@ export const walletState: WalletState = {
       status: "completed",
       assetTicker: "USDM",
       amount: 1200,
-      summary: "Funding UTxO confirmed and blind signatures issued.",
+      summary: "Incoming funds were confirmed and added to your wallet.",
       reference: "0f3dd9ea:1",
       createdAt: "2026-03-18T08:21:00Z",
     },
@@ -221,7 +221,7 @@ export const walletState: WalletState = {
       status: "completed",
       assetTicker: "ADA",
       amount: 3200,
-      summary: "Cardano deposit ingested from the delegate script address.",
+      summary: "A Cardano deposit was received and is now part of your balance.",
       reference: "8cc2198b:0",
       createdAt: "2026-03-17T20:48:00Z",
     },
