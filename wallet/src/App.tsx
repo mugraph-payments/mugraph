@@ -1,29 +1,11 @@
-import { walletState } from "./data/stubWallet";
 import { AppShell } from "./components/AppShell";
+import { HeroSummary } from "./components/HeroSummary";
 import { WalletHeader } from "./components/WalletHeader";
+import { walletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
 
 const panelClassName =
   "rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur";
-
-function ShellMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4">
-      <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold tracking-tight text-slate-100">
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function ShellRegion({
   title,
@@ -55,36 +37,10 @@ function App() {
       }
       primary={
         <>
-          <section className={panelClassName}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                  Primary workspace
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-                  Responsive shell regions are in place
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                  The next steps can drop summary surfaces, action clusters, and
-                  inventory panels into this structure without revisiting the app
-                  shell.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <ShellMetric label="Assets" value={`${view.assets.length}`} />
-              <ShellMetric label="Notes" value={`${walletState.notes.length}`} />
-              <ShellMetric
-                label="Activity"
-                value={`${walletState.activity.length}`}
-              />
-              <ShellMetric
-                label="Primary actions"
-                value={`${view.actions.length}`}
-              />
-            </div>
-          </section>
+          <HeroSummary
+            identity={view.identity}
+            summaryMetrics={view.summaryMetrics}
+          />
 
           <section className={`${panelClassName} grid gap-4 xl:grid-cols-[1.1fr_0.9fr]`}>
             <ShellRegion
