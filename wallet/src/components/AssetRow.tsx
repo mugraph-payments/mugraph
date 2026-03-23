@@ -38,7 +38,7 @@ export function AssetRow({ asset }: AssetRowProps) {
 
   return (
     <article className="wallet-card p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200">
@@ -47,22 +47,9 @@ export function AssetRow({ asset }: AssetRowProps) {
             <span className="text-base text-slate-400">{asset.name}</span>
           </div>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div>
-              <p className="wallet-kicker text-slate-500">Balance</p>
-              <p className="wallet-data mt-1 text-xl font-semibold text-slate-50">
-                {asset.balanceLabel}
-              </p>
-            </div>
-            <div>
-              <p className="wallet-kicker text-slate-500">Share</p>
-              <p className="wallet-data mt-1 text-base text-slate-100">{asset.shareLabel}</p>
-            </div>
-            <div>
-              <p className="wallet-kicker text-slate-500">Notes</p>
-              <p className="wallet-data mt-1 text-base text-slate-100">{asset.noteCountLabel}</p>
-            </div>
-          </div>
+          <p className="wallet-data mt-3 text-xl font-semibold text-slate-50">
+            {asset.balanceLabel}
+          </p>
         </div>
 
         <div
@@ -70,6 +57,21 @@ export function AssetRow({ asset }: AssetRowProps) {
         >
           <TrendIcon className="h-4 w-4" weight="bold" />
           <span className="wallet-data">{trend.label}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="wallet-subtle-card p-3">
+          <p className="wallet-kicker text-slate-500">Balance share</p>
+          <p className="wallet-data mt-1 text-base text-slate-100">{asset.shareLabel}</p>
+        </div>
+        <div className="wallet-subtle-card p-3">
+          <p className="wallet-kicker text-slate-500">Notes</p>
+          <p className="wallet-data mt-1 text-base text-slate-100">{asset.noteCountLabel}</p>
+        </div>
+        <div className="wallet-subtle-card p-3 col-span-2 sm:col-span-1">
+          <p className="wallet-kicker text-slate-500">Trend</p>
+          <p className="wallet-data mt-1 text-base text-slate-100">{trend.label}</p>
         </div>
       </div>
     </article>

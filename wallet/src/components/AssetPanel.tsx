@@ -23,25 +23,28 @@ function EmptyPanelBody({
 export function AssetPanel({ assets }: AssetPanelProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-2">
         <div>
-          <p className="wallet-kicker text-slate-500">Holdings</p>
+          <p className="wallet-kicker text-slate-500">Assets</p>
           <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Asset inventory
+            Wallet holdings
           </h2>
         </div>
         <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          View balances, note density, and portfolio share without burying the important numbers in oversized cards.
+          Review each asset as a simple wallet list with balance, share, and note count.
         </p>
       </div>
 
       {assets.length === 0 ? (
         <EmptyPanelBody
           title="No assets are loaded"
-          copy="This wallet preview has no holdings available yet. The inventory lane stays visible so the empty state still feels intentional."
+          copy="This wallet preview has no holdings available yet. The list stays visible so the empty state still feels intentional."
         />
       ) : (
-        <div className="mt-5 grid gap-3">
+        <div
+          className="mt-5 flex flex-col gap-3"
+          aria-label="Asset list"
+        >
           {assets.map((asset) => (
             <AssetRow key={asset.id} asset={asset} />
           ))}
