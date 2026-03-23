@@ -18,6 +18,7 @@ import {
 import type {
   WalletActiveRegion,
   WalletActiveSection,
+  WalletReceiveDraft,
   WalletSendDraft,
 } from "./types/wallet";
 
@@ -41,6 +42,9 @@ function App() {
   const [sendDraft, setSendDraft] = useState<WalletSendDraft>(
     walletActionDrafts.send,
   );
+  const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(
+    walletActionDrafts.receive,
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 1023px)");
@@ -63,8 +67,9 @@ function App() {
       buildWalletActionDraftsView(walletState, {
         ...walletActionDrafts,
         send: sendDraft,
+        receive: receiveDraft,
       }),
-    [sendDraft],
+    [receiveDraft, sendDraft],
   );
   const shellView = useMemo(
     () =>
@@ -79,7 +84,7 @@ function App() {
     view.actions.find((action) => action.id === selectedActionId) ??
     view.actions[0];
   const selectedActionDraft = draftViews[selectedAction.id];
-  const sendAssetOptions = view.assets.map((asset) => ({
+  const assetOptions = view.assets.map((asset) => ({
     id: asset.id,
     label: asset.ticker,
     balanceLabel: asset.balanceLabel,
@@ -150,7 +155,16 @@ function App() {
               draft={selectedActionDraft}
               sendDraft={sendDraft}
               onSendDraftChange={setSendDraft}
-              sendAssetOptions={sendAssetOptions}
+              receiveDraft={receiveDraft}
+              onReceiveDraftChange={setReceiveDraft}
+              assetOptions={assetOptions}
+              receiveContext={{
+                label: view.identity.label,
+                delegatePkShort: view.identity.delegatePkShort,
+                scriptAddressShort: view.identity.scriptAddressShort,
+                networkLabel: view.identity.networkLabel,
+                lastSyncedRelative: view.identity.lastSyncedRelative,
+              }}
               noteCount={walletState.summary.noteCount}
               pendingActivityCount={walletState.summary.pendingActivityCount}
             />

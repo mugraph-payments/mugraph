@@ -1,19 +1,33 @@
 import type { WalletActionDraftView, WalletActionView } from "../lib/walletView";
-import type { WalletSendDraft } from "../types/wallet";
+import type { WalletReceiveDraft, WalletSendDraft } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
+
+interface AssetOption {
+  id: string;
+  label: string;
+  balanceLabel: string;
+}
+
+interface ReceiveContext {
+  label: string;
+  delegatePkShort: string;
+  scriptAddressShort: string;
+  networkLabel: string;
+  lastSyncedRelative: string;
+}
 
 interface WalletActionPanelProps {
   action: WalletActionView;
   draft: WalletActionDraftView;
   sendDraft: WalletSendDraft;
   onSendDraftChange: (draft: WalletSendDraft) => void;
-  sendAssetOptions: Array<{
-    id: string;
-    label: string;
-    balanceLabel: string;
-  }>;
+  receiveDraft: WalletReceiveDraft;
+  onReceiveDraftChange: (draft: WalletReceiveDraft) => void;
+  assetOptions: AssetOption[];
+  receiveContext: ReceiveContext;
   noteCount: number;
   pendingActivityCount: number;
 }
@@ -23,7 +37,10 @@ export function WalletActionPanel({
   draft,
   sendDraft,
   onSendDraftChange,
-  sendAssetOptions,
+  receiveDraft,
+  onReceiveDraftChange,
+  assetOptions,
+  receiveContext,
   noteCount,
   pendingActivityCount,
 }: WalletActionPanelProps) {
@@ -54,10 +71,21 @@ export function WalletActionPanel({
       {action.id === "send" ? (
         <SendDetails
           draft={sendDraft}
-          assetOptions={sendAssetOptions}
+          assetOptions={assetOptions}
           noteCount={noteCount}
           pendingActivityCount={pendingActivityCount}
           onDraftChange={onSendDraftChange}
+        />
+      ) : action.id === "receive" ? (
+        <ReceiveDetails
+          label={receiveContext.label}
+          delegatePkShort={receiveContext.delegatePkShort}
+          scriptAddressShort={receiveContext.scriptAddressShort}
+          networkLabel={receiveContext.networkLabel}
+          lastSyncedRelative={receiveContext.lastSyncedRelative}
+          draft={receiveDraft}
+          assetOptions={assetOptions}
+          onDraftChange={onReceiveDraftChange}
         />
       ) : (
         <>
