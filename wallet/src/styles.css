@@ -17,8 +17,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+  line-height: 1.5;
   background-color: #050816;
   color: #f8fafc;
+  --wallet-text-soft: #b4c1d3;
+  --wallet-text-strong: #f8fafc;
+  --wallet-chip-neutral-bg: rgba(15, 23, 42, 0.7);
+  --wallet-chip-neutral-border: rgba(148, 163, 184, 0.18);
 }
 
 html,
@@ -36,6 +41,8 @@ body {
     radial-gradient(circle at top, rgba(45, 212, 191, 0.16), transparent 32%),
     linear-gradient(180deg, #07111f 0%, #050816 100%);
   color: inherit;
+  line-height: inherit;
+  letter-spacing: 0.01em;
 }
 
 * {

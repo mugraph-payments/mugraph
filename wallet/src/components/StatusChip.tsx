@@ -13,24 +13,25 @@ const toneClasses: Record<
   { container: string; label: string; value: string }
 > = {
   neutral: {
-    container: "border-white/10 bg-white/5",
-    label: "text-slate-500",
-    value: "text-slate-200",
+    container:
+      "border-[color:var(--wallet-chip-neutral-border)] bg-[color:var(--wallet-chip-neutral-bg)]",
+    label: "text-[color:var(--wallet-text-soft)]",
+    value: "text-[color:var(--wallet-text-strong)]",
   },
   positive: {
-    container: "border-teal-400/20 bg-teal-400/10",
-    label: "text-teal-200/75",
-    value: "text-teal-100",
+    container: "border-teal-300/25 bg-teal-400/12",
+    label: "text-teal-100/80",
+    value: "text-teal-50",
   },
   warning: {
-    container: "border-amber-400/25 bg-amber-400/12",
-    label: "text-amber-200/75",
-    value: "text-amber-100",
+    container: "border-amber-300/30 bg-amber-400/14",
+    label: "text-amber-100/80",
+    value: "text-amber-50",
   },
   critical: {
-    container: "border-rose-400/25 bg-rose-400/12",
-    label: "text-rose-200/75",
-    value: "text-rose-100",
+    container: "border-rose-300/30 bg-rose-400/14",
+    label: "text-rose-100/80",
+    value: "text-rose-50",
   },
 };
 
@@ -49,11 +50,17 @@ export function StatusChip({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
       className={`border text-xs will-change-transform ${classes.container} ${
-        compact ? "rounded-2xl px-3 py-2" : "rounded-full px-3 py-1"
+        compact
+          ? "grid gap-1 rounded-[1.15rem] px-3 py-2.5"
+          : "inline-flex items-center gap-2 rounded-full px-3 py-1.5"
       }`}
     >
-      <span className={classes.label}>{label}</span>{" "}
-      <span className={classes.value}>{value}</span>
+      <span className={`text-[10px] font-medium tracking-[0.14em] ${classes.label}`}>
+        {label}
+      </span>
+      <span className={`text-[11px] font-semibold tracking-[0.01em] ${classes.value}`}>
+        {value}
+      </span>
     </motion.div>
   );
 }
