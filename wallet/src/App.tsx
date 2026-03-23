@@ -116,6 +116,7 @@ function App() {
           statusLabel={view.identity.statusLabel}
           statusTone={view.identity.statusTone}
           lastSyncedRelative={view.identity.lastSyncedRelative}
+          activeDestination={activeDestination}
         />
 
         <main className="grid min-h-0 flex-1 content-start gap-5 pb-24">

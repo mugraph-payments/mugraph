@@ -1,4 +1,5 @@
 import type { WalletTone } from "../lib/walletView";
+import type { WalletActiveDestination } from "../types/wallet";
 import { BrandMark } from "./BrandMark";
 import { StatusChip } from "./StatusChip";
 
@@ -8,6 +9,7 @@ interface WalletHeaderProps {
   statusLabel: string;
   statusTone: WalletTone;
   lastSyncedRelative: string;
+  activeDestination: WalletActiveDestination;
 }
 
 export function WalletHeader({
@@ -16,16 +18,20 @@ export function WalletHeader({
   statusLabel,
   statusTone,
   lastSyncedRelative,
+  activeDestination,
 }: WalletHeaderProps) {
+  const isHome = activeDestination === "home";
+
   return (
     <header className="wallet-panel px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <BrandMark />
-            <div className="hidden h-8 w-px bg-white/10 lg:block" />
+            <BrandMark compact={isHome} />
             <div className="min-w-0">
-              <p className="wallet-kicker text-slate-500">Operator wallet preview</p>
+              <p className="wallet-kicker text-slate-500">
+                {isHome ? "Wallet" : "Operator wallet preview"}
+              </p>
               <h1 className="wallet-heading truncate text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
                 {label}
               </h1>
@@ -33,17 +39,19 @@ export function WalletHeader({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 lg:justify-end">
-          <StatusChip label="Mode" value="Stub" compact />
-          <StatusChip label="Network" value={networkLabel} compact />
-          <StatusChip
-            label="Status"
-            value={statusLabel}
-            tone={statusTone}
-            compact
-          />
-          <StatusChip label="Last sync" value={lastSyncedRelative} compact />
-        </div>
+        {isHome ? null : (
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <StatusChip label="Mode" value="Stub" compact />
+            <StatusChip label="Network" value={networkLabel} compact />
+            <StatusChip
+              label="Status"
+              value={statusLabel}
+              tone={statusTone}
+              compact
+            />
+            <StatusChip label="Last sync" value={lastSyncedRelative} compact />
+          </div>
+        )}
       </div>
     </header>
   );
