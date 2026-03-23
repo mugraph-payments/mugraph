@@ -6,27 +6,16 @@ import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
-import { PreviewStateSwitcher } from "./components/PreviewStateSwitcher";
 import { WalletHeader } from "./components/WalletHeader";
-import {
-  getWalletPreviewState,
-  walletPreviewStates,
-  type WalletPreviewStateId,
-} from "./data/walletPreviewStates";
+import { walletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
 
 function App() {
-  const [previewStateId, setPreviewStateId] =
-    useState<WalletPreviewStateId>("ready");
   const [selectedActionId, setSelectedActionId] = useState<
     ReturnType<typeof createWalletView>["actions"][number]["id"]
   >("send");
 
-  const activePreview = getWalletPreviewState(previewStateId);
-  const view = useMemo(
-    () => createWalletView(activePreview.state),
-    [activePreview.state],
-  );
+  const view = useMemo(() => createWalletView(walletState), []);
   const selectedAction =
     view.actions.find((action) => action.id === selectedActionId) ??
     view.actions[0];
@@ -34,19 +23,12 @@ function App() {
   return (
     <AppShell
       header={
-        <>
-          <PreviewStateSwitcher
-            activePreviewId={previewStateId}
-            previews={walletPreviewStates}
-            onPreviewSelect={setPreviewStateId}
-          />
-          <WalletHeader
-            label={view.identity.label}
-            networkLabel={view.identity.networkLabel}
-            statusLabel={view.identity.statusLabel}
-            lastSyncedRelative={view.identity.lastSyncedRelative}
-          />
-        </>
+        <WalletHeader
+          label={view.identity.label}
+          networkLabel={view.identity.networkLabel}
+          statusLabel={view.identity.statusLabel}
+          lastSyncedRelative={view.identity.lastSyncedRelative}
+        />
       }
       primary={
         <>
@@ -59,7 +41,7 @@ function App() {
             actions={view.actions}
             selectedActionId={selectedAction.id}
             onActionSelect={setSelectedActionId}
-            previewStateId={previewStateId}
+            previewStateId="ready"
           />
 
           <AssetPanel assets={view.assets} />
@@ -70,10 +52,7 @@ function App() {
         </>
       }
       secondary={
-        <ActionDetailPanel
-          action={selectedAction}
-          previewStateId={previewStateId}
-        />
+        <ActionDetailPanel action={selectedAction} previewStateId="ready" />
       }
     />
   );
