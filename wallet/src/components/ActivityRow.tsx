@@ -25,53 +25,39 @@ export function ActivityRow({ activity }: ActivityRowProps) {
 
   return (
     <article className="wallet-card p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-teal-400/10 text-teal-100 ring-1 ring-teal-300/20">
-              <KindIcon className="h-5 w-5" weight="duotone" />
-            </div>
-            <span className="text-sm font-medium text-slate-100">{activity.kindLabel}</span>
-            <span className="wallet-kicker text-slate-500">{activity.createdAtRelative}</span>
-          </div>
-
-          <div className="space-y-1">
-            <p className="wallet-kicker text-slate-500">Amount</p>
-            <p className="wallet-data break-words text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
-              {activity.amountLabel}
-            </p>
-          </div>
-
-          <p className="wallet-copy text-sm leading-6 text-slate-400">{activity.summary}</p>
+      <div className="grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
+          <KindIcon className="h-5 w-5" weight="duotone" />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="wallet-kicker text-slate-500">{activity.kindLabel}</span>
+            <span className="text-sm text-slate-400">{activity.createdAtRelative}</span>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="wallet-kicker text-slate-500">Amount</p>
+              <p className="wallet-data mt-1 text-lg font-semibold text-slate-50">
+                {activity.amountLabel}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="wallet-kicker text-slate-500">Summary</p>
+              <p className="wallet-copy mt-1 text-sm leading-6 text-slate-400">
+                {activity.summary}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start gap-2 lg:items-end">
           <ActivityStatusBadge
             label={activity.statusLabel}
             tone={activity.statusTone}
           />
-          <span className="wallet-code text-[11px] text-slate-500">{activity.referenceShort}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Kind</p>
-          <p className="mt-2 text-sm text-slate-100">{activity.kindLabel}</p>
-        </div>
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Status</p>
-          <p className="mt-2 text-sm text-slate-100">{activity.statusLabel}</p>
-        </div>
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Amount</p>
-          <p className="wallet-data mt-2 text-sm text-slate-100">{activity.amountLabel}</p>
-        </div>
-        <div className="wallet-subtle-card min-w-0 p-3">
-          <p className="wallet-kicker text-slate-500">Reference</p>
-          <p className="wallet-code mt-2 truncate text-sm text-slate-100" title={activity.referenceShort}>
-            {activity.referenceShort}
-          </p>
+          <span className="wallet-code text-sm text-slate-500">{activity.referenceShort}</span>
         </div>
       </div>
     </article>

@@ -13,7 +13,7 @@ function EmptyPanelBody({
   copy: string;
 }) {
   return (
-    <div className="mt-4 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] p-5">
+    <div className="wallet-card mt-5 p-5">
       <h3 className="wallet-heading text-sm font-medium text-slate-100">{title}</h3>
       <p className="wallet-copy mt-2 max-w-xl text-sm leading-6 text-slate-400">{copy}</p>
     </div>
@@ -22,17 +22,16 @@ function EmptyPanelBody({
 
 export function AssetPanel({ assets }: AssetPanelProps) {
   return (
-    <section className="wallet-panel p-4 sm:p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-1">
+    <section className="wallet-panel p-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
           <p className="wallet-kicker text-slate-500">Holdings</p>
-          <h2 className="wallet-heading text-xl font-semibold tracking-tight text-slate-50">
+          <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
             Asset inventory
           </h2>
         </div>
-        <p className="wallet-copy max-w-xl text-sm leading-6 text-slate-400">
-          Track wallet balances, note density, and balance share without leaving
-          the inventory lane.
+        <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
+          View balances, note density, and portfolio share without burying the important numbers in oversized cards.
         </p>
       </div>
 
@@ -42,7 +41,7 @@ export function AssetPanel({ assets }: AssetPanelProps) {
           copy="This wallet preview has no holdings available yet. The inventory lane stays visible so the empty state still feels intentional."
         />
       ) : (
-        <div className="mt-4 grid gap-3">
+        <div className="mt-5 grid gap-3">
           {assets.map((asset) => (
             <AssetRow key={asset.id} asset={asset} />
           ))}

@@ -38,45 +38,38 @@ export function AssetRow({ asset }: AssetRowProps) {
 
   return (
     <article className="wallet-card p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-3">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-slate-200">
+            <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200">
               {asset.ticker}
             </span>
-            <span className="wallet-copy min-w-0 break-words text-sm text-slate-400">
-              {asset.name}
-            </span>
+            <span className="text-sm text-slate-400">{asset.name}</span>
           </div>
 
-          <div className="space-y-1">
-            <p className="wallet-kicker text-slate-500">Balance</p>
-            <p className="wallet-data break-words text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
-              {asset.balanceLabel}
-            </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="wallet-kicker text-slate-500">Balance</p>
+              <p className="wallet-data mt-1 text-lg font-semibold text-slate-50">
+                {asset.balanceLabel}
+              </p>
+            </div>
+            <div>
+              <p className="wallet-kicker text-slate-500">Share</p>
+              <p className="wallet-data mt-1 text-sm text-slate-100">{asset.shareLabel}</p>
+            </div>
+            <div>
+              <p className="wallet-kicker text-slate-500">Notes</p>
+              <p className="wallet-data mt-1 text-sm text-slate-100">{asset.noteCountLabel}</p>
+            </div>
           </div>
         </div>
 
         <div
-          className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-xs ${trendClasses[asset.trendTone]}`}
+          className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${trendClasses[asset.trendTone]}`}
         >
           <TrendIcon className="h-4 w-4" weight="bold" />
           <span className="wallet-data">{trend.label}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Notes</p>
-          <p className="wallet-data mt-2 text-sm text-slate-100">{asset.noteCountLabel}</p>
-        </div>
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Share</p>
-          <p className="wallet-data mt-2 text-sm text-slate-100">{asset.shareLabel}</p>
-        </div>
-        <div className="wallet-subtle-card p-3">
-          <p className="wallet-kicker text-slate-500">Trend</p>
-          <p className="wallet-data mt-2 text-sm text-slate-100">{trend.label}</p>
         </div>
       </div>
     </article>

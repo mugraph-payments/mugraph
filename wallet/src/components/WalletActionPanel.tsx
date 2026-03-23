@@ -78,19 +78,22 @@ export function WalletActionPanel({
   const readinessTone = draft.isReady ? "positive" : "warning";
   const readinessTitle = draft.isReady
     ? `${draft.title} draft is ready`
-    : `${draft.title} draft needs attention`;
+    : `${draft.title} still needs input`;
   const readinessDescription = draft.isReady
-    ? `${draft.primaryLabel} can continue with the current stub-backed draft.`
+    ? `${draft.primaryLabel} can continue with the current draft.`
     : draft.missingRequirements.join(" • ");
 
   return (
     <section className="wallet-panel p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="wallet-kicker text-slate-500">Action panel</p>
+          <p className="wallet-kicker text-slate-500">Current action</p>
           <h2 className="wallet-heading mt-2 text-xl font-semibold tracking-tight text-slate-50">
-            {action.label} is selected
+            {action.label}
           </h2>
+          <p className="wallet-copy mt-2 text-sm leading-6 text-slate-400">
+            {action.helper}
+          </p>
         </div>
         <span className="wallet-kicker self-start rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-slate-300">
           {action.id}
@@ -140,18 +143,18 @@ export function WalletActionPanel({
         <>
           <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(16rem,0.9fr)]">
             <ActionSummaryCard
-              eyebrow="Current flow"
+              eyebrow="Flow"
               title={draft.title}
               description={draft.helper}
               footer={
-                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
+                <div className="rounded-[1.1rem] border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300">
                   Primary action: <span className="text-slate-100">{draft.primaryLabel}</span>
                 </div>
               }
             />
 
             <ActionSummaryCard
-              eyebrow="Draft status"
+              eyebrow="Readiness"
               title={readinessTitle}
               description={readinessDescription}
               tone={readinessTone}

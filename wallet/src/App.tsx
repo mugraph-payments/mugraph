@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
-import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
 import { WalletHeader } from "./components/WalletHeader";
+import { WalletOverviewBoard } from "./components/WalletOverviewBoard";
+import { WalletSectionTabs } from "./components/WalletSectionTabs";
 import { WalletSidebar } from "./components/WalletSidebar";
-import { WalletWorkspace } from "./components/WalletWorkspace";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
 import {
   buildWalletActionDraftsView,
@@ -16,7 +16,6 @@ import {
   createWalletView,
 } from "./lib/walletView";
 import type {
-  WalletActiveRegion,
   WalletActiveSection,
   WalletDepositDraft,
   WalletReceiveDraft,
@@ -24,22 +23,12 @@ import type {
   WalletWithdrawDraft,
 } from "./types/wallet";
 
-function getIsCompactLayout() {
-  return window.matchMedia("(max-width: 1023px)").matches;
-}
-
 function App() {
   const [selectedActionId, setSelectedActionId] = useState<
     ReturnType<typeof createWalletView>["actions"][number]["id"]
   >(walletShellState.activeAction);
-  const [activeRegion, setActiveRegion] = useState<WalletActiveRegion>(
-    walletShellState.activeRegion,
-  );
   const [activeSection, setActiveSection] = useState<WalletActiveSection>(
     walletShellState.activeSection,
-  );
-  const [isCompactLayout, setIsCompactLayout] = useState(() =>
-    getIsCompactLayout(),
   );
   const [sendDraft, setSendDraft] = useState<WalletSendDraft>(
     walletActionDrafts.send,
@@ -53,21 +42,6 @@ function App() {
   const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
     walletActionDrafts.withdraw,
   );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 1023px)");
-    const handleMediaQueryChange = (event: MediaQueryListEvent) => {
-      setIsCompactLayout(event.matches);
-    };
-
-    setIsCompactLayout(mediaQuery.matches);
-
-    mediaQuery.addEventListener("change", handleMediaQueryChange);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleMediaQueryChange);
-    };
-  }, []);
 
   const view = useMemo(() => createWalletView(walletState), []);
   const latestDeposit = useMemo(
@@ -92,11 +66,11 @@ function App() {
   const shellView = useMemo(
     () =>
       buildWalletShellViewModel(walletState, {
-        activeRegion,
+        activeRegion: "primary",
         activeSection,
         activeAction: selectedActionId,
       }),
-    [activeRegion, activeSection, selectedActionId],
+    [activeSection, selectedActionId],
   );
   const selectedAction =
     view.actions.find((action) => action.id === selectedActionId) ??
@@ -109,22 +83,28 @@ function App() {
   }));
   const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
 
-  function handleActionSelect(actionId: typeof selectedActionId) {
-    setSelectedActionId(actionId);
-
-    if (isCompactLayout) {
-      setActiveRegion("secondary");
+  const activeSectionPanel = (() => {
+    switch (activeSection) {
+      case "overview":
+        return (
+          <WalletOverviewBoard
+            assets={view.assets}
+            notes={view.notes}
+            activity={view.activity}
+          />
+        );
+      case "holdings":
+        return <AssetPanel assets={view.assets} />;
+      case "notes":
+        return <NotesPanel notes={view.notes} />;
+      case "activity":
+        return <ActivityPanel activity={view.activity} />;
     }
-  }
-
-  function handleSectionChange(section: WalletActiveSection) {
-    setActiveSection(section);
-    setActiveRegion("primary");
-  }
+  })();
 
   return (
-    <AppShell
-      header={
+    <div className="min-h-[100dvh] text-slate-50">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[94rem] flex-col gap-5 px-4 py-5 sm:px-5 lg:px-6 lg:py-6">
         <WalletHeader
           label={view.identity.label}
           networkLabel={view.identity.networkLabel}
@@ -132,43 +112,38 @@ function App() {
           statusTone={view.identity.statusTone}
           lastSyncedRelative={view.identity.lastSyncedRelative}
         />
-      }
-      workspace={
-        <WalletWorkspace
-          isCompactLayout={isCompactLayout}
-          activeRegion={activeRegion}
-          activeSection={activeSection}
-          sections={shellView.sections}
-          onRegionChange={setActiveRegion}
-          onSectionChange={handleSectionChange}
-          overview={
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_20rem] xl:items-start">
-              <HeroSummary
-                identity={view.identity}
-                summaryMetrics={view.summaryMetrics}
-              />
 
-              <WalletSidebar
-                label={view.identity.label}
-                networkLabel={view.identity.networkLabel}
-                statusLabel={view.identity.statusLabel}
-                statusTone={view.identity.statusTone}
-                delegatePkShort={view.identity.delegatePkShort}
-                scriptAddressShort={view.identity.scriptAddressShort}
-                lastSyncedRelative={view.identity.lastSyncedRelative}
-              />
-            </div>
-          }
-          holdings={<AssetPanel assets={view.assets} />}
-          notes={<NotesPanel notes={view.notes} />}
-          activity={<ActivityPanel activity={view.activity} />}
-          actionNav={
+        <div className="grid min-h-0 flex-1 gap-5 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]">
+          <aside className="grid content-start gap-5 xl:sticky xl:top-6 xl:self-start">
+            <WalletSidebar
+              label={view.identity.label}
+              networkLabel={view.identity.networkLabel}
+              statusLabel={view.identity.statusLabel}
+              statusTone={view.identity.statusTone}
+              delegatePkShort={view.identity.delegatePkShort}
+              scriptAddressShort={view.identity.scriptAddressShort}
+              lastSyncedRelative={view.identity.lastSyncedRelative}
+            />
+            <WalletSectionTabs
+              sections={shellView.sections}
+              activeSection={activeSection}
+              onSectionChange={setActiveSection}
+            />
+          </aside>
+
+          <main className="grid min-w-0 content-start gap-5">
+            <HeroSummary
+              identity={view.identity}
+              summaryMetrics={view.summaryMetrics}
+            />
+            {activeSectionPanel}
+          </main>
+
+          <aside className="grid content-start gap-5 xl:sticky xl:top-6 xl:self-start">
             <WalletActionNav
               actions={shellView.actions}
-              onActionSelect={handleActionSelect}
+              onActionSelect={setSelectedActionId}
             />
-          }
-          actionPanel={
             <WalletActionPanel
               action={selectedAction}
               draft={selectedActionDraft}
@@ -203,10 +178,10 @@ function App() {
               noteCount={walletState.summary.noteCount}
               pendingActivityCount={walletState.summary.pendingActivityCount}
             />
-          }
-        />
-      }
-    />
+          </aside>
+        </div>
+      </div>
+    </div>
   );
 }
 
