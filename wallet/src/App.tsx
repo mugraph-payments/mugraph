@@ -7,6 +7,7 @@ import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
 import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
+import { WalletHomeScreen } from "./components/WalletHomeScreen";
 import { WalletOverviewBoard } from "./components/WalletOverviewBoard";
 import { WalletSidebar } from "./components/WalletSidebar";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
@@ -86,11 +87,20 @@ function App() {
     switch (activeDestination) {
       case "home":
         return (
-          <WalletOverviewBoard
-            assets={view.assets}
-            notes={view.notes}
-            activity={view.activity}
-          />
+          <>
+            <WalletHomeScreen
+              identity={view.identity}
+              summaryMetrics={view.summaryMetrics}
+              assets={view.assets}
+              activity={view.activity}
+              onPrimaryActionSelect={setSelectedActionId}
+            />
+            <WalletOverviewBoard
+              assets={view.assets}
+              notes={view.notes}
+              activity={view.activity}
+            />
+          </>
         );
       case "assets":
         return <AssetPanel assets={view.assets} />;
