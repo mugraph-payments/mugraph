@@ -80,7 +80,7 @@ export function WalletWorkspace({
   })();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-clip">
       {isCompactLayout ? (
         <div className="flex items-center gap-2 rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-2 backdrop-blur">
           <RegionToggleButton
@@ -98,9 +98,9 @@ export function WalletWorkspace({
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+      <div className="grid min-h-0 flex-1 items-start gap-4 overflow-x-clip lg:grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] xl:grid-cols-[minmax(0,1.3fr)_minmax(16rem,18rem)]">
         {showPrimary ? (
-          <section className="grid content-start gap-4 min-w-0">
+          <section className="grid min-w-0 content-start gap-4 overflow-x-clip">
             <div className="px-1">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
                 Wallet region
@@ -114,7 +114,7 @@ export function WalletWorkspace({
                   activeSection={activeSection}
                   onSectionChange={onSectionChange}
                 />
-                {compactPrimarySection}
+                <div className="min-w-0 overflow-x-clip">{compactPrimarySection}</div>
               </>
             ) : (
               <>
@@ -128,7 +128,7 @@ export function WalletWorkspace({
         ) : null}
 
         {showSecondary ? (
-          <aside className="grid content-start gap-4 min-w-0">
+          <aside className="grid min-w-0 content-start gap-4 overflow-x-clip lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
             <div className="px-1">
               <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
                 Action region

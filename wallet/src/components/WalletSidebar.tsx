@@ -38,17 +38,16 @@ export function WalletSidebar({
   lastSyncedRelative,
 }: WalletSidebarProps) {
   return (
-    <aside className="hidden rounded-[2rem] border border-white/10 bg-slate-950/60 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur lg:grid lg:content-start lg:gap-4">
+    <aside className="hidden self-start rounded-[2rem] border border-white/10 bg-slate-950/60 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur lg:grid lg:max-h-[calc(100dvh-9rem)] lg:content-start lg:gap-4 lg:overflow-y-auto lg:overscroll-contain xl:sticky xl:top-4">
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
           Wallet identity
         </p>
-        <h2 className="text-xl font-semibold tracking-tight text-slate-50">
+        <h2 className="text-lg font-semibold tracking-tight text-slate-50 xl:text-xl">
           {label}
         </h2>
         <p className="text-sm leading-6 text-slate-400">
-          Keep the delegate context, network posture, and funding target visible
-          while moving through wallet actions.
+          Keep delegate and funding context visible while moving through wallet actions.
         </p>
       </div>
 
