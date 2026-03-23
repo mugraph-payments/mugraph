@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
-import { NotesPanel } from "./components/NotesPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
 import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
+import { WalletSettingsScreen } from "./components/WalletSettingsScreen";
 import { WalletSidebar } from "./components/WalletSidebar";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
 import {
@@ -96,7 +96,7 @@ function App() {
       case "assets":
         return <AssetPanel assets={view.assets} />;
       case "settings":
-        return <NotesPanel notes={view.notes} />;
+        return <WalletSettingsScreen />;
       case "activity":
         return <ActivityPanel activity={view.activity} />;
     }
