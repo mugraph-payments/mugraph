@@ -18,6 +18,7 @@ import {
 import type {
   WalletActiveRegion,
   WalletActiveSection,
+  WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
 } from "./types/wallet";
@@ -45,6 +46,9 @@ function App() {
   const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(
     walletActionDrafts.receive,
   );
+  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(
+    walletActionDrafts.deposit,
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 1023px)");
@@ -62,14 +66,19 @@ function App() {
   }, []);
 
   const view = useMemo(() => createWalletView(walletState), []);
+  const latestDeposit = useMemo(
+    () => view.activity.find((item) => item.kindLabel === "Deposit") ?? null,
+    [view.activity],
+  );
   const draftViews = useMemo(
     () =>
       buildWalletActionDraftsView(walletState, {
         ...walletActionDrafts,
         send: sendDraft,
         receive: receiveDraft,
+        deposit: depositDraft,
       }),
-    [receiveDraft, sendDraft],
+    [depositDraft, receiveDraft, sendDraft],
   );
   const shellView = useMemo(
     () =>
@@ -157,6 +166,8 @@ function App() {
               onSendDraftChange={setSendDraft}
               receiveDraft={receiveDraft}
               onReceiveDraftChange={setReceiveDraft}
+              depositDraft={depositDraft}
+              onDepositDraftChange={setDepositDraft}
               assetOptions={assetOptions}
               receiveContext={{
                 label: view.identity.label,
@@ -164,6 +175,12 @@ function App() {
                 scriptAddressShort: view.identity.scriptAddressShort,
                 networkLabel: view.identity.networkLabel,
                 lastSyncedRelative: view.identity.lastSyncedRelative,
+              }}
+              depositContext={{
+                scriptAddressShort: view.identity.scriptAddressShort,
+                delegatePkShort: view.identity.delegatePkShort,
+                latestDepositReference:
+                  latestDeposit?.referenceShort ?? "No deposit reference",
               }}
               noteCount={walletState.summary.noteCount}
               pendingActivityCount={walletState.summary.pendingActivityCount}

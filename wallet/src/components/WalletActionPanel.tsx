@@ -1,7 +1,12 @@
 import type { WalletActionDraftView, WalletActionView } from "../lib/walletView";
-import type { WalletReceiveDraft, WalletSendDraft } from "../types/wallet";
+import type {
+  WalletDepositDraft,
+  WalletReceiveDraft,
+  WalletSendDraft,
+} from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { DepositDetails } from "./DepositDetails";
 import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
 
@@ -19,6 +24,12 @@ interface ReceiveContext {
   lastSyncedRelative: string;
 }
 
+interface DepositContext {
+  scriptAddressShort: string;
+  delegatePkShort: string;
+  latestDepositReference: string;
+}
+
 interface WalletActionPanelProps {
   action: WalletActionView;
   draft: WalletActionDraftView;
@@ -26,8 +37,11 @@ interface WalletActionPanelProps {
   onSendDraftChange: (draft: WalletSendDraft) => void;
   receiveDraft: WalletReceiveDraft;
   onReceiveDraftChange: (draft: WalletReceiveDraft) => void;
+  depositDraft: WalletDepositDraft;
+  onDepositDraftChange: (draft: WalletDepositDraft) => void;
   assetOptions: AssetOption[];
   receiveContext: ReceiveContext;
+  depositContext: DepositContext;
   noteCount: number;
   pendingActivityCount: number;
 }
@@ -39,8 +53,11 @@ export function WalletActionPanel({
   onSendDraftChange,
   receiveDraft,
   onReceiveDraftChange,
+  depositDraft,
+  onDepositDraftChange,
   assetOptions,
   receiveContext,
+  depositContext,
   noteCount,
   pendingActivityCount,
 }: WalletActionPanelProps) {
@@ -86,6 +103,16 @@ export function WalletActionPanel({
           draft={receiveDraft}
           assetOptions={assetOptions}
           onDraftChange={onReceiveDraftChange}
+        />
+      ) : action.id === "deposit" ? (
+        <DepositDetails
+          scriptAddressShort={depositContext.scriptAddressShort}
+          delegatePkShort={depositContext.delegatePkShort}
+          latestDepositReference={depositContext.latestDepositReference}
+          pendingActivityCount={pendingActivityCount}
+          draft={depositDraft}
+          assetOptions={assetOptions}
+          onDraftChange={onDepositDraftChange}
         />
       ) : (
         <>
