@@ -6,7 +6,9 @@ import {
 } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
 import { DepositDetails } from "./DepositDetails";
+import { NotesPanel } from "./NotesPanel";
 import { WithdrawDetails } from "./WithdrawDetails";
+import type { WalletNoteView } from "../lib/walletView";
 import type { WalletDepositDraft, WalletWithdrawDraft } from "../types/wallet";
 
 interface AssetOption {
@@ -28,6 +30,7 @@ interface WalletSettingsScreenProps {
   pendingActivityCount: number;
   topAssetLabel: string;
   assetOptions: AssetOption[];
+  notes: WalletNoteView[];
 }
 
 function TechnicalMetaRow({
@@ -67,9 +70,10 @@ export function WalletSettingsScreen({
   pendingActivityCount,
   topAssetLabel,
   assetOptions,
+  notes,
 }: WalletSettingsScreenProps) {
   const [activeAdvancedAction, setActiveAdvancedAction] = useState<
-    "deposit" | "withdraw"
+    "deposit" | "withdraw" | "notes"
   >("deposit");
 
   return (
@@ -113,7 +117,7 @@ export function WalletSettingsScreen({
           />
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="mt-5 grid grid-cols-3 gap-3">
           <button
             type="button"
             aria-pressed={activeAdvancedAction === "deposit"}
@@ -138,6 +142,18 @@ export function WalletSettingsScreen({
           >
             Withdraw
           </button>
+          <button
+            type="button"
+            aria-pressed={activeAdvancedAction === "notes"}
+            onClick={() => setActiveAdvancedAction("notes")}
+            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              activeAdvancedAction === "notes"
+                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                : "border-white/10 bg-white/[0.04] text-slate-200"
+            }`}
+          >
+            Notes
+          </button>
         </div>
 
         {activeAdvancedAction === "deposit" ? (
@@ -150,7 +166,7 @@ export function WalletSettingsScreen({
             assetOptions={assetOptions}
             onDraftChange={onDepositDraftChange}
           />
-        ) : (
+        ) : activeAdvancedAction === "withdraw" ? (
           <WithdrawDetails
             latestWithdrawReference={latestWithdrawReference}
             pendingActivityCount={pendingActivityCount}
@@ -160,6 +176,8 @@ export function WalletSettingsScreen({
             assetOptions={assetOptions}
             onDraftChange={onWithdrawDraftChange}
           />
+        ) : (
+          <NotesPanel notes={notes} />
         )}
       </section>
     </section>

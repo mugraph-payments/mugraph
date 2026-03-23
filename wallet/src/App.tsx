@@ -107,6 +107,7 @@ function App() {
             pendingActivityCount={walletState.summary.pendingActivityCount}
             topAssetLabel={topAssetLabel}
             assetOptions={assetOptions}
+            notes={view.notes}
           />
         );
       case "activity":
