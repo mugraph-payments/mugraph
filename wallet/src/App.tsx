@@ -2,6 +2,7 @@ import { ActionGrid } from "./components/ActionGrid";
 import { AppShell } from "./components/AppShell";
 import { AssetPanel } from "./components/AssetPanel";
 import { HeroSummary } from "./components/HeroSummary";
+import { NotesPanel } from "./components/NotesPanel";
 import { WalletHeader } from "./components/WalletHeader";
 import { walletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
@@ -48,11 +49,9 @@ function App() {
 
           <AssetPanel assets={view.assets} />
 
-          <section className={`${panelClassName} grid gap-4 xl:grid-cols-[1.1fr_0.9fr]`}>
-            <ShellRegion
-              title="Note inventory"
-              copy="Private notes will stack here with room for status badges, amounts, and compact cryptographic references."
-            />
+          <NotesPanel notes={view.notes} />
+
+          <section className={`${panelClassName} grid gap-4`}>
             <ShellRegion
               title="Timeline lane"
               copy="Recent activity and status context will live here with room for compact cards and denser desktop views."
