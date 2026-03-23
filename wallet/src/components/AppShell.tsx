@@ -2,20 +2,16 @@ import type { ReactNode } from "react";
 
 interface AppShellProps {
   header: ReactNode;
-  primary: ReactNode;
-  secondary: ReactNode;
+  workspace: ReactNode;
 }
 
-export function AppShell({ header, primary, secondary }: AppShellProps) {
+export function AppShell({ header, workspace }: AppShellProps) {
   return (
     <div className="min-h-[100dvh] text-slate-50">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
         {header}
 
-        <main className="grid flex-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-          <section className="grid content-start gap-4">{primary}</section>
-          <aside className="grid content-start gap-4">{secondary}</aside>
-        </main>
+        <main className="flex min-h-0 flex-1 flex-col gap-4">{workspace}</main>
       </div>
     </div>
   );
