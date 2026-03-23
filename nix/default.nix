@@ -65,6 +65,7 @@ let
     ++ optionals isLinux [
       prev.glib
       prev.gtk3
+      prev.librsvg
       prev.libsoup_3
       prev.webkitgtk_4_1
     ]
