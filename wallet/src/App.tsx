@@ -1,3 +1,4 @@
+import { ActionGrid } from "./components/ActionGrid";
 import { AppShell } from "./components/AppShell";
 import { HeroSummary } from "./components/HeroSummary";
 import { WalletHeader } from "./components/WalletHeader";
@@ -42,6 +43,8 @@ function App() {
             summaryMetrics={view.summaryMetrics}
           />
 
+          <ActionGrid actions={view.actions} />
+
           <section className={`${panelClassName} grid gap-4 xl:grid-cols-[1.1fr_0.9fr]`}>
             <ShellRegion
               title="Portfolio surfaces"
@@ -55,49 +58,18 @@ function App() {
         </>
       }
       secondary={
-        <>
-          <section className={panelClassName}>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-              Action workspace
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
-              The action-first rail anchors the shell
-            </h2>
-            <div className="mt-4 grid gap-3">
-              {view.actions.map((action) => (
-                <div
-                  key={action.id}
-                  className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-medium text-slate-100">
-                      {action.label}
-                    </h3>
-                    <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                      {action.id}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
-                    {action.helper}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className={panelClassName}>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-              Detail region
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
-              Selected action details land here next
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              This region stays visible on compact screens and becomes a distinct
-              secondary column at larger breakpoints.
-            </p>
-          </section>
-        </>
+        <section className={panelClassName}>
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
+            Detail region
+          </p>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
+            Selected action details land here next
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            This region stays visible on compact screens and becomes a distinct
+            secondary column at larger breakpoints.
+          </p>
+        </section>
       }
     />
   );
