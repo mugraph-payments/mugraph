@@ -5,9 +5,9 @@ import { HeroSummary } from "./components/HeroSummary";
 import { NotesPanel } from "./components/NotesPanel";
 import { WalletActionNav } from "./components/WalletActionNav";
 import { WalletActionPanel } from "./components/WalletActionPanel";
+import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletOverviewBoard } from "./components/WalletOverviewBoard";
-import { WalletSectionTabs } from "./components/WalletSectionTabs";
 import { WalletSidebar } from "./components/WalletSidebar";
 import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
 import {
@@ -17,26 +17,11 @@ import {
 } from "./lib/walletView";
 import type {
   WalletActiveDestination,
-  WalletActiveSection,
   WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
   WalletWithdrawDraft,
 } from "./types/wallet";
-
-const sectionDestinationMap: Record<WalletActiveSection, WalletActiveDestination> = {
-  overview: "home",
-  holdings: "assets",
-  notes: "settings",
-  activity: "activity",
-};
-
-const destinationSectionMap: Record<WalletActiveDestination, WalletActiveSection> = {
-  home: "overview",
-  assets: "holdings",
-  settings: "notes",
-  activity: "activity",
-};
 
 function App() {
   const [selectedActionId, setSelectedActionId] = useState<
@@ -96,7 +81,6 @@ function App() {
     balanceLabel: asset.balanceLabel,
   }));
   const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
-  const activeSection = destinationSectionMap[activeDestination];
 
   const activeDestinationPanel = (() => {
     switch (activeDestination) {
@@ -117,10 +101,6 @@ function App() {
     }
   })();
 
-  function handleSectionChange(section: WalletActiveSection) {
-    setActiveDestination(sectionDestinationMap[section]);
-  }
-
   return (
     <div className="min-h-dvh text-slate-50">
       <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col gap-5 px-4 py-5 sm:px-5 sm:py-6">
@@ -132,7 +112,7 @@ function App() {
           lastSyncedRelative={view.identity.lastSyncedRelative}
         />
 
-        <main className="grid min-h-0 flex-1 content-start gap-5">
+        <main className="grid min-h-0 flex-1 content-start gap-5 pb-24">
           <WalletSidebar
             label={view.identity.label}
             networkLabel={view.identity.networkLabel}
@@ -141,12 +121,6 @@ function App() {
             delegatePkShort={view.identity.delegatePkShort}
             scriptAddressShort={view.identity.scriptAddressShort}
             lastSyncedRelative={view.identity.lastSyncedRelative}
-          />
-
-          <WalletSectionTabs
-            sections={shellView.sections}
-            activeSection={activeSection}
-            onSectionChange={handleSectionChange}
           />
 
           <HeroSummary
@@ -196,6 +170,11 @@ function App() {
             pendingActivityCount={walletState.summary.pendingActivityCount}
           />
         </main>
+
+        <WalletBottomNav
+          activeDestination={activeDestination}
+          onDestinationSelect={setActiveDestination}
+        />
       </div>
     </div>
   );
