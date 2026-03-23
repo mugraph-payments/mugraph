@@ -1,97 +1,212 @@
 import type { WalletPreviewStateId } from "../data/walletPreviewStates";
+import type { WalletSendDraft } from "../types/wallet";
+import { ActionField } from "./ActionField";
+import { ActionSummaryCard } from "./ActionSummaryCard";
+
+interface SendAssetOption {
+  id: string;
+  label: string;
+  balanceLabel: string;
+}
 
 interface SendDetailsProps {
+  draft?: WalletSendDraft;
+  assetOptions?: SendAssetOption[];
   noteCount: number;
-  topAssetLabel: string;
   pendingActivityCount: number;
+  onDraftChange?: (draft: WalletSendDraft) => void;
+  topAssetLabel?: string;
   isEmpty?: boolean;
   previewStateId?: WalletPreviewStateId;
 }
 
-const surfaceToneClasses: Record<
-  WalletPreviewStateId,
-  { shell: string; copy: string; field: string }
-> = {
-  ready: {
-    shell: "border-white/10 bg-white/[0.02]",
-    copy: "text-slate-300",
-    field: "border-white/10 bg-white/[0.03]",
-  },
-  empty: {
-    shell: "border-white/10 bg-white/[0.02]",
-    copy: "text-slate-300",
-    field: "border-white/10 bg-white/[0.03]",
-  },
-  syncing: {
-    shell: "border-amber-400/20 bg-amber-400/[0.05]",
-    copy: "text-amber-50/90",
-    field: "border-amber-400/15 bg-amber-400/[0.06]",
-  },
-  attention: {
-    shell: "border-rose-400/20 bg-rose-400/[0.05]",
-    copy: "text-rose-50/90",
-    field: "border-rose-400/15 bg-rose-400/[0.06]",
-  },
-};
+function parsePositiveAmount(input: string): number | null {
+  const trimmedValue = input.trim();
 
-function DetailField({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: WalletPreviewStateId;
-}) {
-  const classes = surfaceToneClasses[tone];
+  if (!trimmedValue) {
+    return null;
+  }
 
-  return (
-    <div className={`rounded-[1.25rem] p-3 ${classes.field}`}>
-      <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 text-sm text-slate-100">{value}</p>
-    </div>
-  );
+  const parsedValue = Number(trimmedValue);
+
+  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+    return null;
+  }
+
+  return parsedValue;
 }
 
 export function SendDetails({
+  draft,
+  assetOptions = [],
   noteCount,
-  topAssetLabel,
   pendingActivityCount,
+  onDraftChange,
+  topAssetLabel,
   isEmpty = false,
-  previewStateId = "ready",
 }: SendDetailsProps) {
-  const classes = surfaceToneClasses[previewStateId];
+  if (!draft || !onDraftChange) {
+    return (
+      <div className="mt-4 grid gap-4">
+        <ActionSummaryCard
+          eyebrow="Send draft"
+          title={isEmpty ? "Send is unavailable" : "Prepare a private transfer"}
+          description={
+            isEmpty
+              ? "Send is unavailable because there are no spendable notes loaded for transfer prep."
+              : "Sending starts from the private note inventory. This stub view keeps the operator focused on note availability, the largest holding, and queue pressure before preparing a transfer."
+          }
+          tone={isEmpty ? "warning" : "neutral"}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ActionField label="Spendable notes" value={isEmpty ? "0" : `${noteCount}`} />
+          <ActionField
+            label="Largest holding"
+            value={isEmpty ? "No holdings loaded" : (topAssetLabel ?? "No holdings loaded")}
+          />
+          <ActionField
+            label="Queue pressure"
+            value={isEmpty ? "0 pending items" : `${pendingActivityCount} pending item${pendingActivityCount === 1 ? "" : "s"}`}
+          />
+          <ActionField
+            label="Transfer mode"
+            value={isEmpty ? "Unavailable" : "Private note transfer"}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const selectedAsset =
+    assetOptions.find((option) => option.id === draft.assetId) ?? null;
+  const amount = parsePositiveAmount(draft.amountInput);
+  const recipient = draft.recipient.trim();
+  const isReady = Boolean(selectedAsset && amount !== null && recipient);
+  const missingRequirements = [
+    !selectedAsset ? "Select an asset" : null,
+    amount === null ? "Enter a valid amount" : null,
+    !recipient ? "Add a recipient" : null,
+  ].filter((item): item is string => item !== null);
+
+  const summaryTitle = isReady
+    ? `Ready to review ${draft.amountInput.trim()} ${selectedAsset?.label ?? "transfer"}`
+    : "Finish the transfer draft";
+  const summaryDescription = isReady
+    ? `Prepare a private note transfer to ${recipient}. ${pendingActivityCount} pending queue item${pendingActivityCount === 1 ? "" : "s"} remain visible before handoff.`
+    : missingRequirements.join(" • ");
 
   return (
-    <div className={`mt-4 rounded-[1.5rem] p-4 ${classes.shell}`}>
-      <p className={`text-sm leading-6 ${classes.copy}`}>
-        {isEmpty
-          ? "Send is unavailable in the empty preview because there are no spendable notes loaded for transfer prep."
-          : "Sending starts from the private note inventory. This stub view keeps the operator focused on how many notes are available, which asset dominates the wallet, and whether pending work should be cleared before preparing a transfer."}
-      </p>
+    <div className="mt-4 grid gap-4">
+      <ActionSummaryCard
+        eyebrow="Send draft"
+        title={summaryTitle}
+        description={summaryDescription}
+        tone={isReady ? "positive" : "warning"}
+        footer={
+          <button
+            type="button"
+            disabled={!isReady}
+            className="w-full rounded-[1rem] border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-sm font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500"
+          >
+            Review transfer
+          </button>
+        }
+      />
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <DetailField
-          label="Spendable notes"
-          value={isEmpty ? "0" : `${noteCount}`}
-          tone={previewStateId}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-2 text-sm text-slate-200">
+          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
+            Asset
+          </span>
+          <select
+            value={draft.assetId}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                assetId: event.target.value,
+              })
+            }
+            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition focus:border-teal-300/30"
+          >
+            <option value="">Select an asset</option>
+            {assetOptions.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-200">
+          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
+            Amount
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={draft.amountInput}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                amountInput: event.target.value,
+              })
+            }
+            placeholder="0.00"
+            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+          />
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
+          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
+            Recipient
+          </span>
+          <input
+            type="text"
+            value={draft.recipient}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                recipient: event.target.value,
+              })
+            }
+            placeholder="addr..."
+            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+          />
+        </label>
+
+        <label className="grid gap-2 text-sm text-slate-200 sm:col-span-2">
+          <span className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
+            Memo
+          </span>
+          <textarea
+            value={draft.memo}
+            onChange={(event) =>
+              onDraftChange({
+                ...draft,
+                memo: event.target.value,
+              })
+            }
+            rows={3}
+            placeholder="Optional note for operators"
+            className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-teal-300/30"
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ActionField label="Spendable notes" value={`${noteCount}`} />
+        <ActionField
+          label="Selected balance"
+          value={selectedAsset?.balanceLabel ?? "Asset not selected"}
         />
-        <DetailField
-          label="Largest holding"
-          value={isEmpty ? "No holdings loaded" : topAssetLabel}
-          tone={previewStateId}
+        <ActionField
+          label="Queue pressure"
+          value={`${pendingActivityCount} pending item${pendingActivityCount === 1 ? "" : "s"}`}
         />
-        <DetailField
-          label="Pending queue"
-          value={isEmpty ? "0 items" : `${pendingActivityCount} item${pendingActivityCount === 1 ? "" : "s"}`}
-          tone={previewStateId}
-        />
-        <DetailField
-          label="Transfer mode"
-          value={isEmpty ? "Unavailable in empty preview" : "Private note transfer"}
-          tone={previewStateId}
+        <ActionField
+          label="Readiness"
+          value={isReady ? "Ready to review" : "Draft incomplete"}
         />
       </div>
     </div>

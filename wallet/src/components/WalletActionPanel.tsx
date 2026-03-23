@@ -1,15 +1,31 @@
 import type { WalletActionDraftView, WalletActionView } from "../lib/walletView";
+import type { WalletSendDraft } from "../types/wallet";
 import { ActionField } from "./ActionField";
 import { ActionSummaryCard } from "./ActionSummaryCard";
+import { SendDetails } from "./SendDetails";
 
 interface WalletActionPanelProps {
   action: WalletActionView;
   draft: WalletActionDraftView;
+  sendDraft: WalletSendDraft;
+  onSendDraftChange: (draft: WalletSendDraft) => void;
+  sendAssetOptions: Array<{
+    id: string;
+    label: string;
+    balanceLabel: string;
+  }>;
+  noteCount: number;
+  pendingActivityCount: number;
 }
 
 export function WalletActionPanel({
   action,
   draft,
+  sendDraft,
+  onSendDraftChange,
+  sendAssetOptions,
+  noteCount,
+  pendingActivityCount,
 }: WalletActionPanelProps) {
   const readinessTone = draft.isReady ? "positive" : "warning";
   const readinessTitle = draft.isReady
@@ -35,31 +51,47 @@ export function WalletActionPanel({
         </span>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(16rem,0.9fr)]">
-        <ActionSummaryCard
-          eyebrow="Current flow"
-          title={draft.title}
-          description={draft.helper}
-          footer={
-            <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
-              Primary action: <span className="text-slate-100">{draft.primaryLabel}</span>
-            </div>
-          }
+      {action.id === "send" ? (
+        <SendDetails
+          draft={sendDraft}
+          assetOptions={sendAssetOptions}
+          noteCount={noteCount}
+          pendingActivityCount={pendingActivityCount}
+          onDraftChange={onSendDraftChange}
         />
+      ) : (
+        <>
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(16rem,0.9fr)]">
+            <ActionSummaryCard
+              eyebrow="Current flow"
+              title={draft.title}
+              description={draft.helper}
+              footer={
+                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
+                  Primary action: <span className="text-slate-100">{draft.primaryLabel}</span>
+                </div>
+              }
+            />
 
-        <ActionSummaryCard
-          eyebrow="Draft status"
-          title={readinessTitle}
-          description={readinessDescription}
-          tone={readinessTone}
-        />
-      </div>
+            <ActionSummaryCard
+              eyebrow="Draft status"
+              title={readinessTitle}
+              description={readinessDescription}
+              tone={readinessTone}
+            />
+          </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {draft.fields.map((field) => (
-          <ActionField key={`${draft.id}-${field.label}`} label={field.label} value={field.value} />
-        ))}
-      </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {draft.fields.map((field) => (
+              <ActionField
+                key={`${draft.id}-${field.label}`}
+                label={field.label}
+                value={field.value}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

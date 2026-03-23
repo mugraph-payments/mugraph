@@ -15,7 +15,11 @@ import {
   buildWalletShellViewModel,
   createWalletView,
 } from "./lib/walletView";
-import type { WalletActiveRegion, WalletActiveSection } from "./types/wallet";
+import type {
+  WalletActiveRegion,
+  WalletActiveSection,
+  WalletSendDraft,
+} from "./types/wallet";
 
 function getIsCompactLayout() {
   return window.matchMedia("(max-width: 1023px)").matches;
@@ -33,6 +37,9 @@ function App() {
   );
   const [isCompactLayout, setIsCompactLayout] = useState(() =>
     getIsCompactLayout(),
+  );
+  const [sendDraft, setSendDraft] = useState<WalletSendDraft>(
+    walletActionDrafts.send,
   );
 
   useEffect(() => {
@@ -52,8 +59,12 @@ function App() {
 
   const view = useMemo(() => createWalletView(walletState), []);
   const draftViews = useMemo(
-    () => buildWalletActionDraftsView(walletState, walletActionDrafts),
-    [],
+    () =>
+      buildWalletActionDraftsView(walletState, {
+        ...walletActionDrafts,
+        send: sendDraft,
+      }),
+    [sendDraft],
   );
   const shellView = useMemo(
     () =>
@@ -68,6 +79,11 @@ function App() {
     view.actions.find((action) => action.id === selectedActionId) ??
     view.actions[0];
   const selectedActionDraft = draftViews[selectedAction.id];
+  const sendAssetOptions = view.assets.map((asset) => ({
+    id: asset.id,
+    label: asset.ticker,
+    balanceLabel: asset.balanceLabel,
+  }));
 
   function handleActionSelect(actionId: typeof selectedActionId) {
     setSelectedActionId(actionId);
@@ -132,6 +148,11 @@ function App() {
             <WalletActionPanel
               action={selectedAction}
               draft={selectedActionDraft}
+              sendDraft={sendDraft}
+              onSendDraftChange={setSendDraft}
+              sendAssetOptions={sendAssetOptions}
+              noteCount={walletState.summary.noteCount}
+              pendingActivityCount={walletState.summary.pendingActivityCount}
             />
           }
         />
