@@ -1,5 +1,7 @@
 import type {
+  WalletActionDrafts,
   WalletActionPreset,
+  WalletShellState,
   WalletState,
 } from "../types/wallet";
 
@@ -25,6 +27,42 @@ const actionPresets: WalletActionPreset[] = [
     helper: "Assemble a withdrawal transaction for on-chain settlement.",
   },
 ];
+
+export const walletShellState: WalletShellState = {
+  activeRegion: "primary",
+  activeSection: "overview",
+  activeAction: "send",
+};
+
+export const walletActionDrafts: WalletActionDrafts = {
+  send: {
+    assetId: "asset-usdm",
+    amountInput: "250",
+    recipient:
+      "addr_test1qpf0m9k4m8s0q2s5f9e6z7h0d4v8u5k3w9q7p2c6n4y8m2s9d3q",
+    memo: "Operator transfer",
+  },
+  receive: {
+    assetId: "asset-usdm",
+    requestedAmountInput: "1200",
+    requestLabel: "Invoice #482",
+    shareMode: "qr",
+  },
+  deposit: {
+    assetId: "asset-ada",
+    amountInput: "1500",
+    sourceAddress:
+      "addr_test1vzr8n2gk6tq9f0d8m4r3y5u7w2c1p6s9a0n3h8j4k7l2m5q6x8",
+    reference: "Desk top-up",
+  },
+  withdraw: {
+    assetId: "asset-ada",
+    amountInput: "750",
+    destinationAddress:
+      "addr1q8d5m3l9v2k7s4h0p6r1n8x5c3z9t6y2u7w4q0m8e1l5k3p9s7n",
+    reference: "Treasury settlement",
+  },
+};
 
 export const walletState: WalletState = {
   identity: {
