@@ -1,3 +1,5 @@
+import { BrandMark } from "./BrandMark";
+
 interface WalletHeaderProps {
   label: string;
   networkLabel: string;
@@ -23,11 +25,13 @@ export function WalletHeader({
   return (
     <header className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.3em] text-teal-300/70">
-            Wallet shell preview
-          </p>
+        <div className="space-y-4">
+          <BrandMark />
+
           <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.3em] text-teal-300/70">
+              Wallet shell preview
+            </p>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
               {label}
             </h1>
