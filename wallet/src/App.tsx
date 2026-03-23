@@ -96,7 +96,13 @@ function App() {
       case "assets":
         return <AssetPanel assets={view.assets} />;
       case "settings":
-        return <WalletSettingsScreen />;
+        return (
+          <WalletSettingsScreen
+            delegatePkShort={view.identity.delegatePkShort}
+            scriptAddressShort={view.identity.scriptAddressShort}
+            syncPostureLabel={`${view.identity.statusLabel} on ${view.identity.networkLabel}`}
+          />
+        );
       case "activity":
         return <ActivityPanel activity={view.activity} />;
     }
