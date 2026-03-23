@@ -19,41 +19,58 @@
  -moz-osx-font-smoothing: grayscale;
  -webkit-text-size-adjust: 100%;
  line-height: 1.5;
- background-color: #050916;
- color: #f8fafc;
- --wallet-text-soft: #a9b8cf;
- --wallet-text-strong: #f8fafc;
- --wallet-chip-neutral-bg: rgba(10, 19, 33, 0.86);
- --wallet-chip-neutral-border: rgba(148, 163, 184, 0.16);
+ background-color: #282a36;
+ color: #f8f8f2;
+ --wallet-text-soft: #94a3d1;
+ --wallet-text-strong: #f8f8f2;
+ --wallet-chip-neutral-bg: rgba(68, 71, 90, 0.82);
+ --wallet-chip-neutral-border: rgba(189, 147, 249, 0.18);
  --wallet-surface-strong: linear-gradient(
   180deg,
-  rgba(13, 22, 38, 0.94) 0%,
-  rgba(8, 14, 26, 0.9) 100%
+  rgba(49, 52, 68, 0.96) 0%,
+  rgba(40, 42, 54, 0.94) 100%
  );
  --wallet-surface-soft: linear-gradient(
   180deg,
-  rgba(18, 28, 45, 0.82) 0%,
-  rgba(10, 16, 28, 0.82) 100%
+  rgba(68, 71, 90, 0.82) 0%,
+  rgba(49, 52, 68, 0.84) 100%
  );
- --wallet-border: rgba(148, 163, 184, 0.14);
- --wallet-border-strong: rgba(255, 255, 255, 0.1);
+ --wallet-border: rgba(189, 147, 249, 0.16);
+ --wallet-border-strong: rgba(248, 248, 242, 0.12);
  --wallet-shadow-panel:
-  0 1px 0 rgba(255, 255, 255, 0.05),
-  0 30px 70px -32px rgba(2, 6, 23, 0.88),
-  0 44px 120px -48px rgba(6, 11, 22, 1);
+  0 1px 0 rgba(248, 248, 242, 0.04),
+  0 24px 70px -34px rgba(24, 25, 32, 0.94),
+  0 42px 110px -52px rgba(17, 18, 24, 1);
  --wallet-shadow-card:
-  inset 0 1px 0 rgba(255, 255, 255, 0.04),
-  0 16px 34px -28px rgba(2, 6, 23, 0.85);
+  inset 0 1px 0 rgba(248, 248, 242, 0.03),
+  0 16px 36px -28px rgba(20, 21, 28, 0.86);
  --wallet-shadow-accent:
-  0 0 0 1px rgba(94, 234, 212, 0.14),
-  0 18px 40px -28px rgba(45, 212, 191, 0.45);
+  0 0 0 1px rgba(189, 147, 249, 0.22),
+  0 18px 42px -28px rgba(255, 121, 198, 0.42);
 }
 
-html,
+html {
+ min-height: 100%;
+ overflow-x: hidden;
+ font-size: 16px;
+}
+
 body,
 #root {
  min-height: 100%;
  overflow-x: hidden;
+}
+
+@media (min-width: 1024px) {
+ html {
+  font-size: 17px;
+ }
+}
+
+@media (min-width: 1536px) {
+ html {
+  font-size: 18px;
+ }
 }
 
 body {
@@ -61,10 +78,10 @@ body {
  min-height: 100vh;
  overflow-x: hidden;
  background:
-  radial-gradient(circle at top left, rgba(45, 212, 191, 0.18), transparent 28%),
-  radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 34%),
-  radial-gradient(circle at bottom, rgba(15, 23, 42, 0.74), transparent 55%),
-  linear-gradient(180deg, #07101d 0%, #040813 100%);
+  radial-gradient(circle at top left, rgba(255, 121, 198, 0.16), transparent 28%),
+  radial-gradient(circle at top right, rgba(139, 233, 253, 0.16), transparent 34%),
+  radial-gradient(circle at bottom, rgba(189, 147, 249, 0.12), transparent 55%),
+  linear-gradient(180deg, #2b2d3a 0%, #1f2029 100%);
  color: inherit;
  line-height: 1.6;
  letter-spacing: 0.01em;
@@ -87,13 +104,96 @@ select {
 }
 
 ::selection {
- background: rgba(45, 212, 191, 0.24);
- color: #f8fafc;
+ background: rgba(255, 121, 198, 0.28);
+ color: #f8f8f2;
+}
+
+/* Dracula palette remap for the Tailwind utilities used throughout the wallet UI. */
+[class*="text-slate-500"] {
+ color: #6272a4 !important;
+}
+
+[class*="text-slate-400"] {
+ color: #aeb8de !important;
+}
+
+[class*="text-slate-300"],
+[class*="text-slate-200"] {
+ color: #d5dbf4 !important;
+}
+
+[class*="text-slate-100"],
+[class*="text-slate-50"] {
+ color: #f8f8f2 !important;
+}
+
+[class*="text-teal-300"],
+[class*="text-teal-200"] {
+ color: #8be9fd !important;
+}
+
+[class*="text-teal-100"],
+[class*="text-teal-50"] {
+ color: #f8f8f2 !important;
+}
+
+[class*="border-white/10"] {
+ border-color: rgba(248, 248, 242, 0.12) !important;
+}
+
+[class*="border-slate-300/20"] {
+ border-color: rgba(189, 147, 249, 0.2) !important;
+}
+
+[class*="border-teal-400/20"],
+[class*="border-teal-300/20"],
+[class*="border-teal-300/25"],
+[class*="border-teal-300/30"] {
+ border-color: rgba(189, 147, 249, 0.32) !important;
+}
+
+[class*="bg-white/[0.03]"],
+[class*="bg-white/[0.04]"],
+[class*="bg-white/[0.05]"],
+[class*="bg-white/[0.06]"],
+[class*="bg-white/5"] {
+ background-color: rgba(68, 71, 90, 0.46) !important;
+}
+
+[class*="bg-black/20"],
+[class*="bg-slate-950/60"] {
+ background-color: rgba(30, 31, 41, 0.74) !important;
+}
+
+[class*="bg-teal-400/[0.08]"],
+[class*="bg-teal-400/10"],
+[class*="bg-teal-400/12"] {
+ background-color: rgba(189, 147, 249, 0.16) !important;
+}
+
+[class*="ring-white/10"] {
+ --tw-ring-color: rgba(248, 248, 242, 0.14) !important;
+}
+
+[class*="ring-teal-300/20"] {
+ --tw-ring-color: rgba(255, 121, 198, 0.24) !important;
 }
 
 @layer components {
  .wallet-phone-shell {
-  max-width: 30rem;
+  max-width: min(100%, 30rem);
+ }
+
+ @media (min-width: 1024px) {
+  .wallet-phone-shell {
+   max-width: min(100%, 34rem);
+  }
+ }
+
+ @media (min-width: 1536px) {
+  .wallet-phone-shell {
+   max-width: min(100%, 36rem);
+  }
  }
 
  .wallet-panel {
@@ -112,16 +212,16 @@ select {
 
  .wallet-card {
   @apply rounded-2xl border;
-  background: rgba(255, 255, 255, 0.035);
-  border-color: rgba(148, 163, 184, 0.12);
+  background: rgba(68, 71, 90, 0.38);
+  border-color: rgba(189, 147, 249, 0.14);
   box-shadow: var(--wallet-shadow-card);
  }
 
  .wallet-subtle-card {
   @apply rounded-2xl border;
-  background: rgba(255, 255, 255, 0.025);
-  border-color: rgba(148, 163, 184, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: rgba(68, 71, 90, 0.26);
+  border-color: rgba(189, 147, 249, 0.12);
+  box-shadow: inset 0 1px 0 rgba(248, 248, 242, 0.03);
  }
 
  .wallet-kicker {
@@ -138,22 +238,27 @@ select {
  }
 
  .wallet-interactive {
-  @apply min-h-11 transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ;
+  @apply min-h-11 transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  --tw-ring-color: rgba(255, 121, 198, 0.38);
+  --tw-ring-offset-color: #282a36;
  }
 
  .wallet-input {
-  @apply min-h-12 rounded-2xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2 focus:ring-teal-300/20;
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(148, 163, 184, 0.14);
+  @apply min-h-12 rounded-2xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2;
+  --tw-ring-color: rgba(255, 121, 198, 0.22);
+  background: rgba(68, 71, 90, 0.34);
+  border-color: rgba(189, 147, 249, 0.16);
  }
 
  .wallet-input:focus {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(94, 234, 212, 0.28);
+  background: rgba(68, 71, 90, 0.48);
+  border-color: rgba(255, 121, 198, 0.32);
  }
 
  .wallet-choice {
-  @apply min-h-12 rounded-2xl border p-4 text-left transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300/45 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ;
+  @apply min-h-12 rounded-2xl border p-4 text-left transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  --tw-ring-color: rgba(255, 121, 198, 0.38);
+  --tw-ring-offset-color: #282a36;
  }
 
  .wallet-data {
