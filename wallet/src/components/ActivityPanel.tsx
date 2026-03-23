@@ -36,11 +36,11 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
         <div>
           <p className="wallet-kicker text-slate-500">Activity</p>
           <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Recent transactions
+            Activity history
           </h2>
         </div>
         <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Browse wallet activity as one mobile transaction list with the latest items first.
+          Browse your wallet activity in one mobile list with the latest items first.
         </p>
       </div>
 

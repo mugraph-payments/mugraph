@@ -27,11 +27,11 @@ export function AssetPanel({ assets }: AssetPanelProps) {
         <div>
           <p className="wallet-kicker text-slate-500">Assets</p>
           <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Wallet holdings
+            Your assets
           </h2>
         </div>
         <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Review each asset as a simple wallet list with balance, share, and note count.
+          Review each asset in a simple wallet list with balance, share, and note count.
         </p>
       </div>
 

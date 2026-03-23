@@ -84,7 +84,7 @@ export function WalletSettingsScreen({
           Wallet settings
         </h2>
         <p className="wallet-copy max-w-2xl text-base leading-7 text-slate-400">
-          Manage wallet preferences, advanced tools, and technical details from one place.
+          Manage your wallet details, transfers, and note history from one place.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export function WalletSettingsScreen({
           <div>
             <p className="wallet-kicker text-slate-500">Advanced</p>
             <p className="mt-2 text-base text-slate-300">
-              Technical tools and private wallet internals live here.
+              Extra wallet tools and note history live here.
             </p>
           </div>
           <CaretRight className="h-5 w-5 text-slate-500" weight="bold" />
@@ -111,7 +111,7 @@ export function WalletSettingsScreen({
             icon={<ScanSmiley className="h-4.5 w-4.5" weight="duotone" />}
           />
           <TechnicalMetaRow
-            label="Sync posture"
+            label="Sync status"
             value={syncPostureLabel}
             icon={<Pulse className="h-4.5 w-4.5" weight="duotone" />}
           />

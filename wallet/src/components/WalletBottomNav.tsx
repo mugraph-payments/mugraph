@@ -45,7 +45,7 @@ export function WalletBottomNav({
 }: WalletBottomNavProps) {
   return (
     <nav
-      aria-label="Wallet destinations"
+      aria-label="Main wallet navigation"
       className="wallet-panel sticky bottom-4 z-10 p-2"
     >
       <div className="grid grid-cols-4 gap-2">

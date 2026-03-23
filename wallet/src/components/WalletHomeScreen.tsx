@@ -41,7 +41,7 @@ export function WalletHomeScreen({
       <section className="wallet-panel p-5 sm:p-6">
         <div className="space-y-4">
           <div className="space-y-2">
-            <p className="wallet-kicker text-slate-500">Wallet home</p>
+            <p className="wallet-kicker text-slate-500">Available balance</p>
             <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50">
               {totalAda?.value ?? "0 ADA"}
             </h2>
@@ -86,7 +86,7 @@ export function WalletHomeScreen({
           <div>
             <p className="wallet-kicker text-slate-500">Recent activity</p>
             <h3 className="wallet-heading mt-2 text-xl font-semibold text-slate-50">
-              Latest transactions
+              Recent activity
             </h3>
           </div>
           <span className="text-sm text-slate-400">{recentActivity.length} items</span>
@@ -120,7 +120,7 @@ export function WalletHomeScreen({
           <div>
             <p className="wallet-kicker text-slate-500">Assets</p>
             <h3 className="wallet-heading mt-2 text-xl font-semibold text-slate-50">
-              Holdings preview
+              Your assets
             </h3>
           </div>
           <span className="text-sm text-slate-400">{topAssets.length} assets</span>

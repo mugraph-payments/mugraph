@@ -74,11 +74,11 @@ export function WalletActionScreen({
           <ArrowLeft className="h-4 w-4" weight="bold" />
           Home
         </button>
-        <span className="wallet-kicker text-slate-500">Action screen</span>
+        <span className="wallet-kicker text-slate-500">Action</span>
       </div>
 
       <div className="mt-4 space-y-2">
-        <p className="wallet-kicker text-slate-500">Primary actions</p>
+        <p className="wallet-kicker text-slate-500">Choose an action</p>
         <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
           {selectedAction?.label ?? "Action"}
         </h2>
