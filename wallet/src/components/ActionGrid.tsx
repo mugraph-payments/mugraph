@@ -4,6 +4,7 @@ import {
   ArrowSquareIn,
   ArrowSquareOut,
 } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "framer-motion";
 import type { ComponentType } from "react";
 import type { WalletPreviewStateId } from "../data/walletPreviewStates";
 import type { WalletActionView } from "../lib/walletView";
@@ -67,9 +68,13 @@ export function ActionGrid({
   previewStateId,
 }: ActionGridProps) {
   const tone = previewToneClasses[previewStateId];
+  const prefersReducedMotion = useReducedMotion();
 
   return (
-    <section
+    <motion.section
+      initial={prefersReducedMotion ? false : { opacity: 0.98, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
       className={`rounded-[2rem] border p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.95)] backdrop-blur ${tone.shell}`}
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -93,11 +98,14 @@ export function ActionGrid({
           const isSelected = action.id === selectedActionId;
 
           return (
-            <button
+            <motion.button
               key={action.id}
               type="button"
               onClick={() => onActionSelect(action.id)}
-              className={`rounded-[1.5rem] border p-4 text-left transition-colors ${
+              whileHover={prefersReducedMotion ? undefined : { y: -2 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
+              transition={{ type: "spring", stiffness: 280, damping: 22 }}
+              className={`rounded-[1.5rem] border p-4 text-left will-change-transform ${
                 isSelected ? tone.selected : "border-white/10 bg-white/[0.03]"
               }`}
             >
@@ -120,10 +128,10 @@ export function ActionGrid({
                   {action.helper}
                 </p>
               </div>
-            </button>
+            </motion.button>
           );
         })}
       </div>
-    </section>
+    </motion.section>
   );
 }

@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "framer-motion";
 import type { WalletTone } from "../lib/walletView";
 
 interface StatusChipProps {
@@ -38,13 +39,17 @@ export function StatusChip({
   tone = "neutral",
 }: StatusChipProps) {
   const classes = toneClasses[tone];
+  const prefersReducedMotion = useReducedMotion();
 
   return (
-    <div
-      className={`rounded-full border px-3 py-1 text-xs ${classes.container}`}
+    <motion.div
+      initial={prefersReducedMotion ? false : { opacity: 0.96, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+      className={`rounded-full border px-3 py-1 text-xs will-change-transform ${classes.container}`}
     >
       <span className={classes.label}>{label}</span>{" "}
       <span className={classes.value}>{value}</span>
-    </div>
+    </motion.div>
   );
 }
