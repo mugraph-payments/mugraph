@@ -19,8 +19,8 @@ import type {
   WalletNote,
   WalletNoteStatus,
   WalletReceiveDraft,
+  WalletRootDestination,
   WalletSendDraft,
-  WalletShellRegion,
   WalletShellSection,
   WalletShellState,
   WalletState,
@@ -97,12 +97,6 @@ export interface WalletView {
   activity: WalletActivityView[];
 }
 
-export interface WalletShellRegionView {
-  id: WalletShellRegion;
-  label: string;
-  isActive: boolean;
-}
-
 export interface WalletShellSectionView {
   id: WalletShellSection;
   label: string;
@@ -115,10 +109,8 @@ export interface WalletShellActionView extends WalletActionView {
 }
 
 export interface WalletShellViewModel {
-  activeRegion: WalletShellRegion;
-  activeSection: WalletShellSection;
+  activeDestination: WalletRootDestination;
   activeAction: WalletActionKind;
-  regions: WalletShellRegionView[];
   sections: WalletShellSectionView[];
   actions: WalletShellActionView[];
 }
@@ -152,12 +144,14 @@ const PRIMARY_ACTION_ORDER: WalletActionKind[] = [
   "withdraw",
 ];
 
-const SHELL_REGION_ORDER: WalletShellRegion[] = ["primary", "secondary"];
-const SHELL_SECTION_ORDER: WalletShellSection[] = [
-  "overview",
-  "holdings",
-  "notes",
-  "activity",
+const DESTINATION_SECTION_ORDER: Array<{
+  destination: WalletRootDestination;
+  section: WalletShellSection;
+}> = [
+  { destination: "home", section: "overview" },
+  { destination: "assets", section: "holdings" },
+  { destination: "settings", section: "notes" },
+  { destination: "activity", section: "activity" },
 ];
 
 export function createWalletView(
@@ -239,20 +233,16 @@ export function buildWalletShellViewModel(
   state: WalletState,
   shellState: WalletShellState,
 ): WalletShellViewModel {
+  const activeSection = getLegacySectionForDestination(shellState.activeDestination);
+
   return {
-    activeRegion: shellState.activeRegion,
-    activeSection: shellState.activeSection,
+    activeDestination: shellState.activeDestination,
     activeAction: shellState.activeAction,
-    regions: SHELL_REGION_ORDER.map((region) => ({
-      id: region,
-      label: getWalletShellRegionLabel(region),
-      isActive: shellState.activeRegion === region,
-    })),
-    sections: SHELL_SECTION_ORDER.map((section) => ({
+    sections: DESTINATION_SECTION_ORDER.map(({ section }) => ({
       id: section,
       label: getWalletShellSectionLabel(section),
       description: getWalletShellSectionDescription(section),
-      isActive: shellState.activeSection === section,
+      isActive: activeSection === section,
     })),
     actions: buildWalletActionViews(state.actions).map((action) => ({
       ...action,
@@ -463,13 +453,13 @@ export function buildWalletActivityView(
   };
 }
 
-export function getWalletShellRegionLabel(region: WalletShellRegion): string {
-  switch (region) {
-    case "primary":
-      return "Wallet";
-    case "secondary":
-      return "Actions";
-  }
+function getLegacySectionForDestination(
+  destination: WalletRootDestination,
+): WalletShellSection {
+  return (
+    DESTINATION_SECTION_ORDER.find((entry) => entry.destination === destination)
+      ?.section ?? "overview"
+  );
 }
 
 export function getWalletShellSectionLabel(section: WalletShellSection): string {

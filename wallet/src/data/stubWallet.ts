@@ -29,8 +29,7 @@ const actionPresets: WalletActionPreset[] = [
 ];
 
 export const walletShellState: WalletShellState = {
-  activeRegion: "primary",
-  activeSection: "overview",
+  activeDestination: "home",
   activeAction: "send",
 };
 

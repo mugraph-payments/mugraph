@@ -14,8 +14,10 @@ export type WalletShellSection =
   | "notes"
   | "activity";
 export type WalletReceiveShareMode = "address" | "qr";
+export type WalletRootDestination = "home" | "activity" | "assets" | "settings";
 export type WalletActiveRegion = WalletShellRegion;
 export type WalletActiveSection = WalletShellSection;
+export type WalletActiveDestination = WalletRootDestination;
 export type WalletActiveAction = WalletActionKind;
 
 export interface WalletIdentity {
@@ -78,8 +80,7 @@ export interface WalletActionPreset {
 }
 
 export interface WalletShellState {
-  activeRegion: WalletActiveRegion;
-  activeSection: WalletActiveSection;
+  activeDestination: WalletActiveDestination;
   activeAction: WalletActiveAction;
 }
 
