@@ -10,8 +10,10 @@ import { walletActionDrafts, walletShellState, walletState } from "./data/stubWa
 import { createWalletView } from "./lib/walletView";
 import type {
   WalletActiveDestination,
+  WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
+  WalletWithdrawDraft,
 } from "./types/wallet";
 
 function App() {
@@ -27,12 +29,28 @@ function App() {
   const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(
     walletActionDrafts.receive,
   );
+  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(
+    walletActionDrafts.deposit,
+  );
+  const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
+    walletActionDrafts.withdraw,
+  );
+
   const view = useMemo(() => createWalletView(walletState), []);
+  const latestDeposit = useMemo(
+    () => view.activity.find((item) => item.kindLabel === "Deposit") ?? null,
+    [view.activity],
+  );
+  const latestWithdraw = useMemo(
+    () => view.activity.find((item) => item.kindLabel === "Withdraw") ?? null,
+    [view.activity],
+  );
   const assetOptions = view.assets.map((asset) => ({
     id: asset.id,
     label: asset.ticker,
     balanceLabel: asset.balanceLabel,
   }));
+  const topAssetLabel = view.assets[0]?.balanceLabel ?? "No holdings";
 
   function handleDestinationSelect(destination: WalletActiveDestination) {
     setActiveDestination(destination);
@@ -80,6 +98,15 @@ function App() {
             delegatePkShort={view.identity.delegatePkShort}
             scriptAddressShort={view.identity.scriptAddressShort}
             syncPostureLabel={`${view.identity.statusLabel} on ${view.identity.networkLabel}`}
+            depositDraft={depositDraft}
+            onDepositDraftChange={setDepositDraft}
+            withdrawDraft={withdrawDraft}
+            onWithdrawDraftChange={setWithdrawDraft}
+            latestDepositReference={latestDeposit?.referenceShort ?? "No deposit reference"}
+            latestWithdrawReference={latestWithdraw?.referenceShort ?? "No withdraw reference"}
+            pendingActivityCount={walletState.summary.pendingActivityCount}
+            topAssetLabel={topAssetLabel}
+            assetOptions={assetOptions}
           />
         );
       case "activity":

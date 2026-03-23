@@ -1,10 +1,33 @@
-import { CaretRight, LockKey, Pulse, ScanSmiley } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import {
+  CaretRight,
+  LockKey,
+  Pulse,
+  ScanSmiley,
+} from "@phosphor-icons/react";
+import { useState, type ReactNode } from "react";
+import { DepositDetails } from "./DepositDetails";
+import { WithdrawDetails } from "./WithdrawDetails";
+import type { WalletDepositDraft, WalletWithdrawDraft } from "../types/wallet";
+
+interface AssetOption {
+  id: string;
+  label: string;
+  balanceLabel: string;
+}
 
 interface WalletSettingsScreenProps {
   delegatePkShort: string;
   scriptAddressShort: string;
   syncPostureLabel: string;
+  depositDraft: WalletDepositDraft;
+  onDepositDraftChange: (draft: WalletDepositDraft) => void;
+  withdrawDraft: WalletWithdrawDraft;
+  onWithdrawDraftChange: (draft: WalletWithdrawDraft) => void;
+  latestDepositReference: string;
+  latestWithdrawReference: string;
+  pendingActivityCount: number;
+  topAssetLabel: string;
+  assetOptions: AssetOption[];
 }
 
 function TechnicalMetaRow({
@@ -35,7 +58,20 @@ export function WalletSettingsScreen({
   delegatePkShort,
   scriptAddressShort,
   syncPostureLabel,
+  depositDraft,
+  onDepositDraftChange,
+  withdrawDraft,
+  onWithdrawDraftChange,
+  latestDepositReference,
+  latestWithdrawReference,
+  pendingActivityCount,
+  topAssetLabel,
+  assetOptions,
 }: WalletSettingsScreenProps) {
+  const [activeAdvancedAction, setActiveAdvancedAction] = useState<
+    "deposit" | "withdraw"
+  >("deposit");
+
   return (
     <section className="wallet-panel p-5 sm:p-6">
       <div className="space-y-2">
@@ -76,6 +112,55 @@ export function WalletSettingsScreen({
             icon={<Pulse className="h-4.5 w-4.5" weight="duotone" />}
           />
         </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            aria-pressed={activeAdvancedAction === "deposit"}
+            onClick={() => setActiveAdvancedAction("deposit")}
+            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              activeAdvancedAction === "deposit"
+                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                : "border-white/10 bg-white/[0.04] text-slate-200"
+            }`}
+          >
+            Deposit
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeAdvancedAction === "withdraw"}
+            onClick={() => setActiveAdvancedAction("withdraw")}
+            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              activeAdvancedAction === "withdraw"
+                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                : "border-white/10 bg-white/[0.04] text-slate-200"
+            }`}
+          >
+            Withdraw
+          </button>
+        </div>
+
+        {activeAdvancedAction === "deposit" ? (
+          <DepositDetails
+            scriptAddressShort={scriptAddressShort}
+            delegatePkShort={delegatePkShort}
+            latestDepositReference={latestDepositReference}
+            pendingActivityCount={pendingActivityCount}
+            draft={depositDraft}
+            assetOptions={assetOptions}
+            onDraftChange={onDepositDraftChange}
+          />
+        ) : (
+          <WithdrawDetails
+            latestWithdrawReference={latestWithdrawReference}
+            pendingActivityCount={pendingActivityCount}
+            scriptAddressShort={scriptAddressShort}
+            topAssetLabel={topAssetLabel}
+            draft={withdrawDraft}
+            assetOptions={assetOptions}
+            onDraftChange={onWithdrawDraftChange}
+          />
+        )}
       </section>
     </section>
   );
