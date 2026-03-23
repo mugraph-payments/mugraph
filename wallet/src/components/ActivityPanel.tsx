@@ -32,25 +32,28 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
       className="wallet-panel p-5 sm:p-6"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-2">
         <div>
           <p className="wallet-kicker text-slate-500">Activity</p>
           <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Settlement timeline
+            Recent transactions
           </h2>
         </div>
         <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Follow deposits, refreshes, and withdrawals as a clean event stream instead of a dense audit table.
+          Browse wallet activity as one mobile transaction list with the latest items first.
         </p>
       </div>
 
       {activity.length === 0 ? (
         <EmptyPanelBody
           title="No activity is recorded"
-          copy="This wallet preview has no deposits, refreshes, or withdrawals yet. The history lane stays visible so the empty state still feels intentional."
+          copy="This wallet preview has no deposits, refreshes, or withdrawals yet. The transaction list stays visible so the empty state still feels intentional."
         />
       ) : (
-        <div className="mt-5 grid gap-3 overflow-x-clip">
+        <div
+          className="mt-5 flex flex-col gap-3 overflow-x-clip"
+          aria-label="Activity list"
+        >
           {activity.map((item, index) => (
             <motion.div
               key={item.id}
