@@ -46,7 +46,7 @@ export function WalletBottomNav({
   return (
     <nav
       aria-label="Main wallet navigation"
-      className="wallet-panel sticky bottom-4 z-10 p-2 xl:static xl:bottom-auto"
+      className="wallet-panel sticky bottom-4 z-10 p-2 xl:static xl:bottom-auto xl:p-3"
     >
       <div className="grid grid-cols-4 gap-2 xl:grid-cols-1">
         {destinationMeta.map((destination) => {

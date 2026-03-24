@@ -33,20 +33,22 @@ export function WalletHomeScreen({
 }: WalletHomeScreenProps) {
   const totalAda = findMetric(summaryMetrics, "total-value-ada");
   const totalUsd = findMetric(summaryMetrics, "total-value-usd");
+  const noteCount = findMetric(summaryMetrics, "note-count");
+  const pendingCount = findMetric(summaryMetrics, "pending-activity-count");
   const topAssets = assets.slice(0, 3);
   const recentActivity = activity.slice(0, 3);
 
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-      <section className="wallet-panel p-5 sm:p-6 xl:col-span-2">
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-end">
-          <div className="space-y-4">
+      <section className="wallet-panel p-5 sm:p-6 xl:col-span-2 xl:p-7">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
+          <div className="space-y-5">
             <div className="space-y-2">
               <p className="wallet-kicker text-slate-500">Available balance</p>
-              <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 xl:text-4xl">
+              <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 xl:text-5xl">
                 {totalAda?.value ?? "0 ADA"}
               </h2>
-              <p className="wallet-data text-lg text-slate-300 xl:text-xl">
+              <p className="wallet-data text-lg text-slate-300 xl:text-2xl">
                 {totalUsd?.value ?? "$0.00"}
               </p>
             </div>
@@ -60,9 +62,30 @@ export function WalletHomeScreen({
                 compact
               />
             </div>
+
+            <div className="grid grid-cols-3 gap-3 xl:max-w-3xl">
+              <article className="wallet-subtle-card p-4">
+                <p className="wallet-kicker text-slate-500">Assets</p>
+                <p className="wallet-data mt-2 text-lg font-semibold text-slate-50 xl:text-xl">
+                  {assets.length}
+                </p>
+              </article>
+              <article className="wallet-subtle-card p-4">
+                <p className="wallet-kicker text-slate-500">Notes</p>
+                <p className="wallet-data mt-2 text-lg font-semibold text-slate-50 xl:text-xl">
+                  {noteCount?.value ?? "0"}
+                </p>
+              </article>
+              <article className="wallet-subtle-card p-4">
+                <p className="wallet-kicker text-slate-500">Pending</p>
+                <p className="wallet-data mt-2 text-lg font-semibold text-slate-50 xl:text-xl">
+                  {pendingCount?.value ?? "0"}
+                </p>
+              </article>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-1 xl:self-center">
             <button
               type="button"
               onClick={() => onPrimaryActionSelect("send")}
@@ -83,7 +106,7 @@ export function WalletHomeScreen({
         </div>
       </section>
 
-      <section className="wallet-panel p-5">
+      <section className="wallet-panel p-5 xl:p-6">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="wallet-kicker text-slate-500">Recent activity</p>
@@ -117,7 +140,7 @@ export function WalletHomeScreen({
         </div>
       </section>
 
-      <section className="wallet-panel p-5">
+      <section className="wallet-panel p-5 xl:p-6">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="wallet-kicker text-slate-500">Assets</p>

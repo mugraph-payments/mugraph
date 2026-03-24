@@ -22,7 +22,7 @@ function EmptyPanelBody({
 
 export function AssetPanel({ assets }: AssetPanelProps) {
   return (
-    <section className="wallet-panel p-5 sm:p-6">
+    <section className="wallet-panel p-5 sm:p-6 xl:p-7">
       <div className="flex flex-col gap-2">
         <div>
           <p className="wallet-kicker text-slate-500">Assets</p>

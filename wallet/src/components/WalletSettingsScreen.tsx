@@ -77,7 +77,7 @@ export function WalletSettingsScreen({
   >("deposit");
 
   return (
-    <section className="wallet-panel p-5 sm:p-6">
+    <section className="wallet-panel p-5 sm:p-6 xl:p-7">
       <div className="space-y-2">
         <p className="wallet-kicker text-slate-500">Settings</p>
         <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">

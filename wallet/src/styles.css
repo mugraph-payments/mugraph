@@ -203,6 +203,12 @@ select {
   box-shadow: var(--wallet-shadow-panel);
  }
 
+ @media (min-width: 1280px) {
+  .wallet-panel {
+   border-radius: 1.875rem;
+  }
+ }
+
  .wallet-panel-soft {
   @apply rounded-3xl border backdrop-blur-xl;
   background: var(--wallet-surface-soft);
