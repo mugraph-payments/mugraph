@@ -48,6 +48,13 @@ export function WalletBottomNav({
       aria-label="Main wallet navigation"
       className="wallet-panel sticky bottom-4 z-10 p-2 xl:static xl:bottom-auto xl:p-3"
     >
+      <div className="hidden xl:block px-2 pb-3">
+        <p className="wallet-kicker text-slate-500">Navigate</p>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          Switch between your wallet overview, activity, assets, and settings.
+        </p>
+      </div>
+
       <div className="grid grid-cols-4 gap-2 xl:grid-cols-1">
         {destinationMeta.map((destination) => {
           const isActive = destination.id === activeDestination;

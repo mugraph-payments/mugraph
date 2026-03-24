@@ -1138,10 +1138,7 @@ mod tests {
 
     #[test]
     fn receive_metric_name_is_not_send_metric() {
-        assert_eq!(
-            M3_MESSAGE_RECEIVE_COUNTER,
-            "mugraph_message_receive_total"
-        );
+        assert_eq!(M3_MESSAGE_RECEIVE_COUNTER, "mugraph_message_receive_total");
     }
 
     #[test]

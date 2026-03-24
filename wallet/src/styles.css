@@ -230,6 +230,12 @@ select {
   box-shadow: inset 0 1px 0 rgba(248, 248, 242, 0.03);
  }
 
+ @media (min-width: 1280px) {
+  .wallet-subtle-card {
+   background: rgba(68, 71, 90, 0.3);
+  }
+ }
+
  .wallet-kicker {
   @apply text-xs font-medium uppercase;
   letter-spacing: 0.18em;

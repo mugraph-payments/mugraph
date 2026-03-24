@@ -117,7 +117,7 @@ export function WalletHomeScreen({
           <span className="text-sm text-slate-400">{recentActivity.length} items</span>
         </div>
 
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid gap-3 2xl:grid-cols-2">
           {recentActivity.map((item) => (
             <article key={item.id} className="wallet-subtle-card p-4">
               <div className="flex items-start justify-between gap-3">
@@ -151,7 +151,7 @@ export function WalletHomeScreen({
           <span className="text-sm text-slate-400">{topAssets.length} assets</span>
         </div>
 
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid gap-3 2xl:grid-cols-2">
           {topAssets.map((asset) => (
             <article key={asset.id} className="wallet-subtle-card p-4">
               <div className="flex items-start justify-between gap-3">

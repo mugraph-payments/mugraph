@@ -35,6 +35,11 @@ export function WalletHeader({
               <h1 className="wallet-heading truncate text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
                 {label}
               </h1>
+              {isHome ? (
+                <p className="mt-2 hidden text-sm leading-6 text-slate-400 xl:block">
+                  {networkLabel} network · synced {lastSyncedRelative}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

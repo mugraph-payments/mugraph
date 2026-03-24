@@ -51,7 +51,7 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
         />
       ) : (
         <div
-          className="mt-5 grid gap-3 overflow-x-clip xl:grid-cols-2"
+          className="mt-5 grid gap-3 overflow-x-clip xl:grid-cols-2 2xl:grid-cols-3"
           aria-label="Activity list"
         >
           {activity.map((item, index) => (
