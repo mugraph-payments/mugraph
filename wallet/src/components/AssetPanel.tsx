@@ -42,7 +42,7 @@ export function AssetPanel({ assets }: AssetPanelProps) {
         />
       ) : (
         <div
-          className="mt-5 flex flex-col gap-3"
+          className="mt-5 grid gap-3 xl:grid-cols-2"
           aria-label="Asset list"
         >
           {assets.map((asset) => (

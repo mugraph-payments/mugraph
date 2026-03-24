@@ -24,7 +24,7 @@ export function WalletHeader({
 
   return (
     <header className="wallet-panel px-4 py-4 sm:px-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             <BrandMark compact={isHome} />
@@ -40,7 +40,7 @@ export function WalletHeader({
         </div>
 
         {isHome ? null : (
-          <div className="flex flex-wrap gap-2 lg:justify-end">
+          <div className="flex flex-wrap gap-2">
             <StatusChip label="Mode" value="Stub" compact />
             <StatusChip label="Network" value={networkLabel} compact />
             <StatusChip

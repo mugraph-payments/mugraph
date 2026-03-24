@@ -46,9 +46,9 @@ export function WalletBottomNav({
   return (
     <nav
       aria-label="Main wallet navigation"
-      className="wallet-panel sticky bottom-4 z-10 p-2"
+      className="wallet-panel sticky bottom-4 z-10 p-2 xl:static xl:bottom-auto"
     >
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-2 xl:grid-cols-1">
         {destinationMeta.map((destination) => {
           const isActive = destination.id === activeDestination;
           const Icon = destination.icon;
@@ -59,7 +59,7 @@ export function WalletBottomNav({
               type="button"
               aria-pressed={isActive}
               onClick={() => onDestinationSelect(destination.id)}
-              className={`wallet-interactive flex flex-col items-center gap-1 rounded-2xl px-2 py-3 text-center ${
+              className={`wallet-interactive flex flex-col items-center gap-1 rounded-2xl px-2 py-3 text-center xl:flex-row xl:justify-start xl:gap-3 xl:px-4 xl:py-3.5 xl:text-left ${
                 isActive
                   ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "text-slate-400"
@@ -69,7 +69,7 @@ export function WalletBottomNav({
                 className="h-5 w-5"
                 weight={isActive ? "fill" : "duotone"}
               />
-              <span className="text-sm font-medium">{destination.label}</span>
+              <span className="text-sm font-medium xl:text-base">{destination.label}</span>
             </button>
           );
         })}

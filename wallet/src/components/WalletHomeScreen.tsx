@@ -37,34 +37,36 @@ export function WalletHomeScreen({
   const recentActivity = activity.slice(0, 3);
 
   return (
-    <section className="grid gap-5">
-      <section className="wallet-panel p-5 sm:p-6">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="wallet-kicker text-slate-500">Available balance</p>
-            <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50">
-              {totalAda?.value ?? "0 ADA"}
-            </h2>
-            <p className="wallet-data text-lg text-slate-300">
-              {totalUsd?.value ?? "$0.00"}
-            </p>
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+      <section className="wallet-panel p-5 sm:p-6 xl:col-span-2">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-end">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="wallet-kicker text-slate-500">Available balance</p>
+              <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 xl:text-4xl">
+                {totalAda?.value ?? "0 ADA"}
+              </h2>
+              <p className="wallet-data text-lg text-slate-300 xl:text-xl">
+                {totalUsd?.value ?? "$0.00"}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <StatusChip label="Network" value={identity.networkLabel} compact />
+              <StatusChip
+                label="Status"
+                value={identity.statusLabel}
+                tone={identity.statusTone}
+                compact
+              />
+            </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <StatusChip label="Network" value={identity.networkLabel} compact />
-            <StatusChip
-              label="Status"
-              value={identity.statusLabel}
-              tone={identity.statusTone}
-              compact
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
             <button
               type="button"
               onClick={() => onPrimaryActionSelect("send")}
-              className="wallet-interactive flex items-center justify-center gap-2 rounded-2xl border border-teal-300/25 bg-teal-400/[0.08] px-4 py-4 text-base font-semibold text-teal-50"
+              className="wallet-interactive flex items-center justify-center gap-2 rounded-2xl border border-teal-300/25 bg-teal-400/[0.08] px-4 py-4 text-base font-semibold text-teal-50 xl:justify-start xl:px-5 xl:py-4"
             >
               <ArrowSquareOut className="h-5 w-5" weight="duotone" />
               Send
@@ -72,7 +74,7 @@ export function WalletHomeScreen({
             <button
               type="button"
               onClick={() => onPrimaryActionSelect("receive")}
-              className="wallet-interactive flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-base font-semibold text-slate-50"
+              className="wallet-interactive flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-base font-semibold text-slate-50 xl:justify-start xl:px-5 xl:py-4"
             >
               <ArrowSquareIn className="h-5 w-5" weight="duotone" />
               Receive

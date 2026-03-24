@@ -24,7 +24,7 @@ export function ActivityRow({ activity }: ActivityRowProps) {
   const KindIcon = kindIcons[activity.kindLabel] ?? ArrowsClockwise;
 
   return (
-    <article className="wallet-card p-4">
+    <article className="wallet-card h-full p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
           <KindIcon className="h-5 w-5" weight="duotone" />

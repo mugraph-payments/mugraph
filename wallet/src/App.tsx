@@ -117,24 +117,28 @@ function App() {
 
   return (
     <div className="min-h-dvh text-slate-50">
-      <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col gap-5 px-4 py-5 sm:px-5 sm:py-6">
-        <WalletHeader
-          label={view.identity.label}
-          networkLabel={view.identity.networkLabel}
-          statusLabel={view.identity.statusLabel}
-          statusTone={view.identity.statusTone}
-          lastSyncedRelative={view.identity.lastSyncedRelative}
-          activeDestination={activeDestination}
-        />
+      <div className="wallet-phone-shell mx-auto min-h-dvh w-full px-4 py-5 sm:px-5 sm:py-6 xl:px-6">
+        <div className="grid gap-5 xl:grid-cols-[18rem_minmax(0,1fr)] xl:items-start">
+          <aside className="grid content-start gap-5 xl:sticky xl:top-6">
+            <WalletHeader
+              label={view.identity.label}
+              networkLabel={view.identity.networkLabel}
+              statusLabel={view.identity.statusLabel}
+              statusTone={view.identity.statusTone}
+              lastSyncedRelative={view.identity.lastSyncedRelative}
+              activeDestination={activeDestination}
+            />
 
-        <main className="grid min-h-0 flex-1 content-start gap-5 pb-24">
-          {activeDestinationPanel}
-        </main>
+            <WalletBottomNav
+              activeDestination={activeDestination}
+              onDestinationSelect={handleDestinationSelect}
+            />
+          </aside>
 
-        <WalletBottomNav
-          activeDestination={activeDestination}
-          onDestinationSelect={handleDestinationSelect}
-        />
+          <main className="grid min-h-0 content-start gap-5 pb-24 xl:pb-0">
+            {activeDestinationPanel}
+          </main>
+        </div>
       </div>
     </div>
   );

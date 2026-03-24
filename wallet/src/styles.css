@@ -186,13 +186,13 @@ select {
 
  @media (min-width: 1024px) {
   .wallet-phone-shell {
-   max-width: min(100%, 34rem);
+   max-width: min(100%, 72rem);
   }
  }
 
  @media (min-width: 1536px) {
   .wallet-phone-shell {
-   max-width: min(100%, 36rem);
+   max-width: min(100%, 84rem);
   }
  }
 

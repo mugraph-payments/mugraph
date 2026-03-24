@@ -37,7 +37,7 @@ export function AssetRow({ asset }: AssetRowProps) {
   const TrendIcon = trend.icon;
 
   return (
-    <article className="wallet-card p-4">
+    <article className="wallet-card h-full p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

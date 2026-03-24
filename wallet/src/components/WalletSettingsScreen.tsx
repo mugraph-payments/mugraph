@@ -88,97 +88,101 @@ export function WalletSettingsScreen({
         </p>
       </div>
 
-      <section className="wallet-panel-soft mt-5 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="wallet-kicker text-slate-500">Advanced</p>
-            <p className="mt-2 text-base text-slate-300">
-              Extra wallet tools and note history live here.
-            </p>
+      <section className="wallet-panel-soft mt-5 p-4 xl:grid xl:grid-cols-[18rem_minmax(0,1fr)] xl:gap-5 xl:p-5">
+        <div>
+          <div className="flex items-center justify-between gap-3 xl:items-start">
+            <div>
+              <p className="wallet-kicker text-slate-500">Advanced</p>
+              <p className="mt-2 text-base text-slate-300">
+                Extra wallet tools and note history live here.
+              </p>
+            </div>
+            <CaretRight className="h-5 w-5 text-slate-500" weight="bold" />
           </div>
-          <CaretRight className="h-5 w-5 text-slate-500" weight="bold" />
+
+          <div className="mt-4 grid gap-3">
+            <TechnicalMetaRow
+              label="Delegate key"
+              value={delegatePkShort}
+              icon={<LockKey className="h-4.5 w-4.5" weight="duotone" />}
+            />
+            <TechnicalMetaRow
+              label="Script address"
+              value={scriptAddressShort}
+              icon={<ScanSmiley className="h-4.5 w-4.5" weight="duotone" />}
+            />
+            <TechnicalMetaRow
+              label="Sync status"
+              value={syncPostureLabel}
+              icon={<Pulse className="h-4.5 w-4.5" weight="duotone" />}
+            />
+          </div>
         </div>
 
-        <div className="mt-4 grid gap-3">
-          <TechnicalMetaRow
-            label="Delegate key"
-            value={delegatePkShort}
-            icon={<LockKey className="h-4.5 w-4.5" weight="duotone" />}
-          />
-          <TechnicalMetaRow
-            label="Script address"
-            value={scriptAddressShort}
-            icon={<ScanSmiley className="h-4.5 w-4.5" weight="duotone" />}
-          />
-          <TechnicalMetaRow
-            label="Sync status"
-            value={syncPostureLabel}
-            icon={<Pulse className="h-4.5 w-4.5" weight="duotone" />}
-          />
-        </div>
+        <div className="mt-5 xl:mt-0">
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              type="button"
+              aria-pressed={activeAdvancedAction === "deposit"}
+              onClick={() => setActiveAdvancedAction("deposit")}
+              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+                activeAdvancedAction === "deposit"
+                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                  : "border-white/10 bg-white/[0.04] text-slate-200"
+              }`}
+            >
+              Deposit
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeAdvancedAction === "withdraw"}
+              onClick={() => setActiveAdvancedAction("withdraw")}
+              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+                activeAdvancedAction === "withdraw"
+                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                  : "border-white/10 bg-white/[0.04] text-slate-200"
+              }`}
+            >
+              Withdraw
+            </button>
+            <button
+              type="button"
+              aria-pressed={activeAdvancedAction === "notes"}
+              onClick={() => setActiveAdvancedAction("notes")}
+              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+                activeAdvancedAction === "notes"
+                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
+                  : "border-white/10 bg-white/[0.04] text-slate-200"
+              }`}
+            >
+              Notes
+            </button>
+          </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            aria-pressed={activeAdvancedAction === "deposit"}
-            onClick={() => setActiveAdvancedAction("deposit")}
-            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
-              activeAdvancedAction === "deposit"
-                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                : "border-white/10 bg-white/[0.04] text-slate-200"
-            }`}
-          >
-            Deposit
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeAdvancedAction === "withdraw"}
-            onClick={() => setActiveAdvancedAction("withdraw")}
-            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
-              activeAdvancedAction === "withdraw"
-                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                : "border-white/10 bg-white/[0.04] text-slate-200"
-            }`}
-          >
-            Withdraw
-          </button>
-          <button
-            type="button"
-            aria-pressed={activeAdvancedAction === "notes"}
-            onClick={() => setActiveAdvancedAction("notes")}
-            className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
-              activeAdvancedAction === "notes"
-                ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                : "border-white/10 bg-white/[0.04] text-slate-200"
-            }`}
-          >
-            Notes
-          </button>
+          {activeAdvancedAction === "deposit" ? (
+            <DepositDetails
+              scriptAddressShort={scriptAddressShort}
+              delegatePkShort={delegatePkShort}
+              latestDepositReference={latestDepositReference}
+              pendingActivityCount={pendingActivityCount}
+              draft={depositDraft}
+              assetOptions={assetOptions}
+              onDraftChange={onDepositDraftChange}
+            />
+          ) : activeAdvancedAction === "withdraw" ? (
+            <WithdrawDetails
+              latestWithdrawReference={latestWithdrawReference}
+              pendingActivityCount={pendingActivityCount}
+              scriptAddressShort={scriptAddressShort}
+              topAssetLabel={topAssetLabel}
+              draft={withdrawDraft}
+              assetOptions={assetOptions}
+              onDraftChange={onWithdrawDraftChange}
+            />
+          ) : (
+            <NotesPanel notes={notes} />
+          )}
         </div>
-
-        {activeAdvancedAction === "deposit" ? (
-          <DepositDetails
-            scriptAddressShort={scriptAddressShort}
-            delegatePkShort={delegatePkShort}
-            latestDepositReference={latestDepositReference}
-            pendingActivityCount={pendingActivityCount}
-            draft={depositDraft}
-            assetOptions={assetOptions}
-            onDraftChange={onDepositDraftChange}
-          />
-        ) : activeAdvancedAction === "withdraw" ? (
-          <WithdrawDetails
-            latestWithdrawReference={latestWithdrawReference}
-            pendingActivityCount={pendingActivityCount}
-            scriptAddressShort={scriptAddressShort}
-            topAssetLabel={topAssetLabel}
-            draft={withdrawDraft}
-            assetOptions={assetOptions}
-            onDraftChange={onWithdrawDraftChange}
-          />
-        ) : (
-          <NotesPanel notes={notes} />
-        )}
       </section>
     </section>
   );
