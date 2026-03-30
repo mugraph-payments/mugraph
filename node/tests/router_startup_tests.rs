@@ -59,7 +59,9 @@ async fn router_starts_in_dev_mode_and_creates_migrated_database() {
     let db_path = dir.path().join("router-dev-mode.redb");
 
     let built = with_db_path(&db_path, || async {
-        router(test_config(true, None)).await
+        let config = test_config(true, None);
+        let keypair = config.keypair().unwrap();
+        router(config, keypair).await
     })
     .await;
 
@@ -81,12 +83,10 @@ async fn router_rejects_missing_peer_registry_at_startup() {
     let missing_registry = dir.path().join("missing-peers.json");
 
     let err = with_db_path(&db_path, || async {
-        router(test_config(
-            true,
-            Some(missing_registry.display().to_string()),
-        ))
-        .await
-        .unwrap_err()
+        let config =
+            test_config(true, Some(missing_registry.display().to_string()));
+        let keypair = config.keypair().unwrap();
+        router(config, keypair).await.unwrap_err()
     })
     .await;
 

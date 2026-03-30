@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use color_eyre::eyre::Result;
+use mugraph_core::types::Keypair;
 
 pub mod cardano;
 pub mod config;
@@ -19,10 +20,14 @@ pub mod tx_signer;
 
 use config::Config;
 
-pub async fn start(addr: SocketAddr, config: Config) -> Result<()> {
+pub async fn start(
+    addr: SocketAddr,
+    config: Config,
+    keypair: Keypair,
+) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, routes::router(config).await?).await?;
+    axum::serve(listener, routes::router(config, keypair).await?).await?;
 
     Ok(())
 }

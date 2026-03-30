@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
             info!(addr = %addr, public_key = %keypair.public_key, "Starting server");
 
-            start(*addr, config).await?;
+            start(*addr, config, keypair).await?;
         }
     }
 

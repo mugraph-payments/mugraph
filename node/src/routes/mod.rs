@@ -60,7 +60,7 @@ fn default_database_path() -> std::path::PathBuf {
         .join("db.redb")
 }
 
-pub async fn router(config: Config) -> Result<Router, Error> {
+pub async fn router(config: Config, keypair: Keypair) -> Result<Router, Error> {
     let database = Arc::new(Database::setup(default_database_path())?);
 
     // Run database migrations
@@ -94,8 +94,6 @@ pub async fn router(config: Config) -> Result<Router, Error> {
         // Start cross-node reconciler worker for retry/recovery convergence
         start_cross_node_reconciler(database.clone())?;
     }
-
-    let keypair = config.keypair()?;
 
     let router = Router::new()
         .layer(tower_http::trace::TraceLayer::new_for_http())
@@ -324,17 +322,24 @@ fn load_cardano_script_address(database: &Database) -> Result<String, Error> {
 
 #[cfg(test)]
 mod tests {
-    use axum::{Json, extract::State};
+    use axum::{
+        Json,
+        body::{Body, to_bytes},
+        extract::State,
+        http::{Request as HttpRequest, StatusCode},
+    };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::{
         CrossNodeTransferRecord,
         Request,
+        Response,
         TransferNoticePayload,
         TransferNoticeStage,
         XNodeAuth,
         XNodeEnvelope,
         XNodeMessageType,
     };
+    use tower::util::ServiceExt;
 
     use super::*;
 
@@ -357,6 +362,28 @@ mod tests {
             max_withdrawal_fee: 2_000_000,
             fee_tolerance_pct: 5,
             dev_mode: false,
+        }
+    }
+
+    fn unseeded_dev_config() -> Config {
+        Config::Server {
+            addr: "127.0.0.1:9999".parse().unwrap(),
+            seed: None,
+            secret_key: None,
+            cardano_network: "preprod".to_string(),
+            cardano_provider: "blockfrost".to_string(),
+            cardano_api_key: None,
+            cardano_provider_url: None,
+            cardano_payment_sk: None,
+            xnode_peer_registry_file: None,
+            xnode_node_id: "node://local".to_string(),
+            deposit_confirm_depth: 15,
+            deposit_expiration_blocks: 1440,
+            min_deposit_value: Some(1_000_000),
+            max_tx_size: 16384,
+            max_withdrawal_fee: 2_000_000,
+            fee_tolerance_pct: 5,
+            dev_mode: true,
         }
     }
 
@@ -427,6 +454,42 @@ mod tests {
         let path = super::default_database_path();
         assert!(path.is_absolute() || std::env::var("HOME").is_err());
         assert!(path.to_string_lossy().contains("db"));
+    }
+
+    #[tokio::test]
+    async fn server_uses_single_runtime_keypair_when_unseeded() {
+        let config = unseeded_dev_config();
+        let keypair = config.keypair().unwrap();
+        let expected_delegate_pk = keypair.public_key;
+        let app = router(config, keypair).await.unwrap();
+
+        let response = app
+            .oneshot(
+                HttpRequest::post("/rpc")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&Request::Info).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let decoded: Response = serde_json::from_slice(&body).unwrap();
+
+        match decoded {
+            Response::Info {
+                delegate_pk,
+                cardano_script_address,
+            } => {
+                assert_eq!(delegate_pk, expected_delegate_pk);
+                assert_eq!(cardano_script_address, None);
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 
     #[tokio::test]
