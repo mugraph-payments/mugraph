@@ -108,16 +108,21 @@ async fn main() -> Result<()> {
         ui_loop(snapshot_rx, ui_cmd_tx, terminal)
     });
 
+    let mut owner_completed = false;
+    let mut ui_completed = false;
+
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("received ctrl+c, shutting down");
         }
         res = &mut owner_handle => {
+            owner_completed = true;
             if let Err(e) = res {
                 error!("simulation owner task error: {e:?}");
             }
         }
         res = &mut ui_handle => {
+            ui_completed = true;
             match res {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => error!("ui task error: {e:#}"),
@@ -129,11 +134,15 @@ async fn main() -> Result<()> {
     // Signal shutdown — sending to a closed channel is a no-op
     let _ = cmd_tx.send(SimCommand::Quit);
 
-    let _ = owner_handle.await;
-    match ui_handle.await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => error!("ui task error: {e:#}"),
-        Err(e) => error!("ui task join error: {e:?}"),
+    if !owner_completed {
+        let _ = owner_handle.await;
+    }
+    if !ui_completed {
+        match ui_handle.await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => error!("ui task error: {e:#}"),
+            Err(e) => error!("ui task join error: {e:?}"),
+        }
     }
 
     ratatui::restore();
