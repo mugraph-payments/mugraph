@@ -779,7 +779,7 @@ async fn observe_tx_status_combines_tip_and_tx_height_consistently() {
     )
     .expect("provider");
     let confirming = confirming_provider
-        .observe_tx_status(&"11".repeat(32), 12, 3, false)
+        .observe_tx_status(&"11".repeat(32), 12, false)
         .await
         .expect("confirming observation");
     assert_eq!(confirming.tx_block_height, Some(90));
@@ -796,7 +796,7 @@ async fn observe_tx_status_combines_tip_and_tx_height_consistently() {
     )
     .expect("provider");
     let confirmed = confirmed_provider
-        .observe_tx_status(&"22".repeat(32), 12, 3, false)
+        .observe_tx_status(&"22".repeat(32), 12, false)
         .await
         .expect("confirmed observation");
     assert_eq!(confirmed.confirmations, 12);
@@ -811,7 +811,7 @@ async fn observe_tx_status_combines_tip_and_tx_height_consistently() {
     )
     .expect("provider");
     let invalidated = invalidated_provider
-        .observe_tx_status(&"33".repeat(32), 12, 3, true)
+        .observe_tx_status(&"33".repeat(32), 12, true)
         .await
         .expect("invalidated observation");
     assert_eq!(invalidated.tx_block_height, None);

@@ -162,14 +162,14 @@ fn test_provider_clone() {
 
 #[test]
 fn test_observation_reports_invalidation_when_missing_after_canonical() {
-    let obs = evaluate_tx_observation("tx1", None, 100, 12, 6, true);
+    let obs = evaluate_tx_observation("tx1", None, 100, 12, true);
     assert_eq!(obs.state, TxSettlementState::Invalidated);
     assert_eq!(obs.confirmations, 0);
 }
 
 #[test]
 fn test_observation_reports_confirmed_when_target_reached() {
-    let obs = evaluate_tx_observation("tx1", Some(90), 101, 12, 6, false);
+    let obs = evaluate_tx_observation("tx1", Some(90), 101, 12, false);
     assert_eq!(obs.state, TxSettlementState::Confirmed);
     assert!(obs.confirmations >= 12);
 }
@@ -184,8 +184,8 @@ proptest! {
         let low_tip = tip1.min(tip2).max(block_height);
         let high_tip = tip1.max(tip2).max(low_tip);
 
-        let a = evaluate_tx_observation("tx1", Some(block_height), low_tip, 12, 6, false);
-        let b = evaluate_tx_observation("tx1", Some(block_height), high_tip, 12, 6, false);
+        let a = evaluate_tx_observation("tx1", Some(block_height), low_tip, 12, false);
+        let b = evaluate_tx_observation("tx1", Some(block_height), high_tip, 12, false);
 
         prop_assert!(b.confirmations >= a.confirmations);
     }
@@ -195,7 +195,7 @@ proptest! {
         tip_height in 1u64..=10_000_000,
         previously_canonical in any::<bool>(),
     ) {
-        let obs = evaluate_tx_observation("tx1", None, tip_height, 12, 6, previously_canonical);
+        let obs = evaluate_tx_observation("tx1", None, tip_height, 12, previously_canonical);
         let expected = if previously_canonical {
             TxSettlementState::Invalidated
         } else {
@@ -219,7 +219,6 @@ proptest! {
             Some(block_height),
             tip_height,
             finality_target,
-            6,
             false,
         );
 
@@ -232,7 +231,6 @@ proptest! {
         block_height in proptest::option::of(1u64..=1_000_000),
         tip_height in 1u64..=1_000_000,
         finality_target in 1u64..=500,
-        reorg_tolerance in 1u64..=500,
         previously_canonical in any::<bool>(),
     ) {
         let a = evaluate_tx_observation(
@@ -240,7 +238,6 @@ proptest! {
             block_height,
             tip_height,
             finality_target,
-            reorg_tolerance,
             previously_canonical,
         );
         let b = evaluate_tx_observation(
@@ -248,7 +245,6 @@ proptest! {
             block_height,
             tip_height,
             finality_target,
-            reorg_tolerance,
             previously_canonical,
         );
 

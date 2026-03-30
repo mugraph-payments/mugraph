@@ -173,7 +173,7 @@ fn deep_reorg_observation_forces_invalidated_path() {
         confirmed: true,
     });
 
-    let obs = evaluate_tx_observation("tx1", None, 1_000, 12, 6, true);
+    let obs = evaluate_tx_observation("tx1", None, 1_000, 12, true);
     assert_eq!(obs.state, TxSettlementState::Invalidated);
 
     lifecycle.apply(LifecycleEvent::ChainInvalidated);

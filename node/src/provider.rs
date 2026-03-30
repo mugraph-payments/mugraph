@@ -204,7 +204,6 @@ impl Provider {
         &self,
         tx_hash: &str,
         finality_target: u64,
-        reorg_tolerance: u64,
         previously_canonical: bool,
     ) -> Result<TxChainObservation> {
         let tip = self.get_tip().await?;
@@ -222,7 +221,6 @@ impl Provider {
             tx_block_height,
             tip.block_height,
             finality_target,
-            reorg_tolerance,
             previously_canonical,
         ))
     }
@@ -233,7 +231,6 @@ pub fn evaluate_tx_observation(
     tx_block_height: Option<u64>,
     tip_height: u64,
     finality_target: u64,
-    _reorg_tolerance: u64,
     previously_canonical: bool,
 ) -> TxChainObservation {
     match tx_block_height {
