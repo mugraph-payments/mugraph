@@ -7,7 +7,7 @@ interface AssetPanelProps {
 
 export function AssetPanel({ assets }: AssetPanelProps) {
   return (
-    <section className="grid content-start gap-4">
+    <section className="wallet-panel p-5">
       <div className="space-y-1">
         <p className="wallet-kicker text-slate-500">Assets</p>
         <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
@@ -19,7 +19,7 @@ export function AssetPanel({ assets }: AssetPanelProps) {
       </div>
 
       {assets.length === 0 ? (
-        <div className="wallet-panel p-5">
+        <div className="wallet-subtle-card mt-4 p-5">
           <h3 className="wallet-heading text-sm font-medium text-slate-100">
             No assets are loaded
           </h3>
@@ -28,7 +28,7 @@ export function AssetPanel({ assets }: AssetPanelProps) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3" aria-label="Asset list">
+        <div className="mt-4 grid gap-3 xl:grid-cols-2 2xl:grid-cols-3" aria-label="Asset list">
           {assets.map((asset) => (
             <AssetRow key={asset.id} asset={asset} />
           ))}
