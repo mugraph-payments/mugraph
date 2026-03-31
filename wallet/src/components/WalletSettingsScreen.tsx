@@ -40,7 +40,7 @@ function TechnicalMetaRow({
   return (
     <div className="wallet-subtle-card p-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
           {icon}
         </div>
         <div className="min-w-0">
@@ -120,7 +120,7 @@ export function WalletSettingsScreen({
               type="button"
               aria-pressed={activeAdvancedAction === "deposit"}
               onClick={() => setActiveAdvancedAction("deposit")}
-              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "deposit"
                   ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "border-white/10 bg-white/[0.04] text-slate-200"
@@ -132,7 +132,7 @@ export function WalletSettingsScreen({
               type="button"
               aria-pressed={activeAdvancedAction === "withdraw"}
               onClick={() => setActiveAdvancedAction("withdraw")}
-              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "withdraw"
                   ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "border-white/10 bg-white/[0.04] text-slate-200"
@@ -144,7 +144,7 @@ export function WalletSettingsScreen({
               type="button"
               aria-pressed={activeAdvancedAction === "notes"}
               onClick={() => setActiveAdvancedAction("notes")}
-              className={`wallet-interactive rounded-2xl border px-4 py-3 text-base font-semibold ${
+              className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "notes"
                   ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "border-white/10 bg-white/[0.04] text-slate-200"
