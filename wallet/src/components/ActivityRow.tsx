@@ -1,8 +1,4 @@
-import {
-  ArrowCircleDown,
-  ArrowCircleUp,
-  ArrowsClockwise,
-} from "@phosphor-icons/react";
+import { ArrowCircleDown, ArrowCircleUp, ArrowsClockwise } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
 import type { WalletActivityView } from "../lib/walletView";
 import { ActivityStatusBadge } from "./ActivityStatusBadge";
@@ -38,15 +34,10 @@ export function ActivityRow({ activity }: ActivityRowProps) {
                 {activity.amountLabel}
               </p>
             </div>
-            <ActivityStatusBadge
-              label={activity.statusLabel}
-              tone={activity.statusTone}
-            />
+            <ActivityStatusBadge label={activity.statusLabel} tone={activity.statusTone} />
           </div>
 
-          <p className="wallet-copy mt-3 text-base leading-7 text-slate-400">
-            {activity.summary}
-          </p>
+          <p className="wallet-copy mt-3 text-base leading-7 text-slate-400">{activity.summary}</p>
 
           <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-400">
             <span>{activity.createdAtRelative}</span>

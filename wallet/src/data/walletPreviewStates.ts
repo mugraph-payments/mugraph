@@ -1,11 +1,7 @@
 import { emptyWalletState, walletState } from "./stubWallet";
 import type { WalletState } from "../types/wallet";
 
-export type WalletPreviewStateId =
-  | "ready"
-  | "empty"
-  | "syncing"
-  | "attention";
+export type WalletPreviewStateId = "ready" | "empty" | "syncing" | "attention";
 
 export interface WalletPreviewState {
   id: WalletPreviewStateId;
@@ -86,11 +82,6 @@ export const walletPreviewStates: WalletPreviewState[] = [
   },
 ];
 
-export function getWalletPreviewState(
-  id: WalletPreviewStateId,
-): WalletPreviewState {
-  return (
-    walletPreviewStates.find((preview) => preview.id === id) ??
-    walletPreviewStates[0]
-  );
+export function getWalletPreviewState(id: WalletPreviewStateId): WalletPreviewState {
+  return walletPreviewStates.find((preview) => preview.id === id) ?? walletPreviewStates[0];
 }

@@ -1,8 +1,5 @@
 import { ArrowLeft, ArrowSquareIn, ArrowSquareOut } from "@phosphor-icons/react";
-import type {
-  WalletActionView,
-  WalletIdentityView,
-} from "../lib/walletView";
+import type { WalletActionView, WalletIdentityView } from "../lib/walletView";
 import type { WalletReceiveDraft, WalletSendDraft } from "../types/wallet";
 import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
@@ -59,8 +56,7 @@ export function WalletActionScreen({
   noteCount,
   pendingActivityCount,
 }: WalletActionScreenProps) {
-  const selectedAction =
-    actions.find((action) => action.id === activeAction) ?? actions[0];
+  const selectedAction = actions.find((action) => action.id === activeAction) ?? actions[0];
   const topAssetLabel = assetOptions[0]?.balanceLabel ?? "No holdings";
 
   return (

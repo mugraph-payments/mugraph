@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: "0 4 * * *"
@@ -13,45 +13,45 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: DeterminateSystems/nix-installer-action@main
-    - uses: DeterminateSystems/magic-nix-cache-action@main
-    - run: nix flake check
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix flake check
 
   unit-property:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - run: PROPTEST_CASES=256 cargo test -p mugraph-node --lib
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: PROPTEST_CASES=256 cargo test -p mugraph-node --lib
 
   integration:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - run: cargo test -p mugraph-node --test m3_verification_tests
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p mugraph-node --test m3_verification_tests
 
   compatibility:
     needs: check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - run: cargo test -p mugraph-core prop_validate_version_rejects_other_majors
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p mugraph-core prop_validate_version_rejects_other_majors
 
   e2e-chaos:
     needs: [unit-property, integration, compatibility]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - run: |
-        PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_verification_tests
-        PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_chaos_scenarios
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
+          PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_verification_tests
+          PROPTEST_CASES=1024 cargo test -p mugraph-node --test m3_chaos_scenarios
 
   build-node:
     needs: check
@@ -60,10 +60,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-    - uses: actions/checkout@v3
-    - uses: DeterminateSystems/nix-installer-action@main
-    - uses: DeterminateSystems/magic-nix-cache-action@main
-    - run: nix build .#mugraph-node
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix build .#mugraph-node
   build-simulator:
     needs: check
     runs-on: ${{ matrix.os }}
@@ -71,7 +71,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-    - uses: actions/checkout@v3
-    - uses: DeterminateSystems/nix-installer-action@main
-    - uses: DeterminateSystems/magic-nix-cache-action@main
-    - run: nix build .#mugraph-simulator
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix build .#mugraph-simulator

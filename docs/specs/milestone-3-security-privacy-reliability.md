@@ -15,17 +15,21 @@ Last updated: 2026-02-26
 ## 2) Core controls
 
 Control split:
+
 - off-chain controls protect message integrity/auth/replay
 - on-chain controls protect settlement truth and credit eligibility
 
 ### AuthN/AuthZ
+
 - Trusted peer registry: `node_id -> allowed kid(s) + validity + revocation`.
 - Verify app-layer signatures on all command messages.
 - Enforce destination binding (`destination_node_id == local_node_id`).
 - Registry format reference: `docs/specs/milestone-3-peer-registry-format.md`.
 
 ### Replay/idempotency
+
 For command messages (`transfer_init`, `transfer_notice`, `transfer_ack` when used):
+
 - validate `sent_at` freshness
 - validate `expires_at`
 - dedupe `message_id`
@@ -35,14 +39,17 @@ Tuple:
 `(origin_node_id, transfer_id, message_type, idempotency_key)`
 
 ### Atomicity
+
 Transition write + idempotency outcome + audit event must commit atomically.
 
 ### Admission/overload policy (M3 scope)
+
 - no dedicated rate-limiting requirement in Milestone 3 initial scope
 - bounded retries with backoff+jitter still apply for reliability
 - overload behavior uses generic retriable/internal failures and recovery paths
 
 ### Privacy
+
 - transmit protocol-minimum fields only
 - no raw keys/signatures/nonces in normal logs
 - redact sensitive references in operational logs
@@ -57,20 +64,21 @@ Transition write + idempotency outcome + audit event must commit atomically.
 - Default invalidation posture is `held`; `reversed` requires explicit override flow.
 
 Invariants:
+
 1. at most one destination credit per `transfer_id`
 2. stale ACK cannot regress terminal confirmed state
 3. restart recovery is idempotent
 
 ## 4) Failure matrix (minimal)
 
-| Failure | Deterministic behavior | Recovery |
-|---|---|---|
-| peer/network unavailable | retry notice/status query | converge on recovery or manual review |
-| duplicate notice | no-op + deterministic duplicate response | none |
-| replay attempt | reject + security audit | none |
-| provider transient error | retry submit/poll | bounded retry + reconcile |
-| deep reorg invalidation | mark invalidated, halt normal flow | restore canonical or held/reversed/manual |
-| crash mid-operation | resume from durable state | startup reconciler |
+| Failure                  | Deterministic behavior                   | Recovery                                  |
+| ------------------------ | ---------------------------------------- | ----------------------------------------- |
+| peer/network unavailable | retry notice/status query                | converge on recovery or manual review     |
+| duplicate notice         | no-op + deterministic duplicate response | none                                      |
+| replay attempt           | reject + security audit                  | none                                      |
+| provider transient error | retry submit/poll                        | bounded retry + reconcile                 |
+| deep reorg invalidation  | mark invalidated, halt normal flow       | restore canonical or held/reversed/manual |
+| crash mid-operation      | resume from durable state                | startup reconciler                        |
 
 ## 5) Requirement IDs
 

@@ -29,9 +29,7 @@ export function WalletHeader({
           <div className="flex items-center gap-3">
             <BrandMark compact={isHome} />
             <div className="min-w-0">
-              <p className="wallet-kicker text-slate-500">
-                {isHome ? "Wallet" : "Wallet app"}
-              </p>
+              <p className="wallet-kicker text-slate-500">{isHome ? "Wallet" : "Wallet app"}</p>
               <h1 className="wallet-heading truncate text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">
                 {label}
               </h1>
@@ -48,12 +46,7 @@ export function WalletHeader({
           <div className="flex flex-wrap gap-2">
             <StatusChip label="Mode" value="Stub" compact />
             <StatusChip label="Network" value={networkLabel} compact />
-            <StatusChip
-              label="Status"
-              value={statusLabel}
-              tone={statusTone}
-              compact
-            />
+            <StatusChip label="Status" value={statusLabel} tone={statusTone} compact />
             <StatusChip label="Last sync" value={lastSyncedRelative} compact />
           </div>
         )}

@@ -19,11 +19,13 @@ Last updated: 2026-02-26
 Implement canonical envelope + minimal wire messages.
 
 Scope:
+
 - `transfer_init`, `transfer_notice`, `transfer_status_query`, `transfer_status`
 - optional `transfer_ack`
 - version/signature/replay/idempotency validation
 
 Done when:
+
 - deterministic validation errors
 - stable serialization tags
 - duplicate-safe handling
@@ -33,6 +35,7 @@ Done when:
 Implement reduced source/destination lifecycle with explicit on-chain and off-chain lanes, and chain-gated credit/finality.
 
 Done when:
+
 - no ack-only finalization
 - no stale-ack regression
 - off-chain success cannot finalize without chain confirmation
@@ -43,12 +46,14 @@ Done when:
 Implement v3 schema and migration.
 
 Scope:
+
 - `CROSS_NODE_TRANSFERS` (authoritative)
 - `CROSS_NODE_MESSAGES` (dedupe/diagnostic)
 - `IDEMPOTENCY_KEYS`
 - `TRANSFER_AUDIT_LOG`
 
 Done when:
+
 - transactional migration
 - atomic transition+idempotency+audit commit
 - restart-safe convergence
@@ -58,6 +63,7 @@ Done when:
 Implement bounded retries and chain-first reconciliation.
 
 Done when:
+
 - lost ACK does not block success
 - retry exhaustion reaches explicit manual review path
 
@@ -66,6 +72,7 @@ Done when:
 Implement mandatory `M3-SEC-*` controls.
 
 Done when:
+
 - spoof/replay/idempotency-conflict paths reject deterministically
 - logs redact sensitive fields
 
@@ -74,6 +81,7 @@ Done when:
 Implement `M3-OBS-*` telemetry and automated gates.
 
 Done when:
+
 - `M3-OBS-01..08` pass in CI
 - mixed-version + failure-recovery scenarios pass
 

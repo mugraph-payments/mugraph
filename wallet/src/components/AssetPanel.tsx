@@ -5,13 +5,7 @@ interface AssetPanelProps {
   assets: WalletAssetView[];
 }
 
-function EmptyPanelBody({
-  title,
-  copy,
-}: {
-  title: string;
-  copy: string;
-}) {
+function EmptyPanelBody({ title, copy }: { title: string; copy: string }) {
   return (
     <div className="wallet-card mt-5 p-5">
       <h3 className="wallet-heading text-sm font-medium text-slate-100">{title}</h3>
@@ -41,10 +35,7 @@ export function AssetPanel({ assets }: AssetPanelProps) {
           copy="This wallet preview has no holdings available yet. The list stays visible so the empty state still feels intentional."
         />
       ) : (
-        <div
-          className="mt-5 grid gap-3 xl:grid-cols-2 2xl:grid-cols-3"
-          aria-label="Asset list"
-        >
+        <div className="mt-5 grid gap-3 xl:grid-cols-2 2xl:grid-cols-3" aria-label="Asset list">
           {assets.map((asset) => (
             <AssetRow key={asset.id} asset={asset} />
           ))}

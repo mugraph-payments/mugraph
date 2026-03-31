@@ -10,15 +10,18 @@ Execution model: each transfer has an on-chain lane (truth) and an off-chain lan
 ### 1.1 Wire message types
 
 Required:
+
 - `transfer_init`
 - `transfer_notice`
 - `transfer_status_query`
 - `transfer_status`
 
 Optional:
+
 - `transfer_ack`
 
 Legacy/non-required:
+
 - `transfer_decision`
 - `transfer_retry_scheduled`
 - `transfer_failed`
@@ -38,6 +41,7 @@ Transport rule: inter-node messages are carried via existing `/rpc` methods only
 ### 1.3 Envelope fields
 
 Required core fields:
+
 - `version` (`major.minor`, current `3.0`)
 - `message_type`, `message_id`, `transfer_id`
 - `idempotency_key`, `correlation_id`
@@ -45,34 +49,36 @@ Required core fields:
 - `sent_at`
 
 Command-only field:
+
 - `expires_at` (`transfer_init`, `transfer_notice`, and `transfer_ack` when used)
 
 ## 2) Default policies (configurable)
 
 ### 2.1 Global defaults
 
-| Policy | Default |
-|---|---|
-| max clock skew (`sent_at`) | ±300s |
-| max command expiry horizon | 15m |
-| message dedupe retention | >= 7d |
-| nonce retention | >= 24h |
-| max notice retries | 12 |
-| retry strategy | exponential backoff + jitter |
-| idempotency tuple | (`origin_node_id`,`transfer_id`,`message_type`,`idempotency_key`) |
-| audit hot retention | >= 90d |
-| audit cold retention | >= 1y |
-| raw payload retention | 30d (encrypted at rest) |
+| Policy                     | Default                                                           |
+| -------------------------- | ----------------------------------------------------------------- |
+| max clock skew (`sent_at`) | ±300s                                                             |
+| max command expiry horizon | 15m                                                               |
+| message dedupe retention   | >= 7d                                                             |
+| nonce retention            | >= 24h                                                            |
+| max notice retries         | 12                                                                |
+| retry strategy             | exponential backoff + jitter                                      |
+| idempotency tuple          | (`origin_node_id`,`transfer_id`,`message_type`,`idempotency_key`) |
+| audit hot retention        | >= 90d                                                            |
+| audit cold retention       | >= 1y                                                             |
+| raw payload retention      | 30d (encrypted at rest)                                           |
 
 ### 2.2 Network settlement defaults (policy freeze)
 
-| Profile | `credit_target` | `finality_target` | `reorg_tolerance` |
-|---|---:|---:|---:|
-| local/dev | 1 | 2 | 1 |
-| preprod/testnet | 3 | 6 | 3 |
-| mainnet/prod | 6 | 12 | 6 |
+| Profile         | `credit_target` | `finality_target` | `reorg_tolerance` |
+| --------------- | --------------: | ----------------: | ----------------: |
+| local/dev       |               1 |                 2 |                 1 |
+| preprod/testnet |               3 |                 6 |                 3 |
+| mainnet/prod    |               6 |                12 |                 6 |
 
 Rules:
+
 - `credit_target <= finality_target` must always hold.
 - `reorg_tolerance < finality_target` must hold.
 
@@ -87,6 +93,7 @@ If another M3 doc conflicts on defaults, this file wins.
 ## 3) Status mapping contract
 
 `transfer_status` MUST expose:
+
 - `source_state`
 - `destination_state`
 - `settlement_state`
@@ -94,6 +101,7 @@ If another M3 doc conflicts on defaults, this file wins.
 - `credit_state`
 
 Canonical external `settlement_state`:
+
 - `not_submitted`
 - `submitted`
 - `confirming`
@@ -102,6 +110,7 @@ Canonical external `settlement_state`:
 - `manual_review`
 
 Canonical status sub-enums:
+
 - `chain_state`: `unknown|submitted|confirming|confirmed|invalidated`
 - `credit_state`: `none|eligible|credited|held|reversed`
 

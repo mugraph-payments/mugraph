@@ -17,10 +17,7 @@ interface WalletHomeScreenProps {
   onPrimaryActionSelect: (actionId: Extract<WalletActionKind, "send" | "receive">) => void;
 }
 
-function findMetric(
-  metrics: WalletSummaryMetricView[],
-  id: WalletSummaryMetricView["id"],
-) {
+function findMetric(metrics: WalletSummaryMetricView[], id: WalletSummaryMetricView["id"]) {
   return metrics.find((metric) => metric.id === id);
 }
 
@@ -127,14 +124,9 @@ export function WalletHomeScreen({
                     {item.amountLabel}
                   </p>
                 </div>
-                <ActivityStatusBadge
-                  label={item.statusLabel}
-                  tone={item.statusTone}
-                />
+                <ActivityStatusBadge label={item.statusLabel} tone={item.statusTone} />
               </div>
-              <p className="wallet-copy mt-3 text-base leading-7 text-slate-400">
-                {item.summary}
-              </p>
+              <p className="wallet-copy mt-3 text-base leading-7 text-slate-400">{item.summary}</p>
             </article>
           ))}
         </div>
@@ -144,9 +136,7 @@ export function WalletHomeScreen({
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="wallet-kicker text-slate-500">Assets</p>
-            <h3 className="wallet-heading mt-2 text-xl font-semibold text-slate-50">
-              Your assets
-            </h3>
+            <h3 className="wallet-heading mt-2 text-xl font-semibold text-slate-50">Your assets</h3>
           </div>
           <span className="text-sm text-slate-400">{topAssets.length} assets</span>
         </div>

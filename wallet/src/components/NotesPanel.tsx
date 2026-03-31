@@ -5,13 +5,7 @@ interface NotesPanelProps {
   notes: WalletNoteView[];
 }
 
-function EmptyPanelBody({
-  title,
-  copy,
-}: {
-  title: string;
-  copy: string;
-}) {
+function EmptyPanelBody({ title, copy }: { title: string; copy: string }) {
   return (
     <div className="wallet-card mt-5 p-5">
       <h3 className="wallet-heading text-sm font-medium text-slate-100">{title}</h3>
@@ -31,7 +25,8 @@ export function NotesPanel({ notes }: NotesPanelProps) {
           </h2>
         </div>
         <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Keep source, status, and cryptographic references readable without making the list feel like a debug console.
+          Keep source, status, and cryptographic references readable without making the list feel
+          like a debug console.
         </p>
       </div>
 

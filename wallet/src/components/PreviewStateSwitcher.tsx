@@ -1,8 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import type {
-  WalletPreviewState,
-  WalletPreviewStateId,
-} from "../data/walletPreviewStates";
+import type { WalletPreviewState, WalletPreviewStateId } from "../data/walletPreviewStates";
 
 interface PreviewStateSwitcherProps {
   activePreviewId: WalletPreviewStateId;
@@ -25,7 +22,8 @@ const previewToneClasses: Record<
     label: "text-slate-300/75",
   },
   syncing: {
-    shell: "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
+    shell:
+      "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
     button: "border-amber-300/30 bg-amber-400/10 text-amber-50",
     label: "text-amber-300/75",
   },
@@ -41,8 +39,7 @@ export function PreviewStateSwitcher({
   previews,
   onPreviewSelect,
 }: PreviewStateSwitcherProps) {
-  const activePreview =
-    previews.find((preview) => preview.id === activePreviewId) ?? previews[0];
+  const activePreview = previews.find((preview) => preview.id === activePreviewId) ?? previews[0];
   const activeTone = previewToneClasses[activePreviewId];
   const prefersReducedMotion = useReducedMotion();
 
@@ -55,16 +52,12 @@ export function PreviewStateSwitcher({
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className={`text-xs uppercase tracking-[0.22em] ${activeTone.label}`}>
-            Preview state
-          </p>
+          <p className={`text-xs uppercase tracking-[0.22em] ${activeTone.label}`}>Preview state</p>
           <p className="mt-2 text-sm leading-6 text-slate-300">
             Switch the wallet shell among the four planned preview fixtures.
           </p>
         </div>
-        <p className="max-w-lg text-sm leading-6 text-slate-400">
-          {activePreview.description}
-        </p>
+        <p className="max-w-lg text-sm leading-6 text-slate-400">{activePreview.description}</p>
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -81,14 +74,10 @@ export function PreviewStateSwitcher({
               whileTap={prefersReducedMotion ? undefined : { scale: 0.985 }}
               transition={{ type: "spring", stiffness: 260, damping: 20 }}
               className={`rounded-[1.25rem] border px-3 py-3 text-left will-change-transform ${
-                isActive
-                  ? tone.button
-                  : "border-white/10 bg-white/[0.03] text-slate-200"
+                isActive ? tone.button : "border-white/10 bg-white/[0.03] text-slate-200"
               }`}
             >
-              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                {preview.id}
-              </p>
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-500">{preview.id}</p>
               <p className="mt-2 text-sm font-medium">{preview.label}</p>
             </motion.button>
           );

@@ -63,11 +63,11 @@ cryptocurrencies as a payment option:
 
 1. **Scalability**: Cryptocurrency transactions are slow compared to
    centralized solutions. For example, credit cards have a practical
-confirmation limit of 2 seconds.
+   confirmation limit of 2 seconds.
 
 1. **Privacy**: Users do not want to reveal their identity for every purchase.
    Financial privacy is a human right, and in the age of big data analysis and
-AI, pseudonymity does not provide sufficient privacy.
+   AI, pseudonymity does not provide sufficient privacy.
 
 1. **Ease of Use**: Users prefer not to deal with complex protocols, multiple
    wallets, or extensive security considerations.

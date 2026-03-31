@@ -37,8 +37,7 @@ export const walletActionDrafts: WalletActionDrafts = {
   send: {
     assetId: "asset-usdm",
     amountInput: "250",
-    recipient:
-      "addr_test1qpf0m9k4m8s0q2s5f9e6z7h0d4v8u5k3w9q7p2c6n4y8m2s9d3q",
+    recipient: "addr_test1qpf0m9k4m8s0q2s5f9e6z7h0d4v8u5k3w9q7p2c6n4y8m2s9d3q",
     memo: "Rent payment",
   },
   receive: {
@@ -50,15 +49,13 @@ export const walletActionDrafts: WalletActionDrafts = {
   deposit: {
     assetId: "asset-ada",
     amountInput: "1500",
-    sourceAddress:
-      "addr_test1vzr8n2gk6tq9f0d8m4r3y5u7w2c1p6s9a0n3h8j4k7l2m5q6x8",
+    sourceAddress: "addr_test1vzr8n2gk6tq9f0d8m4r3y5u7w2c1p6s9a0n3h8j4k7l2m5q6x8",
     reference: "Savings top-up",
   },
   withdraw: {
     assetId: "asset-ada",
     amountInput: "750",
-    destinationAddress:
-      "addr1q8d5m3l9v2k7s4h0p6r1n8x5c3z9t6y2u7w4q0m8e1l5k3p9s7n",
+    destinationAddress: "addr1q8d5m3l9v2k7s4h0p6r1n8x5c3z9t6y2u7w4q0m8e1l5k3p9s7n",
     reference: "Cash out",
   },
 };
@@ -69,10 +66,8 @@ export const walletState: WalletState = {
     mode: "stub",
     network: "preprod",
     status: "ready",
-    delegatePk:
-      "d42ef0ac0f9d457b2f5e4d8e4d96e1c20b6c251f2fdd68a8b67d998ae9ce4b43",
-    scriptAddress:
-      "addr_test1wpd35m0c7q72v0ld5zl9f9m6h3d0jnz6m8pj3y3cl8f7f6g7vhg04",
+    delegatePk: "d42ef0ac0f9d457b2f5e4d8e4d96e1c20b6c251f2fdd68a8b67d998ae9ce4b43",
+    scriptAddress: "addr_test1wpd35m0c7q72v0ld5zl9f9m6h3d0jnz6m8pj3y3cl8f7f6g7vhg04",
     lastSyncedAt: "2026-03-18T09:42:00Z",
   },
   summary: {

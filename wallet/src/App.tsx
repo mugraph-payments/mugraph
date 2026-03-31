@@ -20,18 +20,10 @@ function App() {
   const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>(
     walletShellState.activeDestination,
   );
-  const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(
-    null,
-  );
-  const [sendDraft, setSendDraft] = useState<WalletSendDraft>(
-    walletActionDrafts.send,
-  );
-  const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(
-    walletActionDrafts.receive,
-  );
-  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(
-    walletActionDrafts.deposit,
-  );
+  const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(null);
+  const [sendDraft, setSendDraft] = useState<WalletSendDraft>(walletActionDrafts.send);
+  const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(walletActionDrafts.receive);
+  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(walletActionDrafts.deposit);
   const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
     walletActionDrafts.withdraw,
   );

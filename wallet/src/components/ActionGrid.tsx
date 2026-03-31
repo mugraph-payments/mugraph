@@ -46,7 +46,8 @@ const previewToneClasses: Record<
     icon: "bg-white/[0.08] text-slate-100 ring-white/10",
   },
   syncing: {
-    shell: "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
+    shell:
+      "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
     eyebrow: "text-amber-300/75",
     accent: "text-amber-100/80",
     selected: "border-amber-300/30 bg-amber-400/10",
@@ -79,16 +80,14 @@ export function ActionGrid({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>
-            Primary actions
-          </p>
+          <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>Primary actions</p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
             Move through the wallet from the actions first
           </h2>
         </div>
         <p className={`max-w-xl text-sm leading-6 ${tone.accent}`}>
-          Send, receive, deposit, and withdraw stay near the top so the shell
-          behaves like a real wallet instead of a passive dashboard.
+          Send, receive, deposit, and withdraw stay near the top so the shell behaves like a real
+          wallet instead of a passive dashboard.
         </p>
       </div>
 
@@ -121,12 +120,8 @@ export function ActionGrid({
               </div>
 
               <div className="mt-4 space-y-2">
-                <h3 className="text-base font-medium text-slate-100">
-                  {action.label}
-                </h3>
-                <p className={`text-sm leading-6 ${tone.accent}`}>
-                  {action.helper}
-                </p>
+                <h3 className="text-base font-medium text-slate-100">{action.label}</h3>
+                <p className={`text-sm leading-6 ${tone.accent}`}>{action.helper}</p>
               </div>
             </motion.button>
           );

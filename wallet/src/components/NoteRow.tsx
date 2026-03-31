@@ -30,7 +30,10 @@ export function NoteRow({ note }: NoteRowProps) {
             </div>
             <div className="min-w-0">
               <p className="wallet-kicker text-slate-500">Nonce</p>
-              <p className="wallet-code mt-1 truncate text-base text-slate-100" title={note.nonceShort}>
+              <p
+                className="wallet-code mt-1 truncate text-base text-slate-100"
+                title={note.nonceShort}
+              >
                 {note.nonceShort}
               </p>
             </div>

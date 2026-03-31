@@ -41,11 +41,7 @@ export interface WalletIdentityView {
 }
 
 export interface WalletSummaryMetricView {
-  id:
-    | "total-value-ada"
-    | "total-value-usd"
-    | "note-count"
-    | "pending-activity-count";
+  id: "total-value-ada" | "total-value-usd" | "note-count" | "pending-activity-count";
   label: string;
   value: string;
   tone: WalletTone;
@@ -137,12 +133,7 @@ export interface WalletActionDraftsView {
   withdraw: WalletActionDraftView;
 }
 
-const PRIMARY_ACTION_ORDER: WalletActionKind[] = [
-  "send",
-  "receive",
-  "deposit",
-  "withdraw",
-];
+const PRIMARY_ACTION_ORDER: WalletActionKind[] = ["send", "receive", "deposit", "withdraw"];
 
 const DESTINATION_SECTION_ORDER: Array<{
   destination: WalletRootDestination;
@@ -154,10 +145,7 @@ const DESTINATION_SECTION_ORDER: Array<{
   { destination: "activity", section: "activity" },
 ];
 
-export function createWalletView(
-  state: WalletState,
-  now = new Date(),
-): WalletView {
+export function createWalletView(state: WalletState, now = new Date()): WalletView {
   return {
     identity: buildWalletIdentityView(state, now),
     summaryMetrics: buildWalletSummaryMetricViews(state),
@@ -168,10 +156,7 @@ export function createWalletView(
   };
 }
 
-export function buildWalletIdentityView(
-  state: WalletState,
-  now = new Date(),
-): WalletIdentityView {
+export function buildWalletIdentityView(state: WalletState, now = new Date()): WalletIdentityView {
   return {
     label: state.identity.label,
     networkLabel: formatNetworkLabel(state.identity.network),
@@ -183,9 +168,7 @@ export function buildWalletIdentityView(
   };
 }
 
-export function buildWalletSummaryMetricViews(
-  state: WalletState,
-): WalletSummaryMetricView[] {
+export function buildWalletSummaryMetricViews(state: WalletState): WalletSummaryMetricView[] {
   return [
     {
       id: "total-value-ada",
@@ -214,14 +197,11 @@ export function buildWalletSummaryMetricViews(
   ];
 }
 
-export function buildWalletActionViews(
-  actions: WalletActionPreset[],
-): WalletActionView[] {
+export function buildWalletActionViews(actions: WalletActionPreset[]): WalletActionView[] {
   return [...actions]
     .sort(
       (left, right) =>
-        PRIMARY_ACTION_ORDER.indexOf(left.id) -
-        PRIMARY_ACTION_ORDER.indexOf(right.id),
+        PRIMARY_ACTION_ORDER.indexOf(left.id) - PRIMARY_ACTION_ORDER.indexOf(right.id),
     )
     .map((action) => ({
       ...action,
@@ -319,9 +299,7 @@ export function buildWalletReceiveDraftView(
       },
       {
         label: "Requested amount",
-        value:
-          formatDraftAmount(state, draft.assetId, draft.requestedAmountInput) ||
-          "Open amount",
+        value: formatDraftAmount(state, draft.assetId, draft.requestedAmountInput) || "Open amount",
       },
       {
         label: "Request label",
@@ -395,10 +373,7 @@ export function buildWalletWithdrawDraftView(
       },
       {
         label: "Destination",
-        value: formatDraftText(
-          draft.destinationAddress,
-          "Destination not set",
-        ),
+        value: formatDraftText(draft.destinationAddress, "Destination not set"),
       },
       {
         label: "Reference",
@@ -420,10 +395,7 @@ export function buildWalletAssetView(asset: AssetHolding): WalletAssetView {
   };
 }
 
-export function buildWalletNoteView(
-  note: WalletNote,
-  now = new Date(),
-): WalletNoteView {
+export function buildWalletNoteView(note: WalletNote, now = new Date()): WalletNoteView {
   return {
     id: note.id,
     assetTicker: note.assetTicker,
@@ -453,12 +425,10 @@ export function buildWalletActivityView(
   };
 }
 
-function getLegacySectionForDestination(
-  destination: WalletRootDestination,
-): WalletShellSection {
+function getLegacySectionForDestination(destination: WalletRootDestination): WalletShellSection {
   return (
-    DESTINATION_SECTION_ORDER.find((entry) => entry.destination === destination)
-      ?.section ?? "overview"
+    DESTINATION_SECTION_ORDER.find((entry) => entry.destination === destination)?.section ??
+    "overview"
   );
 }
 
@@ -486,9 +456,7 @@ export function getWalletStatusTone(status: WalletStatus): WalletTone {
   }
 }
 
-export function getWalletNoteStatusTone(
-  status: WalletNoteStatus,
-): WalletTone {
+export function getWalletNoteStatusTone(status: WalletNoteStatus): WalletTone {
   switch (status) {
     case "available":
       return "positive";
@@ -501,9 +469,7 @@ export function getWalletNoteStatusTone(
   }
 }
 
-export function getWalletActivityStatusTone(
-  status: WalletActivityStatus,
-): WalletTone {
+export function getWalletActivityStatusTone(status: WalletActivityStatus): WalletTone {
   switch (status) {
     case "completed":
       return "positive";
@@ -514,9 +480,7 @@ export function getWalletActivityStatusTone(
   }
 }
 
-function getWalletShellSectionDescription(
-  section: WalletShellSection,
-): string {
+function getWalletShellSectionDescription(section: WalletShellSection): string {
   switch (section) {
     case "overview":
       return "Your balance, actions, and latest wallet updates.";
@@ -552,11 +516,7 @@ function getDraftAssetLabel(state: WalletState, assetId: string): string {
   return `${asset.name} (${asset.ticker})`;
 }
 
-function formatDraftAmount(
-  state: WalletState,
-  assetId: string,
-  amountInput: string,
-): string {
+function formatDraftAmount(state: WalletState, assetId: string, amountInput: string): string {
   const amount = parsePositiveAmount(amountInput);
   const asset = state.assets.find((item) => item.id === assetId);
 
@@ -591,9 +551,7 @@ function getSendDraftMissingRequirements(draft: WalletSendDraft): string[] {
   return missingRequirements;
 }
 
-function getReceiveDraftMissingRequirements(
-  draft: WalletReceiveDraft,
-): string[] {
+function getReceiveDraftMissingRequirements(draft: WalletReceiveDraft): string[] {
   const missingRequirements: string[] = [];
 
   if (!draft.assetId.trim()) {
@@ -614,9 +572,7 @@ function getReceiveDraftMissingRequirements(
   return missingRequirements;
 }
 
-function getDepositDraftMissingRequirements(
-  draft: WalletDepositDraft,
-): string[] {
+function getDepositDraftMissingRequirements(draft: WalletDepositDraft): string[] {
   const missingRequirements: string[] = [];
 
   if (!draft.assetId.trim()) {
@@ -634,9 +590,7 @@ function getDepositDraftMissingRequirements(
   return missingRequirements;
 }
 
-function getWithdrawDraftMissingRequirements(
-  draft: WalletWithdrawDraft,
-): string[] {
+function getWithdrawDraftMissingRequirements(draft: WalletWithdrawDraft): string[] {
   const missingRequirements: string[] = [];
 
   if (!draft.assetId.trim()) {

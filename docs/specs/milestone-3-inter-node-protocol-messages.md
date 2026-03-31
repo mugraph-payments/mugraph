@@ -14,13 +14,13 @@ Owner: Protocol
 ## 2) Message set
 
 Required:
+
 1. `transfer_init`
 2. `transfer_notice`
 3. `transfer_status_query`
 4. `transfer_status`
 
-Optional:
-5. `transfer_ack` (advisory only)
+Optional: 5. `transfer_ack` (advisory only)
 
 Legacy/non-required types may be accepted for compatibility telemetry; otherwise reject with `UNSUPPORTED_MESSAGE_TYPE` (no state mutation).
 
@@ -47,6 +47,7 @@ This is the logical inter-node message envelope carried inside existing `/rpc` r
 ```
 
 Rules:
+
 - `m == "xnode"`
 - `version` is `major.minor` (current `3.0`)
 - signed canonical envelope with domain separation
@@ -56,12 +57,14 @@ Rules:
 ## 4) Minimal payload requirements
 
 ### `transfer_init`
+
 - `asset`
 - `amount` (positive integer string)
 - `destination_account_ref`
 - `source_intent_hash`
 
 ### `transfer_notice`
+
 - `notice_stage` (`submitted|confirmed|finalized`)
 - `tx_hash`
 - `confirmations` (required for `confirmed|finalized`)
@@ -69,9 +72,11 @@ Rules:
 Receiver rule: `transfer_notice` is advisory input; destination must verify `tx_hash` on-chain before crediting.
 
 ### `transfer_status_query`
+
 - `query_type` (`current|history`)
 
 ### `transfer_status`
+
 - `source_state`
 - `destination_state`
 - `settlement_state`
@@ -82,6 +87,7 @@ Receiver rule: `transfer_notice` is advisory input; destination must verify `tx_
 - `updated_at`
 
 ### `transfer_ack` (optional)
+
 - `ack_for_message_id`
 - `ack_status` (`processed|duplicate|deferred|rejected`)
 - `ack_at`
@@ -96,6 +102,7 @@ Receiver rule: `transfer_notice` is advisory input; destination must verify `tx_
 ## 6) Replay/idempotency controls
 
 For command messages:
+
 1. verify signature + trusted `kid`
 2. check `sent_at` freshness window
 3. check `expires_at`

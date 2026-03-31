@@ -1,9 +1,4 @@
-import {
-  ClockCounterClockwise,
-  GearSix,
-  House,
-  Wallet,
-} from "@phosphor-icons/react";
+import { ClockCounterClockwise, GearSix, House, Wallet } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
 import type { WalletActiveDestination } from "../types/wallet";
 
@@ -39,10 +34,7 @@ const destinationMeta: Array<{
   },
 ];
 
-export function WalletBottomNav({
-  activeDestination,
-  onDestinationSelect,
-}: WalletBottomNavProps) {
+export function WalletBottomNav({ activeDestination, onDestinationSelect }: WalletBottomNavProps) {
   return (
     <nav
       aria-label="Main wallet navigation"
@@ -72,10 +64,7 @@ export function WalletBottomNav({
                   : "text-slate-400"
               }`}
             >
-              <Icon
-                className="h-5 w-5"
-                weight={isActive ? "fill" : "duotone"}
-              />
+              <Icon className="h-5 w-5" weight={isActive ? "fill" : "duotone"} />
               <span className="text-sm font-medium xl:text-base">{destination.label}</span>
             </button>
           );

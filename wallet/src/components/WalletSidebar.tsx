@@ -13,15 +13,7 @@ interface WalletSidebarProps {
   lastSyncedRelative: string;
 }
 
-function MetaRow({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: ReactNode;
-}) {
+function MetaRow({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
     <div className="wallet-subtle-card p-3">
       <div className="flex items-center gap-3">
@@ -55,7 +47,8 @@ export function WalletSidebar({
             {label}
           </h2>
           <p className="wallet-copy mt-2 text-sm leading-6 text-slate-400">
-            Keep the funding target, delegate identity, and live network posture visible while moving through private transfers and settlement flows.
+            Keep the funding target, delegate identity, and live network posture visible while
+            moving through private transfers and settlement flows.
           </p>
         </div>
 

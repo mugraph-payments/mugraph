@@ -7,11 +7,13 @@ This runbook covers cross-node M3 operational handling for invalidation, manual-
 ## 1) Invalidation response
 
 Trigger signals:
+
 - `chain_state=invalidated`
 - `mugraph_reorg_events_total{severity="deep"}` increases
 - audit entries: `transfer.invalidated` or `reconciler.manual_review`
 
 Operator actions:
+
 1. Confirm canonical chain status from provider and compare `tx_hash`.
 2. Inspect transfer timeline (`TRANSFER_AUDIT_LOG`) for replay/idempotency errors.
 3. Keep destination in `held` until chain truth is stable.
@@ -20,10 +22,12 @@ Operator actions:
 ## 2) Manual-review handling
 
 Manual review entry conditions:
+
 - retry exhaustion for `transfer_notice` / `transfer_status_query`
 - invalidated transfer with `credit_state=held`
 
 Checklist:
+
 1. Verify transfer tuple (`transfer_id`, `origin_node_id`, `destination_node_id`).
 2. Reconstruct timeline from audit events in chronological order.
 3. Verify destination credit side effects (must be <= 1 credit per `transfer_id`).
@@ -35,6 +39,7 @@ Checklist:
 ## 3) Rollback guidance
 
 If regression is introduced in M3 handlers:
+
 1. Pause outbound coordination workers/reconciler if required.
 2. Preserve DB state; do not wipe `CROSS_NODE_*` or `TRANSFER_AUDIT_LOG`.
 3. Roll back application version.
@@ -47,6 +52,7 @@ If regression is introduced in M3 handlers:
 ## 4) Minimal query snippets
 
 Examples (conceptual):
+
 - Fetch transfer row by `transfer_id` from `CROSS_NODE_TRANSFERS`
 - Fetch message history from `CROSS_NODE_MESSAGES`
 - Reconstruct ordered timeline from `TRANSFER_AUDIT_LOG`

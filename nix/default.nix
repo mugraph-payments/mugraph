@@ -24,7 +24,10 @@ let
         allow-missing-formatter = true;
         verbose = 0;
 
-        global.excludes = [ "*.lock" ];
+        global.excludes = [
+          "*.lock"
+          "*.yaml"
+        ];
 
         formatter = {
           nixfmt.options = [ "--strict" ];
@@ -34,8 +37,9 @@ let
 
       programs = {
         nixfmt.enable = true;
-        taplo.enable = true;
+        oxfmt.enable = true;
         rustfmt.enable = true;
+        taplo.enable = true;
       };
     }).config.build.wrapper;
 

@@ -28,7 +28,8 @@ const panelToneClasses: Record<
     copy: "text-slate-400",
   },
   syncing: {
-    shell: "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
+    shell:
+      "border-amber-400/20 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(2,6,23,0.72))]",
     eyebrow: "text-amber-300/75",
     badge: "border-amber-300/25 bg-amber-400/10 text-amber-50",
     copy: "text-amber-100/80",
@@ -41,15 +42,10 @@ const panelToneClasses: Record<
   },
 };
 
-export function ActionDetailPanel({
-  action,
-  previewStateId,
-}: ActionDetailPanelProps) {
+export function ActionDetailPanel({ action, previewStateId }: ActionDetailPanelProps) {
   const view = createWalletView(walletState);
-  const latestDeposit =
-    view.activity.find((item) => item.kindLabel === "Deposit") ?? null;
-  const latestWithdraw =
-    view.activity.find((item) => item.kindLabel === "Withdraw") ?? null;
+  const latestDeposit = view.activity.find((item) => item.kindLabel === "Deposit") ?? null;
+  const latestWithdraw = view.activity.find((item) => item.kindLabel === "Withdraw") ?? null;
   const topAsset = view.assets[0]?.balanceLabel ?? "No holdings";
   const isEmptyPreview = previewStateId === "empty";
   const tone = panelToneClasses[previewStateId];
@@ -60,9 +56,7 @@ export function ActionDetailPanel({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>
-            Detail region
-          </p>
+          <p className={`text-xs uppercase tracking-[0.22em] ${tone.eyebrow}`}>Detail region</p>
           <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-50">
             {action.label} is selected
           </h2>
@@ -90,9 +84,7 @@ export function ActionDetailPanel({
         <DepositDetails
           scriptAddressShort={view.identity.scriptAddressShort}
           delegatePkShort={view.identity.delegatePkShort}
-          latestDepositReference={
-            latestDeposit?.referenceShort ?? "No deposit reference"
-          }
+          latestDepositReference={latestDeposit?.referenceShort ?? "No deposit reference"}
           pendingActivityCount={walletState.summary.pendingActivityCount}
           isEmpty={isEmptyPreview}
           previewStateId={previewStateId}
@@ -111,9 +103,7 @@ export function ActionDetailPanel({
 
       {action.id === "withdraw" ? (
         <WithdrawDetails
-          latestWithdrawReference={
-            latestWithdraw?.referenceShort ?? "No withdraw reference"
-          }
+          latestWithdrawReference={latestWithdraw?.referenceShort ?? "No withdraw reference"}
           pendingActivityCount={walletState.summary.pendingActivityCount}
           scriptAddressShort={view.identity.scriptAddressShort}
           topAssetLabel={topAsset}

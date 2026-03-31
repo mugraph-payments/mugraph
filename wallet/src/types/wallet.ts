@@ -8,11 +8,7 @@ export type WalletActivityKind = "deposit" | "refresh" | "withdraw";
 export type WalletActivityStatus = "completed" | "pending" | "failed";
 export type WalletActionKind = "send" | "receive" | "deposit" | "withdraw";
 export type WalletShellRegion = "primary" | "secondary";
-export type WalletShellSection =
-  | "overview"
-  | "holdings"
-  | "notes"
-  | "activity";
+export type WalletShellSection = "overview" | "holdings" | "notes" | "activity";
 export type WalletReceiveShareMode = "address" | "qr";
 export type WalletRootDestination = "home" | "activity" | "assets" | "settings";
 export type WalletActiveRegion = WalletShellRegion;

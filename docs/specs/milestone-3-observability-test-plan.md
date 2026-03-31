@@ -7,6 +7,7 @@ Last updated: 2026-02-26
 ## 1) Scope
 
 Validate that M3:
+
 1. converges with chain-authoritative settlement,
 2. preserves idempotent safety under at-least-once delivery,
 3. exposes enough telemetry for operations.
@@ -14,6 +15,7 @@ Validate that M3:
 ## 2) Required telemetry keys
 
 All critical events:
+
 - `transfer_id`
 - `origin_node_id`
 - `destination_node_id`
@@ -21,14 +23,17 @@ All critical events:
 - `state`
 
 Message-scoped events:
+
 - `message_id`
 - `message_type`
 
 Chain-scoped events:
+
 - `tx_hash`
 - `confirmations_observed`
 
 Retry/security events should add:
+
 - `idempotency_key`
 - `attempt_no`
 - `error_code`
@@ -38,10 +43,12 @@ Retry/security events should add:
 Prefix: `mugraph_`.
 
 Metric split:
+
 - on-chain convergence metrics (submission/confirmation/reorg)
 - off-chain coordination metrics (messages/retries/duplicates/replay)
 
 Core metrics (full names):
+
 - `mugraph_transfers_initiated_total`
 - `mugraph_transfers_terminal_total{terminal_state}`
 - `mugraph_chain_submission_total{result,provider}`
@@ -58,6 +65,7 @@ Core metrics (full names):
 ## 4) Traces/logs/audits
 
 Tracing spans (minimum):
+
 - `transfer.create`
 - `transfer.message.send`
 - `transfer.message.receive`
@@ -67,6 +75,7 @@ Tracing spans (minimum):
 - `transfer.reconcile`
 
 Mandatory audit events:
+
 - `transfer.initiated`
 - `transfer.notice.accepted`
 - `transfer.credited`
@@ -87,45 +96,49 @@ Mandatory audit events:
 ## 6) Test strategy
 
 ### Unit
+
 - telemetry propagation
 - metric emission
 - replay/idempotency validators
 
 ### Property
+
 - no double credit with duplicate/reordered delivery
 - no stale-ack terminal regression
 
 ### Integration
+
 - full lifecycle with provider fakes
 - crash/restart recovery
 - reorg invalidation + reconciliation
 
 ### E2E/chaos
+
 - two-node happy path
 - destination downtime/recovery
 - packet loss/timeouts/clock skew boundaries
 
 ## 7) Acceptance matrix
 
-| Req ID | Requirement | Minimum validation |
-|---|---|---|
-| M3-OBS-01 | lifecycle events include `transfer_id` | unit + integration |
-| M3-OBS-02 | message events include `message_id`/`message_type` | handler integration |
-| M3-OBS-03 | retries/duplicates are measurable | duplicate/retry scenarios |
-| M3-OBS-04 | stuck states are detectable + alerting | forced-stuck + alert test |
-| M3-OBS-05 | chain linkage includes `tx_hash` + depth | provider integration |
-| M3-OBS-06 | audit timeline reconstructs transfer | audit reconstruction test |
-| M3-OBS-07 | replay rejection observable + safe | security + chaos skew |
-| M3-OBS-08 | reorg invalidation emits signals + converges | reorg simulation integration |
+| Req ID    | Requirement                                        | Minimum validation           |
+| --------- | -------------------------------------------------- | ---------------------------- |
+| M3-OBS-01 | lifecycle events include `transfer_id`             | unit + integration           |
+| M3-OBS-02 | message events include `message_id`/`message_type` | handler integration          |
+| M3-OBS-03 | retries/duplicates are measurable                  | duplicate/retry scenarios    |
+| M3-OBS-04 | stuck states are detectable + alerting             | forced-stuck + alert test    |
+| M3-OBS-05 | chain linkage includes `tx_hash` + depth           | provider integration         |
+| M3-OBS-06 | audit timeline reconstructs transfer               | audit reconstruction test    |
+| M3-OBS-07 | replay rejection observable + safe                 | security + chaos skew        |
+| M3-OBS-08 | reorg invalidation emits signals + converges       | reorg simulation integration |
 
 ## 8) CI gates
 
 PR-required:
+
 1. `unit+property`
 2. `integration`
 3. `compatibility` (protocol changes)
 
-Release-candidate required:
-4. `e2e+chaos`
+Release-candidate required: 4. `e2e+chaos`
 
 M3 observability readiness requires all `M3-OBS-*` checks passing.

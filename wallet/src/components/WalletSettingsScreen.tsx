@@ -1,9 +1,4 @@
-import {
-  CaretRight,
-  LockKey,
-  Pulse,
-  ScanSmiley,
-} from "@phosphor-icons/react";
+import { CaretRight, LockKey, Pulse, ScanSmiley } from "@phosphor-icons/react";
 import { useState, type ReactNode } from "react";
 import { DepositDetails } from "./DepositDetails";
 import { NotesPanel } from "./NotesPanel";

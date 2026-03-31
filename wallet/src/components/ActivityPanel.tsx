@@ -6,13 +6,7 @@ interface ActivityPanelProps {
   activity: WalletActivityView[];
 }
 
-function EmptyPanelBody({
-  title,
-  copy,
-}: {
-  title: string;
-  copy: string;
-}) {
+function EmptyPanelBody({ title, copy }: { title: string; copy: string }) {
   return (
     <div className="wallet-card mt-5 p-5">
       <h3 className="wallet-heading text-sm font-medium text-slate-100">{title}</h3>

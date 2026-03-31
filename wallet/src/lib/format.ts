@@ -7,17 +7,11 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export function formatNumber(
-  value: number,
-  maximumFractionDigits = 2,
-): string {
+export function formatNumber(value: number, maximumFractionDigits = 2): string {
   const minimumFractionDigits = Number.isInteger(value) ? 0 : 2;
 
   return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: Math.min(
-      minimumFractionDigits,
-      maximumFractionDigits,
-    ),
+    minimumFractionDigits: Math.min(minimumFractionDigits, maximumFractionDigits),
     maximumFractionDigits,
   }).format(value);
 }
@@ -34,11 +28,7 @@ export function formatPercent(value: number): string {
   return `${formatNumber(value, 1)}%`;
 }
 
-export function truncateMiddle(
-  value: string,
-  leading = 10,
-  trailing = 8,
-): string {
+export function truncateMiddle(value: string, leading = 10, trailing = 8): string {
   if (value.length <= leading + trailing + 1) {
     return value;
   }
@@ -46,10 +36,7 @@ export function truncateMiddle(
   return `${value.slice(0, leading)}…${value.slice(-trailing)}`;
 }
 
-export function formatRelativeTime(
-  input: string | Date,
-  now = new Date(),
-): string {
+export function formatRelativeTime(input: string | Date, now = new Date()): string {
   const target = typeof input === "string" ? new Date(input) : input;
   const diffMs = now.getTime() - target.getTime();
 

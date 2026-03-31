@@ -3,153 +3,150 @@
 @tailwind utilities;
 
 :root {
- color-scheme: dark;
- font-family:
-  Inter,
-  ui-sans-serif,
-  system-ui,
-  -apple-system,
-  BlinkMacSystemFont,
-  "Segoe UI",
-  sans-serif;
- font-synthesis: none;
- font-optical-sizing: auto;
- text-rendering: optimizeLegibility;
- -webkit-font-smoothing: antialiased;
- -moz-osx-font-smoothing: grayscale;
- -webkit-text-size-adjust: 100%;
- line-height: 1.5;
- background-color: #282a36;
- color: #f8f8f2;
- --wallet-text-soft: #94a3d1;
- --wallet-text-strong: #f8f8f2;
- --wallet-chip-neutral-bg: rgba(68, 71, 90, 0.82);
- --wallet-chip-neutral-border: rgba(189, 147, 249, 0.18);
- --wallet-surface-strong: linear-gradient(
-  180deg,
-  rgba(49, 52, 68, 0.96) 0%,
-  rgba(40, 42, 54, 0.94) 100%
- );
- --wallet-surface-soft: linear-gradient(
-  180deg,
-  rgba(68, 71, 90, 0.82) 0%,
-  rgba(49, 52, 68, 0.84) 100%
- );
- --wallet-border: rgba(189, 147, 249, 0.16);
- --wallet-border-strong: rgba(248, 248, 242, 0.12);
- --wallet-shadow-panel:
-  0 1px 0 rgba(248, 248, 242, 0.04),
-  0 24px 70px -34px rgba(24, 25, 32, 0.94),
-  0 42px 110px -52px rgba(17, 18, 24, 1);
- --wallet-shadow-card:
-  inset 0 1px 0 rgba(248, 248, 242, 0.03),
-  0 16px 36px -28px rgba(20, 21, 28, 0.86);
- --wallet-shadow-accent:
-  0 0 0 1px rgba(189, 147, 249, 0.22),
-  0 18px 42px -28px rgba(255, 121, 198, 0.42);
+  color-scheme: dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  line-height: 1.5;
+  background-color: #282a36;
+  color: #f8f8f2;
+  --wallet-text-soft: #94a3d1;
+  --wallet-text-strong: #f8f8f2;
+  --wallet-chip-neutral-bg: rgba(68, 71, 90, 0.82);
+  --wallet-chip-neutral-border: rgba(189, 147, 249, 0.18);
+  --wallet-surface-strong: linear-gradient(
+    180deg,
+    rgba(49, 52, 68, 0.96) 0%,
+    rgba(40, 42, 54, 0.94) 100%
+  );
+  --wallet-surface-soft: linear-gradient(
+    180deg,
+    rgba(68, 71, 90, 0.82) 0%,
+    rgba(49, 52, 68, 0.84) 100%
+  );
+  --wallet-border: rgba(189, 147, 249, 0.16);
+  --wallet-border-strong: rgba(248, 248, 242, 0.12);
+  --wallet-shadow-panel:
+    0 1px 0 rgba(248, 248, 242, 0.04), 0 24px 70px -34px rgba(24, 25, 32, 0.94),
+    0 42px 110px -52px rgba(17, 18, 24, 1);
+  --wallet-shadow-card:
+    inset 0 1px 0 rgba(248, 248, 242, 0.03), 0 16px 36px -28px rgba(20, 21, 28, 0.86);
+  --wallet-shadow-accent:
+    0 0 0 1px rgba(189, 147, 249, 0.22), 0 18px 42px -28px rgba(255, 121, 198, 0.42);
 }
 
 html {
- min-height: 100%;
- overflow-x: hidden;
- font-size: 16px;
+  min-height: 100%;
+  overflow-x: hidden;
+  font-size: 16px;
 }
 
 body,
 #root {
- min-height: 100%;
- overflow-x: hidden;
+  min-height: 100%;
+  overflow-x: hidden;
 }
 
 @media (min-width: 1024px) {
- html {
-  font-size: 17px;
- }
+  html {
+    font-size: 17px;
+  }
 }
 
 @media (min-width: 1536px) {
- html {
-  font-size: 18px;
- }
+  html {
+    font-size: 18px;
+  }
 }
 
 body {
- margin: 0;
- min-height: 100vh;
- overflow-x: hidden;
- background:
-  radial-gradient(circle at top left, rgba(255, 121, 198, 0.16), transparent 28%),
-  radial-gradient(circle at top right, rgba(139, 233, 253, 0.16), transparent 34%),
-  radial-gradient(circle at bottom, rgba(189, 147, 249, 0.12), transparent 55%),
-  linear-gradient(180deg, #2b2d3a 0%, #1f2029 100%);
- color: inherit;
- line-height: 1.6;
- letter-spacing: 0.01em;
- font-size: 1.03125rem;
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 121, 198, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(139, 233, 253, 0.16), transparent 34%),
+    radial-gradient(circle at bottom, rgba(189, 147, 249, 0.12), transparent 55%),
+    linear-gradient(180deg, #2b2d3a 0%, #1f2029 100%);
+  color: inherit;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  font-size: 1.03125rem;
 }
 
 * {
- box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 a {
- color: inherit;
+  color: inherit;
 }
 
 button,
 input,
 textarea,
 select {
- font: inherit;
+  font: inherit;
 }
 
 ::selection {
- background: rgba(255, 121, 198, 0.28);
- color: #f8f8f2;
+  background: rgba(255, 121, 198, 0.28);
+  color: #f8f8f2;
 }
 
 /* Dracula palette remap for the Tailwind utilities used throughout the wallet UI. */
 [class*="text-slate-500"] {
- color: #6272a4 !important;
+  color: #6272a4 !important;
 }
 
 [class*="text-slate-400"] {
- color: #aeb8de !important;
+  color: #aeb8de !important;
 }
 
 [class*="text-slate-300"],
 [class*="text-slate-200"] {
- color: #d5dbf4 !important;
+  color: #d5dbf4 !important;
 }
 
 [class*="text-slate-100"],
 [class*="text-slate-50"] {
- color: #f8f8f2 !important;
+  color: #f8f8f2 !important;
 }
 
 [class*="text-teal-300"],
 [class*="text-teal-200"] {
- color: #8be9fd !important;
+  color: #8be9fd !important;
 }
 
 [class*="text-teal-100"],
 [class*="text-teal-50"] {
- color: #f8f8f2 !important;
+  color: #f8f8f2 !important;
 }
 
 [class*="border-white/10"] {
- border-color: rgba(248, 248, 242, 0.12) !important;
+  border-color: rgba(248, 248, 242, 0.12) !important;
 }
 
 [class*="border-slate-300/20"] {
- border-color: rgba(189, 147, 249, 0.2) !important;
+  border-color: rgba(189, 147, 249, 0.2) !important;
 }
 
 [class*="border-teal-400/20"],
 [class*="border-teal-300/20"],
 [class*="border-teal-300/25"],
 [class*="border-teal-300/30"] {
- border-color: rgba(189, 147, 249, 0.32) !important;
+  border-color: rgba(189, 147, 249, 0.32) !important;
 }
 
 [class*="bg-white/[0.03]"],
@@ -157,154 +154,148 @@ select {
 [class*="bg-white/[0.05]"],
 [class*="bg-white/[0.06]"],
 [class*="bg-white/5"] {
- background-color: rgba(68, 71, 90, 0.46) !important;
+  background-color: rgba(68, 71, 90, 0.46) !important;
 }
 
 [class*="bg-black/20"],
 [class*="bg-slate-950/60"] {
- background-color: rgba(30, 31, 41, 0.74) !important;
+  background-color: rgba(30, 31, 41, 0.74) !important;
 }
 
 [class*="bg-teal-400/[0.08]"],
 [class*="bg-teal-400/10"],
 [class*="bg-teal-400/12"] {
- background-color: rgba(189, 147, 249, 0.16) !important;
+  background-color: rgba(189, 147, 249, 0.16) !important;
 }
 
 [class*="ring-white/10"] {
- --tw-ring-color: rgba(248, 248, 242, 0.14) !important;
+  --tw-ring-color: rgba(248, 248, 242, 0.14) !important;
 }
 
 [class*="ring-teal-300/20"] {
- --tw-ring-color: rgba(255, 121, 198, 0.24) !important;
+  --tw-ring-color: rgba(255, 121, 198, 0.24) !important;
 }
 
 @layer components {
- .wallet-phone-shell {
-  max-width: min(100%, 30rem);
- }
-
- @media (min-width: 1024px) {
   .wallet-phone-shell {
-   max-width: min(100%, 72rem);
+    max-width: min(100%, 30rem);
   }
- }
 
- @media (min-width: 1536px) {
-  .wallet-phone-shell {
-   max-width: min(100%, 84rem);
+  @media (min-width: 1024px) {
+    .wallet-phone-shell {
+      max-width: min(100%, 72rem);
+    }
   }
- }
 
- .wallet-panel {
-  @apply rounded-3xl border backdrop-blur-xl;
-  background: var(--wallet-surface-strong);
-  border-color: var(--wallet-border);
-  box-shadow: var(--wallet-shadow-panel);
- }
+  @media (min-width: 1536px) {
+    .wallet-phone-shell {
+      max-width: min(100%, 84rem);
+    }
+  }
 
- @media (min-width: 1280px) {
   .wallet-panel {
-   border-radius: 1.875rem;
+    @apply rounded-3xl border backdrop-blur-xl;
+    background: var(--wallet-surface-strong);
+    border-color: var(--wallet-border);
+    box-shadow: var(--wallet-shadow-panel);
   }
- }
 
- .wallet-panel-soft {
-  @apply rounded-3xl border backdrop-blur-xl;
-  background: var(--wallet-surface-soft);
-  border-color: var(--wallet-border);
-  box-shadow: var(--wallet-shadow-card);
- }
+  @media (min-width: 1280px) {
+    .wallet-panel {
+      border-radius: 1.875rem;
+    }
+  }
 
- .wallet-card {
-  @apply rounded-2xl border;
-  background: rgba(68, 71, 90, 0.38);
-  border-color: rgba(189, 147, 249, 0.14);
-  box-shadow: var(--wallet-shadow-card);
- }
+  .wallet-panel-soft {
+    @apply rounded-3xl border backdrop-blur-xl;
+    background: var(--wallet-surface-soft);
+    border-color: var(--wallet-border);
+    box-shadow: var(--wallet-shadow-card);
+  }
 
- .wallet-subtle-card {
-  @apply rounded-2xl border;
-  background: rgba(68, 71, 90, 0.26);
-  border-color: rgba(189, 147, 249, 0.12);
-  box-shadow: inset 0 1px 0 rgba(248, 248, 242, 0.03);
- }
+  .wallet-card {
+    @apply rounded-2xl border;
+    background: rgba(68, 71, 90, 0.38);
+    border-color: rgba(189, 147, 249, 0.14);
+    box-shadow: var(--wallet-shadow-card);
+  }
 
- @media (min-width: 1280px) {
   .wallet-subtle-card {
-   background: rgba(68, 71, 90, 0.3);
+    @apply rounded-2xl border;
+    background: rgba(68, 71, 90, 0.26);
+    border-color: rgba(189, 147, 249, 0.12);
+    box-shadow: inset 0 1px 0 rgba(248, 248, 242, 0.03);
   }
- }
 
- .wallet-kicker {
-  @apply text-xs font-medium uppercase;
-  letter-spacing: 0.18em;
- }
+  @media (min-width: 1280px) {
+    .wallet-subtle-card {
+      background: rgba(68, 71, 90, 0.3);
+    }
+  }
 
- .wallet-heading {
-  text-wrap: balance;
- }
+  .wallet-kicker {
+    @apply text-xs font-medium uppercase;
+    letter-spacing: 0.18em;
+  }
 
- .wallet-copy {
-  text-wrap: pretty;
- }
+  .wallet-heading {
+    text-wrap: balance;
+  }
 
- .wallet-interactive {
-  @apply min-h-11 transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
-  --tw-ring-color: rgba(255, 121, 198, 0.38);
-  --tw-ring-offset-color: #282a36;
- }
+  .wallet-copy {
+    text-wrap: pretty;
+  }
 
- .wallet-input {
-  @apply min-h-12 rounded-2xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2;
-  --tw-ring-color: rgba(255, 121, 198, 0.22);
-  background: rgba(68, 71, 90, 0.34);
-  border-color: rgba(189, 147, 249, 0.16);
- }
+  .wallet-interactive {
+    @apply min-h-11 transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    --tw-ring-color: rgba(255, 121, 198, 0.38);
+    --tw-ring-offset-color: #282a36;
+  }
 
- .wallet-input:focus {
-  background: rgba(68, 71, 90, 0.48);
-  border-color: rgba(255, 121, 198, 0.32);
- }
+  .wallet-input {
+    @apply min-h-12 rounded-2xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2;
+    --tw-ring-color: rgba(255, 121, 198, 0.22);
+    background: rgba(68, 71, 90, 0.34);
+    border-color: rgba(189, 147, 249, 0.16);
+  }
 
- .wallet-choice {
-  @apply min-h-12 rounded-2xl border p-4 text-left transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
-  --tw-ring-color: rgba(255, 121, 198, 0.38);
-  --tw-ring-offset-color: #282a36;
- }
+  .wallet-input:focus {
+    background: rgba(68, 71, 90, 0.48);
+    border-color: rgba(255, 121, 198, 0.32);
+  }
 
- .wallet-data {
-  font-variant-numeric: tabular-nums slashed-zero;
- }
+  .wallet-choice {
+    @apply min-h-12 rounded-2xl border p-4 text-left transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    --tw-ring-color: rgba(255, 121, 198, 0.38);
+    --tw-ring-offset-color: #282a36;
+  }
 
- .wallet-code {
-  font-family:
-   ui-monospace,
-   SFMono-Regular,
-   Menlo,
-   Monaco,
-   Consolas,
-   "Liberation Mono",
-   "Courier New",
-   monospace;
-  font-variant-numeric: tabular-nums slashed-zero;
-  letter-spacing: 0;
- }
+  .wallet-data {
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
 
- .wallet-accent-ring {
-  box-shadow: var(--wallet-shadow-accent);
- }
+  .wallet-code {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+      monospace;
+    font-variant-numeric: tabular-nums slashed-zero;
+    letter-spacing: 0;
+  }
 
- .wallet-chip-neutral {
-  border-color: var(--wallet-chip-neutral-border);
-  background: var(--wallet-chip-neutral-bg);
- }
+  .wallet-accent-ring {
+    box-shadow: var(--wallet-shadow-accent);
+  }
 
- .wallet-chip-label-neutral {
-  color: var(--wallet-text-soft);
- }
+  .wallet-chip-neutral {
+    border-color: var(--wallet-chip-neutral-border);
+    background: var(--wallet-chip-neutral-bg);
+  }
 
- .wallet-chip-value-neutral {
-  color: var(--wallet-text-strong);
- }
+  .wallet-chip-label-neutral {
+    color: var(--wallet-text-soft);
+  }
+
+  .wallet-chip-value-neutral {
+    color: var(--wallet-text-strong);
+  }
 }

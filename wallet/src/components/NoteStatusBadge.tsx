@@ -12,10 +12,7 @@ const toneClasses: Record<WalletTone, string> = {
   critical: "border-rose-400/20 bg-rose-400/10 text-rose-100",
 };
 
-export function NoteStatusBadge({
-  label,
-  tone,
-}: NoteStatusBadgeProps) {
+export function NoteStatusBadge({ label, tone }: NoteStatusBadgeProps) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm font-medium ${toneClasses[tone]}`}
