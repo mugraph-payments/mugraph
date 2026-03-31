@@ -2,17 +2,10 @@ use color_eyre::eyre::{Context, Result};
 use serde::Deserialize;
 
 use super::{
-    AssetAmount,
-    ChainTip,
-    MaestroProvider,
-    SubmitResponse,
-    UtxoInfo,
+    AssetAmount, ChainTip, MaestroProvider, SubmitResponse, UtxoInfo,
     common::{
-        ADDRESS_UTXO_PAGE_SIZE,
-        ProtocolParams,
-        parse_required,
-        send_with_retry,
-        with_pagination,
+        ADDRESS_UTXO_PAGE_SIZE, ProtocolParams, parse_required,
+        send_with_retry, with_pagination,
     },
 };
 

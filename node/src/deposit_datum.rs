@@ -224,10 +224,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes,
-        Constr,
-        MaybeIndefArray,
-        alonzo::PlutusData,
+        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
     };
 
     use super::*;
