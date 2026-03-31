@@ -36,7 +36,7 @@ export function WalletHomeScreen({
   const recentActivity = activity.slice(0, 3);
 
   return (
-    <section className="grid gap-4 self-start xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
       <section className="wallet-panel p-5 sm:p-6 xl:col-span-2">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
           <div className="space-y-5">

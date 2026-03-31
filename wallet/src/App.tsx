@@ -127,7 +127,9 @@ function App() {
             />
           </aside>
 
-          <main className="grid min-h-0 gap-4 pb-24 xl:pb-0">{activeDestinationPanel}</main>
+          <main className="grid min-h-0 content-start gap-4 pb-24 xl:pb-0">
+            {activeDestinationPanel}
+          </main>
         </div>
       </div>
     </div>
