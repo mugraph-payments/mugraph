@@ -25,15 +25,11 @@
   --wallet-text-strong: #f8f8f2;
   --wallet-chip-neutral-bg: rgba(68, 71, 90, 0.82);
   --wallet-chip-neutral-border: rgba(189, 147, 249, 0.18);
-  --wallet-surface-strong: linear-gradient(
-    180deg,
-    rgba(49, 52, 68, 0.96) 0%,
-    rgba(40, 42, 54, 0.94) 100%
-  );
+  --wallet-surface-strong: linear-gradient(180deg, rgb(49, 52, 68) 0%, rgb(40, 42, 54) 100%);
   --wallet-surface-soft: linear-gradient(
     180deg,
-    rgba(68, 71, 90, 0.82) 0%,
-    rgba(49, 52, 68, 0.84) 100%
+    rgba(68, 71, 90, 0.92) 0%,
+    rgba(49, 52, 68, 0.94) 100%
   );
   --wallet-border: rgba(189, 147, 249, 0.16);
   --wallet-border-strong: rgba(248, 248, 242, 0.12);
