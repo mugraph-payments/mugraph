@@ -35,8 +35,8 @@ proptest = { workspace = true }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 uplc = "1.1.10"
-pallas-primitives = "0.31.0"
-pallas-traverse = "0.31.0"
-pallas-codec = "0.31.0"
-pallas-addresses = "0.31.0"
-pallas-crypto = "0.31.0"
+pallas-primitives = "0.35.0"
+pallas-traverse = "0.35.0"
+pallas-codec = "0.35.0"
+pallas-addresses = "0.35.0"
+pallas-crypto = "0.35.0"
