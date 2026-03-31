@@ -1,6 +1,9 @@
 use mugraph_core::types::{
-    CrossNodeTransferRecord, TransferChainState, TransferCreditState,
-    TransferSettlementState, TransferStatusPayload,
+    CrossNodeTransferRecord,
+    TransferChainState,
+    TransferCreditState,
+    TransferSettlementState,
+    TransferStatusPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -345,8 +345,12 @@ mod tests {
     use std::sync::atomic::{AtomicU8, Ordering};
 
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::UtxoReference;
@@ -1339,7 +1343,10 @@ mod datum_tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
 
     use super::*;
@@ -1770,17 +1777,27 @@ mod handle_deposit_flow_tests {
     use std::sync::Arc;
 
     use axum::{
-        Router, extract::Path, http::StatusCode, response::IntoResponse,
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::IntoResponse,
         routing::get,
     };
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
     use serde_json::json;
 

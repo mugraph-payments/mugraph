@@ -1,9 +1,13 @@
 use mugraph_core::types::{
-    TransferChainState, TransferSettlementState, XNodeMessageType,
+    TransferChainState,
+    TransferSettlementState,
+    XNodeMessageType,
     validate_envelope_basics,
 };
 use mugraph_node::lifecycle::{
-    DestinationLaneState, LifecycleEvent, TransferLifecycle,
+    DestinationLaneState,
+    LifecycleEvent,
+    TransferLifecycle,
 };
 use proptest::prelude::*;
 

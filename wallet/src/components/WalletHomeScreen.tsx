@@ -36,7 +36,7 @@ export function WalletHomeScreen({
   const recentActivity = activity.slice(0, 3);
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:grid-rows-[auto_1fr]">
       <section className="wallet-panel p-5 sm:p-6 xl:col-span-2 xl:p-7">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] xl:items-start">
           <div className="space-y-5">
@@ -103,7 +103,7 @@ export function WalletHomeScreen({
         </div>
       </section>
 
-      <section className="wallet-panel p-5 xl:p-6">
+      <section className="wallet-panel flex flex-col p-5 xl:p-6">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="wallet-kicker text-slate-500">Recent activity</p>
@@ -114,7 +114,7 @@ export function WalletHomeScreen({
           <span className="text-sm text-slate-400">{recentActivity.length} items</span>
         </div>
 
-        <div className="mt-4 grid gap-3 2xl:grid-cols-2">
+        <div className="mt-4 grid flex-1 content-start gap-3 2xl:grid-cols-2">
           {recentActivity.map((item) => (
             <article key={item.id} className="wallet-subtle-card p-4">
               <div className="flex items-start justify-between gap-3">
@@ -132,7 +132,7 @@ export function WalletHomeScreen({
         </div>
       </section>
 
-      <section className="wallet-panel p-5 xl:p-6">
+      <section className="wallet-panel flex flex-col p-5 xl:p-6">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="wallet-kicker text-slate-500">Assets</p>
@@ -141,7 +141,7 @@ export function WalletHomeScreen({
           <span className="text-sm text-slate-400">{topAssets.length} assets</span>
         </div>
 
-        <div className="mt-4 grid gap-3 2xl:grid-cols-2">
+        <div className="mt-4 grid flex-1 content-start gap-3 2xl:grid-cols-2">
           {topAssets.map((asset) => (
             <article key={asset.id} className="wallet-subtle-card p-4">
               <div className="flex items-start justify-between gap-3">

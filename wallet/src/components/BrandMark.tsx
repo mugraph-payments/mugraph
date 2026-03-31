@@ -18,10 +18,12 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
         />
       </div>
 
-      <div className="min-w-0 space-y-0.5">
-        <p className="wallet-kicker text-teal-200/80">Mugraph Wallet</p>
-        <p className="truncate text-sm text-slate-300">Private Cardano settlement cockpit</p>
-      </div>
+      {compact ? null : (
+        <div className="min-w-0 space-y-0.5">
+          <p className="wallet-kicker text-teal-200/80">Mugraph Wallet</p>
+          <p className="truncate text-sm text-slate-300">Private Cardano settlement cockpit</p>
+        </div>
+      )}
     </div>
   );
 }
