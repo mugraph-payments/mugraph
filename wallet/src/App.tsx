@@ -110,7 +110,7 @@ function App() {
   return (
     <div className="min-h-dvh text-slate-50">
       <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 xl:px-6 2xl:px-8">
-        <div className="grid flex-1 gap-5 xl:grid-cols-[18rem_minmax(0,1fr)] xl:gap-6 2xl:grid-cols-[19rem_minmax(0,1fr)] 2xl:gap-7">
+        <div className="grid flex-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
           <aside className="grid content-start gap-5 xl:sticky xl:top-6 xl:self-start xl:gap-6">
             <WalletHeader
               label={view.identity.label}
@@ -127,7 +127,7 @@ function App() {
             />
           </aside>
 
-          <main className="grid min-h-0 gap-5 pb-24 xl:gap-6 xl:pb-0">
+          <main className="grid min-h-0 content-start gap-4 pb-24 xl:pb-0">
             {activeDestinationPanel}
           </main>
         </div>

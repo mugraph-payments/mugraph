@@ -6,10 +6,10 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
   return (
     <div className="flex items-center gap-3">
       <div
-        className={`flex items-center justify-center rounded-2xl bg-white/95 ring-1 ring-white/15 ${
+        className={`flex items-center justify-center rounded-xl bg-white/95 ring-1 ring-white/15 ${
           compact ? "h-10 w-10" : "h-11 w-11"
         }`}
-        style={{ boxShadow: "0 18px 36px -24px rgba(45,212,191,0.75)" }}
+        style={{ boxShadow: "0 4px 12px -4px rgba(45,212,191,0.4)" }}
       >
         <img
           src="/mugraph-mark.svg"

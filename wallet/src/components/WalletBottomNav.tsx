@@ -58,7 +58,7 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
               type="button"
               aria-pressed={isActive}
               onClick={() => onDestinationSelect(destination.id)}
-              className={`wallet-interactive flex flex-col items-center gap-1 rounded-2xl px-2 py-3 text-center xl:flex-row xl:justify-start xl:gap-3 xl:px-4 xl:py-3.5 xl:text-left ${
+              className={`wallet-interactive flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center xl:flex-row xl:justify-start xl:gap-3 xl:px-4 xl:py-3 xl:text-left ${
                 isActive
                   ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "text-slate-400"

@@ -17,7 +17,7 @@ function MetaRow({ label, value, icon }: { label: string; value: string; icon: R
   return (
     <div className="wallet-subtle-card p-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-slate-100 ring-1 ring-white/10">
           {icon}
         </div>
         <div className="min-w-0">
