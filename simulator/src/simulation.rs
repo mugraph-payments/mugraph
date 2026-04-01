@@ -5,7 +5,12 @@ use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
     types::{
-        Asset, BlindSignature, DleqProofWithBlinding, Hash, Note, PublicKey,
+        Asset,
+        BlindSignature,
+        DleqProofWithBlinding,
+        Hash,
+        Note,
+        PublicKey,
         Refresh,
     },
 };
@@ -514,6 +519,235 @@ fn handle_cross_node_completion(
     }
 }
 
+fn handle_simulation_tick(
+    nodes: &[SimNode],
+    state: &mut AppState,
+    rng: &mut StdRng,
+    config: &SimConfig,
+    oracle: &mut ConservationOracle,
+    inflight_amounts: &mut HashMap<Asset, u128>,
+    throughput: &mut ThroughputTracker,
+    tx_id: &mut u64,
+    event_tx: &tokio::sync::mpsc::UnboundedSender<SimEvent>,
+    snapshot_tx: &tokio::sync::watch::Sender<AppSnapshot>,
+) -> bool {
+    if state.shutdown {
+        return true;
+    }
+    if state.paused || state.inflight >= config.max_inflight {
+        return false;
+    }
+
+    let Some((sender_idx, receiver_idx, sender_id, receiver_id)) =
+        choose_transfer_participants(state, rng)
+    else {
+        return false;
+    };
+
+    let Some((asset, input_note)) = reserve_spendable_note(
+        &mut state.wallets[sender_idx],
+        &state.assets,
+        rng,
+    ) else {
+        return false;
+    };
+
+    let spend_amount = rng
+        .random_range(config.amount_range.0..=config.amount_range.1)
+        .min(input_note.amount);
+
+    let input_amount = input_note.amount;
+    let note_delegate = input_note.delegate;
+    let max_inflight = config.max_inflight;
+
+    let receiver_home = state.wallets[receiver_idx].home_node;
+    let receiver_delegate = nodes[receiver_home].delegate_pk;
+    let is_cross_node = note_delegate != receiver_delegate && nodes.len() > 1;
+
+    if is_cross_node {
+        *inflight_amounts.entry(asset).or_default() += input_amount as u128;
+
+        oracle.assert_conservation(
+            state,
+            inflight_amounts,
+            &format!("after cross-node reserve (tx_id={})", *tx_id + 1),
+        );
+
+        *tx_id += 1;
+        state.inflight += 1;
+        state.total_sent += 1;
+        emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+
+        let source_node = nodes
+            .iter()
+            .find(|n| n.delegate_pk == note_delegate)
+            .unwrap_or(&nodes[0])
+            .clone();
+        let dest_node = nodes[receiver_home].clone();
+        let event_tx_clone = event_tx.clone();
+        let current_tx_id = *tx_id;
+
+        tokio::spawn(async move {
+            let result = cross_node_transfer(
+                &source_node,
+                &dest_node,
+                &input_note,
+                asset,
+                spend_amount,
+                receiver_id,
+            )
+            .await;
+
+            let _ = event_tx_clone.send(SimEvent::CrossNodeTxFinished(
+                Box::new(CrossNodeTxEvent {
+                    id: current_tx_id,
+                    sender_id,
+                    receiver_id,
+                    asset,
+                    input_amount,
+                    input_note,
+                    spend_amount,
+                    result,
+                }),
+            ));
+        });
+        return false;
+    }
+
+    let (refresh, owners) = match build_refresh(
+        sender_id,
+        receiver_id,
+        asset,
+        input_note.clone(),
+        spend_amount,
+    ) {
+        Ok(res) => res,
+        Err(e) => {
+            record_sender_failure(
+                state,
+                sender_id,
+                asset,
+                input_note,
+                format!("failed to build refresh: {e:#}"),
+            );
+            oracle.assert_conservation(
+                state,
+                inflight_amounts,
+                &format!("after build_refresh failure (tx_id={})", *tx_id + 1),
+            );
+            emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+            return false;
+        }
+    };
+
+    *inflight_amounts.entry(asset).or_default() += input_amount as u128;
+
+    oracle.assert_conservation(
+        state,
+        inflight_amounts,
+        &format!("after reserve (tx_id={})", *tx_id + 1),
+    );
+
+    let node = nodes
+        .iter()
+        .find(|n| n.delegate_pk == note_delegate)
+        .unwrap_or(&nodes[0]);
+
+    *tx_id += 1;
+    let pending = PendingTx {
+        id: *tx_id,
+        sender_id,
+        receiver_id,
+        asset,
+        input_amount,
+        input_note,
+        spend_amount,
+        refresh,
+        owners,
+        delegate: note_delegate,
+    };
+
+    state.inflight += 1;
+    state.total_sent += 1;
+    emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+
+    let client_clone = node.client.clone();
+    let event_tx_clone = event_tx.clone();
+    tokio::spawn(async move {
+        let result = match client_clone.refresh(&pending.refresh).await {
+            Ok(outputs) => Ok(outputs),
+            Err(e) => Err(e.to_string()),
+        };
+        let _ = event_tx_clone.send(SimEvent::TxFinished {
+            pending: Box::new(pending),
+            result,
+        });
+    });
+
+    false
+}
+
+fn handle_simulation_command(
+    state: &mut AppState,
+    oracle: &mut ConservationOracle,
+    max_inflight: usize,
+    throughput: &mut ThroughputTracker,
+    snapshot_tx: &tokio::sync::watch::Sender<AppSnapshot>,
+    cmd: SimCommand,
+) -> bool {
+    match cmd {
+        SimCommand::TogglePause => {
+            state.paused = !state.paused;
+            state.log(format!("paused set to {}", state.paused));
+            emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+            false
+        }
+        SimCommand::Quit => {
+            state.shutdown = true;
+            state.log(format!(
+                "shutting down — conservation checks passed: {}",
+                oracle.checks_passed(),
+            ));
+            emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+            true
+        }
+    }
+}
+
+fn handle_simulation_event(
+    state: &mut AppState,
+    inflight_amounts: &mut HashMap<Asset, u128>,
+    oracle: &mut ConservationOracle,
+    throughput: &mut ThroughputTracker,
+    max_inflight: usize,
+    snapshot_tx: &tokio::sync::watch::Sender<AppSnapshot>,
+    event: SimEvent,
+) {
+    match event {
+        SimEvent::TxFinished { pending, result } => {
+            handle_same_node_completion(
+                state,
+                inflight_amounts,
+                oracle,
+                throughput,
+                *pending,
+                result,
+            );
+            emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+        }
+        SimEvent::CrossNodeTxFinished(ev) => {
+            handle_cross_node_completion(
+                state,
+                inflight_amounts,
+                oracle,
+                throughput,
+                *ev,
+            );
+            emit_snapshot(state, oracle, max_inflight, throughput, snapshot_tx);
+        }
+    }
+}
+
 pub async fn simulation_owner_loop(
     nodes: Vec<SimNode>,
     mut state: AppState,
@@ -554,201 +788,43 @@ pub async fn simulation_owner_loop(
     loop {
         tokio::select! {
             _ = ticker.tick() => {
-                if state.shutdown {
-                    break;
-                }
-                if state.paused || state.inflight >= config.max_inflight {
-                    continue;
-                }
-
-                let Some((sender_idx, receiver_idx, sender_id, receiver_id)) =
-                    choose_transfer_participants(&state, &mut rng)
-                else {
-                    continue;
-                };
-
-                let Some((asset, input_note)) = reserve_spendable_note(
-                    &mut state.wallets[sender_idx],
-                    &state.assets,
+                if handle_simulation_tick(
+                    &nodes,
+                    &mut state,
                     &mut rng,
-                ) else {
-                    continue;
-                };
-
-                let spend_amount = rng
-                    .random_range(config.amount_range.0..=config.amount_range.1)
-                    .min(input_note.amount);
-
-                let input_amount = input_note.amount;
-                let note_delegate = input_note.delegate;
-
-                // Determine if this is a cross-node transfer
-                let receiver_home = state.wallets[receiver_idx].home_node;
-                let receiver_delegate = nodes[receiver_home].delegate_pk;
-                let is_cross_node = note_delegate != receiver_delegate && nodes.len() > 1;
-
-                if is_cross_node {
-                    // Cross-node transfer: emit on destination, optionally refresh for change on source
-                    *inflight_amounts.entry(asset).or_default() += input_amount as u128;
-
-                    oracle.assert_conservation(
-                        &state,
-                        &inflight_amounts,
-                        &format!("after cross-node reserve (tx_id={})", tx_id + 1),
-                    );
-
-                    tx_id += 1;
-                    state.inflight += 1;
-                    state.total_sent += 1;
-                    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-
-                    let source_node = nodes
-                        .iter()
-                        .find(|n| n.delegate_pk == note_delegate)
-                        .unwrap_or(&nodes[0])
-                        .clone();
-                    let dest_node = nodes[receiver_home].clone();
-                    let event_tx_clone = event_tx.clone();
-                    let current_tx_id = tx_id;
-
-                    tokio::spawn(async move {
-                        let result = cross_node_transfer(
-                            &source_node,
-                            &dest_node,
-                            &input_note,
-                            asset,
-                            spend_amount,
-                            receiver_id,
-                        )
-                        .await;
-
-                        let _ = event_tx_clone.send(SimEvent::CrossNodeTxFinished(Box::new(
-                            CrossNodeTxEvent {
-                                id: current_tx_id,
-                                sender_id,
-                                receiver_id,
-                                asset,
-                                input_amount,
-                                input_note,
-                                spend_amount,
-                                result,
-                            },
-                        )));
-                    });
-                } else {
-                    // Same-node transfer: refresh as before
-                    let (refresh, owners) = match build_refresh(
-                        sender_id,
-                        receiver_id,
-                        asset,
-                        input_note.clone(),
-                        spend_amount,
-                    ) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            record_sender_failure(
-                                &mut state,
-                                sender_id,
-                                asset,
-                                input_note,
-                                format!("failed to build refresh: {e:#}"),
-                            );
-                            oracle.assert_conservation(
-                                &state,
-                                &inflight_amounts,
-                                &format!("after build_refresh failure (tx_id={})", tx_id + 1),
-                            );
-                            emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-                            continue;
-                        }
-                    };
-
-                    // Track the reserved note's amount as inflight
-                    *inflight_amounts.entry(asset).or_default() += input_amount as u128;
-
-                    oracle.assert_conservation(
-                        &state,
-                        &inflight_amounts,
-                        &format!("after reserve (tx_id={})", tx_id + 1),
-                    );
-
-                    // Route to the node that signed this note
-                    let node = nodes
-                        .iter()
-                        .find(|n| n.delegate_pk == note_delegate)
-                        .unwrap_or(&nodes[0]);
-
-                    tx_id += 1;
-                    let pending = PendingTx {
-                        id: tx_id,
-                        sender_id,
-                        receiver_id,
-                        asset,
-                        input_amount,
-                        input_note,
-                        spend_amount,
-                        refresh,
-                        owners,
-                        delegate: note_delegate,
-                    };
-
-                    state.inflight += 1;
-                    state.total_sent += 1;
-                    emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-
-                    let client_clone = node.client.clone();
-                    let event_tx_clone = event_tx.clone();
-                    tokio::spawn(async move {
-                        let result = match client_clone.refresh(&pending.refresh).await {
-                            Ok(outputs) => Ok(outputs),
-                            Err(e) => Err(e.to_string()),
-                        };
-                        let _ = event_tx_clone.send(SimEvent::TxFinished { pending: Box::new(pending), result });
-                    });
+                    &config,
+                    &mut oracle,
+                    &mut inflight_amounts,
+                    &mut throughput,
+                    &mut tx_id,
+                    &event_tx,
+                    &snapshot_tx,
+                ) {
+                    break;
                 }
             }
             Some(cmd) = cmd_rx.recv() => {
-                match cmd {
-                    SimCommand::TogglePause => {
-                        state.paused = !state.paused;
-                        state.log(format!("paused set to {}", state.paused));
-                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-                    }
-                    SimCommand::Quit => {
-                        state.shutdown = true;
-                        state.log(format!(
-                            "shutting down — conservation checks passed: {}",
-                            oracle.checks_passed(),
-                        ));
-                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-                        break;
-                    }
+                if handle_simulation_command(
+                    &mut state,
+                    &mut oracle,
+                    max_inflight,
+                    &mut throughput,
+                    &snapshot_tx,
+                    cmd,
+                ) {
+                    break;
                 }
             }
             Some(event) = event_rx.recv() => {
-                match event {
-                    SimEvent::TxFinished { pending, result } => {
-                        handle_same_node_completion(
-                            &mut state,
-                            &mut inflight_amounts,
-                            &mut oracle,
-                            &mut throughput,
-                            *pending,
-                            result,
-                        );
-                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-                    }
-                    SimEvent::CrossNodeTxFinished(ev) => {
-                        handle_cross_node_completion(
-                            &mut state,
-                            &mut inflight_amounts,
-                            &mut oracle,
-                            &mut throughput,
-                            *ev,
-                        );
-                        emit_snapshot(&state, &mut oracle, max_inflight, &mut throughput, &snapshot_tx);
-                    }
-                }
+                handle_simulation_event(
+                    &mut state,
+                    &mut inflight_amounts,
+                    &mut oracle,
+                    &mut throughput,
+                    max_inflight,
+                    &snapshot_tx,
+                    event,
+                );
             }
         }
     }
@@ -827,6 +903,45 @@ mod tests {
             notes.push(other);
         }
         assert_eq!(notes.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn simulation_owner_loop_emits_final_snapshot_on_quit() {
+        let state = AppState::default();
+        let config = SimConfig {
+            amount_range: (1, 1),
+            tick: Duration::from_millis(1),
+            max_inflight: 4,
+        };
+        let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(
+            state.snapshot(0, config.max_inflight, 0.0, 100.0),
+        );
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let handle = tokio::spawn(simulation_owner_loop(
+            Vec::new(),
+            state,
+            StdRng::seed_from_u64(7),
+            config,
+            SimChannels {
+                cmd_rx,
+                event_rx,
+                event_tx,
+                snapshot_tx,
+            },
+        ));
+
+        cmd_tx.send(SimCommand::Quit).unwrap();
+        handle.await.unwrap();
+
+        let snapshot = snapshot_rx.borrow().clone();
+        assert!(snapshot.shutdown);
+        assert_eq!(snapshot.inflight, 0);
+        assert_eq!(snapshot.total_sent, 0);
+        assert_eq!(snapshot.total_ok, 0);
+        assert_eq!(snapshot.total_err, 0);
+        assert_eq!(snapshot.max_inflight, 4);
     }
 
     #[test]
