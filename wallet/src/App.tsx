@@ -78,7 +78,6 @@ function App() {
           />
         ) : (
           <WalletHomeScreen
-            identity={view.identity}
             summaryMetrics={view.summaryMetrics}
             assets={view.assets}
             activity={view.activity}
