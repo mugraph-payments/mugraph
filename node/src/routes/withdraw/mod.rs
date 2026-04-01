@@ -7,11 +7,7 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
     types::{
-        BlindSignature,
-        Keypair,
-        Response,
-        WithdrawRequest,
-        WithdrawalStatus,
+        BlindSignature, Keypair, Response, WithdrawRequest, WithdrawalStatus,
     },
 };
 #[cfg(test)]
@@ -20,8 +16,7 @@ use whisky_csl::csl;
 #[cfg(test)]
 use crate::tx_signer::compute_tx_hash;
 use crate::{
-    database::WITHDRAWALS,
-    routes::Context,
+    database::WITHDRAWALS, routes::Context,
     tx_signer::attach_witness_to_transaction,
 };
 
@@ -36,8 +31,7 @@ pub(super) use self::parsed_tx::ParsedWithdrawalTx;
 use self::{
     input_validation::{checked_output_index, validate_user_witnesses},
     tx_checks::{
-        validate_network_and_change_outputs,
-        validate_transaction_balance,
+        validate_network_and_change_outputs, validate_transaction_balance,
         validate_transaction_balance_with_tolerance,
         validate_withdraw_intent_metadata,
     },
@@ -49,14 +43,12 @@ use self::{
     },
     io::{create_provider, load_wallet, submit_transaction},
     state::{
-        atomic_burn_and_record_pending,
-        mark_withdrawal_completed,
+        atomic_burn_and_record_pending, mark_withdrawal_completed,
         mark_withdrawal_failed,
     },
     tx_checks::{
         validate_network_and_change_outputs_with_parsed_tx,
-        validate_parsed_fee,
-        validate_transaction_balance_with_parsed_tx,
+        validate_parsed_fee, validate_transaction_balance_with_parsed_tx,
         validate_withdraw_intent_metadata_with_parsed_tx,
     },
 };
@@ -354,10 +346,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes,
-        Constr,
-        MaybeIndefArray,
-        alonzo::PlutusData,
+        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
     };
     use serde_json::json;
     use tempfile::TempDir;

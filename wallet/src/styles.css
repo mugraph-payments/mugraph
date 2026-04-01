@@ -373,3 +373,20 @@ select {
     color: #edf0f7;
   }
 }
+
+/* ─── Reduced motion ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wallet-interactive,
+  .wallet-subtle-card,
+  .wallet-cta-primary,
+  .wallet-cta-secondary,
+  .wallet-input,
+  .wallet-choice {
+    transition: none !important;
+  }
+
+  .wallet-interactive:active {
+    transform: none;
+  }
+}

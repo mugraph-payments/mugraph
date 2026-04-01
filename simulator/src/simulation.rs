@@ -5,12 +5,7 @@ use mugraph_core::{
     builder::RefreshBuilder,
     crypto,
     types::{
-        Asset,
-        BlindSignature,
-        DleqProofWithBlinding,
-        Hash,
-        Note,
-        PublicKey,
+        Asset, BlindSignature, DleqProofWithBlinding, Hash, Note, PublicKey,
         Refresh,
     },
 };

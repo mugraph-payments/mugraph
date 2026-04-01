@@ -57,8 +57,8 @@ export function DraftProgress({
 
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-950/60" aria-hidden="true">
         <div
-          className={`h-full rounded-full transition-all duration-200 ease-out ${classes.fill}`}
-          style={{ width: `${percent}%` }}
+          className={`h-full rounded-full ${classes.fill}`}
+          style={{ width: `${percent}%`, transition: "width 0.28s cubic-bezier(0.16, 1, 0.3, 1)" }}
         />
       </div>
 

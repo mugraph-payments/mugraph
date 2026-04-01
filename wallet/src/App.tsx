@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
@@ -54,6 +55,8 @@ function App() {
   function handlePrimaryActionSelect(actionId: "send" | "receive") {
     setActiveConsumerAction(actionId);
   }
+
+  const prefersReducedMotion = useReducedMotion();
 
   const activeDestinationPanel = (() => {
     switch (activeDestination) {
@@ -128,7 +131,18 @@ function App() {
           </aside>
 
           <main className="grid min-h-0 items-start gap-4 pb-24 lg:pb-0">
-            {activeDestinationPanel}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${activeDestination}-${activeConsumerAction ?? "none"}`}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
+                transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
+                className="grid items-start gap-4"
+              >
+                {activeDestinationPanel}
+              </motion.div>
+            </AnimatePresence>
           </main>
         </div>
       </div>
