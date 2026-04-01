@@ -1,7 +1,6 @@
 import { ArrowCircleDown, ArrowCircleUp, ArrowsClockwise } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
-import type { WalletActivityView } from "../lib/walletView";
-import { ActivityStatusBadge } from "./ActivityStatusBadge";
+import type { WalletActivityView, WalletTone } from "../lib/walletView";
 
 interface ActivityRowProps {
   activity: WalletActivityView;
@@ -16,34 +15,49 @@ const kindIcons: Record<
   Withdraw: ArrowCircleUp,
 };
 
+const kindIconStyle: Record<string, string> = {
+  Deposit: "bg-teal-400/10 text-teal-300",
+  Withdraw: "bg-rose-400/10 text-rose-300",
+  Refresh: "bg-white/[0.05] text-slate-300",
+};
+
+const statusTextStyle: Record<WalletTone, string> = {
+  neutral: "text-slate-400",
+  positive: "text-teal-300",
+  warning: "text-amber-300",
+  critical: "text-rose-300",
+};
+
 export function ActivityRow({ activity }: ActivityRowProps) {
   const KindIcon = kindIcons[activity.kindLabel] ?? ArrowsClockwise;
+  const iconStyle = kindIconStyle[activity.kindLabel] ?? kindIconStyle.Refresh;
+  const isIncoming = activity.kindLabel === "Deposit";
+  const isOutgoing = activity.kindLabel === "Withdraw";
+  const amountPrefix = isIncoming ? "+" : isOutgoing ? "−" : "";
 
   return (
-    <article className="wallet-subtle-card h-full p-4">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/[0.05] text-slate-200 ring-1 ring-white/10">
-          <KindIcon className="h-5 w-5" weight="duotone" />
-        </div>
+    <article className="flex items-center gap-3 py-3.5">
+      <div
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${iconStyle}`}
+      >
+        <KindIcon className="h-[1.125rem] w-[1.125rem]" weight="duotone" />
+      </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="wallet-kicker text-slate-500">{activity.kindLabel}</p>
-              <p className="wallet-data mt-1 text-lg font-semibold text-slate-50">
-                {activity.amountLabel}
-              </p>
-            </div>
-            <ActivityStatusBadge label={activity.statusLabel} tone={activity.statusTone} />
-          </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-slate-100">{activity.kindLabel}</p>
+        <p className="mt-0.5 text-xs text-slate-400">{activity.createdAtRelative}</p>
+      </div>
 
-          <p className="wallet-copy mt-3 text-base leading-7 text-slate-400">{activity.summary}</p>
-
-          <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-400">
-            <span>{activity.createdAtRelative}</span>
-            <span className="wallet-code text-sm text-slate-500">{activity.referenceShort}</span>
-          </div>
-        </div>
+      <div className="text-right">
+        <p
+          className={`wallet-data text-sm font-semibold ${isIncoming ? "text-teal-300" : "text-slate-100"}`}
+        >
+          {amountPrefix}
+          {activity.amountLabel}
+        </p>
+        <p className={`mt-0.5 text-xs ${statusTextStyle[activity.statusTone]}`}>
+          {activity.statusLabel}
+        </p>
       </div>
     </article>
   );

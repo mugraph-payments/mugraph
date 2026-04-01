@@ -57,18 +57,6 @@ body,
   overflow-x: hidden;
 }
 
-@media (min-width: 1024px) {
-  html {
-    font-size: 17px;
-  }
-}
-
-@media (min-width: 1536px) {
-  html {
-    font-size: 18px;
-  }
-}
-
 body {
   margin: 0;
   min-height: 100vh;
@@ -80,7 +68,6 @@ body {
   color: inherit;
   line-height: 1.6;
   letter-spacing: 0.01em;
-  font-size: 1.03125rem;
 }
 
 * {
