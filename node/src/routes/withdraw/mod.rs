@@ -7,27 +7,37 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
     types::{
-        BlindSignature, Keypair, Response, WithdrawRequest, WithdrawalStatus,
+        BlindSignature,
+        Keypair,
+        Response,
+        WithdrawRequest,
+        WithdrawalStatus,
     },
 };
+#[cfg(test)]
 use whisky_csl::csl;
 
+#[cfg(test)]
+use crate::tx_signer::compute_tx_hash;
 use crate::{
-    database::{CARDANO_WALLET, WITHDRAWALS},
-    provider::Provider,
+    database::WITHDRAWALS,
     routes::Context,
-    tx_signer::{attach_witness_to_transaction, compute_tx_hash},
+    tx_signer::attach_witness_to_transaction,
 };
 
 mod input_validation;
+mod io;
+mod parsed_tx;
 mod state;
 mod tx_checks;
 
+pub(super) use self::parsed_tx::ParsedWithdrawalTx;
 #[cfg(test)]
 use self::{
     input_validation::{checked_output_index, validate_user_witnesses},
     tx_checks::{
-        validate_network_and_change_outputs, validate_transaction_balance,
+        validate_network_and_change_outputs,
+        validate_transaction_balance,
         validate_transaction_balance_with_tolerance,
         validate_withdraw_intent_metadata,
     },
@@ -37,49 +47,19 @@ use self::{
         validate_script_inputs_with_parsed_tx,
         validate_user_witnesses_with_parsed_tx,
     },
+    io::{create_provider, load_wallet, submit_transaction},
     state::{
-        atomic_burn_and_record_pending, mark_withdrawal_completed,
+        atomic_burn_and_record_pending,
+        mark_withdrawal_completed,
         mark_withdrawal_failed,
     },
     tx_checks::{
         validate_network_and_change_outputs_with_parsed_tx,
-        validate_parsed_fee, validate_transaction_balance_with_parsed_tx,
+        validate_parsed_fee,
+        validate_transaction_balance_with_parsed_tx,
         validate_withdraw_intent_metadata_with_parsed_tx,
     },
 };
-
-struct ParsedWithdrawalTx {
-    tx_cbor: Vec<u8>,
-    tx: csl::Transaction,
-    tx_hash: [u8; 32],
-    tx_hash_hex: String,
-}
-
-impl ParsedWithdrawalTx {
-    fn parse(tx_cbor_hex: &str) -> Result<Self, Error> {
-        let tx_cbor =
-            hex::decode(tx_cbor_hex).map_err(|e| Error::InvalidInput {
-                reason: format!("Invalid tx_cbor hex: {}", e),
-            })?;
-        let tx =
-            csl::Transaction::from_bytes(tx_cbor.clone()).map_err(|e| {
-                Error::InvalidInput {
-                    reason: format!("Invalid transaction CBOR: {}", e),
-                }
-            })?;
-        let tx_hash =
-            compute_tx_hash(&tx_cbor).map_err(|e| Error::InvalidInput {
-                reason: format!("Failed to compute tx hash: {}", e),
-            })?;
-
-        Ok(Self {
-            tx_cbor,
-            tx,
-            tx_hash_hex: hex::encode(tx_hash),
-            tx_hash,
-        })
-    }
-}
 
 /// Handle withdrawal request
 ///
@@ -301,19 +281,6 @@ fn finalize_withdraw_response(
     }
 }
 
-/// Create Cardano provider from configuration
-fn create_provider(ctx: &Context) -> Result<Provider, Error> {
-    Provider::new(
-        &ctx.config.provider_type(),
-        ctx.config.provider_api_key(),
-        ctx.config.network(),
-        ctx.config.provider_url(),
-    )
-    .map_err(|e| Error::Internal {
-        reason: e.to_string(),
-    })
-}
-
 /// Check if withdrawal has already been processed (idempotency)
 fn check_idempotency(
     request: &WithdrawRequest,
@@ -345,38 +312,6 @@ fn check_idempotency(
     }
 
     Ok(())
-}
-
-/// Load Cardano wallet for signing
-fn load_wallet(
-    ctx: &Context,
-) -> Result<mugraph_core::types::CardanoWallet, Error> {
-    let read_tx = ctx.database.read()?;
-    let table = read_tx.open_table(CARDANO_WALLET)?;
-
-    match table.get("wallet")? {
-        Some(wallet) => Ok(wallet.value()),
-        None => Err(Error::Internal {
-            reason: "Cardano wallet not initialized".to_string(),
-        }),
-    }
-}
-
-/// Submit transaction to Cardano provider
-async fn submit_transaction(
-    tx_cbor: &str,
-    provider: &Provider,
-) -> Result<crate::provider::SubmitResponse, Error> {
-    let tx_bytes = hex::decode(tx_cbor).map_err(|e| Error::InvalidInput {
-        reason: format!("Invalid signed CBOR hex: {}", e),
-    })?;
-
-    provider
-        .submit_tx(&tx_bytes)
-        .await
-        .map_err(|e| Error::NetworkError {
-            reason: format!("Failed to submit transaction: {}", e),
-        })
 }
 
 /// Calculate change notes from transaction outputs
@@ -419,7 +354,10 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
     use serde_json::json;
     use tempfile::TempDir;
@@ -1411,6 +1349,60 @@ mod tests {
                 .value()
                 .spent
         );
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_happy_path_returns_empty_change_notes() {
+        let user_sk = SigningKey::from_bytes(&[4u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xacu8; 32];
+        let input_value = 1_170_000u64;
+        let request = build_withdraw_request(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            1_000_000,
+            170_000,
+            "preprod",
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let user_hash =
+            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+                .unwrap()
+                .hash()
+                .to_bytes();
+        let datum_hex =
+            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            "addr_test1script".to_string(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        seed_deposit(
+            &ctx,
+            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
+            [0u8; 32],
+        );
+
+        let response = handle_withdraw(&request, &ctx)
+            .await
+            .expect("withdraw accepted");
+
+        match response {
+            Response::Withdraw { change_notes, .. } => {
+                assert!(change_notes.is_empty());
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
     }
 
     fn assert_preflight_rejection_leaves_state_untouched(
