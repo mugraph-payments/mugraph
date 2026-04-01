@@ -10,7 +10,10 @@ use tokio::time::{MissedTickBehavior, interval};
 
 use crate::{
     database::{
-        CROSS_NODE_MESSAGES, CROSS_NODE_TRANSFERS, Database, TRANSFER_AUDIT_LOG,
+        CROSS_NODE_MESSAGES,
+        CROSS_NODE_TRANSFERS,
+        Database,
+        TRANSFER_AUDIT_LOG,
     },
     lifecycle::apply_retry_exhaustion_to_record,
 };
@@ -257,10 +260,14 @@ fn emit_stuck_transfer_gauges(database: &Database) -> Result<(), Error> {
     for row in transfers.iter()? {
         let (_k, v) = row?;
         let transfer = v.value();
-        if transfer.credit_state == "held" {
+        if transfer.parsed_credit_state()
+            == mugraph_core::types::TransferCreditState::Held
+        {
             held += 1;
         }
-        if transfer.chain_state == "invalidated" {
+        if transfer.parsed_chain_state()
+            == mugraph_core::types::TransferChainState::Invalidated
+        {
             invalidated += 1;
         }
     }

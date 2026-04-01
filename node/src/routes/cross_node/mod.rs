@@ -3,7 +3,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mugraph_core::{
     error::Error,
     types::{
-        CrossNodeTransferRecord, Response, XNodeEnvelope, XNodeMessageType,
+        CrossNodeTransferRecord,
+        Response,
+        XNodeEnvelope,
+        XNodeMessageType,
         validate_envelope_basics,
     },
 };
@@ -11,7 +14,8 @@ use redb::ReadableTable;
 use serde::Serialize;
 
 use crate::{
-    database::CROSS_NODE_TRANSFERS, lifecycle::status_payload_from_record,
+    database::CROSS_NODE_TRANSFERS,
+    lifecycle::status_payload_from_record,
     routes::Context,
 };
 
@@ -25,11 +29,16 @@ mod tests;
 
 use self::{
     audit::{
-        audit_event, audit_reject, audit_status_events, emit_chain_metrics,
+        audit_event,
+        audit_reject,
+        audit_status_events,
+        emit_chain_metrics,
     },
     auth::{
-        validate_auth_signature, validate_destination_binding,
-        validate_freshness, validate_query_freshness,
+        validate_auth_signature,
+        validate_destination_binding,
+        validate_freshness,
+        validate_query_freshness,
     },
     idempotency::{IdempotencyDecision, check_replay_and_idempotency},
     status::sign_status_response,
@@ -123,20 +132,24 @@ pub fn handle_create(
                 ));
             }
 
-            transfers.insert(
-                request.transfer_id.as_str(),
-                &CrossNodeTransferRecord {
-                    transfer_id: request.transfer_id.clone(),
-                    source_node_id: request.origin_node_id.clone(),
-                    destination_node_id: request.destination_node_id.clone(),
-                    tx_hash: None,
-                    chain_state: "unknown".to_string(),
-                    credit_state: "none".to_string(),
-                    confirmations_observed: 0,
-                    created_at: now,
-                    updated_at: now,
-                },
-            )?;
+            let mut transfer = CrossNodeTransferRecord {
+                transfer_id: request.transfer_id.clone(),
+                source_node_id: request.origin_node_id.clone(),
+                destination_node_id: request.destination_node_id.clone(),
+                tx_hash: None,
+                chain_state: String::new(),
+                credit_state: String::new(),
+                confirmations_observed: 0,
+                created_at: now,
+                updated_at: now,
+            };
+            transfer.set_chain_state(
+                mugraph_core::types::TransferChainState::Unknown,
+            );
+            transfer.set_credit_state(
+                mugraph_core::types::TransferCreditState::None,
+            );
+            transfers.insert(request.transfer_id.as_str(), &transfer)?;
         }
         write_tx.commit()?;
 
@@ -242,18 +255,17 @@ pub fn handle_notify(
                     .confirmations
                     .unwrap_or(updated.confirmations_observed)
                     .max(updated.confirmations_observed);
-                updated.chain_state = match request.payload.notice_stage {
+                updated.set_chain_state(match request.payload.notice_stage {
                     mugraph_core::types::TransferNoticeStage::Submitted => {
-                        "submitted"
+                        mugraph_core::types::TransferChainState::Submitted
                     }
                     mugraph_core::types::TransferNoticeStage::Confirmed => {
-                        "confirming"
+                        mugraph_core::types::TransferChainState::Confirming
                     }
                     mugraph_core::types::TransferNoticeStage::Finalized => {
-                        "confirmed"
+                        mugraph_core::types::TransferChainState::Confirmed
                     }
-                }
-                .to_string();
+                });
                 updated.updated_at = now;
                 transfers.insert(request.transfer_id.as_str(), &updated)?;
             }

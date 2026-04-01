@@ -1,6 +1,9 @@
 use mugraph_core::types::{
-    CrossNodeTransferRecord, TransferChainState, TransferCreditState,
-    TransferSettlementState, TransferStatusPayload,
+    CrossNodeTransferRecord,
+    TransferChainState,
+    TransferCreditState,
+    TransferSettlementState,
+    TransferStatusPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,46 +186,6 @@ impl Default for TransferLifecycle {
     }
 }
 
-pub fn parse_persisted_chain_state(value: &str) -> TransferChainState {
-    match value {
-        "submitted" => TransferChainState::Submitted,
-        "confirming" => TransferChainState::Confirming,
-        "confirmed" => TransferChainState::Confirmed,
-        "invalidated" => TransferChainState::Invalidated,
-        _ => TransferChainState::Unknown,
-    }
-}
-
-pub fn parse_persisted_credit_state(value: &str) -> TransferCreditState {
-    match value {
-        "eligible" => TransferCreditState::Eligible,
-        "credited" => TransferCreditState::Credited,
-        "held" => TransferCreditState::Held,
-        "reversed" => TransferCreditState::Reversed,
-        _ => TransferCreditState::None,
-    }
-}
-
-fn persisted_chain_state(chain_state: TransferChainState) -> &'static str {
-    match chain_state {
-        TransferChainState::Unknown => "unknown",
-        TransferChainState::Submitted => "submitted",
-        TransferChainState::Confirming => "confirming",
-        TransferChainState::Confirmed => "confirmed",
-        TransferChainState::Invalidated => "invalidated",
-    }
-}
-
-fn persisted_credit_state(credit_state: TransferCreditState) -> &'static str {
-    match credit_state {
-        TransferCreditState::None => "none",
-        TransferCreditState::Eligible => "eligible",
-        TransferCreditState::Credited => "credited",
-        TransferCreditState::Held => "held",
-        TransferCreditState::Reversed => "reversed",
-    }
-}
-
 fn source_state_for_chain(chain_state: TransferChainState) -> &'static str {
     match chain_state {
         TransferChainState::Unknown => "requested",
@@ -276,8 +239,8 @@ fn settlement_state_for_status(
 pub fn status_payload_from_record(
     record: &CrossNodeTransferRecord,
 ) -> TransferStatusPayload {
-    let chain_state = parse_persisted_chain_state(&record.chain_state);
-    let credit_state = parse_persisted_credit_state(&record.credit_state);
+    let chain_state = record.parsed_chain_state();
+    let credit_state = record.parsed_credit_state();
 
     TransferStatusPayload {
         source_state: source_state_for_chain(chain_state.clone()).to_string(),
@@ -299,7 +262,7 @@ pub fn status_payload_from_record(
 }
 
 pub fn apply_retry_exhaustion_to_record(record: &mut CrossNodeTransferRecord) {
-    let current_chain_state = parse_persisted_chain_state(&record.chain_state);
+    let current_chain_state = record.parsed_chain_state();
     let next_chain_state =
         if current_chain_state == TransferChainState::Confirmed {
             TransferChainState::Confirmed
@@ -307,9 +270,8 @@ pub fn apply_retry_exhaustion_to_record(record: &mut CrossNodeTransferRecord) {
             TransferChainState::Invalidated
         };
 
-    record.credit_state =
-        persisted_credit_state(TransferCreditState::Held).to_string();
-    record.chain_state = persisted_chain_state(next_chain_state).to_string();
+    record.set_credit_state(TransferCreditState::Held);
+    record.set_chain_state(next_chain_state);
 }
 
 #[cfg(test)]

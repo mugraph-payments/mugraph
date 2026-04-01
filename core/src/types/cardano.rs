@@ -1,6 +1,8 @@
 use redb::{Key, Value};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+use crate::types::{TransferChainState, TransferCreditState};
+
 /// Cardano wallet data stored in the database
 /// Contains node keys and validator script artifacts
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +72,64 @@ pub struct CrossNodeTransferRecord {
     pub confirmations_observed: u32,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+impl CrossNodeTransferRecord {
+    pub fn parsed_chain_state(&self) -> TransferChainState {
+        Self::decode_chain_state(&self.chain_state)
+    }
+
+    pub fn parsed_credit_state(&self) -> TransferCreditState {
+        Self::decode_credit_state(&self.credit_state)
+    }
+
+    pub fn set_chain_state(&mut self, state: TransferChainState) {
+        self.chain_state = Self::encode_chain_state(state).to_string();
+    }
+
+    pub fn set_credit_state(&mut self, state: TransferCreditState) {
+        self.credit_state = Self::encode_credit_state(state).to_string();
+    }
+
+    pub fn decode_chain_state(value: &str) -> TransferChainState {
+        match value {
+            "submitted" => TransferChainState::Submitted,
+            "confirming" => TransferChainState::Confirming,
+            "confirmed" => TransferChainState::Confirmed,
+            "invalidated" => TransferChainState::Invalidated,
+            _ => TransferChainState::Unknown,
+        }
+    }
+
+    pub fn decode_credit_state(value: &str) -> TransferCreditState {
+        match value {
+            "eligible" => TransferCreditState::Eligible,
+            "credited" => TransferCreditState::Credited,
+            "held" => TransferCreditState::Held,
+            "reversed" => TransferCreditState::Reversed,
+            _ => TransferCreditState::None,
+        }
+    }
+
+    pub fn encode_chain_state(state: TransferChainState) -> &'static str {
+        match state {
+            TransferChainState::Unknown => "unknown",
+            TransferChainState::Submitted => "submitted",
+            TransferChainState::Confirming => "confirming",
+            TransferChainState::Confirmed => "confirmed",
+            TransferChainState::Invalidated => "invalidated",
+        }
+    }
+
+    pub fn encode_credit_state(state: TransferCreditState) -> &'static str {
+        match state {
+            TransferCreditState::None => "none",
+            TransferCreditState::Eligible => "eligible",
+            TransferCreditState::Credited => "credited",
+            TransferCreditState::Held => "held",
+            TransferCreditState::Reversed => "reversed",
+        }
+    }
 }
 
 /// Cross-node message persistence record (M3)
@@ -658,6 +718,34 @@ mod tests {
         let value =
             <WithdrawalRecord as Value>::from_bytes(&[0xaa, 0xbb, 0xcc]);
         assert_eq!(value.status, WithdrawalStatus::Failed);
+    }
+
+    #[test]
+    fn cross_node_record_state_accessors_preserve_legacy_string_encoding() {
+        let mut record = CrossNodeTransferRecord {
+            transfer_id: "tr-1".to_string(),
+            source_node_id: "node://a".to_string(),
+            destination_node_id: "node://b".to_string(),
+            tx_hash: Some("abcd".to_string()),
+            chain_state: "submitted".to_string(),
+            credit_state: "held".to_string(),
+            confirmations_observed: 3,
+            created_at: 1,
+            updated_at: 2,
+        };
+
+        assert_eq!(record.parsed_chain_state(), TransferChainState::Submitted);
+        assert_eq!(record.parsed_credit_state(), TransferCreditState::Held);
+
+        record.set_chain_state(TransferChainState::Invalidated);
+        record.set_credit_state(TransferCreditState::Reversed);
+        assert_eq!(record.chain_state, "invalidated");
+        assert_eq!(record.credit_state, "reversed");
+
+        record.chain_state = "unknown-value".to_string();
+        record.credit_state = "unknown-value".to_string();
+        assert_eq!(record.parsed_chain_state(), TransferChainState::Unknown);
+        assert_eq!(record.parsed_credit_state(), TransferCreditState::None);
     }
 
     #[test]
