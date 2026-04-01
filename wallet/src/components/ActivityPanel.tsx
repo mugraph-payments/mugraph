@@ -15,7 +15,7 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
       whileInView={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
       transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-      className="wallet-panel p-5"
+      className="wallet-panel p-5 sm:p-6"
     >
       <div className="space-y-1">
         <p className="wallet-kicker text-slate-500">Activity</p>
@@ -38,7 +38,7 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
         </div>
       ) : (
         <div
-          className="mt-4 grid gap-3 overflow-x-clip xl:grid-cols-2 2xl:grid-cols-3"
+          className="mt-4 grid gap-3 overflow-x-clip lg:grid-cols-2 2xl:grid-cols-3"
           aria-label="Activity list"
         >
           {activity.map((item, index) => (
