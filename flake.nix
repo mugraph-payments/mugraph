@@ -1,7 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
-    flake-utils.url = "github:numtide/flake-utils";
 
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -28,33 +27,36 @@
   };
 
   outputs =
-    inputs@{
-      nixpkgs,
-      flake-utils,
-      rust-overlay,
-      ...
-    }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
+    inputs@{ nixpkgs, rust-overlay, ... }:
+    let
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
 
-          overlays = [
-            rust-overlay.overlays.default
-            (import ./nix inputs)
-          ];
-        };
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs supportedSystems (
+          system:
+          let
+            pkgs = import nixpkgs {
+              inherit system;
 
-        inherit (pkgs) mugraph;
-      in
-      {
-        inherit (mugraph)
-          devShells
-          checks
-          packages
-          formatter
-          ;
-      }
-    );
+              overlays = [
+                rust-overlay.overlays.default
+                (import ./nix inputs)
+              ];
+            };
+          in
+          f pkgs.mugraph
+        );
+    in
+    {
+      devShells = forAllSystems (mugraph: mugraph.devShells);
+      checks = forAllSystems (mugraph: mugraph.checks);
+      packages = forAllSystems (mugraph: mugraph.packages);
+      formatter = forAllSystems (mugraph: mugraph.formatter);
+    };
 }
