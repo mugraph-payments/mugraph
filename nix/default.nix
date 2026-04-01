@@ -7,7 +7,7 @@ let
   inherit (prev.stdenv) isDarwin isLinux;
   inherit (prev.darwin.apple_sdk.frameworks) SystemConfiguration;
 
-  checks.pre-commit = callPackage ./pre-commit-hook.nix { };
+  checks = { };
   scripts = callPackage ./scripts.nix { };
 
   packages = {
@@ -45,12 +45,10 @@ let
 
   devShells.default = mkShell {
     inherit (lib.env) RUST_LOG RUSTFLAGS;
-    inherit (checks.pre-commit) shellHook;
 
     name = "mu-shell";
 
     packages = [
-      checks.pre-commit.enabledPackages
       lib.rust
       scripts
 
