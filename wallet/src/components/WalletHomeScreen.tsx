@@ -86,7 +86,7 @@ export function WalletHomeScreen({
             <button
               type="button"
               onClick={() => onPrimaryActionSelect("send")}
-              className="wallet-interactive flex items-center justify-center gap-2 rounded-xl border border-teal-300/25 bg-teal-400/[0.08] px-4 py-3.5 text-base font-semibold text-teal-50 lg:justify-start lg:px-5 lg:py-3.5"
+              className="wallet-interactive wallet-cta-primary flex items-center justify-center gap-2 rounded-xl border px-4 py-3.5 text-base font-semibold text-slate-50 lg:justify-start lg:px-5 lg:py-3.5"
             >
               <ArrowSquareOut className="h-5 w-5" weight="duotone" />
               Send
@@ -94,7 +94,7 @@ export function WalletHomeScreen({
             <button
               type="button"
               onClick={() => onPrimaryActionSelect("receive")}
-              className="wallet-interactive flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-base font-semibold text-slate-50 lg:justify-start lg:px-5 lg:py-3.5"
+              className="wallet-interactive wallet-cta-secondary flex items-center justify-center gap-2 rounded-xl border px-4 py-3.5 text-base font-semibold text-slate-50 lg:justify-start lg:px-5 lg:py-3.5"
             >
               <ArrowSquareIn className="h-5 w-5" weight="duotone" />
               Receive

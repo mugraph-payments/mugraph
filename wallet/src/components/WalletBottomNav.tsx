@@ -60,8 +60,8 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
               onClick={() => onDestinationSelect(destination.id)}
               className={`wallet-interactive flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center lg:flex-row lg:justify-start lg:gap-3 lg:px-4 lg:py-3 lg:text-left ${
                 isActive
-                  ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                  : "text-slate-400"
+                  ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-slate-50"
+                  : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
               }`}
             >
               <Icon className="h-5 w-5" weight={isActive ? "fill" : "duotone"} />

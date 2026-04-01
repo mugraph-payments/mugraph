@@ -93,8 +93,8 @@ export function WalletActionScreen({
               onClick={() => onActionSelect(action.id)}
               className={`wallet-interactive flex items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-base font-semibold ${
                 isActive
-                  ? "border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                  : "border-white/10 bg-white/[0.04] text-slate-200"
+                  ? "wallet-cta-primary text-slate-50"
+                  : "wallet-cta-secondary text-slate-200"
               }`}
             >
               <Icon className="h-5 w-5" weight={isActive ? "fill" : "duotone"} />

@@ -122,8 +122,8 @@ export function WalletSettingsScreen({
               onClick={() => setActiveAdvancedAction("deposit")}
               className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "deposit"
-                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                  : "border-white/10 bg-white/[0.04] text-slate-200"
+                  ? "wallet-cta-primary text-slate-50"
+                  : "wallet-cta-secondary text-slate-200"
               }`}
             >
               Deposit
@@ -134,8 +134,8 @@ export function WalletSettingsScreen({
               onClick={() => setActiveAdvancedAction("withdraw")}
               className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "withdraw"
-                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                  : "border-white/10 bg-white/[0.04] text-slate-200"
+                  ? "wallet-cta-primary text-slate-50"
+                  : "wallet-cta-secondary text-slate-200"
               }`}
             >
               Withdraw
@@ -146,8 +146,8 @@ export function WalletSettingsScreen({
               onClick={() => setActiveAdvancedAction("notes")}
               className={`wallet-interactive rounded-xl border px-4 py-3 text-base font-semibold ${
                 activeAdvancedAction === "notes"
-                  ? "wallet-accent-ring border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
-                  : "border-white/10 bg-white/[0.04] text-slate-200"
+                  ? "wallet-cta-primary text-slate-50"
+                  : "wallet-cta-secondary text-slate-200"
               }`}
             >
               Notes

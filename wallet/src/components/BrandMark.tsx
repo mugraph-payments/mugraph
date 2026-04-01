@@ -9,7 +9,7 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
         className={`flex items-center justify-center rounded-xl bg-white/95 ring-1 ring-white/15 ${
           compact ? "h-10 w-10" : "h-11 w-11"
         }`}
-        style={{ boxShadow: "0 4px 12px -4px rgba(45,212,191,0.4)" }}
+        style={{ boxShadow: "0 4px 16px -4px rgba(139,92,246,0.4)" }}
       >
         <img
           src="/mugraph-mark.svg"

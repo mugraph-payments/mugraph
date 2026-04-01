@@ -45,7 +45,7 @@ export function StatusChip({ label, value, tone = "neutral", compact = false }: 
           ? "grid gap-1.5 rounded-2xl px-3.5 py-3"
           : "inline-flex items-center gap-2.5 rounded-full px-3.5 py-2"
       }`}
-      style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}
+      style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)" }}
     >
       <span className={`wallet-kicker ${classes.label}`}>{label}</span>
       <span className={`wallet-data text-sm font-semibold tracking-[0.01em] ${classes.value}`}>
