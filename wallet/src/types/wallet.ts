@@ -7,14 +7,9 @@ export type WalletNoteStatus = "available" | "pending" | "reserved" | "spent";
 export type WalletActivityKind = "deposit" | "refresh" | "withdraw";
 export type WalletActivityStatus = "completed" | "pending" | "failed";
 export type WalletActionKind = "send" | "receive" | "deposit" | "withdraw";
-export type WalletShellRegion = "primary" | "secondary";
-export type WalletShellSection = "overview" | "holdings" | "notes" | "activity";
 export type WalletReceiveShareMode = "address" | "qr";
 export type WalletRootDestination = "home" | "activity" | "assets" | "settings";
-export type WalletActiveRegion = WalletShellRegion;
-export type WalletActiveSection = WalletShellSection;
 export type WalletActiveDestination = WalletRootDestination;
-export type WalletActiveAction = WalletActionKind;
 
 export interface WalletIdentity {
   label: string;
@@ -77,7 +72,7 @@ export interface WalletActionPreset {
 
 export interface WalletShellState {
   activeDestination: WalletActiveDestination;
-  activeAction: WalletActiveAction;
+  activeAction: WalletActionKind;
 }
 
 export interface WalletSendDraft {
