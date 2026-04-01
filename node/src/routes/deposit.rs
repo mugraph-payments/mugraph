@@ -1,25 +1,41 @@
 use color_eyre::eyre::Result;
+#[cfg(test)]
+use mugraph_core::types::{PublicKey, UtxoRef};
 use mugraph_core::{
     crypto,
     error::Error,
-    types::{BlindSignature, DepositRequest, PublicKey, Response, UtxoRef},
+    types::{BlindSignature, DepositRequest, Response},
 };
-use redb::ReadableTable;
-use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use whisky_csl::csl;
 
-use crate::{
-    cardano::setup_cardano_wallet,
-    database::{CARDANO_WALLET, DEPOSITS},
-    deposit_datum::{DepositDatumContext, parse_deposit_datum},
-    network::CardanoNetwork,
-    provider::{Provider, UtxoInfo},
-    routes::Context,
-};
+#[cfg(test)]
+use crate::database::{CARDANO_WALLET, DEPOSITS};
+use crate::routes::Context;
 
-struct ParsedDepositClaims {
-    user_pubkey: [u8; 32],
-}
+mod claims;
+mod persistence;
+mod signature;
+mod source_validation;
+
+use self::{
+    claims::parse_deposit_claims,
+    persistence::{create_provider, load_or_create_wallet, persist_deposit},
+    signature::verify_deposit_signature,
+    source_validation::validate_deposit_source,
+};
+#[cfg(test)]
+use self::{
+    persistence::{insert_deposit_if_absent, store_wallet_if_absent},
+    signature::{
+        CanonicalPayload,
+        CanonicalUtxo,
+        build_canonical_payload,
+        compute_intent_hash,
+        verify_cip8_cose_signature,
+    },
+    source_validation::{validate_deposit_amounts, validate_deposit_datum},
+};
 
 /// Handle deposit request
 ///
@@ -82,271 +98,17 @@ pub async fn handle_deposit(
     })
 }
 
-/// Load Cardano wallet from database or create new one
-async fn load_or_create_wallet(
-    ctx: &Context,
-) -> Result<mugraph_core::types::CardanoWallet, Error> {
-    // Try to load existing wallet
-    {
-        let read_tx = ctx.database.read()?;
-        let table = read_tx.open_table(CARDANO_WALLET)?;
-        if let Some(wallet_data) = table.get("wallet")? {
-            return Ok(wallet_data.value());
-        }
-    }
-
-    // Create new wallet if not found
-    // Use config for network and payment key
-    let network = ctx
-        .config
-        .cardano_network()
-        .map(|network| network.as_str().to_string())
-        .unwrap_or_else(|_| ctx.config.network());
-    let payment_sk = ctx.config.payment_sk();
-
-    let wallet = setup_cardano_wallet(&network, payment_sk.as_deref())
-        .await
-        .map_err(|e| Error::Internal {
-            reason: e.to_string(),
-        })?;
-
-    // Store wallet in database only if still absent (concurrency-safe)
-    let selected = store_wallet_if_absent(ctx, wallet)?;
-
-    Ok(selected)
-}
-
-fn store_wallet_if_absent(
-    ctx: &Context,
-    candidate: mugraph_core::types::CardanoWallet,
-) -> Result<mugraph_core::types::CardanoWallet, Error> {
-    let write_tx = ctx.database.write()?;
-    let selected = {
-        let mut table = write_tx.open_table(CARDANO_WALLET)?;
-        if let Some(existing) = table.get("wallet")? {
-            existing.value()
-        } else {
-            table.insert("wallet", &candidate)?;
-            candidate
-        }
-    };
-    write_tx.commit()?;
-    Ok(selected)
-}
-
-/// Create Cardano provider from configuration
-fn create_provider(ctx: &Context) -> Result<Provider, Error> {
-    // Use config for provider settings
-    Provider::new(
-        &ctx.config.provider_type(),
-        ctx.config.provider_api_key(),
-        ctx.config.network(),
-        ctx.config.provider_url(),
-    )
-    .map_err(|e| Error::Internal {
-        reason: e.to_string(),
-    })
-}
-
-fn parse_deposit_claims(
-    request: &DepositRequest,
-) -> Result<ParsedDepositClaims, Error> {
-    let message_json: serde_json::Value =
-        serde_json::from_str(&request.message).map_err(|e| {
-            Error::InvalidInput {
-                reason: format!("Invalid message JSON: {}", e),
-            }
-        })?;
-    let user_pubkey_hex = message_json
-        .get("user_pubkey")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "Missing user_pubkey in message".to_string(),
-        })?;
-    let user_pubkey_bytes =
-        hex::decode(user_pubkey_hex).map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid user_pubkey hex: {}", e),
-        })?;
-    let user_pubkey_len = user_pubkey_bytes.len();
-    let user_pubkey: [u8; 32] =
-        user_pubkey_bytes
-            .try_into()
-            .map_err(|_| Error::InvalidInput {
-                reason: format!(
-                    "user_pubkey must be 32 bytes, got {}",
-                    user_pubkey_len
-                ),
-            })?;
-
-    Ok(ParsedDepositClaims { user_pubkey })
-}
-
-async fn validate_deposit_source(
-    request: &DepositRequest,
-    claims: &ParsedDepositClaims,
-    wallet: &mugraph_core::types::CardanoWallet,
-    provider: &Provider,
-    ctx: &Context,
-    delegate_pk: &PublicKey,
-) -> Result<(), Error> {
-    let utxo_info =
-        fetch_and_validate_utxo(request, wallet, provider, ctx).await?;
-    validate_parsed_deposit_datum(
-        request,
-        claims,
-        wallet,
-        &utxo_info,
-        delegate_pk,
-    )?;
-    validate_deposit_amounts(
-        request,
-        &utxo_info,
-        ctx.config.min_deposit_value(),
-    )?;
-    Ok(())
-}
-
-async fn persist_deposit(
-    request: &DepositRequest,
-    ctx: &Context,
-    provider: &Provider,
-    wallet: &mugraph_core::types::CardanoWallet,
-) -> Result<String, Error> {
-    record_deposit(request, ctx, provider, wallet).await?;
-    Ok(format!("{}:{}", request.utxo.tx_hash, request.utxo.index))
-}
-
-/// Verify CIP-8 signature over canonical deposit payload
-///
-/// # CIP-8/COSE Support
-/// This function supports two signature formats:
-/// 1. Raw Ed25519 signatures (64 bytes) - current default
-/// 2. Full CIP-8 COSE_Sign1 structure (with proper header validation)
-///
-/// # Security Considerations
-/// - Verifies the signature over the canonical JSON payload
-/// - Validates the user public key format
-/// - Computes the key hash for datum verification
-/// - Includes network tag in payload to prevent cross-network replay
-fn verify_deposit_signature(
-    request: &DepositRequest,
-    claims: &ParsedDepositClaims,
-    wallet: &mugraph_core::types::CardanoWallet,
-    delegate_pk: &mugraph_core::types::PublicKey,
-) -> Result<(), Error> {
-    // Build canonical payload
-    // Payload = utxo + outputs + delegate pk + script address + nonce + network tag
-    let payload =
-        build_canonical_payload(request, delegate_pk, &wallet.script_address);
-
-    verify_cip8_cose_signature_with_claims(request, claims, &payload)
-}
-
-fn verify_cip8_cose_signature_with_claims(
-    request: &DepositRequest,
-    claims: &ParsedDepositClaims,
-    payload: &[u8],
-) -> Result<(), Error> {
-    use coset::{CoseSign1, TaggedCborSerializable, iana};
-    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-
-    let user_pubkey_bytes = claims.user_pubkey;
-
-    let cose: CoseSign1 = CoseSign1::from_tagged_slice(&request.signature)
-        .map_err(|e| Error::InvalidSignature {
-            reason: format!("Invalid COSE_Sign1: {}", e),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
-
-    // Check alg = EdDSA
-    let alg = cose
-        .protected
-        .header
-        .alg
-        .clone()
-        .or(cose.unprotected.alg.clone())
-        .ok_or_else(|| Error::InvalidSignature {
-            reason: "Missing alg in COSE header".to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        })?;
-    if alg
-        != coset::RegisteredLabelWithPrivate::Assigned(iana::Algorithm::EdDSA)
-    {
-        return Err(Error::InvalidSignature {
-            reason: format!("Unsupported alg {:?}, expected EdDSA", alg),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    // Payload must match
-    let cose_payload =
-        cose.payload
-            .as_ref()
-            .ok_or_else(|| Error::InvalidSignature {
-                reason: "COSE payload missing".to_string(),
-                signature: mugraph_core::types::Signature::default(),
-            })?;
-
-    if cose_payload != payload {
-        return Err(Error::InvalidSignature {
-            reason: "COSE payload does not match expected payload".to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    let sig_bytes = &cose.signature;
-    if sig_bytes.len() != 64 {
-        return Err(Error::InvalidSignature {
-            reason: format!(
-                "COSE signature must be 64 bytes, got {}",
-                sig_bytes.len()
-            ),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    // Build Sig_structure bytes using coset helper
-    let to_verify = cose.tbs_data(&[]);
-
-    let verifying_key =
-        VerifyingKey::from_bytes(&user_pubkey_bytes).map_err(|e| {
-            Error::InvalidKey {
-                reason: format!("Invalid Ed25519 public key: {}", e),
-            }
-        })?;
-    let signature = Signature::from_slice(sig_bytes).map_err(|e| {
-        Error::InvalidSignature {
-            reason: format!("Invalid signature format: {}", e),
-            signature: mugraph_core::types::Signature::default(),
-        }
-    })?;
-
-    verifying_key.verify(&to_verify, &signature).map_err(|e| {
-        Error::InvalidSignature {
-            reason: format!("COSE signature verification failed: {}", e),
-            signature: mugraph_core::types::Signature::default(),
-        }
-    })?;
-
-    Ok(())
-}
-
-#[cfg(test)]
-fn verify_cip8_cose_signature(
-    request: &DepositRequest,
-    payload: &[u8],
-) -> Result<(), Error> {
-    let claims = parse_deposit_claims(request)?;
-    verify_cip8_cose_signature_with_claims(request, &claims, payload)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU8, Ordering};
 
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::UtxoReference;
@@ -780,362 +542,6 @@ mod tests {
     }
 }
 
-/// UTXO reference for canonical payload serialization
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CanonicalUtxo {
-    tx_hash: String,
-    index: u16,
-}
-
-/// Canonical payload for signature verification
-/// Sorted JSON with no extra whitespace
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CanonicalPayload {
-    utxo: CanonicalUtxo,
-    outputs: Vec<String>,
-    #[serde(rename = "delegate_pk")]
-    delegate_pk: String,
-    #[serde(rename = "script_address")]
-    script_address: String,
-    nonce: u64,
-    network: String,
-}
-
-/// Build canonical payload for signature verification
-/// Sorted JSON with no extra whitespace
-fn build_canonical_payload(
-    request: &DepositRequest,
-    delegate_pk: &PublicKey,
-    script_address: &str,
-) -> Vec<u8> {
-    // Convert outputs to serializable format
-    // BlindSignature has: signature: Blinded<Signature>, proof: DleqProof
-    // Blinded<Signature> has field 0 which is Signature
-    // Signature has field 0 which is [u8; 32]
-    let outputs: Vec<String> = request
-        .outputs
-        .iter()
-        .map(|o| hex::encode(o.signature.0.0))
-        .collect();
-
-    let network = CardanoNetwork::parse(&request.network)
-        .map(|network| network.as_str().to_string())
-        .unwrap_or_else(|_| request.network.clone());
-
-    let payload = CanonicalPayload {
-        utxo: CanonicalUtxo {
-            tx_hash: request.utxo.tx_hash.clone(),
-            index: request.utxo.index,
-        },
-        outputs,
-        delegate_pk: hex::encode(delegate_pk.0),
-        script_address: script_address.to_string(),
-        nonce: request.nonce,
-        network,
-    };
-
-    // Serialize to canonical JSON (no extra whitespace, sorted keys)
-    serde_json::to_string(&payload).unwrap().into_bytes()
-}
-
-/// Compute intent hash from deposit request
-/// This is a blake2b-256 hash of the canonical payload
-/// Used for off-chain replay protection and reference in datum
-/// Note: Intent hash is verified off-chain only, not validated by the on-chain validator
-fn compute_intent_hash(
-    request: &DepositRequest,
-    delegate_pk: &PublicKey,
-    script_address: &str,
-) -> [u8; 32] {
-    use blake2::{Blake2b, Digest, digest::consts::U32};
-
-    let payload = build_canonical_payload(request, delegate_pk, script_address);
-
-    type Blake2b256 = Blake2b<U32>;
-    let hash = Blake2b256::digest(&payload);
-
-    let mut result = [0u8; 32];
-    result.copy_from_slice(&hash);
-    result
-}
-
-/// Validate that the on-chain datum matches the expected user hash, node hash, and intent hash.
-#[cfg(test)]
-fn validate_deposit_datum(
-    request: &DepositRequest,
-    wallet: &mugraph_core::types::CardanoWallet,
-    utxo_info: &UtxoInfo,
-    delegate_pk: &PublicKey,
-) -> Result<(), Error> {
-    let claims = parse_deposit_claims(request)?;
-    validate_parsed_deposit_datum(
-        request,
-        &claims,
-        wallet,
-        utxo_info,
-        delegate_pk,
-    )
-}
-
-fn validate_parsed_deposit_datum(
-    request: &DepositRequest,
-    claims: &ParsedDepositClaims,
-    wallet: &mugraph_core::types::CardanoWallet,
-    utxo_info: &UtxoInfo,
-    delegate_pk: &PublicKey,
-) -> Result<(), Error> {
-    // Datum must be present to bind deposit to identities
-    let datum_hex =
-        utxo_info
-            .datum
-            .as_ref()
-            .ok_or_else(|| Error::InvalidInput {
-                reason:
-                    "UTxO missing inline datum; required for deposit validation"
-                        .to_string(),
-            })?;
-
-    let datum =
-        parse_deposit_datum(datum_hex, DepositDatumContext::DepositUtxo)?;
-
-    // Compute expected hashes
-    let expected_user_hash: [u8; 28] =
-        csl::PublicKey::from_bytes(&claims.user_pubkey)
-            .map_err(|e| Error::InvalidKey {
-                reason: format!("Invalid user public key: {}", e),
-            })?
-            .hash()
-            .to_bytes()
-            .try_into()
-            .expect("Cardano key hashes are always 28 bytes");
-
-    let expected_node_hash: [u8; 28] =
-        csl::PublicKey::from_bytes(&wallet.payment_vk)
-            .map_err(|e| Error::InvalidKey {
-                reason: format!("Invalid node payment_vk: {}", e),
-            })?
-            .hash()
-            .to_bytes()
-            .try_into()
-            .expect("Cardano key hashes are always 28 bytes");
-
-    let expected_intent_hash =
-        compute_intent_hash(request, delegate_pk, &wallet.script_address);
-
-    if datum.user_pubkey_hash != expected_user_hash {
-        return Err(Error::InvalidInput {
-            reason:
-                "Datum user_pubkey_hash does not match provided user_pubkey"
-                    .to_string(),
-        });
-    }
-
-    if datum.node_pubkey_hash != expected_node_hash {
-        return Err(Error::InvalidInput {
-            reason: "Datum node_pubkey_hash does not match this node"
-                .to_string(),
-        });
-    }
-
-    if datum.intent_hash != expected_intent_hash {
-        return Err(Error::InvalidInput {
-            reason: "Datum intent_hash does not match canonical payload"
-                .to_string(),
-        });
-    }
-
-    Ok(())
-}
-
-/// Fetch UTxO from provider and validate it's at the script address
-async fn fetch_and_validate_utxo(
-    request: &DepositRequest,
-    wallet: &mugraph_core::types::CardanoWallet,
-    provider: &Provider,
-    ctx: &Context,
-) -> Result<UtxoInfo, Error> {
-    let utxo_info = provider
-        .get_utxo(&request.utxo.tx_hash, request.utxo.index)
-        .await
-        .map_err(|e| Error::NetworkError {
-            reason: format!("Failed to fetch UTxO: {}", e),
-        })?
-        .ok_or_else(|| Error::InvalidInput {
-            reason: "UTxO not found on chain".to_string(),
-        })?;
-
-    // Verify UTxO is at the script address
-    if utxo_info.address != wallet.script_address {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "UTxO not at script address. Expected: {}, Got: {}",
-                wallet.script_address, utxo_info.address
-            ),
-        });
-    }
-
-    // Validate tx_hash shape early; uniqueness is enforced atomically during record_deposit().
-    let _tx_hash_array = crate::tx_ids::parse_tx_hash(&request.utxo.tx_hash)?;
-
-    // Verify confirm depth (reorg safety)
-    // Get current chain tip
-    let tip = provider.get_tip().await.map_err(|e| Error::NetworkError {
-        reason: format!(
-            "Failed to get chain tip for confirm depth check: {}",
-            e
-        ),
-    })?;
-
-    // Get confirm depth from config
-    let confirm_depth = ctx.config.deposit_confirm_depth();
-
-    // Check if UTxO has block height info
-    match utxo_info.block_height {
-        Some(utxo_block_height) => {
-            let current_height = tip.block_height;
-            let blocks_confirmed =
-                current_height.saturating_sub(utxo_block_height);
-
-            tracing::info!(
-                "UTxO {}:{} at block {} ({} blocks confirmed, need {})",
-                &request.utxo.tx_hash[..16],
-                request.utxo.index,
-                utxo_block_height,
-                blocks_confirmed,
-                confirm_depth
-            );
-
-            if blocks_confirmed < confirm_depth {
-                return Err(Error::InvalidInput {
-                    reason: format!(
-                        "UTxO not sufficiently confirmed. Block height: {}, Current: {}, Confirmed: {} blocks, Required: {} blocks",
-                        utxo_block_height,
-                        current_height,
-                        blocks_confirmed,
-                        confirm_depth
-                    ),
-                });
-            }
-
-            tracing::info!(
-                "UTxO {}:{} confirmed with {} blocks (required: {})",
-                &request.utxo.tx_hash[..16],
-                request.utxo.index,
-                blocks_confirmed,
-                confirm_depth
-            );
-        }
-        None => {
-            // Block height not available from provider
-            // This shouldn't happen with Blockfrost since we now fetch tx info
-            tracing::warn!(
-                "UTxO {}:{} block height not available from provider. Cannot verify confirm depth.",
-                &request.utxo.tx_hash[..16],
-                request.utxo.index
-            );
-            return Err(Error::InvalidInput {
-                reason: "Cannot verify UTxO confirmation depth: block height not available"
-                    .to_string(),
-            });
-        }
-    }
-
-    Ok(utxo_info)
-}
-
-/// Validate that outputs cover all assets in the UTxO
-///
-/// NOTE: Since outputs are blinded commitments, we cannot verify the actual
-/// amounts at deposit time. The Aiken validator enforces exact accounting
-/// during withdrawal when outputs are unblinded.
-///
-/// What we validate here:
-/// - At least one output is provided
-/// - The number of outputs is reasonable (at least one per unique asset)
-/// - No more outputs than total asset units (prevents dust attack)
-fn validate_deposit_amounts(
-    request: &DepositRequest,
-    utxo_info: &UtxoInfo,
-    min_deposit_value: u64,
-) -> Result<(), Error> {
-    // Build map of assets in UTxO
-    let mut utxo_assets: std::collections::HashMap<String, u64> =
-        std::collections::HashMap::new();
-    let mut total_units: u64 = 0;
-
-    for asset in &utxo_info.amount {
-        let amount =
-            asset
-                .quantity
-                .parse::<u64>()
-                .map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid asset quantity: {}", e),
-                })?;
-        utxo_assets.insert(asset.unit.clone(), amount);
-        total_units += amount;
-    }
-
-    // Must have at least one output
-    if request.outputs.is_empty() {
-        return Err(Error::InvalidInput {
-            reason: "No outputs provided for deposit".to_string(),
-        });
-    }
-
-    // Must have at least as many outputs as unique assets (no partial deposits)
-    // Each unique asset must be represented in at least one output
-    if request.outputs.len() < utxo_assets.len() {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Insufficient outputs: {} assets in UTxO but only {} outputs provided. \
-                 Each asset must be accounted for in at least one output (no partial deposits).",
-                utxo_assets.len(),
-                request.outputs.len()
-            ),
-        });
-    }
-
-    // Sanity check: shouldn't have more outputs than total asset units
-    // This prevents potential dust attacks with excessive outputs
-    if request.outputs.len() as u64 > total_units {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Too many outputs: {} outputs for {} total asset units",
-                request.outputs.len(),
-                total_units
-            ),
-        });
-    }
-
-    tracing::info!(
-        "Validated deposit: {} assets in UTxO ({} total units), {} outputs",
-        utxo_assets.len(),
-        total_units,
-        request.outputs.len()
-    );
-
-    // Check minimum deposit value
-    let lovelace_amount = utxo_assets.get("lovelace").copied().unwrap_or(0);
-    if lovelace_amount < min_deposit_value {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Deposit value {} lovelace below minimum {} lovelace",
-                lovelace_amount, min_deposit_value
-            ),
-        });
-    }
-
-    tracing::info!(
-        "Validated deposit: {} assets in UTxO ({} total units, {} lovelace), {} outputs",
-        utxo_assets.len(),
-        total_units,
-        lovelace_amount,
-        request.outputs.len()
-    );
-
-    Ok(())
-}
-
 /// Sign blinded outputs with delegate key
 fn sign_outputs(
     request: &DepositRequest,
@@ -1164,78 +570,6 @@ fn sign_outputs(
     }
 
     Ok(signatures)
-}
-
-fn insert_deposit_if_absent(
-    table: &mut redb::Table<'_, UtxoRef, mugraph_core::types::DepositRecord>,
-    utxo_ref: UtxoRef,
-    record: mugraph_core::types::DepositRecord,
-) -> Result<(), Error> {
-    if table.get(&utxo_ref)?.is_some() {
-        return Err(Error::InvalidInput {
-            reason: "Deposit already processed".to_string(),
-        });
-    }
-
-    table.insert(utxo_ref, &record)?;
-    Ok(())
-}
-
-/// Record deposit in database
-async fn record_deposit(
-    request: &DepositRequest,
-    ctx: &Context,
-    provider: &Provider,
-    wallet: &mugraph_core::types::CardanoWallet,
-) -> Result<(), Error> {
-    use mugraph_core::types::DepositRecord;
-
-    // Get current block height from provider
-    let tip = provider.get_tip().await.map_err(|e| Error::NetworkError {
-        reason: format!("Failed to get chain tip: {}", e),
-    })?;
-
-    // Compute intent hash for replay protection
-    let intent_hash = compute_intent_hash(
-        request,
-        &ctx.keypair.public_key,
-        &wallet.script_address,
-    );
-
-    let write_tx = ctx.database.write()?;
-    {
-        let mut table = write_tx.open_table(DEPOSITS)?;
-
-        let utxo_ref = crate::tx_ids::parse_utxo_ref(
-            &request.utxo.tx_hash,
-            request.utxo.index,
-        )?;
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        // Calculate expiration based on config
-        // Each block is approximately 20 seconds on Cardano
-        let expiration_seconds = ctx.config.deposit_expiration_blocks() * 20;
-        let expires_at = now + expiration_seconds;
-
-        let record = DepositRecord::with_intent_hash(
-            tip.block_height,
-            now,
-            expires_at,
-            intent_hash,
-        );
-        insert_deposit_if_absent(&mut table, utxo_ref, record)?;
-    }
-    write_tx.commit()?;
-
-    tracing::info!(
-        "Deposit recorded successfully at block {}",
-        tip.block_height
-    );
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1339,7 +673,10 @@ mod datum_tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
 
     use super::*;
@@ -1770,17 +1107,27 @@ mod handle_deposit_flow_tests {
     use std::sync::Arc;
 
     use axum::{
-        Router, extract::Path, http::StatusCode, response::IntoResponse,
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::IntoResponse,
         routing::get,
     };
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
     use serde_json::json;
 
@@ -2171,6 +1518,45 @@ mod handle_deposit_flow_tests {
         let deposits = r.open_table(DEPOSITS).unwrap();
         let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
         assert!(deposits.get(&utxo_ref).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn handle_deposit_happy_path_persists_expected_intent_hash() {
+        let user_sk = SigningKey::from_bytes(&[14u8; 32]);
+        let node_sk = SigningKey::from_bytes(&[25u8; 32]);
+        let node_pk = node_sk.verifying_key().to_bytes();
+
+        let seed_ctx = mk_context("http://127.0.0.1:1".to_string());
+        let (request, datum_cbor_hex) =
+            prepare_request_and_datum(&seed_ctx, &user_sk, &node_pk);
+
+        let url = spawn_provider_mock(
+            "addr_test1script".to_string(),
+            datum_cbor_hex,
+            100,
+        )
+        .await;
+        let ctx = mk_context(url);
+        insert_wallet(&ctx, node_pk.to_vec(), "addr_test1script");
+
+        handle_deposit(&request, &ctx)
+            .await
+            .expect("deposit accepted");
+
+        let r = ctx.database.read().unwrap();
+        let wallets = r.open_table(CARDANO_WALLET).unwrap();
+        let wallet = wallets.get("wallet").unwrap().unwrap().value();
+        let deposits = r.open_table(DEPOSITS).unwrap();
+        let utxo_ref = UtxoRef::new([0xabu8; 32], 0);
+        let record = deposits.get(&utxo_ref).unwrap().unwrap().value();
+
+        let expected_intent_hash = compute_intent_hash(
+            &request,
+            &ctx.keypair.public_key,
+            &wallet.script_address,
+        );
+
+        assert_eq!(record.intent_hash, expected_intent_hash);
     }
 
     #[tokio::test]
