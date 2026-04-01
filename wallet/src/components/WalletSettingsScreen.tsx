@@ -72,7 +72,7 @@ export function WalletSettingsScreen({
   >("deposit");
 
   return (
-    <section className="wallet-panel p-5 sm:p-6 xl:p-7">
+    <section className="wallet-panel p-5 sm:p-6 lg:p-7">
       <div className="space-y-2">
         <p className="wallet-kicker text-slate-500">Settings</p>
         <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
@@ -83,9 +83,9 @@ export function WalletSettingsScreen({
         </p>
       </div>
 
-      <section className="wallet-panel-soft mt-5 p-4 xl:grid xl:grid-cols-[18rem_minmax(0,1fr)] xl:gap-5 xl:p-5">
+      <section className="wallet-panel-soft mt-5 p-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-5 lg:p-5">
         <div>
-          <div className="flex items-center justify-between gap-3 xl:items-start">
+          <div className="flex items-center justify-between gap-3 lg:items-start">
             <div>
               <p className="wallet-kicker text-slate-500">Advanced</p>
               <p className="mt-2 text-base text-slate-300">
@@ -114,8 +114,8 @@ export function WalletSettingsScreen({
           </div>
         </div>
 
-        <div className="mt-5 xl:mt-0">
-          <div className="grid grid-cols-3 gap-3">
+        <div className="mt-5 lg:mt-0">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <button
               type="button"
               aria-pressed={activeAdvancedAction === "deposit"}
