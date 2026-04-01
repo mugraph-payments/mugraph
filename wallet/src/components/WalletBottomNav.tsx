@@ -38,7 +38,7 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
   return (
     <nav
       aria-label="Main wallet navigation"
-      className="wallet-panel sticky bottom-4 z-10 p-2 lg:static lg:bottom-auto lg:p-3"
+      className="wallet-panel sticky bottom-4 z-10 overflow-hidden p-2 lg:static lg:bottom-auto lg:p-3"
     >
       <div className="hidden lg:block px-2 pb-3">
         <p className="wallet-kicker text-slate-500">Navigate</p>

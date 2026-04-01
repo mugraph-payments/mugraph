@@ -23,7 +23,7 @@ export function WalletHeader({
   const isHome = activeDestination === "home";
 
   return (
-    <header className="wallet-panel px-4 py-4 sm:px-5">
+    <header className="wallet-panel overflow-hidden px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
