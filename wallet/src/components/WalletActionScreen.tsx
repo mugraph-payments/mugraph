@@ -80,7 +80,7 @@ export function WalletActionScreen({
         </h2>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {consumerActions.map((action) => {
           const Icon = action.icon;
           const isActive = action.id === activeAction;

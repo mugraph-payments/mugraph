@@ -60,7 +60,7 @@ export function SendDetails({
           tone={isEmpty ? "warning" : "neutral"}
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionField label="Spendable notes" value={isEmpty ? "0" : `${noteCount}`} />
           <ActionField
             label="Largest holding"
@@ -202,7 +202,7 @@ export function SendDetails({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ActionField label="Spendable notes" value={`${noteCount}`} />
         <ActionField
           label="Selected balance"
