@@ -6,7 +6,8 @@ import type {
   WalletSummaryMetricView,
 } from "../lib/walletView";
 import type { WalletActionKind } from "../types/wallet";
-import { ActivityStatusBadge } from "./ActivityStatusBadge";
+import { ActivityRow } from "./ActivityRow";
+import { AssetRow } from "./AssetRow";
 import { StatusChip } from "./StatusChip";
 
 interface WalletHomeScreenProps {
@@ -108,26 +109,15 @@ export function WalletHomeScreen({
           <div>
             <p className="wallet-kicker text-slate-500">Recent activity</p>
             <h3 className="wallet-heading mt-1.5 text-lg font-semibold text-slate-50">
-              Recent activity
+              Transactions
             </h3>
           </div>
           <span className="text-sm text-slate-400">{recentActivity.length} items</span>
         </div>
 
-        <div className="mt-4 grid gap-2">
+        <div className="mt-3 divide-y divide-white/[0.06]">
           {recentActivity.map((item) => (
-            <article key={item.id} className="wallet-subtle-card p-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="wallet-kicker text-slate-500">{item.kindLabel}</p>
-                  <p className="wallet-data mt-1 text-base font-semibold text-slate-50">
-                    {item.amountLabel}
-                  </p>
-                </div>
-                <ActivityStatusBadge label={item.statusLabel} tone={item.statusTone} />
-              </div>
-              <p className="wallet-copy mt-2 text-sm leading-6 text-slate-400">{item.summary}</p>
-            </article>
+            <ActivityRow key={item.id} activity={item} />
           ))}
         </div>
       </section>
@@ -135,35 +125,15 @@ export function WalletHomeScreen({
       <section className="wallet-panel p-5">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="wallet-kicker text-slate-500">Assets</p>
-            <h3 className="wallet-heading mt-1.5 text-lg font-semibold text-slate-50">
-              Your assets
-            </h3>
+            <p className="wallet-kicker text-slate-500">Portfolio</p>
+            <h3 className="wallet-heading mt-1.5 text-lg font-semibold text-slate-50">Assets</h3>
           </div>
-          <span className="text-sm text-slate-400">{topAssets.length} assets</span>
+          <span className="text-sm text-slate-400">{topAssets.length} tokens</span>
         </div>
 
-        <div className="mt-4 grid gap-2">
+        <div className="mt-3 divide-y divide-white/[0.06]">
           {topAssets.map((asset) => (
-            <article key={asset.id} className="wallet-subtle-card p-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="wallet-kicker rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-slate-200">
-                      {asset.ticker}
-                    </span>
-                    <span className="truncate text-sm text-slate-400">{asset.name}</span>
-                  </div>
-                  <p className="wallet-data mt-2 text-base font-semibold text-slate-50">
-                    {asset.balanceLabel}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="wallet-kicker text-slate-500">Share</p>
-                  <p className="wallet-data mt-1 text-sm text-slate-100">{asset.shareLabel}</p>
-                </div>
-              </div>
-            </article>
+            <AssetRow key={asset.id} asset={asset} />
           ))}
         </div>
       </section>

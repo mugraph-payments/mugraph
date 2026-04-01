@@ -8,29 +8,31 @@ interface AssetPanelProps {
 export function AssetPanel({ assets }: AssetPanelProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6">
-      <div className="space-y-1">
-        <p className="wallet-kicker text-slate-500">Assets</p>
-        <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-          Your assets
-        </h2>
-        <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Review each asset in a simple wallet list with balance, share, and note count.
-        </p>
+      <div className="flex items-end justify-between gap-3">
+        <div className="space-y-1">
+          <p className="wallet-kicker text-slate-500">Portfolio</p>
+          <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
+            Assets
+          </h2>
+        </div>
+        {assets.length > 0 ? (
+          <span className="text-sm text-slate-400">
+            {assets.length} {assets.length === 1 ? "token" : "tokens"}
+          </span>
+        ) : null}
       </div>
 
       {assets.length === 0 ? (
-        <div className="wallet-subtle-card mt-4 p-5">
-          <h3 className="wallet-heading text-sm font-medium text-slate-100">
-            No assets are loaded
-          </h3>
-          <p className="wallet-copy mt-2 max-w-xl text-sm leading-6 text-slate-400">
-            This wallet preview has no holdings available yet.
-          </p>
+        <div className="mt-6 py-8 text-center">
+          <p className="text-sm font-medium text-slate-300">No assets yet</p>
+          <p className="mt-1 text-sm text-slate-400">Your token holdings will appear here.</p>
         </div>
       ) : (
-        <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3" aria-label="Asset list">
+        <div className="mt-4 divide-y divide-white/[0.06]" role="list" aria-label="Asset list">
           {assets.map((asset) => (
-            <AssetRow key={asset.id} asset={asset} />
+            <div key={asset.id} role="listitem">
+              <AssetRow asset={asset} />
+            </div>
           ))}
         </div>
       )}
