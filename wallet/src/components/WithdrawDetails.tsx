@@ -62,7 +62,7 @@ export function WithdrawDetails({
           tone={isEmpty ? "warning" : "neutral"}
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionField
             label="Latest withdraw ref"
             value={isEmpty ? "No withdraw reference yet" : latestWithdrawReference}
@@ -209,7 +209,7 @@ export function WithdrawDetails({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ActionField label="Latest withdraw ref" value={latestWithdrawReference} />
         <ActionField label="Settlement path" value={scriptAddressShort} />
         <ActionField

@@ -62,7 +62,7 @@ export function DepositDetails({
           tone={isEmpty ? "warning" : "neutral"}
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionField
             label="Funding target"
             value={isEmpty ? "Unavailable" : scriptAddressShort}
@@ -204,7 +204,7 @@ export function DepositDetails({
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <ActionField label="Funding target" value={scriptAddressShort} />
         <ActionField label="Delegate" value={delegatePkShort} />
         <ActionField label="Latest deposit ref" value={latestDepositReference} />
