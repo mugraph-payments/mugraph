@@ -17,7 +17,7 @@ function EmptyPanelBody({ title, copy }: { title: string; copy: string }) {
 export function NotesPanel({ notes }: NotesPanelProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="wallet-kicker text-slate-500">Notes</p>
           <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">

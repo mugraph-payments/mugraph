@@ -8,7 +8,7 @@ interface NoteRowProps {
 export function NoteRow({ note }: NoteRowProps) {
   return (
     <article className="wallet-card p-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="wallet-kicker rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-slate-200">
@@ -17,7 +17,7 @@ export function NoteRow({ note }: NoteRowProps) {
             <span className="text-base text-slate-400">{note.sourceLabel}</span>
           </div>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div>
               <p className="wallet-kicker text-slate-500">Amount</p>
               <p className="wallet-data mt-1 text-xl font-semibold text-slate-50">
@@ -31,7 +31,7 @@ export function NoteRow({ note }: NoteRowProps) {
             <div className="min-w-0">
               <p className="wallet-kicker text-slate-500">Nonce</p>
               <p
-                className="wallet-code mt-1 truncate text-base text-slate-100"
+                className="wallet-code mt-1 break-all text-base text-slate-100 xl:truncate"
                 title={note.nonceShort}
               >
                 {note.nonceShort}
@@ -40,7 +40,7 @@ export function NoteRow({ note }: NoteRowProps) {
             <div className="min-w-0">
               <p className="wallet-kicker text-slate-500">Signature</p>
               <p
-                className="wallet-code mt-1 truncate text-base text-slate-100"
+                className="wallet-code mt-1 break-all text-base text-slate-100 xl:truncate"
                 title={note.signatureShort}
               >
                 {note.signatureShort}
@@ -49,7 +49,7 @@ export function NoteRow({ note }: NoteRowProps) {
           </div>
         </div>
 
-        <div className="flex justify-start lg:justify-end">
+        <div className="flex justify-start xl:justify-end">
           <NoteStatusBadge label={note.statusLabel} tone={note.statusTone} />
         </div>
       </div>
