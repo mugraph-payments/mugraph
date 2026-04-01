@@ -109,9 +109,9 @@ function App() {
 
   return (
     <div className="min-h-dvh text-slate-50">
-      <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 xl:px-6 2xl:px-8">
-        <div className="grid flex-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
-          <aside className="grid content-start gap-5 xl:sticky xl:top-6 xl:self-start xl:gap-6">
+      <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 lg:px-6 2xl:px-8">
+        <div className="grid flex-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
+          <aside className="grid content-start gap-5 lg:sticky lg:top-6 lg:self-start lg:gap-6">
             <WalletHeader
               label={view.identity.label}
               networkLabel={view.identity.networkLabel}
@@ -127,7 +127,7 @@ function App() {
             />
           </aside>
 
-          <main className="grid min-h-0 gap-4 pb-24 xl:pb-0">{activeDestinationPanel}</main>
+          <main className="grid min-h-0 gap-4 pb-24 lg:pb-0">{activeDestinationPanel}</main>
         </div>
       </div>
     </div>

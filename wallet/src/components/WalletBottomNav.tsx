@@ -38,16 +38,16 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
   return (
     <nav
       aria-label="Main wallet navigation"
-      className="wallet-panel sticky bottom-4 z-10 p-2 xl:static xl:bottom-auto xl:p-3"
+      className="wallet-panel sticky bottom-4 z-10 p-2 lg:static lg:bottom-auto lg:p-3"
     >
-      <div className="hidden xl:block px-2 pb-3">
+      <div className="hidden lg:block px-2 pb-3">
         <p className="wallet-kicker text-slate-500">Navigate</p>
         <p className="mt-2 text-sm leading-6 text-slate-400">
           Switch between your wallet overview, activity, assets, and settings.
         </p>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 xl:grid-cols-1">
+      <div className="grid grid-cols-4 gap-2 lg:grid-cols-1">
         {destinationMeta.map((destination) => {
           const isActive = destination.id === activeDestination;
           const Icon = destination.icon;
@@ -58,14 +58,14 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
               type="button"
               aria-pressed={isActive}
               onClick={() => onDestinationSelect(destination.id)}
-              className={`wallet-interactive flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center xl:flex-row xl:justify-start xl:gap-3 xl:px-4 xl:py-3 xl:text-left ${
+              className={`wallet-interactive flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center lg:flex-row lg:justify-start lg:gap-3 lg:px-4 lg:py-3 lg:text-left ${
                 isActive
                   ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-teal-50"
                   : "text-slate-400"
               }`}
             >
               <Icon className="h-5 w-5" weight={isActive ? "fill" : "duotone"} />
-              <span className="text-sm font-medium xl:text-base">{destination.label}</span>
+              <span className="text-sm font-medium lg:text-base">{destination.label}</span>
             </button>
           );
         })}

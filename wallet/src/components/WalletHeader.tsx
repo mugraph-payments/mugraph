@@ -34,7 +34,7 @@ export function WalletHeader({
                 {label}
               </h1>
               {isHome ? (
-                <p className="mt-2 hidden text-sm leading-6 text-slate-400 xl:block">
+                <p className="mt-2 hidden text-sm leading-6 text-slate-400 lg:block">
                   {networkLabel} network · synced {lastSyncedRelative}
                 </p>
               ) : null}
