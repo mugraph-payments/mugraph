@@ -114,14 +114,11 @@ function App() {
     <div className="min-h-dvh text-slate-50">
       <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 lg:px-6 2xl:px-8">
         <div className="grid flex-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
-          <aside className="grid min-w-0 overflow-hidden content-start gap-5 lg:sticky lg:top-6 lg:self-start lg:gap-6">
+          <aside className="grid min-w-0 overflow-hidden content-start gap-4 lg:sticky lg:top-6 lg:self-start lg:gap-5">
             <WalletHeader
               label={view.identity.label}
               networkLabel={view.identity.networkLabel}
-              statusLabel={view.identity.statusLabel}
-              statusTone={view.identity.statusTone}
               lastSyncedRelative={view.identity.lastSyncedRelative}
-              activeDestination={activeDestination}
             />
 
             <WalletBottomNav
