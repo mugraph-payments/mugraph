@@ -1,47 +1,62 @@
-import type { WalletNoteView } from "../lib/walletView";
-import { NoteRow } from "./NoteRow";
+import type { WalletNoteView, WalletTone } from "../lib/walletView";
 
 interface NotesPanelProps {
   notes: WalletNoteView[];
 }
 
-function EmptyPanelBody({ title, copy }: { title: string; copy: string }) {
+const statusStyle: Record<WalletTone, string> = {
+  neutral: "text-slate-400",
+  positive: "text-teal-300",
+  warning: "text-amber-300",
+  critical: "text-rose-300",
+};
+
+function NoteRow({ note }: { note: WalletNoteView }) {
   return (
-    <div className="wallet-card mt-5 p-5">
-      <h3 className="wallet-heading text-sm font-medium text-slate-100">{title}</h3>
-      <p className="wallet-copy mt-2 max-w-xl text-sm leading-6 text-slate-400">{copy}</p>
-    </div>
+    <article className="flex items-center gap-3 py-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.05] ring-1 ring-white/10">
+        <span className="text-[0.6rem] font-bold tracking-wide text-slate-300">
+          {note.assetTicker.slice(0, 3)}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-100">{note.amountLabel}</span>
+          <span className={`text-xs ${statusStyle[note.statusTone]}`}>{note.statusLabel}</span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {note.sourceLabel} · {note.createdAtRelative}
+        </p>
+      </div>
+
+      <p className="wallet-code hidden truncate text-xs text-slate-500 sm:block sm:max-w-[8rem]">
+        {note.nonceShort}
+      </p>
+    </article>
   );
 }
 
 export function NotesPanel({ notes }: NotesPanelProps) {
   return (
-    <section className="wallet-panel p-5 sm:p-6">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="wallet-kicker text-slate-500">Notes</p>
-          <h2 className="wallet-heading mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-            Private note inventory
-          </h2>
-        </div>
-        <p className="wallet-copy max-w-2xl text-sm leading-6 text-slate-400">
-          Keep source, status, and cryptographic references readable without making the list feel
-          like a debug console.
-        </p>
+    <div className="mt-4">
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span>
+          {notes.length} {notes.length === 1 ? "note" : "notes"}
+        </span>
       </div>
 
       {notes.length === 0 ? (
-        <EmptyPanelBody
-          title="No notes are available"
-          copy="This wallet preview has no private notes loaded yet. The inventory lane stays visible so the empty state remains intentional."
-        />
+        <div className="py-6 text-center">
+          <p className="text-sm text-slate-400">No notes loaded yet.</p>
+        </div>
       ) : (
-        <div className="mt-5 grid gap-3">
+        <div className="divide-y divide-white/[0.06]">
           {notes.map((note) => (
             <NoteRow key={note.id} note={note} />
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
