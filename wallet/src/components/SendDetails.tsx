@@ -20,6 +20,12 @@ function isEntryValid(entry: WalletSendEntry): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
+/** Extract the numeric portion from a formatted balance like "12,483.54 ADA" */
+function maxFromLabel(label: string): string {
+  const num = label.split(" ")[0]?.replace(/,/g, "") ?? "0";
+  return num;
+}
+
 function QrPlaceholder({ lines }: { lines: string[] }) {
   return (
     <div className="flex flex-col items-center gap-4 py-2">
@@ -112,6 +118,93 @@ function QrPlaceholder({ lines }: { lines: string[] }) {
   );
 }
 
+function SendEntryCard({
+  entry,
+  index,
+  assetOptions,
+  usedAssetIds,
+  canRemove,
+  onUpdate,
+  onRemove,
+}: {
+  entry: WalletSendEntry;
+  index: number;
+  assetOptions: SendAssetOption[];
+  usedAssetIds: Set<string>;
+  canRemove: boolean;
+  onUpdate: (patch: Partial<WalletSendEntry>) => void;
+  onRemove: () => void;
+}) {
+  const selectedAsset = assetOptions.find((a) => a.id === entry.assetId) ?? null;
+  const available = assetOptions.filter((a) => !usedAssetIds.has(a.id) || a.id === entry.assetId);
+
+  function handleMax() {
+    if (!selectedAsset) return;
+    onUpdate({ amountInput: maxFromLabel(selectedAsset.balanceLabel) });
+  }
+
+  return (
+    <div className="wallet-subtle-card relative space-y-3 p-4">
+      {canRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="wallet-interactive absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:text-rose-300"
+          aria-label={`Remove asset ${index + 1}`}
+        >
+          <X className="h-3.5 w-3.5" weight="bold" />
+        </button>
+      ) : null}
+
+      <div>
+        <span className="text-xs font-medium text-slate-400">Asset</span>
+        <select
+          value={entry.assetId}
+          onChange={(e) => onUpdate({ assetId: e.target.value })}
+          className="wallet-input mt-1 w-full text-sm"
+        >
+          <option value="">Select asset</option>
+          {available.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <span className="text-xs font-medium text-slate-400">Amount</span>
+        <div className="relative mt-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={entry.amountInput}
+            onChange={(e) => onUpdate({ amountInput: e.target.value })}
+            placeholder="0.00"
+            className="wallet-input wallet-data w-full pr-16 text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleMax}
+            disabled={!selectedAsset}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.12] hover:text-slate-50 disabled:opacity-30"
+          >
+            Max
+          </button>
+        </div>
+        {selectedAsset ? (
+          <p className="mt-1.5 text-xs text-slate-400">
+            Available{" "}
+            <span className="wallet-data font-medium text-slate-300">
+              {selectedAsset.balanceLabel}
+            </span>
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsProps) {
   const [showQr, setShowQr] = useState(false);
   const { entries } = draft;
@@ -131,7 +224,6 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
     onDraftChange({ entries: [...entries, { assetId: "", amountInput: "" }] });
   }
 
-  // Assets already used in other rows (prevent duplicates)
   function usedAssetIds(exceptIndex: number): Set<string> {
     return new Set(entries.filter((_, i) => i !== exceptIndex).map((e) => e.assetId));
   }
@@ -157,57 +249,18 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
 
   return (
     <div className="mx-auto mt-5 grid w-full max-w-md gap-3">
-      {entries.map((entry, index) => {
-        const used = usedAssetIds(index);
-        return (
-          <div key={index} className="flex items-end gap-2">
-            <label className="grid min-w-0 flex-1 gap-1.5">
-              {index === 0 ? (
-                <span className="text-xs font-medium text-slate-400">Asset</span>
-              ) : null}
-              <select
-                value={entry.assetId}
-                onChange={(e) => updateEntry(index, { assetId: e.target.value })}
-                className="wallet-input text-sm"
-              >
-                <option value="">Select</option>
-                {assetOptions
-                  .filter((a) => !used.has(a.id) || a.id === entry.assetId)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label} — {a.balanceLabel}
-                    </option>
-                  ))}
-              </select>
-            </label>
-
-            <label className="grid w-28 shrink-0 gap-1.5 sm:w-32">
-              {index === 0 ? (
-                <span className="text-xs font-medium text-slate-400">Amount</span>
-              ) : null}
-              <input
-                type="text"
-                inputMode="decimal"
-                value={entry.amountInput}
-                onChange={(e) => updateEntry(index, { amountInput: e.target.value })}
-                placeholder="0.00"
-                className="wallet-input wallet-data text-sm"
-              />
-            </label>
-
-            {entries.length > 1 ? (
-              <button
-                type="button"
-                onClick={() => removeEntry(index)}
-                className="wallet-interactive mb-px flex h-12 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:text-rose-300"
-                aria-label="Remove asset"
-              >
-                <X className="h-4 w-4" weight="bold" />
-              </button>
-            ) : null}
-          </div>
-        );
-      })}
+      {entries.map((entry, index) => (
+        <SendEntryCard
+          key={index}
+          entry={entry}
+          index={index}
+          assetOptions={assetOptions}
+          usedAssetIds={usedAssetIds(index)}
+          canRemove={entries.length > 1}
+          onUpdate={(patch) => updateEntry(index, patch)}
+          onRemove={() => removeEntry(index)}
+        />
+      ))}
 
       {entries.length < assetOptions.length ? (
         <button
