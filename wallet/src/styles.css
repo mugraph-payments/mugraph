@@ -297,6 +297,11 @@ select {
     border-color: rgba(139, 92, 246, 0.35);
   }
 
+  select.wallet-input option {
+    background: #1a1c28;
+    color: #edf0f7;
+  }
+
   .wallet-choice {
     @apply min-h-12 rounded-xl border p-4 text-left transition duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
     --tw-ring-color: rgba(139, 92, 246, 0.4);
