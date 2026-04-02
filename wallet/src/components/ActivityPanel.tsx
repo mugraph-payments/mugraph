@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 import type { WalletActivityView } from "../lib/walletView";
 import { ActivityRow } from "./ActivityRow";
 
@@ -6,8 +7,28 @@ interface ActivityPanelProps {
   activity: WalletActivityView[];
 }
 
+type StatusOverride = "confirmed" | "reverted";
+
 export function ActivityPanel({ activity }: ActivityPanelProps) {
   const prefersReducedMotion = useReducedMotion();
+  const [overrides, setOverrides] = useState<Record<string, StatusOverride>>({});
+
+  function handleConfirm(id: string) {
+    setOverrides((prev) => ({ ...prev, [id]: "confirmed" }));
+  }
+
+  function handleRevert(id: string) {
+    setOverrides((prev) => ({ ...prev, [id]: "reverted" }));
+  }
+
+  const items: WalletActivityView[] = activity.map((item) => {
+    const override = overrides[item.id];
+    if (!override) return item;
+    if (override === "confirmed") {
+      return { ...item, statusLabel: "Completed", statusTone: "positive" };
+    }
+    return { ...item, statusLabel: "Reverted", statusTone: "critical" };
+  });
 
   return (
     <motion.section
@@ -24,14 +45,14 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
             Transactions
           </h2>
         </div>
-        {activity.length > 0 ? (
+        {items.length > 0 ? (
           <span className="text-sm text-slate-400">
-            {activity.length} {activity.length === 1 ? "item" : "items"}
+            {items.length} {items.length === 1 ? "item" : "items"}
           </span>
         ) : null}
       </div>
 
-      {activity.length === 0 ? (
+      {items.length === 0 ? (
         <div className="mt-6 py-8 text-center">
           <p className="text-sm font-medium text-slate-300">No transactions yet</p>
           <p className="mt-1 text-sm text-slate-400">
@@ -44,9 +65,9 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
           role="list"
           aria-label="Transaction list"
         >
-          {activity.map((item) => (
+          {items.map((item) => (
             <div key={item.id} role="listitem">
-              <ActivityRow activity={item} />
+              <ActivityRow activity={item} onConfirm={handleConfirm} onRevert={handleRevert} />
             </div>
           ))}
         </div>

@@ -4,6 +4,8 @@ import type { WalletActivityView, WalletTone } from "../lib/walletView";
 
 interface ActivityRowProps {
   activity: WalletActivityView;
+  onConfirm?: (id: string) => void;
+  onRevert?: (id: string) => void;
 }
 
 const kindIcons: Record<
@@ -28,12 +30,14 @@ const statusTextStyle: Record<WalletTone, string> = {
   critical: "text-rose-300",
 };
 
-export function ActivityRow({ activity }: ActivityRowProps) {
+export function ActivityRow({ activity, onConfirm, onRevert }: ActivityRowProps) {
   const KindIcon = kindIcons[activity.kindLabel] ?? ArrowsClockwise;
   const iconStyle = kindIconStyle[activity.kindLabel] ?? kindIconStyle.Refresh;
   const isIncoming = activity.kindLabel === "Deposit";
   const isOutgoing = activity.kindLabel === "Withdraw";
   const amountPrefix = isIncoming ? "+" : isOutgoing ? "−" : "";
+  const isPending = activity.statusLabel === "Pending";
+  const showActions = isPending && (onConfirm || onRevert);
 
   return (
     <article className="flex items-center gap-3 py-3.5">
@@ -48,16 +52,41 @@ export function ActivityRow({ activity }: ActivityRowProps) {
         <p className="mt-0.5 text-xs text-slate-400">{activity.createdAtRelative}</p>
       </div>
 
-      <div className="text-right">
-        <p
-          className={`wallet-data text-sm font-semibold ${isIncoming ? "text-teal-300" : "text-slate-100"}`}
-        >
-          {amountPrefix}
-          {activity.amountLabel}
-        </p>
-        <p className={`mt-0.5 text-xs ${statusTextStyle[activity.statusTone]}`}>
-          {activity.statusLabel}
-        </p>
+      <div className="flex items-center gap-3">
+        {showActions ? (
+          <div className="flex gap-1.5">
+            {onConfirm ? (
+              <button
+                type="button"
+                onClick={() => onConfirm(activity.id)}
+                className="wallet-interactive rounded-lg bg-teal-400/10 px-2.5 py-1 text-xs font-medium text-teal-300 hover:bg-teal-400/20"
+              >
+                Confirm
+              </button>
+            ) : null}
+            {onRevert ? (
+              <button
+                type="button"
+                onClick={() => onRevert(activity.id)}
+                className="wallet-interactive rounded-lg bg-rose-400/10 px-2.5 py-1 text-xs font-medium text-rose-300 hover:bg-rose-400/20"
+              >
+                Revert
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="text-right">
+          <p
+            className={`wallet-data text-sm font-semibold ${isIncoming ? "text-teal-300" : "text-slate-100"}`}
+          >
+            {amountPrefix}
+            {activity.amountLabel}
+          </p>
+          <p className={`mt-0.5 text-xs ${statusTextStyle[activity.statusTone]}`}>
+            {activity.statusLabel}
+          </p>
+        </div>
       </div>
     </article>
   );
