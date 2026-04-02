@@ -286,7 +286,7 @@ select {
   }
 
   .wallet-input {
-    @apply min-h-12 rounded-xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2;
+    @apply min-h-12 min-w-0 w-full rounded-xl border px-3.5 py-3 text-base text-slate-100 outline-none transition duration-150 ease-out placeholder:text-slate-500 focus:ring-2;
     --tw-ring-color: rgba(139, 92, 246, 0.3);
     background: rgba(255, 255, 255, 0.035);
     border-color: rgba(255, 255, 255, 0.09);

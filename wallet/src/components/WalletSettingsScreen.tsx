@@ -83,7 +83,7 @@ export function WalletSettingsScreen({
         </p>
       </div>
 
-      <section className="wallet-panel-soft mt-5 p-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-5 lg:p-5">
+      <section className="wallet-panel-soft mt-5 overflow-hidden p-4 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-5 lg:p-5">
         <div>
           <div className="flex items-center justify-between gap-3 lg:items-start">
             <div>
@@ -114,7 +114,7 @@ export function WalletSettingsScreen({
           </div>
         </div>
 
-        <div className="mt-5 lg:mt-0">
+        <div className="mt-5 min-w-0 lg:mt-0">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <button
               type="button"
