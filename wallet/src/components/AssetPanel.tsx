@@ -14,10 +14,10 @@ const statusStyle: Record<WalletTone, string> = {
 
 function BalanceCard({ asset }: { asset: WalletAssetView }) {
   return (
-    <div className="wallet-subtle-card flex flex-col gap-1.5 p-3.5">
+    <div className="wallet-subtle-card flex flex-col gap-2 p-4">
       <div className="flex items-center gap-2">
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10">
-          <span className="text-[0.5rem] font-bold tracking-wide text-slate-300">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10">
+          <span className="text-[0.625rem] font-bold tracking-wide text-slate-300">
             {asset.ticker.slice(0, 3)}
           </span>
         </div>
@@ -58,43 +58,65 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 
 export function AssetPanel({ assets, notes }: AssetPanelProps) {
   return (
-    <section className="wallet-panel p-5 sm:p-6">
-      <div className="space-y-1">
-        <p className="wallet-kicker text-slate-500">Holdings</p>
-        <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-          Notes
-        </h2>
-      </div>
-
-      {assets.length > 0 ? (
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          {assets.map((asset) => (
-            <BalanceCard key={asset.id} asset={asset} />
-          ))}
-        </div>
-      ) : null}
-
-      {notes.length === 0 ? (
-        <div className="mt-6 py-8 text-center">
-          <p className="text-sm font-medium text-slate-300">No notes yet</p>
-          <p className="mt-1 text-sm text-slate-400">
-            Spendable notes from deposits and refreshes will appear here.
-          </p>
-        </div>
-      ) : (
-        <div className="mt-5 divide-y divide-white/[0.06]" role="list" aria-label="Note list">
-          <div className="flex items-center justify-between pb-2 text-xs text-slate-500">
-            <span>
-              {notes.length} {notes.length === 1 ? "note" : "notes"}
-            </span>
-          </div>
-          {notes.map((note) => (
-            <div key={note.id} role="listitem">
-              <NoteRow note={note} />
+    <section className="wallet-panel p-5 sm:p-6 lg:p-7">
+      <div className="wallet-section-stack">
+        <div className="wallet-section-intro">
+          <p className="wallet-kicker text-slate-500">Holdings</p>
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-6">
+            <div>
+              <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
+                Notes inventory
+              </h2>
+              <p className="wallet-copy mt-2 max-w-[42ch] text-base leading-7 text-slate-400">
+                Review the assets currently inside the wallet, then inspect the individual notes
+                that make each balance spendable.
+              </p>
             </div>
-          ))}
+            <div className="text-sm text-slate-400 lg:text-right">
+              <p>
+                <span className="wallet-data font-semibold text-slate-100">{assets.length}</span>{" "}
+                assets in view
+              </p>
+              <p className="mt-1">
+                <span className="wallet-data font-semibold text-slate-100">{notes.length}</span>{" "}
+                spendable notes
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+
+        {assets.length > 0 ? (
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {assets.map((asset) => (
+              <BalanceCard key={asset.id} asset={asset} />
+            ))}
+          </section>
+        ) : null}
+
+        {notes.length === 0 ? (
+          <div className="py-8 text-center">
+            <p className="text-sm font-medium text-slate-300">No notes yet</p>
+            <p className="mt-1 text-sm text-slate-400">
+              Spendable notes from deposits and refreshes will appear here.
+            </p>
+          </div>
+        ) : (
+          <section className="grid gap-4">
+            <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+              <span>
+                {notes.length} {notes.length === 1 ? "note" : "notes"}
+              </span>
+            </div>
+            <div className="wallet-list" role="list" aria-label="Note list">
+              {notes.map((note) => (
+                <div key={note.id} role="listitem">
+                  <NoteRow note={note} />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
     </section>
   );
 }

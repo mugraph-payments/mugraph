@@ -22,16 +22,17 @@ export function ActionSummaryCard({
   footer,
 }: ActionSummaryCardProps) {
   return (
-    <div
-      className={`overflow-hidden rounded-3xl border p-4 ${toneClasses[tone]}`}
-      style={{ boxShadow: "var(--wallet-card-shadow)" }}
-    >
-      <p className="wallet-kicker text-slate-500">{eyebrow}</p>
-      <h3 className="wallet-heading mt-2 text-lg font-medium text-slate-100">{title}</h3>
-      <p className="wallet-copy mt-2 break-words text-base leading-7 text-slate-300">
-        {description}
-      </p>
-      {footer ? <div className="mt-4">{footer}</div> : null}
+    <div className={`overflow-hidden rounded-[1.5rem] border p-5 sm:p-6 ${toneClasses[tone]}`}>
+      <div className="grid gap-3">
+        <p className="wallet-kicker text-slate-500">{eyebrow}</p>
+        <div className="grid gap-2">
+          <h3 className="wallet-heading text-lg font-medium text-slate-100">{title}</h3>
+          <p className="wallet-copy break-words text-base leading-7 text-slate-300">
+            {description}
+          </p>
+        </div>
+      </div>
+      {footer ? <div className="mt-5">{footer}</div> : null}
     </div>
   );
 }

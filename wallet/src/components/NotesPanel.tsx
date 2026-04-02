@@ -13,7 +13,7 @@ const statusStyle: Record<WalletTone, string> = {
 
 function NoteRow({ note }: { note: WalletNoteView }) {
   return (
-    <article className="flex items-center gap-3 py-3">
+    <article className="flex items-center gap-3 py-3.5">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.05] ring-1 ring-white/10">
         <span className="text-[0.6rem] font-bold tracking-wide text-slate-300">
           {note.assetTicker.slice(0, 3)}
@@ -39,11 +39,16 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 
 export function NotesPanel({ notes }: NotesPanelProps) {
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>
-          {notes.length} {notes.length === 1 ? "note" : "notes"}
-        </span>
+    <div className="grid gap-4">
+      <div className="wallet-section-intro">
+        <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+          <span>
+            {notes.length} {notes.length === 1 ? "note" : "notes"}
+          </span>
+        </div>
+        <p className="wallet-copy max-w-[36ch] text-sm leading-6 text-slate-400">
+          Inspect the individual notes currently available for spending or review.
+        </p>
       </div>
 
       {notes.length === 0 ? (
@@ -51,7 +56,7 @@ export function NotesPanel({ notes }: NotesPanelProps) {
           <p className="text-sm text-slate-400">No notes loaded yet.</p>
         </div>
       ) : (
-        <div className="divide-y divide-white/[0.06]">
+        <div className="wallet-list">
           {notes.map((note) => (
             <NoteRow key={note.id} note={note} />
           ))}

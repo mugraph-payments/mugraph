@@ -40,14 +40,14 @@ export function DraftProgress({
   const classes = toneClasses[tone];
 
   return (
-    <section className={`rounded-2xl border p-4 ${classes.shell}`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
+    <section className={`rounded-[1.5rem] border p-5 sm:p-6 ${classes.shell}`}>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+        <div className="space-y-2">
           <p className="wallet-kicker text-slate-500">{label}</p>
           <p className={`text-base leading-7 ${classes.copy}`}>{summary}</p>
         </div>
 
-        <div className="text-right">
+        <div className="sm:text-right">
           <p className={`wallet-data text-xl font-semibold ${classes.stat}`}>
             {clampedCompleted}/{safeTotal}
           </p>
@@ -55,7 +55,7 @@ export function DraftProgress({
         </div>
       </div>
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-950/60" aria-hidden="true">
+      <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-950/60" aria-hidden="true">
         <div
           className={`h-full rounded-full ${classes.fill}`}
           style={{ width: `${percent}%`, transition: "width 0.28s cubic-bezier(0.16, 1, 0.3, 1)" }}

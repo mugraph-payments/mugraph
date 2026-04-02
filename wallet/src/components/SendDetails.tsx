@@ -146,12 +146,12 @@ function SendEntryCard({
   }
 
   return (
-    <div className="wallet-subtle-card relative space-y-3 p-4">
+    <div className="wallet-subtle-card relative space-y-3 p-4 sm:p-5">
       {canRemove ? (
         <button
           type="button"
           onClick={onRemove}
-          className="wallet-interactive absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:text-rose-300"
+          className="wallet-interactive absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:text-rose-300"
           aria-label={`Remove asset ${index + 1}`}
         >
           <X className="h-3.5 w-3.5" weight="bold" />
@@ -163,7 +163,7 @@ function SendEntryCard({
         <select
           value={entry.assetId}
           onChange={(e) => onUpdate({ assetId: e.target.value })}
-          className="wallet-input mt-1 w-full text-sm"
+          className="wallet-input mt-2 w-full text-sm"
         >
           <option value="">Select asset</option>
           {available.map((a) => (
@@ -176,7 +176,7 @@ function SendEntryCard({
 
       <div>
         <span className="text-xs font-medium text-slate-400">Amount</span>
-        <div className="relative mt-1">
+        <div className="relative mt-2">
           <input
             type="text"
             inputMode="decimal"
@@ -195,7 +195,7 @@ function SendEntryCard({
           </button>
         </div>
         {selectedAsset ? (
-          <p className="mt-1.5 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-slate-400">
             Available{" "}
             <span className="wallet-data font-medium text-slate-300">
               {selectedAsset.balanceLabel}
@@ -240,7 +240,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
 
   if (step === "confirmed") {
     return (
-      <div className="mx-auto mt-5 grid w-full max-w-md gap-5 py-4">
+      <div className="mx-auto grid w-full max-w-lg gap-5 py-2">
         <div className="flex flex-col items-center gap-3">
           <CheckCircle className="h-12 w-12 text-teal-300" weight="duotone" />
           <h3 className="text-lg font-semibold text-slate-50">Transfer confirmed</h3>
@@ -272,7 +272,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
   if (step === "qr" && isReady) {
     const lines = buildLines();
     return (
-      <div className="mx-auto mt-5 grid w-full max-w-md gap-4">
+      <div className="mx-auto grid w-full max-w-lg gap-4 py-2">
         <QrPlaceholder lines={lines} />
         <p className="text-center text-xs text-slate-400">
           Show this code to the recipient, then confirm once they have scanned it.
@@ -300,7 +300,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
   }
 
   return (
-    <div className="mx-auto mt-5 grid w-full max-w-md gap-3">
+    <div className="grid w-full max-w-2xl gap-4">
       {entries.map((entry, index) => (
         <SendEntryCard
           key={index}
@@ -314,26 +314,30 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
         />
       ))}
 
-      {entries.length < assetOptions.length ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        {entries.length < assetOptions.length ? (
+          <button
+            type="button"
+            onClick={addEntry}
+            className="wallet-interactive flex w-fit items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200"
+          >
+            <Plus className="h-3.5 w-3.5" weight="bold" />
+            Add asset
+          </button>
+        ) : (
+          <span />
+        )}
+
         <button
           type="button"
-          onClick={addEntry}
-          className="wallet-interactive flex w-fit items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200"
+          disabled={!isReady}
+          onClick={() => setStep("qr")}
+          className="wallet-interactive wallet-cta-primary flex min-w-[13rem] items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
         >
-          <Plus className="h-3.5 w-3.5" weight="bold" />
-          Add asset
+          <QrCode className="h-4 w-4" weight="duotone" />
+          Generate QR code
         </button>
-      ) : null}
-
-      <button
-        type="button"
-        disabled={!isReady}
-        onClick={() => setStep("qr")}
-        className="wallet-interactive wallet-cta-primary mt-1 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-      >
-        <QrCode className="h-4 w-4" weight="duotone" />
-        Generate QR code
-      </button>
+      </div>
     </div>
   );
 }

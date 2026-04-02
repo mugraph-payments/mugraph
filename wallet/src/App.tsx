@@ -108,9 +108,9 @@ function App() {
 
   return (
     <div className="min-h-dvh text-slate-50">
-      <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 lg:px-6 2xl:px-8">
-        <div className="grid flex-1 content-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)] 2xl:grid-cols-[19rem_minmax(0,1fr)]">
-          <aside className="grid min-w-0 overflow-hidden content-start gap-4 lg:sticky lg:top-6 lg:self-start lg:gap-5">
+      <div className="wallet-phone-shell mx-auto flex min-h-dvh w-full flex-col px-4 py-5 sm:px-5 sm:py-6 xl:px-7 xl:py-7 2xl:px-8">
+        <div className="grid flex-1 content-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[19rem_minmax(0,1fr)] xl:gap-8">
+          <aside className="grid min-w-0 content-start gap-5 lg:sticky lg:top-7 lg:self-start xl:gap-6">
             <WalletHeader
               label={view.identity.label}
               networkLabel={view.identity.networkLabel}
@@ -123,7 +123,7 @@ function App() {
             />
           </aside>
 
-          <main className="grid min-h-0 items-start gap-4 pb-24 lg:pb-0">
+          <main className="grid min-h-0 items-start gap-6 pb-24 lg:pb-4 xl:gap-8">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={`${activeDestination}-${activeConsumerAction ?? "none"}`}
@@ -131,7 +131,7 @@ function App() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
                 transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-                className="grid items-start gap-4"
+                className="grid items-start gap-6"
               >
                 {activeDestinationPanel}
               </motion.div>
