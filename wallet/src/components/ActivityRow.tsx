@@ -59,7 +59,7 @@ export function ActivityRow({ activity, onConfirm, onRevert }: ActivityRowProps)
               <button
                 type="button"
                 onClick={() => onConfirm(activity.id)}
-                className="wallet-interactive rounded-lg bg-teal-400/10 px-2.5 py-1 text-xs font-medium text-teal-300 hover:bg-teal-400/20"
+                className="wallet-interactive rounded-lg bg-teal-400/10 px-3 py-1.5 text-xs font-medium text-teal-300 hover:bg-teal-400/20"
               >
                 Confirm
               </button>
@@ -68,7 +68,7 @@ export function ActivityRow({ activity, onConfirm, onRevert }: ActivityRowProps)
               <button
                 type="button"
                 onClick={() => onRevert(activity.id)}
-                className="wallet-interactive rounded-lg bg-rose-400/10 px-2.5 py-1 text-xs font-medium text-rose-300 hover:bg-rose-400/20"
+                className="wallet-interactive rounded-lg bg-rose-400/10 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-400/20"
               >
                 Revert
               </button>

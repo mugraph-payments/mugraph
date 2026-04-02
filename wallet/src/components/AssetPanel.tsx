@@ -33,7 +33,7 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 
       <div className="text-right">
         <p className="wallet-data text-sm font-semibold text-slate-100">{note.amountLabel}</p>
-        <p className="wallet-code mt-0.5 text-[0.65rem] text-slate-500">{note.nonceShort}</p>
+        <p className="wallet-code mt-0.5 text-xs text-slate-500">{note.nonceShort}</p>
       </div>
     </article>
   );

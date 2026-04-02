@@ -1,4 +1,3 @@
-import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { WalletActivityView } from "../lib/walletView";
 import { ActivityRow } from "./ActivityRow";
@@ -10,7 +9,6 @@ interface ActivityPanelProps {
 type StatusOverride = "confirmed" | "reverted";
 
 export function ActivityPanel({ activity }: ActivityPanelProps) {
-  const prefersReducedMotion = useReducedMotion();
   const [overrides, setOverrides] = useState<Record<string, StatusOverride>>({});
 
   function handleConfirm(id: string) {
@@ -31,13 +29,7 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
   });
 
   return (
-    <motion.section
-      initial={prefersReducedMotion ? false : { opacity: 0.96, y: 10 }}
-      whileInView={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-      className="wallet-panel p-5 sm:p-6"
-    >
+    <section className="wallet-panel p-5 sm:p-6">
       <div className="flex items-end justify-between gap-3">
         <div className="space-y-1">
           <p className="wallet-kicker text-slate-500">Activity</p>
@@ -72,6 +64,6 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
           ))}
         </div>
       )}
-    </motion.section>
+    </section>
   );
 }
