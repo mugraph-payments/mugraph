@@ -35,10 +35,7 @@ export const walletShellState: WalletShellState = {
 
 export const walletActionDrafts: WalletActionDrafts = {
   send: {
-    assetId: "asset-usdm",
-    amountInput: "250",
-    recipient: "addr_test1qpf0m9k4m8s0q2s5f9e6z7h0d4v8u5k3w9q7p2c6n4y8m2s9d3q",
-    memo: "Rent payment",
+    entries: [{ assetId: "asset-usdm", amountInput: "250" }],
   },
   receive: {
     assetId: "asset-usdm",

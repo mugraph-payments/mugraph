@@ -75,11 +75,13 @@ export interface WalletShellState {
   activeAction: WalletActionKind;
 }
 
-export interface WalletSendDraft {
+export interface WalletSendEntry {
   assetId: string;
   amountInput: string;
-  recipient: string;
-  memo: string;
+}
+
+export interface WalletSendDraft {
+  entries: WalletSendEntry[];
 }
 
 export interface WalletReceiveDraft {

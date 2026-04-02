@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowSquareIn, ArrowSquareOut } from "@phosphor-icons/react";
-import type { WalletActionView, WalletIdentityView } from "../lib/walletView";
+import type { WalletIdentityView } from "../lib/walletView";
 import type { WalletReceiveDraft, WalletSendDraft } from "../types/wallet";
 import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
@@ -12,7 +12,6 @@ interface AssetOption {
 
 interface WalletActionScreenProps {
   activeAction: "send" | "receive";
-  actions: WalletActionView[];
   onActionSelect: (actionId: "send" | "receive") => void;
   onClose: () => void;
   sendDraft: WalletSendDraft;
@@ -21,30 +20,10 @@ interface WalletActionScreenProps {
   onReceiveDraftChange: (draft: WalletReceiveDraft) => void;
   assetOptions: AssetOption[];
   identity: WalletIdentityView;
-  noteCount: number;
-  pendingActivityCount: number;
 }
-
-const consumerActions: Array<{
-  id: "send" | "receive";
-  label: string;
-  icon: typeof ArrowSquareOut;
-}> = [
-  {
-    id: "send",
-    label: "Send",
-    icon: ArrowSquareOut,
-  },
-  {
-    id: "receive",
-    label: "Receive",
-    icon: ArrowSquareIn,
-  },
-];
 
 export function WalletActionScreen({
   activeAction,
-  actions,
   onActionSelect,
   onClose,
   sendDraft,
@@ -53,65 +32,58 @@ export function WalletActionScreen({
   onReceiveDraftChange,
   assetOptions,
   identity,
-  noteCount,
-  pendingActivityCount,
 }: WalletActionScreenProps) {
-  const selectedAction = actions.find((action) => action.id === activeAction) ?? actions[0];
-  const topAssetLabel = assetOptions[0]?.balanceLabel ?? "No holdings";
-
   return (
     <section className="wallet-panel p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={onClose}
-          className="wallet-interactive inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-200"
+          className="wallet-interactive inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-slate-400 hover:text-slate-200"
         >
           <ArrowLeft className="h-4 w-4" weight="bold" />
-          Home
+          Back
         </button>
-        <span className="wallet-kicker text-slate-500">Action</span>
-      </div>
 
-      <div className="mt-4 space-y-2">
-        <p className="wallet-kicker text-slate-500">Choose an action</p>
-        <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-          {selectedAction?.label ?? "Action"}
-        </h2>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {consumerActions.map((action) => {
-          const Icon = action.icon;
-          const isActive = action.id === activeAction;
-
-          return (
-            <button
-              key={action.id}
-              type="button"
-              aria-pressed={isActive}
-              onClick={() => onActionSelect(action.id)}
-              className={`wallet-interactive flex items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-base font-semibold ${
-                isActive
-                  ? "wallet-cta-primary text-slate-50"
-                  : "wallet-cta-secondary text-slate-200"
-              }`}
-            >
-              <Icon className="h-5 w-5" weight={isActive ? "fill" : "duotone"} />
-              {action.label}
-            </button>
-          );
-        })}
+        <div className="flex gap-1 rounded-lg bg-white/[0.04] p-1">
+          <button
+            type="button"
+            onClick={() => onActionSelect("send")}
+            className={`wallet-interactive flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              activeAction === "send"
+                ? "bg-white/[0.08] text-slate-50"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <ArrowSquareOut
+              className="h-4 w-4"
+              weight={activeAction === "send" ? "fill" : "duotone"}
+            />
+            Send
+          </button>
+          <button
+            type="button"
+            onClick={() => onActionSelect("receive")}
+            className={`wallet-interactive flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              activeAction === "receive"
+                ? "bg-white/[0.08] text-slate-50"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <ArrowSquareIn
+              className="h-4 w-4"
+              weight={activeAction === "receive" ? "fill" : "duotone"}
+            />
+            Receive
+          </button>
+        </div>
       </div>
 
       {activeAction === "send" ? (
         <SendDetails
           draft={sendDraft}
           assetOptions={assetOptions}
-          noteCount={noteCount}
-          pendingActivityCount={pendingActivityCount}
           onDraftChange={onSendDraftChange}
-          topAssetLabel={topAssetLabel}
         />
       ) : (
         <ReceiveDetails

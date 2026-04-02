@@ -64,7 +64,6 @@ function App() {
         return activeConsumerAction ? (
           <WalletActionScreen
             activeAction={activeConsumerAction}
-            actions={view.actions}
             onActionSelect={handlePrimaryActionSelect}
             onClose={() => setActiveConsumerAction(null)}
             sendDraft={sendDraft}
@@ -73,8 +72,6 @@ function App() {
             onReceiveDraftChange={setReceiveDraft}
             assetOptions={assetOptions}
             identity={view.identity}
-            noteCount={walletState.summary.noteCount}
-            pendingActivityCount={walletState.summary.pendingActivityCount}
           />
         ) : (
           <WalletHomeScreen
