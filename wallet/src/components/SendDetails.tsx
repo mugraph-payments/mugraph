@@ -1,6 +1,8 @@
-import { Plus, QrCode, X } from "@phosphor-icons/react";
+import { CheckCircle, Plus, QrCode, X } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { WalletSendDraft, WalletSendEntry } from "../types/wallet";
+
+type SendStep = "form" | "qr" | "confirmed";
 
 interface SendAssetOption {
   id: string;
@@ -206,7 +208,8 @@ function SendEntryCard({
 }
 
 export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsProps) {
-  const [showQr, setShowQr] = useState(false);
+  const [step, setStep] = useState<SendStep>("form");
+  const [confirmedLines, setConfirmedLines] = useState<string[]>([]);
   const { entries } = draft;
   const validEntries = entries.filter(isEntryValid);
   const isReady = validEntries.length > 0;
@@ -228,18 +231,67 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
     return new Set(entries.filter((_, i) => i !== exceptIndex).map((e) => e.assetId));
   }
 
-  if (showQr && isReady) {
-    const lines = validEntries.map((e) => {
+  function buildLines() {
+    return validEntries.map((e) => {
       const opt = assetOptions.find((a) => a.id === e.assetId);
       return `${e.amountInput.trim()} ${opt?.label ?? ""}`;
     });
+  }
+
+  if (step === "confirmed") {
     return (
-      <div className="mx-auto mt-5 grid w-full max-w-md gap-5">
-        <QrPlaceholder lines={lines} />
+      <div className="mx-auto mt-5 grid w-full max-w-md gap-5 py-4">
+        <div className="flex flex-col items-center gap-3">
+          <CheckCircle className="h-12 w-12 text-teal-300" weight="duotone" />
+          <h3 className="text-lg font-semibold text-slate-50">Transfer confirmed</h3>
+          <div className="text-center">
+            {confirmedLines.map((line) => (
+              <p key={line} className="wallet-data text-sm text-slate-300">
+                {line}
+              </p>
+            ))}
+          </div>
+          <p className="text-center text-xs text-slate-400">
+            The recipient scanned the code and the transfer has been recorded.
+          </p>
+        </div>
         <button
           type="button"
-          onClick={() => setShowQr(false)}
+          onClick={() => {
+            onDraftChange({ entries: [{ assetId: "", amountInput: "" }] });
+            setStep("form");
+          }}
           className="wallet-interactive wallet-cta-secondary mx-auto rounded-xl border px-6 py-2.5 text-sm font-medium text-slate-200"
+        >
+          New transfer
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "qr" && isReady) {
+    const lines = buildLines();
+    return (
+      <div className="mx-auto mt-5 grid w-full max-w-md gap-4">
+        <QrPlaceholder lines={lines} />
+        <p className="text-center text-xs text-slate-400">
+          Show this code to the recipient, then confirm once they have scanned it.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setConfirmedLines(lines);
+            setStep("confirmed");
+          }}
+          className="wallet-interactive wallet-cta-primary flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50"
+        >
+          <CheckCircle className="h-4 w-4" weight="duotone" />
+          Confirm transfer
+        </button>
+        <button
+          type="button"
+          onClick={() => setStep("form")}
+          className="wallet-interactive mx-auto rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
         >
           Edit transaction
         </button>
@@ -276,7 +328,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
       <button
         type="button"
         disabled={!isReady}
-        onClick={() => setShowQr(true)}
+        onClick={() => setStep("qr")}
         className="wallet-interactive wallet-cta-primary mt-1 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
       >
         <QrCode className="h-4 w-4" weight="duotone" />
