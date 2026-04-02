@@ -142,7 +142,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
       return `${e.amountInput.trim()} ${opt?.label ?? ""}`;
     });
     return (
-      <div className="mt-5 grid gap-5">
+      <div className="mx-auto mt-5 grid w-full max-w-md gap-5">
         <QrPlaceholder lines={lines} />
         <button
           type="button"
@@ -156,7 +156,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
   }
 
   return (
-    <div className="mt-5 grid gap-3">
+    <div className="mx-auto mt-5 grid w-full max-w-md gap-3">
       {entries.map((entry, index) => {
         const used = usedAssetIds(index);
         return (
