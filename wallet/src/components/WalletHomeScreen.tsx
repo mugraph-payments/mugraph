@@ -6,7 +6,6 @@ import type {
 } from "../lib/walletView";
 import type { WalletActionKind } from "../types/wallet";
 import { ActivityRow } from "./ActivityRow";
-import { AssetRow } from "./AssetRow";
 
 interface WalletHomeScreenProps {
   summaryMetrics: WalletSummaryMetricView[];
@@ -27,7 +26,6 @@ export function WalletHomeScreen({
 }: WalletHomeScreenProps) {
   const totalAda = findMetric(summaryMetrics, "total-value-ada");
   const totalUsd = findMetric(summaryMetrics, "total-value-usd");
-  const topAssets = assets.slice(0, 3);
   const recentActivity = activity.slice(0, 3);
 
   return (
@@ -96,15 +94,23 @@ export function WalletHomeScreen({
         </div>
       </section>
 
-      {/* ── Top assets ────────────────────────────────── */}
+      {/* ── Holdings summary ─────────────────────────── */}
       <section className="wallet-panel p-5">
         <div className="flex items-end justify-between gap-3">
           <h3 className="text-sm font-semibold text-slate-50">Holdings</h3>
-          <span className="text-xs text-slate-400">{topAssets.length} assets</span>
+          <span className="text-xs text-slate-400">{assets.length} assets</span>
         </div>
-        <div className="mt-3 divide-y divide-white/[0.06]">
-          {topAssets.map((asset) => (
-            <AssetRow key={asset.id} asset={asset} />
+        <div className="mt-3 grid gap-2">
+          {assets.map((asset) => (
+            <div key={asset.id} className="flex items-center justify-between py-1">
+              <span className="text-sm text-slate-400">{asset.ticker}</span>
+              <div className="text-right">
+                <span className="wallet-data text-sm font-medium text-slate-100">
+                  {asset.balanceLabel}
+                </span>
+                <span className="ml-2 text-xs text-slate-500">{asset.noteCountLabel}</span>
+              </div>
+            </div>
           ))}
         </div>
       </section>

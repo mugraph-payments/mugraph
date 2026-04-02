@@ -82,7 +82,7 @@ function App() {
           />
         );
       case "assets":
-        return <AssetPanel assets={view.assets} />;
+        return <AssetPanel assets={view.assets} notes={view.notes} />;
       case "settings":
         return (
           <WalletSettingsScreen
