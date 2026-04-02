@@ -40,9 +40,6 @@ export function WalletHomeScreen({
             <h2 className="wallet-heading mt-1 text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
               {totalAda?.value ?? "0 ADA"}
             </h2>
-            <p className="wallet-data mt-1 text-base text-slate-400">
-              {totalUsd?.value ?? "$0.00"}
-            </p>
           </div>
 
           <div className="flex gap-2">
@@ -102,8 +99,8 @@ export function WalletHomeScreen({
       {/* ── Top assets ────────────────────────────────── */}
       <section className="wallet-panel p-5">
         <div className="flex items-end justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-50">Assets</h3>
-          <span className="text-xs text-slate-400">{topAssets.length} tokens</span>
+          <h3 className="text-sm font-semibold text-slate-50">Holdings</h3>
+          <span className="text-xs text-slate-400">{topAssets.length} assets</span>
         </div>
         <div className="mt-3 divide-y divide-white/[0.06]">
           {topAssets.map((asset) => (

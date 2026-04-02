@@ -10,14 +10,14 @@ export function AssetPanel({ assets }: AssetPanelProps) {
     <section className="wallet-panel p-5 sm:p-6">
       <div className="flex items-end justify-between gap-3">
         <div className="space-y-1">
-          <p className="wallet-kicker text-slate-500">Portfolio</p>
+          <p className="wallet-kicker text-slate-500">Holdings</p>
           <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
             Assets
           </h2>
         </div>
         {assets.length > 0 ? (
           <span className="text-sm text-slate-400">
-            {assets.length} {assets.length === 1 ? "token" : "tokens"}
+            {assets.length} {assets.length === 1 ? "asset" : "assets"}
           </span>
         ) : null}
       </div>
