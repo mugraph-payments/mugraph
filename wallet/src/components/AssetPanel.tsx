@@ -12,6 +12,23 @@ const statusStyle: Record<WalletTone, string> = {
   critical: "text-rose-300",
 };
 
+function BalanceCard({ asset }: { asset: WalletAssetView }) {
+  return (
+    <div className="wallet-subtle-card flex flex-col gap-1.5 p-3.5">
+      <div className="flex items-center gap-2">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10">
+          <span className="text-[0.5rem] font-bold tracking-wide text-slate-300">
+            {asset.ticker.slice(0, 3)}
+          </span>
+        </div>
+        <span className="text-xs font-medium text-slate-300">{asset.ticker}</span>
+      </div>
+      <p className="wallet-data text-base font-semibold text-slate-100">{asset.balanceLabel}</p>
+      <p className="text-xs text-slate-400">{asset.noteCountLabel}</p>
+    </div>
+  );
+}
+
 function NoteRow({ note }: { note: WalletNoteView }) {
   return (
     <article className="flex items-center gap-3 py-3.5">
@@ -42,7 +59,6 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 export function AssetPanel({ assets, notes }: AssetPanelProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6">
-      {/* ── Balance summary ─────────────────────── */}
       <div className="space-y-1">
         <p className="wallet-kicker text-slate-500">Holdings</p>
         <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
@@ -51,18 +67,13 @@ export function AssetPanel({ assets, notes }: AssetPanelProps) {
       </div>
 
       {assets.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {assets.map((asset) => (
-            <span key={asset.id} className="text-slate-400">
-              <span className="wallet-data font-medium text-slate-200">{asset.balanceLabel}</span>
-              {" · "}
-              {asset.noteCountLabel}
-            </span>
+            <BalanceCard key={asset.id} asset={asset} />
           ))}
         </div>
       ) : null}
 
-      {/* ── Note list ───────────────────────────── */}
       {notes.length === 0 ? (
         <div className="mt-6 py-8 text-center">
           <p className="text-sm font-medium text-slate-300">No notes yet</p>
@@ -71,7 +82,7 @@ export function AssetPanel({ assets, notes }: AssetPanelProps) {
           </p>
         </div>
       ) : (
-        <div className="mt-4 divide-y divide-white/[0.06]" role="list" aria-label="Note list">
+        <div className="mt-5 divide-y divide-white/[0.06]" role="list" aria-label="Note list">
           <div className="flex items-center justify-between pb-2 text-xs text-slate-500">
             <span>
               {notes.length} {notes.length === 1 ? "note" : "notes"}

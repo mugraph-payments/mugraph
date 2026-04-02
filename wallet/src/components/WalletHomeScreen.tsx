@@ -100,16 +100,14 @@ export function WalletHomeScreen({
           <h3 className="text-sm font-semibold text-slate-50">Holdings</h3>
           <span className="text-xs text-slate-400">{assets.length} assets</span>
         </div>
-        <div className="mt-3 grid gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           {assets.map((asset) => (
-            <div key={asset.id} className="flex items-center justify-between py-1">
-              <span className="text-sm text-slate-400">{asset.ticker}</span>
-              <div className="text-right">
-                <span className="wallet-data text-sm font-medium text-slate-100">
-                  {asset.balanceLabel}
-                </span>
-                <span className="ml-2 text-xs text-slate-500">{asset.noteCountLabel}</span>
-              </div>
+            <div key={asset.id} className="wallet-subtle-card p-3">
+              <p className="text-xs font-medium text-slate-400">{asset.ticker}</p>
+              <p className="wallet-data mt-1 text-sm font-semibold text-slate-100">
+                {asset.balanceLabel}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">{asset.noteCountLabel}</p>
             </div>
           ))}
         </div>
