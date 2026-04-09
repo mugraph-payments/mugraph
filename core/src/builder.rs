@@ -125,6 +125,7 @@ impl RefreshBuilder {
             atoms,
             asset_ids: self.assets.into_iter().collect(),
             signatures,
+            blinded_points: vec![],
         };
 
         refresh.verify()?;

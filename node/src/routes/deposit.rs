@@ -28,8 +28,11 @@ use self::{
 use self::{
     persistence::{insert_deposit_if_absent, store_wallet_if_absent},
     signature::{
-        CanonicalPayload, CanonicalUtxo, build_canonical_payload,
-        compute_intent_hash, verify_cip8_cose_signature,
+        CanonicalPayload,
+        CanonicalUtxo,
+        build_canonical_payload,
+        compute_intent_hash,
+        verify_cip8_cose_signature,
     },
     source_validation::{validate_deposit_amounts, validate_deposit_datum},
 };
@@ -100,8 +103,12 @@ mod tests {
     use std::sync::atomic::{AtomicU8, Ordering};
 
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::UtxoReference;
@@ -535,7 +542,12 @@ mod tests {
     }
 }
 
-/// Sign blinded outputs with delegate key
+/// Sign blinded outputs with delegate key.
+///
+/// Each output carries a blinded commitment point in its `signature` field
+/// (a compressed Ristretto point). The node decompresses and signs the
+/// point directly, allowing the client to unblind the result with the
+/// corresponding blinding factor.
 fn sign_outputs(
     request: &DepositRequest,
     keypair: &mugraph_core::types::Keypair,
@@ -544,20 +556,10 @@ fn sign_outputs(
     let mut signatures = Vec::with_capacity(request.outputs.len());
 
     for commitment in &request.outputs {
-        // Sign the blinded commitment
-        // The signature field is Blinded<Signature> which wraps a Signature
-        // Access the inner Signature through the Blinded tuple struct
-        let blinded_sig_data: &mugraph_core::types::Blinded<
-            mugraph_core::types::Signature,
-        > = &commitment.signature;
-        let signature: &mugraph_core::types::Signature = &blinded_sig_data.0;
-        let sig_bytes: &[u8; 32] = signature.as_ref();
+        let blinded_point = commitment.signature.0.to_point()?;
 
-        let blinded_sig = crypto::sign_blinded(
-            &mut rng,
-            &keypair.secret_key,
-            &crypto::hash_to_curve(sig_bytes),
-        );
+        let blinded_sig =
+            crypto::sign_blinded(&mut rng, &keypair.secret_key, &blinded_point);
 
         signatures.push(blinded_sig);
     }
@@ -643,6 +645,86 @@ mod wallet_tests {
     }
 
     #[test]
+    fn sign_outputs_produces_unblindable_signatures() {
+        use mugraph_core::{
+            crypto,
+            types::{
+                BlindSignature,
+                Blinded,
+                DleqProof,
+                Hash,
+                Note,
+                Signature,
+                UtxoReference,
+            },
+        };
+        use rand::{SeedableRng, rngs::StdRng};
+
+        let ctx = test_context();
+        let mut rng = StdRng::seed_from_u64(42);
+
+        // Build a note commitment the way a wallet would
+        let note = Note {
+            delegate: ctx.keypair.public_key,
+            policy_id: Default::default(),
+            asset_name: Default::default(),
+            nonce: Hash::random(&mut rng),
+            amount: 1000,
+            signature: Signature::default(),
+            dleq: None,
+        };
+        let commitment = note.commitment();
+
+        // Client: blind the commitment
+        let blinded = crypto::blind(&mut rng, commitment.as_ref());
+        let compressed_point = Signature::from(blinded.point);
+
+        // Pack the blinded point into a BlindSignature to carry in the request
+        let output = BlindSignature {
+            signature: Blinded(compressed_point),
+            proof: DleqProof::default(),
+        };
+
+        let request = DepositRequest {
+            utxo: UtxoReference {
+                tx_hash: "00".repeat(32),
+                index: 0,
+            },
+            outputs: vec![output],
+            message: String::new(),
+            signature: vec![],
+            nonce: 1,
+            network: "preprod".to_string(),
+        };
+
+        // Server: sign the outputs
+        let signatures =
+            sign_outputs(&request, &ctx.keypair).expect("sign must succeed");
+        assert_eq!(signatures.len(), 1);
+
+        let sig = &signatures[0];
+
+        // Client: unblind the signature
+        let unblinded = crypto::unblind_signature(
+            &sig.signature,
+            &blinded.factor,
+            &ctx.keypair.public_key,
+        )
+        .expect("unblind must succeed");
+
+        // Client: verify the unblinded signature against the commitment
+        assert!(
+            crypto::verify(
+                &ctx.keypair.public_key,
+                commitment.as_ref(),
+                unblinded,
+            )
+            .expect("verify must not error"),
+            "unblinded signature must verify",
+        );
+    }
+
+    #[test]
     fn insert_deposit_if_absent_rejects_duplicates() {
         let ctx = test_context();
         let write_tx = ctx.database.write().unwrap();
@@ -666,7 +748,10 @@ mod datum_tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
 
     use super::*;
@@ -1097,17 +1182,27 @@ mod handle_deposit_flow_tests {
     use std::sync::Arc;
 
     use axum::{
-        Router, extract::Path, http::StatusCode, response::IntoResponse,
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::IntoResponse,
         routing::get,
     };
     use coset::{
-        CoseSign1, CoseSign1Builder, Header, ProtectedHeader,
-        TaggedCborSerializable, iana,
+        CoseSign1,
+        CoseSign1Builder,
+        Header,
+        ProtectedHeader,
+        TaggedCborSerializable,
+        iana,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
     use serde_json::json;
 

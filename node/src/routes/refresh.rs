@@ -3,8 +3,15 @@ use mugraph_core::{
     crypto,
     error::Error,
     types::{
-        AssetName, DleqProofWithBlinding, Hash, Keypair, Note, PolicyId,
-        Refresh, Response, Signature,
+        AssetName,
+        DleqProofWithBlinding,
+        Hash,
+        Keypair,
+        Note,
+        PolicyId,
+        Refresh,
+        Response,
+        Signature,
     },
 };
 use rand::{CryptoRng, RngCore};
@@ -52,9 +59,29 @@ pub fn refresh(
 ) -> Result<Response, Error> {
     transaction.verify()?;
 
+    let output_count = transaction
+        .atoms
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| transaction.is_output(*i))
+        .count();
+
+    // Validate blinded_points length when provided
+    if !transaction.blinded_points.is_empty()
+        && transaction.blinded_points.len() != output_count
+    {
+        return Err(Error::InvalidOperation {
+            reason: format!(
+                "blinded_points length {} does not match output count {}",
+                transaction.blinded_points.len(),
+                output_count,
+            ),
+        });
+    }
+
     let mut rng = rand::rng();
-    let mut outputs =
-        Vec::with_capacity(transaction.input_mask.count_zeros() as usize);
+    let mut outputs = Vec::with_capacity(output_count);
+    let mut output_idx = 0usize;
     let w = database.write()?;
 
     {
@@ -62,15 +89,21 @@ pub fn refresh(
 
         for (i, atom) in transaction.atoms.iter().enumerate() {
             if transaction.is_output(i) {
-                let sig = crypto::sign_blinded(
-                    &mut rng,
-                    &keypair.secret_key,
-                    &crypto::hash_to_curve(
+                let point = if let Some(bp) =
+                    transaction.blinded_points.get(output_idx)
+                {
+                    bp.to_point()?
+                } else {
+                    crypto::hash_to_curve(
                         atom.commitment(&transaction.asset_ids).as_ref(),
-                    ),
-                );
+                    )
+                };
+
+                let sig =
+                    crypto::sign_blinded(&mut rng, &keypair.secret_key, &point);
 
                 outputs.push(sig);
+                output_idx += 1;
                 continue;
             }
 
@@ -158,6 +191,79 @@ mod tests {
         )
         .expect("valid unblind");
         note
+    }
+
+    #[test]
+    fn refresh_with_blinded_points_produces_unblindable_signatures() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let keypair = Keypair::random(&mut rng);
+        let note = signed_note(&keypair, 100);
+        let db = temp_db();
+
+        // Build refresh: 100 -> 60 + 40
+        let mut refresh_tx = RefreshBuilder::new()
+            .input(note.clone())
+            .output(note.policy_id, note.asset_name, 60)
+            .output(note.policy_id, note.asset_name, 40)
+            .build()
+            .unwrap();
+
+        // Client: blind each output atom's commitment
+        let mut blinding_factors = Vec::new();
+        let mut blinded_points = Vec::new();
+        for (i, atom) in refresh_tx.atoms.iter().enumerate() {
+            if refresh_tx.is_output(i) {
+                let commitment = atom.commitment(&refresh_tx.asset_ids);
+                let blinded = crypto::blind(&mut rng, commitment.as_ref());
+                blinding_factors.push(blinded.factor);
+                blinded_points.push(Signature::from(blinded.point));
+            }
+        }
+        refresh_tx.blinded_points = blinded_points;
+
+        // Server: process refresh
+        let response =
+            refresh(&refresh_tx, keypair, &db).expect("refresh must succeed");
+
+        // Client: unblind and verify each output signature
+        match response {
+            Response::Transaction { outputs } => {
+                assert_eq!(outputs.len(), 2);
+
+                let mut output_idx = 0;
+                for (i, atom) in refresh_tx.atoms.iter().enumerate() {
+                    if refresh_tx.is_output(i) {
+                        let commitment = atom.commitment(&refresh_tx.asset_ids);
+                        let sig = &outputs[output_idx];
+                        let r = &blinding_factors[output_idx];
+
+                        // Unblind the signature
+                        let unblinded = crypto::unblind_signature(
+                            &sig.signature,
+                            r,
+                            &keypair.public_key,
+                        )
+                        .expect("unblind must succeed");
+
+                        // Verify the unblinded signature against the
+                        // commitment
+                        assert!(
+                            crypto::verify(
+                                &keypair.public_key,
+                                commitment.as_ref(),
+                                unblinded,
+                            )
+                            .expect("verify must not error"),
+                            "unblinded signature must verify for output {}",
+                            output_idx,
+                        );
+
+                        output_idx += 1;
+                    }
+                }
+            }
+            other => panic!("expected Transaction response, got {:?}", other),
+        }
     }
 
     #[test]

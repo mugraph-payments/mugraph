@@ -75,6 +75,8 @@ pub struct Refresh {
     pub asset_ids: Vec<Asset>,
     #[serde(rename = "s")]
     pub signatures: Vec<Signature>,
+    #[serde(rename = "b", default, skip_serializing_if = "Vec::is_empty")]
+    pub blinded_points: Vec<Signature>,
 }
 
 impl Refresh {
@@ -176,6 +178,7 @@ mod tests {
                         atoms,
                         asset_ids: vec![asset],
                         signatures: vec![Signature::default()],
+                        blinded_points: vec![],
                     }
                 },
             )
@@ -295,6 +298,7 @@ mod tests {
                             Signature::default(),
                             Signature::default(),
                         ],
+                        blinded_points: vec![],
                     }
                 },
             )
