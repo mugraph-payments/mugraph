@@ -33,18 +33,11 @@ export function WalletActionScreen({
   assetOptions,
   identity,
 }: WalletActionScreenProps) {
-  const screenTitle =
-    activeAction === "send" ? "Compose a private transfer" : "Share a receive request";
-  const screenDescription =
-    activeAction === "send"
-      ? "Build the transfer first, then hand off the final QR code only when the draft is ready."
-      : "Set the asset, label, and handoff mode first so the request is easy to share and verify.";
-
   return (
     <section className="wallet-panel p-5 sm:p-6 lg:p-7">
-      <div className="wallet-section-stack">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-6">
-          <div className="grid gap-4">
+      <div className="grid gap-5">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="grid gap-3">
             <button
               type="button"
               onClick={onClose}
@@ -55,13 +48,10 @@ export function WalletActionScreen({
             </button>
 
             <div className="wallet-section-intro">
-              <p className="wallet-kicker text-slate-500">Payment flow</p>
+              <p className="wallet-kicker text-slate-500">Payment</p>
               <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-                {screenTitle}
+                {activeAction === "send" ? "Send" : "Receive"}
               </h2>
-              <p className="wallet-copy max-w-[42ch] text-base leading-7 text-slate-400">
-                {screenDescription}
-              </p>
             </div>
           </div>
 

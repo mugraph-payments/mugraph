@@ -22,7 +22,7 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
   return (
     <nav
       aria-label="Main wallet navigation"
-      className="wallet-panel sticky bottom-4 z-10 overflow-hidden p-2 sm:p-2.5 lg:static lg:bottom-auto lg:p-3"
+      className="wallet-panel sticky bottom-4 z-10 overflow-hidden p-2 sm:p-2.5 lg:static lg:bottom-auto lg:p-2.5"
     >
       <div className="grid grid-cols-4 gap-2 lg:grid-cols-1">
         {destinationMeta.map((destination) => {
@@ -35,9 +35,9 @@ export function WalletBottomNav({ activeDestination, onDestinationSelect }: Wall
               type="button"
               aria-pressed={isActive}
               onClick={() => onDestinationSelect(destination.id)}
-              className={`wallet-interactive flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-center lg:flex-row lg:justify-start lg:gap-3 lg:rounded-xl lg:px-4 lg:py-3 lg:text-left ${
+              className={`wallet-interactive flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-center lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-left ${
                 isActive
-                  ? "wallet-accent-ring border border-teal-300/25 bg-teal-400/[0.08] text-slate-50"
+                  ? "border border-white/10 bg-white/[0.06] text-slate-50"
                   : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
               }`}
             >

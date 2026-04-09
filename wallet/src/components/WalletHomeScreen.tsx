@@ -46,97 +46,64 @@ export function WalletHomeScreen({
   const topHoldings = assets.slice(0, 4);
 
   return (
-    <section className="grid gap-6 self-start xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)] xl:gap-7">
-      <section className="wallet-panel p-5 sm:p-6 lg:col-span-2 lg:p-7">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(15rem,0.85fr)] lg:items-end xl:gap-8">
-          <div className="grid gap-5">
-            <div className="wallet-section-intro">
-              <p className="wallet-kicker text-slate-500">Wallet overview</p>
-              <div className="grid gap-2">
-                <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl lg:text-[2.75rem]">
-                  {totalAda?.value ?? "0 ADA"}
-                </h2>
-                <p className="wallet-copy max-w-[34ch] text-sm leading-6 text-slate-400 sm:text-base sm:leading-7">
-                  Spendable balance across your active Mugraph notes, ready for private transfers.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => onPrimaryActionSelect("send")}
-                className="wallet-interactive wallet-cta-primary flex flex-1 items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold text-slate-50 sm:flex-none"
-              >
-                <ArrowSquareOut className="h-4 w-4" weight="duotone" />
-                Send
-              </button>
-              <button
-                type="button"
-                onClick={() => onPrimaryActionSelect("receive")}
-                className="wallet-interactive wallet-cta-secondary flex flex-1 items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold text-slate-50 sm:flex-none"
-              >
-                <ArrowSquareIn className="h-4 w-4" weight="duotone" />
-                Receive
-              </button>
-            </div>
-
-            <div className="wallet-inline-metrics text-sm text-slate-400">
-              <span>
-                <span className="wallet-data font-medium text-slate-200">{assets.length}</span>{" "}
-                assets
-              </span>
-              <span className="text-slate-500">•</span>
-              <span>
-                <span className="wallet-data font-medium text-slate-200">
-                  {noteCount?.value ?? "0"}
-                </span>{" "}
-                notes
-              </span>
-              <span className="text-slate-500">•</span>
-              <span>
-                <span className="wallet-data font-medium text-slate-200">
-                  {pendingActivityCount?.value ?? "0"}
-                </span>{" "}
-                pending
-              </span>
-            </div>
+    <section className="grid gap-6 self-start xl:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)]">
+      <section className="wallet-panel p-5 sm:p-6 lg:col-span-2">
+        <div className="grid gap-5">
+          <div className="wallet-section-intro">
+            <p className="wallet-kicker text-slate-500">Wallet</p>
+            <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
+              {totalAda?.value ?? "0 ADA"}
+            </h2>
+            <p className="text-sm text-slate-400">Ready to send or receive.</p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="wallet-subtle-card p-4">
-              <p className="wallet-kicker text-slate-500">Estimated value</p>
-              <p className="wallet-data mt-2 text-xl font-semibold text-slate-100">
-                {totalUsd?.value ?? "$0.00"}
-              </p>
-              <p className="mt-1 text-sm text-slate-400">Live wallet value in fiat terms.</p>
-            </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onPrimaryActionSelect("send")}
+              className="wallet-interactive wallet-cta-primary flex flex-1 items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold text-slate-50 sm:flex-none"
+            >
+              <ArrowSquareOut className="h-4 w-4" weight="duotone" />
+              Send
+            </button>
+            <button
+              type="button"
+              onClick={() => onPrimaryActionSelect("receive")}
+              className="wallet-interactive wallet-cta-secondary flex flex-1 items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold text-slate-50 sm:flex-none"
+            >
+              <ArrowSquareIn className="h-4 w-4" weight="duotone" />
+              Receive
+            </button>
+          </div>
 
-            <div className="wallet-subtle-card p-4">
-              <p className="wallet-kicker text-slate-500">Lead holding</p>
-              <p className="mt-2 text-base font-semibold text-slate-100">
-                {assets[0]?.ticker ?? "No assets yet"}
-              </p>
-              <p className="wallet-data mt-1 text-sm text-slate-400">
-                {assets[0]?.balanceLabel ?? "Balance will appear here."}
-              </p>
-            </div>
+          <div className="wallet-inline-metrics text-sm text-slate-400">
+            <span className="wallet-data text-slate-200">{totalUsd?.value ?? "$0.00"}</span>
+            <span className="text-slate-500">•</span>
+            <span>
+              <span className="wallet-data text-slate-200">{assets.length}</span> assets
+            </span>
+            <span className="text-slate-500">•</span>
+            <span>
+              <span className="wallet-data text-slate-200">{noteCount?.value ?? "0"}</span> notes
+            </span>
+            <span className="text-slate-500">•</span>
+            <span>
+              <span className="wallet-data text-slate-200">
+                {pendingActivityCount?.value ?? "0"}
+              </span>{" "}
+              pending
+            </span>
           </div>
         </div>
       </section>
 
       <section className="wallet-panel p-5 sm:p-6">
-        <div className="wallet-section-intro">
-          <div className="flex items-end justify-between gap-3">
-            <h3 className="text-sm font-semibold text-slate-50">Recent activity</h3>
-            <span className="text-xs text-slate-400">{recentActivity.length} items</span>
-          </div>
-          <p className="wallet-copy max-w-[28ch] text-sm leading-6 text-slate-400">
-            The latest wallet movements stay visible without opening the full ledger.
-          </p>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-sm font-semibold text-slate-50">Recent activity</h3>
+          <span className="text-xs text-slate-400">{recentActivity.length}</span>
         </div>
 
-        <div className="wallet-list mt-5">
+        <div className="wallet-list mt-4">
           {recentActivity.map((item) => (
             <ActivityRow key={item.id} activity={item} />
           ))}
@@ -144,17 +111,12 @@ export function WalletHomeScreen({
       </section>
 
       <section className="wallet-panel p-5 sm:p-6">
-        <div className="wallet-section-intro">
-          <div className="flex items-end justify-between gap-3">
-            <h3 className="text-sm font-semibold text-slate-50">Holdings snapshot</h3>
-            <span className="text-xs text-slate-400">{assets.length} assets</span>
-          </div>
-          <p className="wallet-copy max-w-[30ch] text-sm leading-6 text-slate-400">
-            A quick read on the balances currently driving your wallet.
-          </p>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="text-sm font-semibold text-slate-50">Assets</h3>
+          <span className="text-xs text-slate-400">{assets.length}</span>
         </div>
 
-        <div className="wallet-list mt-5">
+        <div className="wallet-list mt-4">
           {topHoldings.map((asset) => (
             <HoldingsPreviewRow key={asset.id} asset={asset} />
           ))}

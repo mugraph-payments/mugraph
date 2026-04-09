@@ -40,15 +40,11 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 export function NotesPanel({ notes }: NotesPanelProps) {
   return (
     <div className="grid gap-4">
-      <div className="wallet-section-intro">
-        <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span>
-            {notes.length} {notes.length === 1 ? "note" : "notes"}
-          </span>
-        </div>
-        <p className="wallet-copy max-w-[36ch] text-sm leading-6 text-slate-400">
-          Inspect the individual notes currently available for spending or review.
-        </p>
+      <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-slate-50">Notes</h3>
+        <span>
+          {notes.length} {notes.length === 1 ? "item" : "items"}
+        </span>
       </div>
 
       {notes.length === 0 ? (

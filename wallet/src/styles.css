@@ -46,12 +46,9 @@
   );
   --wallet-border: rgba(255, 255, 255, 0.09);
   --wallet-border-strong: rgba(255, 255, 255, 0.14);
-  --wallet-shadow-panel:
-    0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), 0 16px 40px -8px rgba(0, 0, 0, 0.3);
-  --wallet-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2), 0 6px 16px -4px rgba(0, 0, 0, 0.18);
-  --wallet-shadow-accent:
-    0 0 0 1px rgba(139, 92, 246, 0.3), 0 0 16px -3px rgba(139, 92, 246, 0.28),
-    0 4px 16px -4px rgba(139, 92, 246, 0.2);
+  --wallet-shadow-panel: 0 8px 24px -16px rgba(0, 0, 0, 0.42);
+  --wallet-shadow-card: 0 6px 18px -18px rgba(0, 0, 0, 0.5);
+  --wallet-shadow-accent: 0 0 0 1px rgba(139, 92, 246, 0.2);
 }
 
 html {
@@ -71,8 +68,8 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    radial-gradient(ellipse 55% 45% at 15% -5%, rgba(139, 92, 246, 0.1), transparent),
-    radial-gradient(ellipse 45% 35% at 85% 5%, rgba(45, 212, 191, 0.06), transparent),
+    radial-gradient(ellipse 55% 45% at 15% -5%, rgba(139, 92, 246, 0.06), transparent),
+    radial-gradient(ellipse 45% 35% at 85% 5%, rgba(45, 212, 191, 0.03), transparent),
     linear-gradient(180deg, #0c0e16 0%, #090b11 100%);
   color: inherit;
   line-height: 1.6;
@@ -206,23 +203,23 @@ select {
   /* ── Surfaces ──────────────────────────────────────────────── */
 
   .wallet-panel {
-    @apply rounded-2xl border backdrop-blur-xl;
+    @apply rounded-2xl border;
     container-type: inline-size;
     background: var(--wallet-surface-strong);
     border-color: var(--wallet-border);
     box-shadow:
       var(--wallet-shadow-panel),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .wallet-panel-soft {
-    @apply rounded-2xl border backdrop-blur-xl;
+    @apply rounded-2xl border;
     container-type: inline-size;
     background: var(--wallet-surface-soft);
     border-color: var(--wallet-border);
     box-shadow:
       var(--wallet-shadow-card),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .wallet-card {
@@ -234,7 +231,7 @@ select {
 
   .wallet-subtle-card {
     @apply rounded-xl;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.025);
     border: 1px solid rgba(255, 255, 255, 0.04);
     box-shadow: none;
     transition:
@@ -243,18 +240,8 @@ select {
   }
 
   .wallet-subtle-card:hover {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-
-  @media (min-width: 1280px) {
-    .wallet-subtle-card {
-      background: rgba(255, 255, 255, 0.035);
-    }
-
-    .wallet-subtle-card:hover {
-      background: rgba(255, 255, 255, 0.06);
-    }
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 255, 255, 0.06);
   }
 
   /* ── Layout helpers ────────────────────────────────────────── */
