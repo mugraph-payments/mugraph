@@ -53,10 +53,11 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
 
         {items.length === 0 ? (
           <div className="py-8 text-center">
+            <div className="wallet-empty-illustration wallet-soft-float mx-auto mb-3">
+              <span className="text-base">↺</span>
+            </div>
             <p className="text-sm font-medium text-slate-300">No transactions yet</p>
-            <p className="mt-1 text-sm text-slate-400">
-              Deposits, withdrawals, and refreshes will appear here.
-            </p>
+            <p className="mt-1 text-sm text-slate-400">Your first handoff will show up here.</p>
           </div>
         ) : (
           <div className="wallet-list" role="list" aria-label="Transaction list">

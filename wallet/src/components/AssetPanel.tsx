@@ -95,9 +95,12 @@ export function AssetPanel({ assets, notes }: AssetPanelProps) {
 
         {notes.length === 0 ? (
           <div className="py-8 text-center">
+            <div className="wallet-empty-illustration wallet-soft-float mx-auto mb-3">
+              <span className="text-base">✦</span>
+            </div>
             <p className="text-sm font-medium text-slate-300">No notes yet</p>
             <p className="mt-1 text-sm text-slate-400">
-              Spendable notes from deposits and refreshes will appear here.
+              Your first deposit will land here and start the stack.
             </p>
           </div>
         ) : (

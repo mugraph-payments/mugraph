@@ -1,4 +1,5 @@
-import { CheckCircle, Plus, QrCode, X } from "@phosphor-icons/react";
+import { CheckCircle, Plus, QrCode, Sparkle, X } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { WalletSendDraft, WalletSendEntry } from "../types/wallet";
 
@@ -16,6 +17,12 @@ interface SendDetailsProps {
   onDraftChange: (draft: WalletSendDraft) => void;
 }
 
+const successMessages = [
+  "Quiet handoff complete.",
+  "Transfer delivered without fuss.",
+  "That note is on its way.",
+];
+
 function isEntryValid(entry: WalletSendEntry): boolean {
   if (!entry.assetId) return false;
   const n = Number(entry.amountInput.trim());
@@ -32,7 +39,7 @@ function QrPlaceholder({ lines }: { lines: string[] }) {
   return (
     <div className="flex flex-col items-center gap-4 py-2">
       <div
-        className="flex h-48 w-48 items-center justify-center rounded-2xl border border-white/10 bg-white p-3"
+        className="wallet-soft-float flex h-48 w-48 items-center justify-center rounded-2xl border border-white/10 bg-white p-3"
         aria-label="Transaction QR code"
       >
         <svg viewBox="0 0 21 21" className="h-full w-full" shapeRendering="crispEdges">
@@ -114,7 +121,7 @@ function QrPlaceholder({ lines }: { lines: string[] }) {
         ))}
       </div>
       <p className="text-center text-xs text-slate-400">
-        Scan this code with another wallet to complete the transfer.
+        A quick scan keeps the handoff private and tidy.
       </p>
     </div>
   );
@@ -189,7 +196,7 @@ function SendEntryCard({
             type="button"
             onClick={handleMax}
             disabled={!selectedAsset}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.12] hover:text-slate-50 disabled:opacity-30"
+            className="wallet-interactive absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-white/[0.12] hover:text-slate-50 disabled:opacity-30"
           >
             Max
           </button>
@@ -210,6 +217,8 @@ function SendEntryCard({
 export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsProps) {
   const [step, setStep] = useState<SendStep>("form");
   const [confirmedLines, setConfirmedLines] = useState<string[]>([]);
+  const [successMessage, setSuccessMessage] = useState(successMessages[0]);
+  const prefersReducedMotion = useReducedMotion();
   const { entries } = draft;
   const validEntries = entries.filter(isEntryValid);
   const isReady = validEntries.length > 0;
@@ -241,20 +250,49 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
   if (step === "confirmed") {
     return (
       <div className="mx-auto grid w-full max-w-lg gap-5 py-2">
-        <div className="flex flex-col items-center gap-3">
-          <CheckCircle className="h-12 w-12 text-teal-300" weight="duotone" />
-          <h3 className="text-lg font-semibold text-slate-50">Transfer confirmed</h3>
-          <div className="text-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <motion.div
+            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.82, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            className="wallet-success-glow"
+          >
+            <CheckCircle className="h-12 w-12 text-teal-300" weight="duotone" />
+          </motion.div>
+
+          <motion.div
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+            className="grid gap-2"
+          >
+            <h3 className="text-lg font-semibold text-slate-50">Transfer confirmed</h3>
+            <p className="text-sm text-teal-300">{successMessage}</p>
+          </motion.div>
+
+          <motion.div
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+            className="text-center"
+          >
             {confirmedLines.map((line) => (
               <p key={line} className="wallet-data text-sm text-slate-300">
                 {line}
               </p>
             ))}
-          </div>
-          <p className="text-center text-xs text-slate-400">
+          </motion.div>
+
+          <motion.p
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}
+            className="text-center text-xs text-slate-400"
+          >
             The recipient scanned the code and the transfer has been recorded.
-          </p>
+          </motion.p>
         </div>
+
         <button
           type="button"
           onClick={() => {
@@ -281,6 +319,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
           type="button"
           onClick={() => {
             setConfirmedLines(lines);
+            setSuccessMessage(successMessages[Math.floor(Math.random() * successMessages.length)]);
             setStep("confirmed");
           }}
           className="wallet-interactive wallet-cta-primary flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50"
@@ -338,6 +377,11 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
           Generate QR code
         </button>
       </div>
+
+      <p className="flex items-center gap-2 text-xs text-slate-500">
+        <Sparkle className="h-3.5 w-3.5 text-slate-400" weight="fill" />
+        We keep the handoff short so the transfer feels instant in person.
+      </p>
     </div>
   );
 }

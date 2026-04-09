@@ -49,6 +49,9 @@ export function NotesPanel({ notes }: NotesPanelProps) {
 
       {notes.length === 0 ? (
         <div className="py-6 text-center">
+          <div className="wallet-empty-illustration wallet-soft-float mx-auto mb-3">
+            <span className="text-base">◎</span>
+          </div>
           <p className="text-sm text-slate-400">No notes loaded yet.</p>
         </div>
       ) : (

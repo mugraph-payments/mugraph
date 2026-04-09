@@ -365,6 +365,12 @@ select {
     --tw-ring-offset-color: #0c0e16;
   }
 
+  @media (hover: hover) {
+    .wallet-interactive:hover {
+      transform: translateY(-1px);
+    }
+  }
+
   .wallet-interactive:active {
     transform: scale(0.97);
   }
@@ -379,6 +385,7 @@ select {
   .wallet-input:focus {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(139, 92, 246, 0.35);
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.08);
   }
 
   select.wallet-input option {
@@ -430,6 +437,65 @@ select {
     border-color: rgba(255, 255, 255, 0.16);
   }
 
+  /* ── Delight helpers ───────────────────────────────────────── */
+
+  .wallet-brandmark {
+    transition:
+      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (hover: hover) {
+    .wallet-brandmark:hover {
+      transform: translateY(-1px) rotate(-3deg);
+      box-shadow: 0 10px 24px -12px rgba(139, 92, 246, 0.45);
+    }
+  }
+
+  .wallet-status-dot {
+    position: relative;
+    display: inline-flex;
+    height: 0.5rem;
+    width: 0.5rem;
+    border-radius: 999px;
+    background: rgba(94, 234, 212, 0.95);
+    box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.35);
+    animation: wallet-pulse 2.4s ease-out infinite;
+  }
+
+  .wallet-success-glow {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .wallet-success-glow::after {
+    content: "";
+    position: absolute;
+    inset: -0.75rem;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(94, 234, 212, 0.16), transparent 70%);
+    animation: wallet-success-bloom 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+
+  .wallet-soft-float {
+    animation: wallet-soft-float 4.2s ease-in-out infinite;
+  }
+
+  .wallet-empty-illustration {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 3rem;
+    width: 3rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
   /* ── Chips & badges ────────────────────────────────────────── */
 
   .wallet-accent-ring {
@@ -450,6 +516,42 @@ select {
   }
 }
 
+@keyframes wallet-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.28);
+  }
+  70% {
+    box-shadow: 0 0 0 0.5rem rgba(94, 234, 212, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(94, 234, 212, 0);
+  }
+}
+
+@keyframes wallet-soft-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes wallet-success-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
 /* ─── Reduced motion ─────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -458,11 +560,18 @@ select {
   .wallet-cta-primary,
   .wallet-cta-secondary,
   .wallet-input,
-  .wallet-choice {
+  .wallet-choice,
+  .wallet-brandmark,
+  .wallet-status-dot,
+  .wallet-soft-float,
+  .wallet-success-glow::after {
     transition: none !important;
+    animation: none !important;
   }
 
-  .wallet-interactive:active {
+  .wallet-interactive:hover,
+  .wallet-interactive:active,
+  .wallet-brandmark:hover {
     transform: none;
   }
 }

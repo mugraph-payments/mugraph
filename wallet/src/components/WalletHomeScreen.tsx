@@ -54,7 +54,10 @@ export function WalletHomeScreen({
             <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
               {totalAda?.value ?? "0 ADA"}
             </h2>
-            <p className="text-sm text-slate-400">Ready to send or receive.</p>
+            <div className="wallet-inline-metrics text-sm text-slate-400">
+              <span className="wallet-status-dot" aria-hidden="true" />
+              <span>Private notes, ready when you are.</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
