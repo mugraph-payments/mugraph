@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use blake2::Digest;
-use mugraph_core::error::Error;
+use mugraph_core::{error::Error, types::BlindSignature};
 use whisky_csl::csl;
 
 use super::ParsedWithdrawalTx;
@@ -329,14 +329,20 @@ fn validate_withdraw_intent_metadata_from_tx(
 pub(super) fn validate_network_and_change_outputs_with_parsed_tx(
     parsed_tx: &ParsedWithdrawalTx,
     wallet: &mugraph_core::types::CardanoWallet,
+    change_outputs: &[BlindSignature],
 ) -> Result<(), Error> {
-    validate_network_and_change_outputs_from_tx(&parsed_tx.tx, wallet)
+    validate_network_and_change_outputs_from_tx(
+        &parsed_tx.tx,
+        wallet,
+        change_outputs,
+    )
 }
 
 #[cfg(test)]
 pub(super) fn validate_network_and_change_outputs(
     tx_cbor: &[u8],
     wallet: &mugraph_core::types::CardanoWallet,
+    change_outputs: &[BlindSignature],
 ) -> Result<(), Error> {
     let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| {
         Error::InvalidInput {
@@ -344,18 +350,21 @@ pub(super) fn validate_network_and_change_outputs(
         }
     })?;
 
-    validate_network_and_change_outputs_from_tx(&tx, wallet)
+    validate_network_and_change_outputs_from_tx(&tx, wallet, change_outputs)
 }
 
 fn validate_network_and_change_outputs_from_tx(
     tx: &csl::Transaction,
     wallet: &mugraph_core::types::CardanoWallet,
+    change_outputs: &[BlindSignature],
 ) -> Result<(), Error> {
     let expected_network_id = CardanoNetwork::parse(&wallet.network)
         .map_err(|e| Error::InvalidInput {
             reason: e.to_string(),
         })?
         .address_network_id();
+
+    let mut script_output_indexes = Vec::new();
 
     for (idx, output) in (&tx.body().outputs()).into_iter().enumerate() {
         let addr = output.address();
@@ -380,13 +389,19 @@ fn validate_network_and_change_outputs_from_tx(
         })?;
 
         if bech32 == wallet.script_address {
-            return Err(Error::InvalidInput {
-                reason: format!(
-                    "Output {} pays back to script address (change). Change notes not yet supported.",
-                    idx
-                ),
-            });
+            script_output_indexes.push(idx);
         }
+    }
+
+    if script_output_indexes.len() != change_outputs.len() {
+        return Err(Error::InvalidInput {
+            reason: format!(
+                "Script change outputs must match request.change_outputs by count and transaction output order: found {} script outputs at indexes {:?}, but request provided {} change_outputs",
+                script_output_indexes.len(),
+                script_output_indexes,
+                change_outputs.len()
+            ),
+        });
     }
 
     Ok(())

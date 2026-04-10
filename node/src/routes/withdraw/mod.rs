@@ -150,8 +150,12 @@ pub async fn handle_withdraw(
         ctx.config.fee_tolerance_pct(),
     )?;
 
-    // 9. Enforce network consistency and reject change back to the script
-    validate_network_and_change_outputs_with_parsed_tx(&parsed_tx, &wallet)?;
+    // 9. Enforce network consistency and validate any change back to the script
+    validate_network_and_change_outputs_with_parsed_tx(
+        &parsed_tx,
+        &wallet,
+        &request.change_outputs,
+    )?;
 
     // 9. Create signed transaction (without burning notes yet)
     // This prepares the transaction for submission but doesn't modify state
@@ -1162,7 +1166,7 @@ mod tests {
         );
     }
 
-    /// Reject outputs that pay back to the script address (change not supported yet)
+    /// Reject script-address outputs when request.change_outputs does not match them
     #[test]
     fn test_reject_change_output_to_script() {
         // Build tx with output to script address
@@ -1197,11 +1201,153 @@ mod tests {
             "preprod".to_string(),
         );
 
-        let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet)
-            .unwrap_err();
-        assert!(
-            format!("{:?}", err).contains("Change notes not yet supported")
+        let err = validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[],
+        )
+        .unwrap_err();
+        assert!(format!("{:?}", err).contains("request provided 0 change_outputs"));
+    }
+
+    #[test]
+    fn test_accept_no_script_change_with_empty_change_outputs() {
+        let tx = minimal_tx_with_values(1_000_000, 170_000);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test1script_different".to_string(),
+            "preprod".to_string(),
         );
+
+        validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
+            .expect("no script outputs with empty change_outputs should pass");
+    }
+
+    #[test]
+    fn test_reject_change_output_without_change_outputs() {
+        // Build tx with output to script address
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![1u8; 28]).unwrap();
+        let cred = csl::Credential::from_keyhash(&key_hash);
+        let addr = csl::EnterpriseAddress::new(0, &cred).to_address();
+        let script_addr = addr.to_bech32(None).unwrap();
+
+        let coin = csl::Coin::from_str("1000000").unwrap();
+        let value = csl::Value::new(&coin);
+        let output = csl::TransactionOutput::new(&addr, &value);
+        let mut outputs = csl::TransactionOutputs::new();
+        outputs.add(&output);
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        let tx = csl::Transaction::new(&body, &witness_set, None);
+
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr,
+            "preprod".to_string(),
+        );
+
+        let err = validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[],
+        )
+        .unwrap_err();
+        assert!(format!("{:?}", err).contains("request provided 0 change_outputs"));
+    }
+
+    #[test]
+    fn test_reject_change_output_count_mismatch() {
+        let (tx, script_addr) = tx_with_output_addresses(&[true, true], None);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr,
+            "preprod".to_string(),
+        );
+
+        let err = validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[BlindSignature::default()],
+        )
+        .unwrap_err();
+        assert!(format!("{:?}", err).contains("found 2 script outputs"));
+    }
+
+    #[test]
+    fn test_reject_change_output_order_mismatch() {
+        let (tx, script_addr) = tx_with_output_addresses(&[true, true], Some(1_000_000));
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr,
+            "preprod".to_string(),
+        );
+
+        let err = validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[BlindSignature::default()],
+        )
+        .unwrap_err();
+        assert!(format!("{:?}", err).contains("transaction output order"));
+    }
+
+    #[test]
+    fn test_non_script_outputs_are_ignored_for_change_matching() {
+        let (tx, script_addr) = tx_with_output_addresses(&[false, true, false, true], None);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr,
+            "preprod".to_string(),
+        );
+
+        validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[BlindSignature::default(), BlindSignature::default()],
+        )
+        .expect("non-script outputs should be ignored when matching change_outputs");
+    }
+
+    #[test]
+    fn test_accept_change_outputs_when_count_matches() {
+        let (tx, script_addr) = tx_with_output_addresses(&[true, false, true], None);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            script_addr,
+            "preprod".to_string(),
+        );
+
+        validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[BlindSignature::default(), BlindSignature::default()],
+        )
+        .expect("matching script output count should pass");
     }
 
     #[test]
@@ -1278,8 +1424,12 @@ mod tests {
             "preprod".to_string(),
         );
 
-        let err = validate_network_and_change_outputs(&tx.to_bytes(), &wallet)
-            .unwrap_err();
+        let err = validate_network_and_change_outputs(
+            &tx.to_bytes(),
+            &wallet,
+            &[],
+        )
+        .unwrap_err();
         assert!(format!("{:?}", err).contains("network_id 1"));
     }
 
@@ -2353,6 +2503,46 @@ mod tests {
         let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
         let witness_set = csl::TransactionWitnessSet::new();
         csl::Transaction::new(&body, &witness_set, None)
+    }
+
+    fn tx_with_output_addresses(
+        is_script_output: &[bool],
+        script_output_override: Option<u64>,
+    ) -> (csl::Transaction, String) {
+        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+        let input = csl::TransactionInput::new(&tx_hash, 0);
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&input);
+
+        let script_key_hash =
+            csl::Ed25519KeyHash::from_bytes(vec![7u8; 28]).unwrap();
+        let script_cred = csl::Credential::from_keyhash(&script_key_hash);
+        let script_addr = csl::EnterpriseAddress::new(0, &script_cred)
+            .to_address()
+            .to_bech32(None)
+            .unwrap();
+        let non_script_addr = csl::Address::from_bech32(
+            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
+        )
+        .unwrap();
+
+        let mut outputs = csl::TransactionOutputs::new();
+        for is_script in is_script_output {
+            let addr = if *is_script {
+                csl::Address::from_bech32(&script_addr).unwrap()
+            } else {
+                non_script_addr.clone()
+            };
+            let lovelace = script_output_override.unwrap_or(1_000_000);
+            let coin = csl::Coin::from_str(&lovelace.to_string()).unwrap();
+            let value = csl::Value::new(&coin);
+            outputs.add(&csl::TransactionOutput::new(&addr, &value));
+        }
+
+        let fee = csl::Coin::from_str("170000").unwrap();
+        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+        let witness_set = csl::TransactionWitnessSet::new();
+        (csl::Transaction::new(&body, &witness_set, None), script_addr)
     }
 
     fn tx_with_intent_metadata(
