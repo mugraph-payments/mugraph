@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use blake2::Digest;
 use color_eyre::eyre::Result;
 use mugraph_core::{
+    crypto,
     error::Error,
     types::{
         BlindSignature,
@@ -318,30 +319,25 @@ fn check_idempotency(
     Ok(())
 }
 
-/// Calculate change notes from transaction outputs
-///
-/// # Implementation Note
-/// This parses the transaction to identify change outputs and calculates
-/// the total change amount. A full implementation would create blind signatures
-/// for the change notes.
-///
-/// # Arguments
-/// * `request` - The withdrawal request
-/// * `tx_cbor` - The transaction CBOR bytes
-/// * `wallet` - The Cardano wallet for address comparison
-///
-/// # Returns
-/// Empty vector for now - change notes will be implemented when the full
-/// blinding infrastructure is in place
+/// Calculate change notes by signing the request-provided blinded change
+/// outputs.
 fn calculate_change_notes(
-    _request: &WithdrawRequest,
+    request: &WithdrawRequest,
     _tx_cbor: &[u8],
     _wallet: &mugraph_core::types::CardanoWallet,
-    _keypair: &Keypair,
+    keypair: &Keypair,
 ) -> Result<Vec<BlindSignature>, Error> {
-    // Do not fabricate synthetic change notes from address/amount material.
-    // Change note issuance must be driven by protocol-bound blinded commitments.
-    Ok(Vec::new())
+    let mut rng = rand::rng();
+    let mut change_notes = Vec::with_capacity(request.change_outputs.len());
+
+    for change_output in &request.change_outputs {
+        let blinded_point = change_output.signature.0.to_point()?;
+        let signed =
+            crypto::sign_blinded(&mut rng, &keypair.secret_key, &blinded_point);
+        change_notes.push(signed);
+    }
+
+    Ok(change_notes)
 }
 
 #[cfg(test)]
@@ -356,6 +352,7 @@ mod tests {
         routing::{get, post},
     };
     use ed25519_dalek::SigningKey;
+    use rand::{SeedableRng, rngs::StdRng};
     use pallas_codec::minicbor;
     use pallas_primitives::{
         BoundedBytes,
@@ -1350,8 +1347,17 @@ mod tests {
         .expect("matching script output count should pass");
     }
 
+    fn sample_change_output(seed: u64, message: &[u8]) -> BlindSignature {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let blind = mugraph_core::crypto::blind(&mut rng, message);
+        BlindSignature {
+            signature: mugraph_core::types::Blinded(blind.point.into()),
+            proof: Default::default(),
+        }
+    }
+
     #[test]
-    fn test_change_notes_are_not_fabricated_for_non_script_outputs() {
+    fn test_calculate_change_notes_returns_empty_for_no_change_outputs() {
         let tx = minimal_tx_with_values(1_000_000, 170_000);
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
@@ -1381,6 +1387,112 @@ mod tests {
         .unwrap();
 
         assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn test_calculate_change_notes_signs_request_change_outputs() {
+        let tx = minimal_tx_with_values(1_000_000, 170_000);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test1different_script_address".to_string(),
+            "preprod".to_string(),
+        );
+        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
+        let keypair = mugraph_core::types::Keypair {
+            public_key: sk.public(),
+            secret_key: sk,
+        };
+        let change_outputs = vec![
+            sample_change_output(1, b"change-a"),
+            sample_change_output(2, b"change-b"),
+        ];
+
+        let notes = calculate_change_notes(
+            &WithdrawRequest {
+                notes: vec![],
+                change_outputs: change_outputs.clone(),
+                tx_cbor: String::new(),
+                tx_hash: String::new(),
+            },
+            &tx.to_bytes(),
+            &wallet,
+            &keypair,
+        )
+        .unwrap();
+
+        assert_eq!(notes.len(), 2);
+        for (change_output, note) in change_outputs.iter().zip(notes.iter()) {
+            let blinded_point = change_output.signature.0.to_point().unwrap();
+            assert!(mugraph_core::crypto::verify_dleq_signature(
+                &keypair.public_key,
+                &blinded_point,
+                &note.signature,
+                &note.proof,
+            )
+            .unwrap());
+        }
+    }
+
+    #[test]
+    fn test_calculate_change_notes_preserves_input_order() {
+        let tx = minimal_tx_with_values(1_000_000, 170_000);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            "addr_test1different_script_address".to_string(),
+            "preprod".to_string(),
+        );
+        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
+        let keypair = mugraph_core::types::Keypair {
+            public_key: sk.public(),
+            secret_key: sk,
+        };
+        let first = sample_change_output(11, b"first");
+        let second = sample_change_output(22, b"second");
+        let change_outputs = vec![first, second];
+
+        let notes = calculate_change_notes(
+            &WithdrawRequest {
+                notes: vec![],
+                change_outputs: change_outputs.clone(),
+                tx_cbor: String::new(),
+                tx_hash: String::new(),
+            },
+            &tx.to_bytes(),
+            &wallet,
+            &keypair,
+        )
+        .unwrap();
+
+        let first_point = change_outputs[0].signature.0.to_point().unwrap();
+        let second_point = change_outputs[1].signature.0.to_point().unwrap();
+
+        assert!(mugraph_core::crypto::verify_dleq_signature(
+            &keypair.public_key,
+            &first_point,
+            &notes[0].signature,
+            &notes[0].proof,
+        )
+        .unwrap());
+        assert!(mugraph_core::crypto::verify_dleq_signature(
+            &keypair.public_key,
+            &second_point,
+            &notes[1].signature,
+            &notes[1].proof,
+        )
+        .unwrap());
+        assert!(!mugraph_core::crypto::verify_dleq_signature(
+            &keypair.public_key,
+            &second_point,
+            &notes[0].signature,
+            &notes[0].proof,
+        )
+        .unwrap());
     }
 
     /// Reject outputs on wrong network
