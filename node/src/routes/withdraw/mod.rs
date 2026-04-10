@@ -7,7 +7,11 @@ use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
     types::{
-        BlindSignature, Keypair, Response, WithdrawRequest, WithdrawalStatus,
+        BlindSignature,
+        Keypair,
+        Response,
+        WithdrawRequest,
+        WithdrawalStatus,
     },
 };
 #[cfg(test)]
@@ -16,7 +20,8 @@ use whisky_csl::csl;
 #[cfg(test)]
 use crate::tx_signer::compute_tx_hash;
 use crate::{
-    database::WITHDRAWALS, routes::Context,
+    database::WITHDRAWALS,
+    routes::Context,
     tx_signer::attach_witness_to_transaction,
 };
 
@@ -31,7 +36,8 @@ pub(super) use self::parsed_tx::ParsedWithdrawalTx;
 use self::{
     input_validation::{checked_output_index, validate_user_witnesses},
     tx_checks::{
-        validate_network_and_change_outputs, validate_transaction_balance,
+        validate_network_and_change_outputs,
+        validate_transaction_balance,
         validate_transaction_balance_with_tolerance,
         validate_withdraw_intent_metadata,
     },
@@ -43,12 +49,14 @@ use self::{
     },
     io::{create_provider, load_wallet, submit_transaction},
     state::{
-        atomic_burn_and_record_pending, mark_withdrawal_completed,
+        atomic_burn_and_record_pending,
+        mark_withdrawal_completed,
         mark_withdrawal_failed,
     },
     tx_checks::{
         validate_network_and_change_outputs_with_parsed_tx,
-        validate_parsed_fee, validate_transaction_balance_with_parsed_tx,
+        validate_parsed_fee,
+        validate_transaction_balance_with_parsed_tx,
         validate_withdraw_intent_metadata_with_parsed_tx,
     },
 };
@@ -346,7 +354,10 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use pallas_codec::minicbor;
     use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+        BoundedBytes,
+        Constr,
+        MaybeIndefArray,
+        alonzo::PlutusData,
     };
     use serde_json::json;
     use tempfile::TempDir;
@@ -597,6 +608,7 @@ mod tests {
                 ),
                 proof: Default::default(),
             }],
+            change_outputs: vec![],
             tx_cbor: hex::encode(tx_cbor),
             tx_hash,
         }
@@ -674,6 +686,7 @@ mod tests {
                 ),
                 proof: Default::default(),
             }],
+            change_outputs: vec![],
             tx_hash: hex::encode(compute_tx_hash(&tx_cbor).unwrap()),
             tx_cbor: hex::encode(tx_cbor),
         }
@@ -1211,6 +1224,7 @@ mod tests {
         let notes = calculate_change_notes(
             &WithdrawRequest {
                 notes: vec![],
+                change_outputs: vec![],
                 tx_cbor: String::new(),
                 tx_hash: String::new(),
             },
@@ -2103,6 +2117,7 @@ mod tests {
                 ),
                 proof: Default::default(),
             }],
+            change_outputs: vec![],
         };
 
         atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash)
@@ -2133,6 +2148,7 @@ mod tests {
                 ),
                 proof: Default::default(),
             }],
+            change_outputs: vec![],
         };
 
         atomic_burn_and_record_pending(&request, &ctx, &request.tx_hash)
@@ -2151,6 +2167,7 @@ mod tests {
             tx_hash: "ab".repeat(32),
             tx_cbor: "00".to_string(),
             notes: vec![],
+            change_outputs: vec![],
         };
         seed_withdrawal_record(
             &ctx,

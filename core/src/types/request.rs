@@ -2,8 +2,14 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::types::{
-    AssetName, BlindSignature, PolicyId, Refresh, TransferAckPayload,
-    TransferInitPayload, TransferNoticePayload, TransferStatusQueryPayload,
+    AssetName,
+    BlindSignature,
+    PolicyId,
+    Refresh,
+    TransferAckPayload,
+    TransferInitPayload,
+    TransferNoticePayload,
+    TransferStatusQueryPayload,
     XNodeEnvelope,
 };
 
@@ -67,6 +73,10 @@ pub struct UtxoReference {
 pub struct WithdrawRequest {
     /// Notes to burn (blinded inputs)
     pub notes: Vec<BlindSignature>,
+    /// Blinded change outputs to sign for any transaction outputs that pay back
+    /// to the script address. These are matched to script outputs by count and
+    /// transaction output order.
+    pub change_outputs: Vec<BlindSignature>,
     /// Unsigned transaction CBOR (hex encoded)
     pub tx_cbor: String,
     /// Transaction hash (expected)
@@ -100,10 +110,18 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::types::{
-        Refresh, Request, TransferAckPayload, TransferAckStatus,
-        TransferInitPayload, TransferNoticePayload, TransferNoticeStage,
-        TransferQueryType, TransferStatusQueryPayload, XNodeAuth,
-        XNodeEnvelope, XNodeMessageType,
+        Refresh,
+        Request,
+        TransferAckPayload,
+        TransferAckStatus,
+        TransferInitPayload,
+        TransferNoticePayload,
+        TransferNoticeStage,
+        TransferQueryType,
+        TransferStatusQueryPayload,
+        XNodeAuth,
+        XNodeEnvelope,
+        XNodeMessageType,
     };
 
     #[proptest]
