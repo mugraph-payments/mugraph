@@ -520,13 +520,14 @@ mod tests {
         )
     }
 
-    fn build_withdraw_request_with_balance_check(
+    fn build_withdraw_request_with_outputs(
         user_sk: &SigningKey,
         input_tx_hash: [u8; 32],
         input_value: u64,
-        output_value: u64,
+        outputs_spec: &[(String, u64)],
         fee: u64,
         network: &str,
+        change_outputs: Vec<BlindSignature>,
         assert_balanced: bool,
     ) -> WithdrawRequest {
         let tx_hash =
@@ -535,16 +536,15 @@ mod tests {
         let mut inputs = csl::TransactionInputs::new();
         inputs.add(&input);
 
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-        let output_coin =
-            csl::Coin::from_str(&output_value.to_string()).unwrap();
-        let value = csl::Value::new(&output_coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
         let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
+        let mut output_total = 0u64;
+        for (address, amount) in outputs_spec {
+            let addr = csl::Address::from_bech32(address).unwrap();
+            let output_coin = csl::Coin::from_str(&amount.to_string()).unwrap();
+            let value = csl::Value::new(&output_coin);
+            outputs.add(&csl::TransactionOutput::new(&addr, &value));
+            output_total = output_total.saturating_add(*amount);
+        }
 
         let fee_coin = csl::Coin::from_str(&fee.to_string()).unwrap();
         let mut body =
@@ -597,7 +597,7 @@ mod tests {
         if assert_balanced {
             assert_eq!(
                 input_value,
-                output_value + fee,
+                output_total + fee,
                 "test transaction must balance"
             );
         }
@@ -609,10 +609,35 @@ mod tests {
                 ),
                 proof: Default::default(),
             }],
-            change_outputs: vec![],
+            change_outputs,
             tx_cbor: hex::encode(tx_cbor),
             tx_hash,
         }
+    }
+
+    fn build_withdraw_request_with_balance_check(
+        user_sk: &SigningKey,
+        input_tx_hash: [u8; 32],
+        input_value: u64,
+        output_value: u64,
+        fee: u64,
+        network: &str,
+        assert_balanced: bool,
+    ) -> WithdrawRequest {
+        build_withdraw_request_with_outputs(
+            user_sk,
+            input_tx_hash,
+            input_value,
+            &[(
+                "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
+                    .to_string(),
+                output_value,
+            )],
+            fee,
+            network,
+            vec![],
+            assert_balanced,
+        )
     }
 
     fn build_withdraw_request_without_inputs(
@@ -1617,18 +1642,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_withdraw_happy_path_returns_empty_change_notes() {
+    async fn handle_withdraw_happy_path_returns_signed_change_notes() {
         let user_sk = SigningKey::from_bytes(&[4u8; 32]);
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
         let input_tx_hash = [0xacu8; 32];
         let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
+
+        let script_addr = {
+            let key_hash = csl::Ed25519KeyHash::from_bytes(vec![9u8; 28]).unwrap();
+            let cred = csl::Credential::from_keyhash(&key_hash);
+            csl::EnterpriseAddress::new(0, &cred)
+                .to_address()
+                .to_bech32(None)
+                .unwrap()
+        };
+        let change_outputs = vec![sample_change_output(31, b"script-change")];
+        let request = build_withdraw_request_with_outputs(
             &user_sk,
             input_tx_hash,
             input_value,
-            1_000_000,
+            &[
+                (
+                    "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
+                        .to_string(),
+                    900_000,
+                ),
+                (script_addr.clone(), 100_000),
+            ],
             170_000,
             "preprod",
+            change_outputs.clone(),
+            true,
         );
 
         let node_hash = csl::PublicKey::from_bytes(&payment_vk)
@@ -1643,7 +1687,7 @@ mod tests {
         let datum_hex =
             build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
         let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
+            script_addr.clone(),
             datum_hex,
             input_value,
             StatusCode::OK,
@@ -1651,7 +1695,7 @@ mod tests {
         )
         .await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        insert_wallet(&ctx, payment_sk, payment_vk, &script_addr);
         seed_deposit(
             &ctx,
             mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
@@ -1664,7 +1708,8 @@ mod tests {
 
         match response {
             Response::Withdraw { change_notes, .. } => {
-                assert!(change_notes.is_empty());
+                assert!(!change_notes.is_empty());
+                assert_eq!(change_notes.len(), change_outputs.len());
             }
             other => panic!("unexpected response: {other:?}"),
         }
@@ -1712,6 +1757,72 @@ mod tests {
             &ctx,
             &mismatched.tx_hash,
         );
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_change_output_preflight_rejection_leaves_state_untouched()
+     {
+        let user_sk = SigningKey::from_bytes(&[12u8; 32]);
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let input_tx_hash = [0xaeu8; 32];
+        let input_value = 1_170_000u64;
+
+        let script_addr = {
+            let key_hash = csl::Ed25519KeyHash::from_bytes(vec![8u8; 28]).unwrap();
+            let cred = csl::Credential::from_keyhash(&key_hash);
+            csl::EnterpriseAddress::new(0, &cred)
+                .to_address()
+                .to_bech32(None)
+                .unwrap()
+        };
+        let request = build_withdraw_request_with_outputs(
+            &user_sk,
+            input_tx_hash,
+            input_value,
+            &[
+                (
+                    "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
+                        .to_string(),
+                    900_000,
+                ),
+                (script_addr.clone(), 100_000),
+            ],
+            170_000,
+            "preprod",
+            vec![],
+            true,
+        );
+
+        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes();
+        let user_hash =
+            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
+                .unwrap()
+                .hash()
+                .to_bytes();
+        let datum_hex =
+            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
+        let provider_url = spawn_withdraw_provider_mock(
+            script_addr.clone(),
+            datum_hex,
+            input_value,
+            StatusCode::OK,
+            request.tx_hash.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, &script_addr);
+        seed_deposit(
+            &ctx,
+            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
+            [0u8; 32],
+        );
+
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("request provided 0 change_outputs"));
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
     }
 
     #[tokio::test]
