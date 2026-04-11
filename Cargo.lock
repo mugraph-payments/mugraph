@@ -1097,10 +1097,10 @@ dependencies = [
  "itertools 0.14.0",
  "js-sys",
  "noop_proc_macro",
- "pallas-codec 0.31.0",
- "pallas-crypto 0.31.0",
- "pallas-primitives 0.31.0",
- "pallas-traverse 0.31.0",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "pallas-traverse",
  "schemars 0.9.0",
  "serde",
  "serde-wasm-bindgen 0.6.5",
@@ -3255,11 +3255,11 @@ dependencies = [
  "metrics",
  "mugraph-core",
  "muhex",
- "pallas-addresses 0.35.0",
- "pallas-codec 0.35.0",
- "pallas-crypto 0.35.0",
- "pallas-primitives 0.35.0",
- "pallas-traverse 0.35.0",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "pallas-traverse",
  "proptest",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
@@ -3853,24 +3853,8 @@ dependencies = [
  "crc",
  "cryptoxide",
  "hex",
- "pallas-codec 0.31.0",
- "pallas-crypto 0.31.0",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "pallas-addresses"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "536fb6bc87f00b81bb4ecb1bd4412e6fc801f6197662ac8ce7ad915660edbf4d"
-dependencies = [
- "base58",
- "bech32 0.9.1",
- "crc",
- "cryptoxide",
- "hex",
- "pallas-codec 0.35.0",
- "pallas-crypto 0.35.0",
+ "pallas-codec",
+ "pallas-crypto",
  "thiserror 1.0.69",
 ]
 
@@ -3888,18 +3872,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallas-codec"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bb2a83ec9e56b222250ba1cb3115c54e621852f114bb46b44a8d8e189ea9a8e"
-dependencies = [
- "hex",
- "minicbor",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "pallas-crypto"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3907,22 +3879,7 @@ checksum = "f5d84346a1f0da5240b2aa16fde96998b84cdcc466cb7c04ba24bb1e1630e0d3"
 dependencies = [
  "cryptoxide",
  "hex",
- "pallas-codec 0.31.0",
- "rand_core 0.6.4",
- "serde",
- "thiserror 1.0.69",
- "zeroize",
-]
-
-[[package]]
-name = "pallas-crypto"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8d372b115df0faf85c281fe78766c462c876c224e56f8107046fcc90daff9d0"
-dependencies = [
- "cryptoxide",
- "hex",
- "pallas-codec 0.35.0",
+ "pallas-codec",
  "rand_core 0.6.4",
  "serde",
  "thiserror 1.0.69",
@@ -3939,24 +3896,8 @@ dependencies = [
  "bech32 0.9.1",
  "hex",
  "log",
- "pallas-codec 0.31.0",
- "pallas-crypto 0.31.0",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pallas-primitives"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9317414712f4651305c4782e43d7cf8739df711f42ae188bcb18481f28e0cd91"
-dependencies = [
- "base58",
- "bech32 0.9.1",
- "hex",
- "log",
- "pallas-codec 0.35.0",
- "pallas-crypto 0.35.0",
+ "pallas-codec",
+ "pallas-crypto",
  "serde",
  "serde_json",
 ]
@@ -3969,27 +3910,10 @@ checksum = "5d04fc75a2144eb257c68b4604cdde647e07404ea185b791c0005826960dfb35"
 dependencies = [
  "hex",
  "itertools 0.13.0",
- "pallas-addresses 0.31.0",
- "pallas-codec 0.31.0",
- "pallas-crypto 0.31.0",
- "pallas-primitives 0.31.0",
- "paste",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "pallas-traverse"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c92cd589b608114580a472d327bf2798ec480e823c705f14c21a9ae48393ba4f"
-dependencies = [
- "hex",
- "itertools 0.13.0",
- "pallas-addresses 0.35.0",
- "pallas-codec 0.35.0",
- "pallas-crypto 0.35.0",
- "pallas-primitives 0.35.0",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
  "paste",
  "serde",
  "thiserror 1.0.69",
@@ -6670,11 +6594,11 @@ dependencies = [
  "num-integer",
  "num-traits",
  "once_cell",
- "pallas-addresses 0.31.0",
- "pallas-codec 0.31.0",
- "pallas-crypto 0.31.0",
- "pallas-primitives 0.31.0",
- "pallas-traverse 0.31.0",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "pallas-traverse",
  "peg",
  "pretty",
  "secp256k1",
@@ -7101,9 +7025,9 @@ dependencies = [
  "hex",
  "js-sys",
  "noop_proc_macro",
- "pallas-codec 0.31.0",
- "pallas-primitives 0.31.0",
- "pallas-traverse 0.31.0",
+ "pallas-codec",
+ "pallas-primitives",
+ "pallas-traverse",
  "rand_os",
  "schemars 0.8.22",
  "serde",

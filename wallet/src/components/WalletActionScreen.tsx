@@ -49,7 +49,7 @@ export function WalletActionScreen({
 
             <div className="wallet-section-intro">
               <p className="wallet-kicker text-slate-500">Payment</p>
-              <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
+              <h2 className="wallet-heading text-[2rem] text-slate-50">
                 {activeAction === "send" ? "Send" : "Receive"}
               </h2>
             </div>

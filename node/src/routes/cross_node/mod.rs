@@ -3,7 +3,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mugraph_core::{
     error::Error,
     types::{
-        CrossNodeTransferRecord, Response, XNodeEnvelope, XNodeMessageType,
+        CrossNodeTransferRecord,
+        Response,
+        XNodeEnvelope,
+        XNodeMessageType,
         validate_envelope_basics,
     },
 };
@@ -11,7 +14,8 @@ use redb::ReadableTable;
 use serde::Serialize;
 
 use crate::{
-    database::CROSS_NODE_TRANSFERS, lifecycle::status_payload_from_record,
+    database::CROSS_NODE_TRANSFERS,
+    lifecycle::status_payload_from_record,
     routes::Context,
 };
 
@@ -25,11 +29,16 @@ mod tests;
 
 use self::{
     audit::{
-        audit_event, audit_reject, audit_status_events, emit_chain_metrics,
+        audit_event,
+        audit_reject,
+        audit_status_events,
+        emit_chain_metrics,
     },
     auth::{
-        validate_auth_signature, validate_destination_binding,
-        validate_freshness, validate_query_freshness,
+        validate_auth_signature,
+        validate_destination_binding,
+        validate_freshness,
+        validate_query_freshness,
     },
     idempotency::{IdempotencyDecision, check_replay_and_idempotency},
     status::sign_status_response,

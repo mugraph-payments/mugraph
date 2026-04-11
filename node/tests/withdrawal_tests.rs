@@ -6,7 +6,10 @@ use mugraph_core::types::{BlindSignature, WithdrawRequest};
 fn withdraw_request_serde_roundtrip_preserves_change_outputs() {
     let request = WithdrawRequest {
         notes: vec![BlindSignature::default()],
-        change_outputs: vec![BlindSignature::default(), BlindSignature::default()],
+        change_outputs: vec![
+            BlindSignature::default(),
+            BlindSignature::default(),
+        ],
         tx_cbor: "abcdef".to_string(),
         tx_hash: "hash123".to_string(),
     };

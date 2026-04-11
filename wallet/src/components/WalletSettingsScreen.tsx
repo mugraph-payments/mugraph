@@ -51,9 +51,7 @@ export function WalletSettingsScreen({
       <div className="grid gap-6">
         <div className="wallet-section-intro">
           <p className="wallet-kicker text-slate-500">Settings</p>
-          <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-            Wallet details
-          </h2>
+          <h2 className="wallet-heading text-[2rem] text-slate-50">Wallet details</h2>
         </div>
 
         <section className="wallet-panel-soft p-4 sm:p-5">

@@ -93,7 +93,7 @@ export function ReceiveDetails({
           <button
             type="button"
             disabled={!isReady}
-            className="wallet-interactive w-full rounded-2xl border border-teal-300/30 bg-teal-400/10 px-4 py-3 text-base font-medium text-teal-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-slate-500 disabled:active:scale-100"
+            className="wallet-interactive wallet-cta-primary w-full rounded-2xl border px-4 py-3 text-base font-medium text-slate-50 disabled:opacity-45 disabled:active:scale-100"
           >
             Generate request
           </button>
@@ -138,6 +138,11 @@ export function ReceiveDetails({
             aria-invalid={draft.requestedAmountInput.trim() ? requestedAmount === null : undefined}
             className="wallet-input wallet-data"
           />
+          {draft.requestedAmountInput.trim() && requestedAmount === null ? (
+            <p className="wallet-hint text-rose-300">
+              Enter a positive amount or leave this blank.
+            </p>
+          ) : null}
         </label>
 
         <label className="grid gap-2 text-base text-slate-200 sm:col-span-2">
@@ -182,12 +187,8 @@ export function ReceiveDetails({
                       : "border-white/10 bg-white/[0.03]"
                   }`}
                 >
-                  <p className="wallet-heading text-base font-medium text-slate-100">
-                    {option.label}
-                  </p>
-                  <p className="wallet-copy mt-2 break-all text-sm leading-6 text-slate-400">
-                    {option.copy}
-                  </p>
+                  <p className="wallet-section-title text-slate-100">{option.label}</p>
+                  <p className="wallet-copy mt-2 break-all text-sm text-slate-400">{option.copy}</p>
                 </button>
               );
             })}
@@ -195,7 +196,7 @@ export function ReceiveDetails({
         </fieldset>
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="wallet-meta-note text-slate-500">
         {networkLabel} · delegate {delegatePkShort}
       </p>
     </div>

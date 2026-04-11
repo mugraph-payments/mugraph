@@ -10,13 +10,18 @@ type StatusOverride = "confirmed" | "reverted";
 
 export function ActivityPanel({ activity }: ActivityPanelProps) {
   const [overrides, setOverrides] = useState<Record<string, StatusOverride>>({});
+  const [announcement, setAnnouncement] = useState("");
 
   function handleConfirm(id: string) {
+    const item = activity.find((entry) => entry.id === id);
     setOverrides((prev) => ({ ...prev, [id]: "confirmed" }));
+    setAnnouncement(`${item?.kindLabel ?? "Transaction"} marked as completed.`);
   }
 
   function handleRevert(id: string) {
+    const item = activity.find((entry) => entry.id === id);
     setOverrides((prev) => ({ ...prev, [id]: "reverted" }));
+    setAnnouncement(`${item?.kindLabel ?? "Transaction"} marked as reverted.`);
   }
 
   const items: WalletActivityView[] = activity.map((item) => {
@@ -31,13 +36,14 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6 lg:p-7">
       <div className="wallet-section-stack">
+        <div className="sr-only" aria-live="polite">
+          {announcement}
+        </div>
         <div className="wallet-section-intro">
           <div className="flex items-end justify-between gap-3">
             <div className="space-y-1">
               <p className="wallet-kicker text-slate-500">Activity</p>
-              <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-                Transactions
-              </h2>
+              <h2 className="wallet-heading text-[2rem] text-slate-50">Transactions</h2>
             </div>
             {items.length > 0 ? (
               <span className="text-sm text-slate-400">
@@ -45,7 +51,7 @@ export function ActivityPanel({ activity }: ActivityPanelProps) {
               </span>
             ) : null}
           </div>
-          <p className="wallet-copy max-w-[40ch] text-base leading-7 text-slate-400">
+          <p className="wallet-copy max-w-[40ch] text-slate-400">
             Follow the full transaction stream, then confirm or revert pending items directly from
             the ledger.
           </p>

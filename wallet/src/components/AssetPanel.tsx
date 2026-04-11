@@ -21,7 +21,7 @@ function BalanceCard({ asset }: { asset: WalletAssetView }) {
             {asset.ticker.slice(0, 3)}
           </span>
         </div>
-        <span className="text-xs font-medium text-slate-300">{asset.ticker}</span>
+        <span className="text-xs font-semibold text-slate-300">{asset.ticker}</span>
       </div>
       <p className="wallet-data text-base font-semibold text-slate-100">{asset.balanceLabel}</p>
       <p className="text-xs text-slate-400">{asset.noteCountLabel}</p>
@@ -40,7 +40,7 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-slate-100">{note.assetTicker}</p>
+          <p className="text-sm font-semibold text-slate-100">{note.assetTicker}</p>
           <span className={`text-xs ${statusStyle[note.statusTone]}`}>{note.statusLabel}</span>
         </div>
         <p className="mt-0.5 text-xs text-slate-400">
@@ -64,10 +64,8 @@ export function AssetPanel({ assets, notes }: AssetPanelProps) {
           <p className="wallet-kicker text-slate-500">Holdings</p>
           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-6">
             <div>
-              <h2 className="wallet-heading text-2xl font-semibold tracking-tight text-slate-50">
-                Notes inventory
-              </h2>
-              <p className="wallet-copy mt-2 max-w-[42ch] text-base leading-7 text-slate-400">
+              <h2 className="wallet-heading text-[2rem] text-slate-50">Notes inventory</h2>
+              <p className="wallet-copy mt-2 max-w-[42ch] text-slate-400">
                 Review the assets currently inside the wallet, then inspect the individual notes
                 that make each balance spendable.
               </p>

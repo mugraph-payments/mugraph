@@ -190,6 +190,7 @@ function SendEntryCard({
             value={entry.amountInput}
             onChange={(e) => onUpdate({ amountInput: e.target.value })}
             placeholder="0.00"
+            aria-invalid={entry.amountInput.trim() ? !isEntryValid(entry) : undefined}
             className="wallet-input wallet-data w-full pr-16 text-sm"
           />
           <button
@@ -201,6 +202,11 @@ function SendEntryCard({
             Max
           </button>
         </div>
+        {entry.amountInput.trim() && !isEntryValid(entry) ? (
+          <p className="wallet-hint text-rose-300">
+            Enter a positive amount for the selected asset.
+          </p>
+        ) : null}
         {selectedAsset ? (
           <p className="mt-2 text-xs text-slate-400">
             Available{" "}
@@ -249,7 +255,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
 
   if (step === "confirmed") {
     return (
-      <div className="mx-auto grid w-full max-w-lg gap-5 py-2">
+      <div className="mx-auto grid w-full max-w-lg gap-5 py-2" role="status" aria-live="polite">
         <div className="flex flex-col items-center gap-3 text-center">
           <motion.div
             initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.82, y: 6 }}
@@ -266,7 +272,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
             transition={{ duration: 0.28, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
             className="grid gap-2"
           >
-            <h3 className="text-lg font-semibold text-slate-50">Transfer confirmed</h3>
+            <h3 className="wallet-heading text-[1.625rem] text-slate-50">Transfer confirmed</h3>
             <p className="text-sm text-teal-300">{successMessage}</p>
           </motion.div>
 
@@ -378,7 +384,7 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
         </button>
       </div>
 
-      <p className="flex items-center gap-2 text-xs text-slate-500">
+      <p className="wallet-meta-note flex items-center gap-2 text-slate-500">
         <Sparkle className="h-3.5 w-3.5 text-slate-400" weight="fill" />
         We keep the handoff short so the transfer feels instant in person.
       </p>

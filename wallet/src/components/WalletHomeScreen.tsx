@@ -22,7 +22,7 @@ function HoldingsPreviewRow({ asset }: { asset: WalletAssetView }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
       <div className="min-w-0">
-        <p className="text-sm font-medium text-slate-100">{asset.ticker}</p>
+        <p className="text-sm font-semibold text-slate-100">{asset.ticker}</p>
         <p className="mt-0.5 text-xs text-slate-400">{asset.noteCountLabel}</p>
       </div>
       <p className="wallet-data shrink-0 text-sm font-semibold text-slate-100">
@@ -51,7 +51,7 @@ export function WalletHomeScreen({
         <div className="grid gap-5">
           <div className="wallet-section-intro">
             <p className="wallet-kicker text-slate-500">Wallet</p>
-            <h2 className="wallet-heading text-3xl font-semibold tracking-tight text-slate-50 sm:text-4xl">
+            <h2 className="wallet-heading text-[2.625rem] text-slate-50 sm:text-[3.125rem]">
               {totalAda?.value ?? "0 ADA"}
             </h2>
             <div className="wallet-inline-metrics text-sm text-slate-400">
@@ -102,7 +102,7 @@ export function WalletHomeScreen({
 
       <section className="wallet-panel p-5 sm:p-6">
         <div className="flex items-end justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-50">Recent activity</h3>
+          <h3 className="wallet-section-title text-slate-50">Recent activity</h3>
           <span className="text-xs text-slate-400">{recentActivity.length}</span>
         </div>
 
@@ -115,7 +115,7 @@ export function WalletHomeScreen({
 
       <section className="wallet-panel p-5 sm:p-6">
         <div className="flex items-end justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-50">Assets</h3>
+          <h3 className="wallet-section-title text-slate-50">Assets</h3>
           <span className="text-xs text-slate-400">{assets.length}</span>
         </div>
 

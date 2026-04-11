@@ -48,7 +48,7 @@ export function ActivityRow({ activity, onConfirm, onRevert }: ActivityRowProps)
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-slate-100">{activity.kindLabel}</p>
+        <p className="text-sm font-semibold text-slate-100">{activity.kindLabel}</p>
         <p className="mt-0.5 text-xs text-slate-400">{activity.createdAtRelative}</p>
       </div>
 

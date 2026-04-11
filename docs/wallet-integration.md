@@ -97,17 +97,17 @@ the `Response`.
 Create `wallet/src-tauri/src/store.rs` using `redb` (already a workspace
 dependency). Store:
 
-| Table              | Key              | Value                                       |
-|--------------------|------------------|---------------------------------------------|
-| `config`           | `"node_url"`     | String (e.g. `http://localhost:9999`)        |
-| `config`           | `"network"`      | String (`mainnet`, `preprod`, `preview`)     |
-| `config`           | `"label"`        | String (wallet label)                        |
-| `keypair`          | `"secret_key"`   | `SecretKey` bytes (32 bytes)                 |
-| `delegate_info`    | `"pk"`           | `PublicKey` bytes                            |
-| `delegate_info`    | `"script_addr"`  | String (Cardano script address)              |
-| `notes`            | nonce (Hash)     | Serialized `Note` + status + created_at      |
-| `activity`         | id (String)      | Serialized activity record                   |
-| `blinding_factors` | nonce (Hash)     | Scalar bytes (32 bytes)                      |
+| Table              | Key             | Value                                    |
+| ------------------ | --------------- | ---------------------------------------- |
+| `config`           | `"node_url"`    | String (e.g. `http://localhost:9999`)    |
+| `config`           | `"network"`     | String (`mainnet`, `preprod`, `preview`) |
+| `config`           | `"label"`       | String (wallet label)                    |
+| `keypair`          | `"secret_key"`  | `SecretKey` bytes (32 bytes)             |
+| `delegate_info`    | `"pk"`          | `PublicKey` bytes                        |
+| `delegate_info`    | `"script_addr"` | String (Cardano script address)          |
+| `notes`            | nonce (Hash)    | Serialized `Note` + status + created_at  |
+| `activity`         | id (String)     | Serialized activity record               |
+| `blinding_factors` | nonce (Hash)    | Scalar bytes (32 bytes)                  |
 
 The `keypair` table stores the wallet's long-lived `mugraph_core::Keypair`
 identity. Generated once on first launch and persisted. The `PublicKey` from
@@ -334,6 +334,7 @@ that flow.
 Flow:
 
 1. Build a `Refresh` using `RefreshBuilder`:
+
    ```rust
    let refresh = RefreshBuilder::new()
        .input(note_a)     // 1000 USDM
@@ -342,16 +343,19 @@ Flow:
        .output(policy_id, asset_name, 750)  // split 2
        .build()?;
    ```
+
    Conservation is enforced: `build()` calls `verify()` which checks that
    per-asset input totals equal output totals (`core/src/types/refresh.rs:89-122`).
 
 2. For each output atom in the built `Refresh`, blind the commitment:
+
    ```rust
    let commitment = atom.commitment(&refresh.asset_ids);
    let blinded = crypto::blind(&mut rng, commitment.as_ref());
    // blinded.factor = r (Scalar)
    // blinded.point  = H(commitment) + r * G (RistrettoPoint)
    ```
+
    **Persist each `blinded.factor` to the `blinding_factors` table keyed by
    the atom's nonce BEFORE sending the request.**
 
@@ -425,15 +429,15 @@ The `WalletMode` type should be extended from `"stub"` to `"stub" | "live"`.
 
 ### 3.3 Wire up action screens
 
-| Screen           | Current behavior       | Integrated behavior                            |
-|------------------|------------------------|------------------------------------------------|
-| `SendDetails`    | Static draft display   | Invoke `send`, serialize notes, show QR/share  |
-| `ReceiveDetails` | Static QR placeholder  | Display script address + QR for deposits       |
-| `DepositDetails` | Static form display    | Invoke `deposit` with UTxO ref                 |
-| `WithdrawDetails`| Static form display    | Invoke `withdraw` with destination + amount    |
-| `NotesPanel`     | Static note list       | Live notes from local store                    |
-| `ActivityPanel`  | Static activity list   | Live activity from local store                 |
-| `AssetPanel`     | Static asset list      | Computed from live note aggregation             |
+| Screen            | Current behavior      | Integrated behavior                           |
+| ----------------- | --------------------- | --------------------------------------------- |
+| `SendDetails`     | Static draft display  | Invoke `send`, serialize notes, show QR/share |
+| `ReceiveDetails`  | Static QR placeholder | Display script address + QR for deposits      |
+| `DepositDetails`  | Static form display   | Invoke `deposit` with UTxO ref                |
+| `WithdrawDetails` | Static form display   | Invoke `withdraw` with destination + amount   |
+| `NotesPanel`      | Static note list      | Live notes from local store                   |
+| `ActivityPanel`   | Static activity list  | Live activity from local store                |
+| `AssetPanel`      | Static asset list     | Computed from live note aggregation           |
 
 ### 3.4 Settings screen
 
@@ -464,6 +468,7 @@ funds are **permanently lost**. The wallet must follow this ordering:
 Steps 5 and 6 should be a single redb write transaction for atomicity.
 
 On crash recovery (startup):
+
 - Scan `blinding_factors` for orphaned entries.
 - For each, attempt to re-send the original blinded request. If the node
   supports idempotent handling, the same blinded point will produce the same

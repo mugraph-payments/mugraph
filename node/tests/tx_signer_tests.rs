@@ -1,7 +1,9 @@
 //! Comprehensive tests for Cardano transaction signing and validation
 
 use mugraph_node::tx_signer::{
-    attach_witness_to_transaction, compute_tx_hash, sign_transaction_body,
+    attach_witness_to_transaction,
+    compute_tx_hash,
+    sign_transaction_body,
 };
 use whisky_csl::csl;
 

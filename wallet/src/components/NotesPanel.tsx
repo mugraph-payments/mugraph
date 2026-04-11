@@ -22,7 +22,7 @@ function NoteRow({ note }: { note: WalletNoteView }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-100">{note.amountLabel}</span>
+          <span className="text-sm font-semibold text-slate-100">{note.amountLabel}</span>
           <span className={`text-xs ${statusStyle[note.statusTone]}`}>{note.statusLabel}</span>
         </div>
         <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -41,7 +41,7 @@ export function NotesPanel({ notes }: NotesPanelProps) {
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-        <h3 className="text-sm font-semibold text-slate-50">Notes</h3>
+        <h3 className="wallet-section-title text-slate-50">Notes</h3>
         <span>
           {notes.length} {notes.length === 1 ? "item" : "items"}
         </span>

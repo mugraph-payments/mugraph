@@ -352,7 +352,6 @@ mod tests {
         routing::{get, post},
     };
     use ed25519_dalek::SigningKey;
-    use rand::{SeedableRng, rngs::StdRng};
     use pallas_codec::minicbor;
     use pallas_primitives::{
         BoundedBytes,
@@ -360,6 +359,7 @@ mod tests {
         MaybeIndefArray,
         alonzo::PlutusData,
     };
+    use rand::{SeedableRng, rngs::StdRng};
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -1223,13 +1223,12 @@ mod tests {
             "preprod".to_string(),
         );
 
-        let err = validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[],
-        )
-        .unwrap_err();
-        assert!(format!("{:?}", err).contains("request provided 0 change_outputs"));
+        let err =
+            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
+                .unwrap_err();
+        assert!(
+            format!("{:?}", err).contains("request provided 0 change_outputs")
+        );
     }
 
     #[test]
@@ -1281,13 +1280,12 @@ mod tests {
             "preprod".to_string(),
         );
 
-        let err = validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[],
-        )
-        .unwrap_err();
-        assert!(format!("{:?}", err).contains("request provided 0 change_outputs"));
+        let err =
+            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
+                .unwrap_err();
+        assert!(
+            format!("{:?}", err).contains("request provided 0 change_outputs")
+        );
     }
 
     #[test]
@@ -1313,7 +1311,8 @@ mod tests {
 
     #[test]
     fn test_reject_change_output_order_mismatch() {
-        let (tx, script_addr) = tx_with_output_addresses(&[true, true], Some(1_000_000));
+        let (tx, script_addr) =
+            tx_with_output_addresses(&[true, true], Some(1_000_000));
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
             vec![],
@@ -1334,7 +1333,8 @@ mod tests {
 
     #[test]
     fn test_non_script_outputs_are_ignored_for_change_matching() {
-        let (tx, script_addr) = tx_with_output_addresses(&[false, true, false, true], None);
+        let (tx, script_addr) =
+            tx_with_output_addresses(&[false, true, false, true], None);
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
             vec![],
@@ -1349,12 +1349,15 @@ mod tests {
             &wallet,
             &[BlindSignature::default(), BlindSignature::default()],
         )
-        .expect("non-script outputs should be ignored when matching change_outputs");
+        .expect(
+            "non-script outputs should be ignored when matching change_outputs",
+        );
     }
 
     #[test]
     fn test_accept_change_outputs_when_count_matches() {
-        let (tx, script_addr) = tx_with_output_addresses(&[true, false, true], None);
+        let (tx, script_addr) =
+            tx_with_output_addresses(&[true, false, true], None);
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
             vec![],
@@ -1451,13 +1454,15 @@ mod tests {
         assert_eq!(notes.len(), 2);
         for (change_output, note) in change_outputs.iter().zip(notes.iter()) {
             let blinded_point = change_output.signature.0.to_point().unwrap();
-            assert!(mugraph_core::crypto::verify_dleq_signature(
-                &keypair.public_key,
-                &blinded_point,
-                &note.signature,
-                &note.proof,
-            )
-            .unwrap());
+            assert!(
+                mugraph_core::crypto::verify_dleq_signature(
+                    &keypair.public_key,
+                    &blinded_point,
+                    &note.signature,
+                    &note.proof,
+                )
+                .unwrap()
+            );
         }
     }
 
@@ -1497,27 +1502,33 @@ mod tests {
         let first_point = change_outputs[0].signature.0.to_point().unwrap();
         let second_point = change_outputs[1].signature.0.to_point().unwrap();
 
-        assert!(mugraph_core::crypto::verify_dleq_signature(
-            &keypair.public_key,
-            &first_point,
-            &notes[0].signature,
-            &notes[0].proof,
-        )
-        .unwrap());
-        assert!(mugraph_core::crypto::verify_dleq_signature(
-            &keypair.public_key,
-            &second_point,
-            &notes[1].signature,
-            &notes[1].proof,
-        )
-        .unwrap());
-        assert!(!mugraph_core::crypto::verify_dleq_signature(
-            &keypair.public_key,
-            &second_point,
-            &notes[0].signature,
-            &notes[0].proof,
-        )
-        .unwrap());
+        assert!(
+            mugraph_core::crypto::verify_dleq_signature(
+                &keypair.public_key,
+                &first_point,
+                &notes[0].signature,
+                &notes[0].proof,
+            )
+            .unwrap()
+        );
+        assert!(
+            mugraph_core::crypto::verify_dleq_signature(
+                &keypair.public_key,
+                &second_point,
+                &notes[1].signature,
+                &notes[1].proof,
+            )
+            .unwrap()
+        );
+        assert!(
+            !mugraph_core::crypto::verify_dleq_signature(
+                &keypair.public_key,
+                &second_point,
+                &notes[0].signature,
+                &notes[0].proof,
+            )
+            .unwrap()
+        );
     }
 
     /// Reject outputs on wrong network
@@ -1561,12 +1572,9 @@ mod tests {
             "preprod".to_string(),
         );
 
-        let err = validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[],
-        )
-        .unwrap_err();
+        let err =
+            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
+                .unwrap_err();
         assert!(format!("{:?}", err).contains("network_id 1"));
     }
 
@@ -1649,7 +1657,8 @@ mod tests {
         let input_value = 1_170_000u64;
 
         let script_addr = {
-            let key_hash = csl::Ed25519KeyHash::from_bytes(vec![9u8; 28]).unwrap();
+            let key_hash =
+                csl::Ed25519KeyHash::from_bytes(vec![9u8; 28]).unwrap();
             let cred = csl::Credential::from_keyhash(&key_hash);
             csl::EnterpriseAddress::new(0, &cred)
                 .to_address()
@@ -1768,7 +1777,8 @@ mod tests {
         let input_value = 1_170_000u64;
 
         let script_addr = {
-            let key_hash = csl::Ed25519KeyHash::from_bytes(vec![8u8; 28]).unwrap();
+            let key_hash =
+                csl::Ed25519KeyHash::from_bytes(vec![8u8; 28]).unwrap();
             let cred = csl::Credential::from_keyhash(&key_hash);
             csl::EnterpriseAddress::new(0, &cred)
                 .to_address()
@@ -1821,8 +1831,13 @@ mod tests {
         );
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("request provided 0 change_outputs"));
-        assert_preflight_rejection_leaves_state_untouched(&ctx, &request.tx_hash);
+        assert!(
+            format!("{err:?}").contains("request provided 0 change_outputs")
+        );
+        assert_preflight_rejection_leaves_state_untouched(
+            &ctx,
+            &request.tx_hash,
+        );
     }
 
     #[tokio::test]
@@ -2765,7 +2780,10 @@ mod tests {
         let fee = csl::Coin::from_str("170000").unwrap();
         let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
         let witness_set = csl::TransactionWitnessSet::new();
-        (csl::Transaction::new(&body, &witness_set, None), script_addr)
+        (
+            csl::Transaction::new(&body, &witness_set, None),
+            script_addr,
+        )
     }
 
     fn tx_with_intent_metadata(
