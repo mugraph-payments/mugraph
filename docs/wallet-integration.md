@@ -102,16 +102,24 @@ dependency). Store:
 | `config`           | `"node_url"`    | String (e.g. `http://localhost:9999`)    |
 | `config`           | `"network"`     | String (`mainnet`, `preprod`, `preview`) |
 | `config`           | `"label"`       | String (wallet label)                    |
-| `keypair`          | `"secret_key"`  | `SecretKey` bytes (32 bytes)             |
+| `keypair`          | `"secret_key"`  | `SecretKey` bytes (32 bytes, Ristretto)  |
+| `keypair`          | `"ed25519_sk"`  | Ed25519 signing key (32 bytes)           |
 | `delegate_info`    | `"pk"`          | `PublicKey` bytes                        |
 | `delegate_info`    | `"script_addr"` | String (Cardano script address)          |
 | `notes`            | nonce (Hash)    | Serialized `Note` + status + created_at  |
 | `activity`         | id (String)     | Serialized activity record               |
 | `blinding_factors` | nonce (Hash)    | Scalar bytes (32 bytes)                  |
 
-The `keypair` table stores the wallet's long-lived `mugraph_core::Keypair`
-identity. Generated once on first launch and persisted. The `PublicKey` from
-this keypair is the wallet's identity for blinding operations.
+The `keypair` table stores two long-lived keys, both generated on first
+launch and persisted:
+
+- `secret_key`: the wallet's `mugraph_core::Keypair` (Ristretto group).
+  The `PublicKey` from this keypair is the wallet's identity for BDHKE
+  blinding operations.
+- `ed25519_sk`: an `ed25519_dalek::SigningKey` for CIP-8 deposit
+  authentication and withdrawal witness signatures. The `Blake2b-224` hash
+  of the corresponding `VerifyingKey` is the `user_pubkey_hash` in deposit
+  datums.
 
 The `blinding_factors` table is the safety net for in-flight operations:
 
@@ -224,8 +232,16 @@ depth, default 15 blocks — see `node/src/routes/deposit/source_validation.rs:1
      which returns `BlindedPoint { factor: r, point: B' }` where
      `B' = H(commitment) + r * G` (see `core/src/crypto.rs:30-42`).
    - **Persist `r` to the `blinding_factors` table immediately.**
-   - Pack the compressed `B'` point bytes into a `BlindSignature` struct to
-     carry in the request's `outputs` field.
+   - Pack `B'` into a `BlindSignature` for the request's `outputs` field.
+     The wallet doesn't have a DLEQ proof at this point — use a default:
+     ```rust
+     BlindSignature {
+         signature: Blinded(Signature::from(blinded.point)),
+         proof: DleqProof::default(),
+     }
+     ```
+     The node ignores the proof field on inputs; it produces its own DLEQ
+     proof in the response.
 2. Build a `DepositRequest` with:
    - `utxo`: the UTxO reference (`tx_hash`, `index`).
    - `outputs`: the `Vec<BlindSignature>` carrying blinded commitment points.
@@ -233,27 +249,40 @@ depth, default 15 blocks — see `node/src/routes/deposit/source_validation.rs:1
    - `signature`: a CIP-8 COSE_Sign1 structure (tagged CBOR, `alg: EdDSA`)
      whose payload is the canonical JSON bytes and whose signature is Ed25519
      over the `tbs_data` (see `node/src/routes/deposit/signature.rs:42-125`).
+     **This requires an `ed25519_dalek::SigningKey`, not the wallet's
+     `mugraph_core::Keypair`.** The BDHKE keypair uses the Ristretto group
+     (curve25519-dalek) and cannot produce Ed25519 signatures. The wallet
+     must maintain a separate Ed25519 key for deposit/withdraw authentication.
    - `nonce`: replay-prevention timestamp.
    - `network`: `"mainnet"`, `"preprod"`, or `"preview"`.
 3. Send `Request::Deposit(deposit_request)` to the node.
 4. Receive `Response::Deposit { signatures, deposit_ref }`:
    - Each signature is a `BlindSignature` containing a blinded signature
      `C' = k * B'` and a DLEQ proof.
-   - Verify each DLEQ proof: `crypto::verify_dleq_signature(&delegate_pk, &B', &C', &proof)`.
-   - Unblind: `C = crypto::unblind_signature(&C', &r, &delegate_pk)` which
+   - Recover the blinded point `B'` from the original request output
+     (the wallet must keep the `BlindedPoint` values from step 1 in memory
+     for the duration of the request).
+   - Verify each DLEQ proof:
+     `crypto::verify_dleq_signature(&delegate_pk, &B', &C', &proof)?;`
+   - Unblind: `crypto::unblind_signature(&C', &r, &delegate_pk)?` which
      computes `C' - r * K = k * H(commitment)`.
-   - Verify the unblinded signature: `crypto::verify(&delegate_pk, commitment, C)`.
+   - Verify the unblinded signature:
+     `crypto::verify(&delegate_pk, commitment.as_ref(), unblinded)?;`
    - Construct full `Note` objects with the unblinded signature.
    - Store notes locally with status `available`.
    - Store the blinding factor in `DleqProofWithBlinding.blinding_factor` on
      the note, then delete the row from the `blinding_factors` table.
 5. Record the deposit in the activity log.
 
-**Note on CIP-8 signing**: the deposit request requires an Ed25519 signature
-for the COSE_Sign1 envelope. This is a deposit-specific concern — the wallet
-can derive or store a separate `ed25519_dalek::SigningKey` in the config table
-specifically for deposit authentication. The wallet's primary identity remains
-its `mugraph_core::Keypair`.
+**Key management note**: the wallet maintains two separate keys:
+
+- **BDHKE keypair** (`mugraph_core::Keypair`): Ristretto-group key for
+  blinding/unblinding operations. Stored in the `keypair` table. This is
+  the wallet's primary identity for L2 operations.
+- **Ed25519 signing key** (`ed25519_dalek::SigningKey`): for CIP-8 deposit
+  authentication and withdrawal witness signatures. Stored separately in
+  the `config` table. The corresponding `Blake2b-224(verifying_key)` is the
+  `user_pubkey_hash` embedded in deposit datums.
 
 ### 2.3 Withdraw (Mugraph L2 to Cardano L1)
 
@@ -281,8 +310,15 @@ script UTxOs held by the node. This is a significant piece of work requiring
    - `notes`: `Vec<BlindSignature>` representing the notes to burn.
    - `change_outputs`: `Vec<BlindSignature>` carrying the blinded points for
      each transaction output that pays back to the script address, in the same
-     transaction output order. **Persist each corresponding blinding factor to
-     `blinding_factors` before sending the request.**
+     transaction output order. Constructed the same way as deposit outputs:
+     ```rust
+     BlindSignature {
+         signature: Blinded(Signature::from(blinded.point)),
+         proof: DleqProof::default(),
+     }
+     ```
+     **Persist each corresponding blinding factor to `blinding_factors`
+     before sending the request.**
    - `tx_cbor`: hex-encoded unsigned transaction CBOR.
    - `tx_hash`: hex-encoded expected transaction hash (must match the node's
      recomputation from the CBOR).
@@ -336,7 +372,7 @@ Flow:
 1. Build a `Refresh` using `RefreshBuilder`:
 
    ```rust
-   let refresh = RefreshBuilder::new()
+   let mut refresh = RefreshBuilder::new()
        .input(note_a)     // 1000 USDM
        .input(note_b)     // 500 USDM
        .output(policy_id, asset_name, 750)  // split 1
@@ -347,16 +383,35 @@ Flow:
    Conservation is enforced: `build()` calls `verify()` which checks that
    per-asset input totals equal output totals (`core/src/types/refresh.rs:89-122`).
 
-2. For each output atom in the built `Refresh`, blind the commitment:
+2. For each output atom in the built `Refresh`, blind the commitment and
+   attach the blinded point to the `Refresh` before sending:
 
    ```rust
-   let commitment = atom.commitment(&refresh.asset_ids);
-   let blinded = crypto::blind(&mut rng, commitment.as_ref());
-   // blinded.factor = r (Scalar)
-   // blinded.point  = H(commitment) + r * G (RistrettoPoint)
+   let mut blinding_factors = Vec::new();
+   let mut blinded_points = Vec::new();
+
+   for (i, atom) in refresh.atoms.iter().enumerate() {
+       if refresh.is_output(i) {
+           let commitment = atom.commitment(&refresh.asset_ids);
+           let blinded = crypto::blind(&mut rng, commitment.as_ref());
+           // blinded.factor = r (Scalar)
+           // blinded.point  = H(commitment) + r * G (RistrettoPoint)
+
+           blinding_factors.push(blinded.factor);
+           // Convert RistrettoPoint -> Signature (compressed 32 bytes)
+           blinded_points.push(Signature::from(blinded.point));
+       }
+   }
+
+   // Attach blinded points to the Refresh.
+   // CRITICAL: if this field is left empty, the node silently falls back
+   // to server-side hash_to_curve and the wallet cannot unblind the
+   // response. The field has #[serde(skip_serializing_if = "Vec::is_empty")]
+   // so an empty vec disappears from JSON with no error.
+   refresh.blinded_points = blinded_points;
    ```
 
-   **Persist each `blinded.factor` to the `blinding_factors` table keyed by
+   **Persist each `blinding_factor` to the `blinding_factors` table keyed by
    the atom's nonce BEFORE sending the request.**
 
 3. Send `Request::Refresh(refresh)` to the node.
@@ -364,8 +419,10 @@ Flow:
 4. Receive `Response::Transaction { outputs }` — a `Vec<BlindSignature>`,
    one per output atom:
    - For each `(atom, signature, r)` triple:
+     - Recover the blinded point for DLEQ verification:
+       `let blinded_point = refresh.blinded_points[output_idx].to_point()?;`
      - Verify the DLEQ proof:
-       `crypto::verify_dleq_signature(&delegate_pk, &blinded_point, &signature.signature, &signature.proof)`.
+       `crypto::verify_dleq_signature(&delegate_pk, &blinded_point, &signature.signature, &signature.proof)?;`
      - Unblind the signature:
        `let unblinded = crypto::unblind_signature(&signature.signature, &r, &delegate_pk)?;`
      - Verify the final signature:
@@ -389,6 +446,10 @@ Flow:
      - Delete the `r` row from `blinding_factors`.
 
 5. Mark input notes as `spent`.
+
+The reference test for this full client-side flow is
+`refresh_with_blinded_points_produces_unblindable_signatures` in
+`node/src/routes/refresh.rs:197-267`.
 
 ### 2.6 Sync
 
@@ -425,7 +486,6 @@ Add a lightweight state layer (React context or a small store) that:
   that invoke the corresponding Tauri commands and trigger a re-fetch.
 
 The existing `WalletState` TypeScript type is already well-structured for this.
-The `WalletMode` type should be extended from `"stub"` to `"stub" | "live"`.
 
 ### 3.3 Wire up action screens
 
@@ -439,7 +499,25 @@ The `WalletMode` type should be extended from `"stub"` to `"stub" | "live"`.
 | `ActivityPanel`   | Static activity list  | Live activity from local store                |
 | `AssetPanel`      | Static asset list     | Computed from live note aggregation           |
 
-### 3.4 Settings screen
+### 3.4 Error handling
+
+Tauri commands return `Result<T, String>`. The frontend should map errors
+to wallet status and UI state:
+
+| Error class                 | `WalletStatus` | UI behavior                        |
+| --------------------------- | -------------- | ---------------------------------- |
+| Node unreachable / timeout  | `attention`    | Banner: "Node offline", retry sync |
+| BDHKE verification failure  | `attention`    | Banner: "Signature mismatch"       |
+| Unbalanced refresh          | `ready`        | Inline form error                  |
+| Blinding factor persistence | `attention`    | Block operation until resolved     |
+| Orphaned blinding factors   | `attention`    | Startup recovery prompt            |
+
+The `WalletMode` type should be extended from `"stub"` to `"stub" | "live"`.
+When in `"live"` mode, the frontend renders real data and error states.
+When in `"stub"` mode, the existing hardcoded data is used (useful for UI
+development without a running node).
+
+### 3.5 Settings screen
 
 The settings screen already shows delegate PK and script address. Wire these
 to the real values from `connect`. Add:
@@ -447,6 +525,7 @@ to the real values from `connect`. Add:
 - Node URL input (stored in local config).
 - Network selector (mainnet/preprod/preview).
 - Manual sync trigger.
+- Wallet mode toggle (stub/live) for development.
 
 ## Phase 4: Security Considerations
 
@@ -510,21 +589,43 @@ These items are not part of the initial integration but should be considered:
 - **Cross-node transfers**: The node already supports cross-node payments via
   the `cross_node_transfer_*` RPC variants. The wallet would need to know
   about multiple delegates and route payments accordingly.
-- **Withdrawal change notes**: The node's `calculate_change_notes`
-  (`node/src/routes/withdraw/mod.rs:324`) currently returns an empty vector.
-  Once implemented, the wallet should unblind and store change notes using
-  the same BDHKE flow as deposit/refresh outputs.
 
 ## Implementation Order
 
-1. **`wallet/src-tauri/Cargo.toml`** — add workspace dependencies.
-2. **`wallet/src-tauri/src/node_client.rs`** — HTTP client for the node.
-3. **`wallet/src-tauri/src/store.rs`** — local redb storage with blinding
-   factor table and crash-recovery scan.
-4. **`wallet/src-tauri/src/commands.rs`** — Tauri command handlers.
-5. **`wallet/src-tauri/src/lib.rs`** — wire up state and commands.
+The work is split into two milestones. The first delivers a functional L2
+wallet that can be tested end-to-end against a dev-mode node (which can
+`emit` notes). The second adds Cardano L1 integration.
+
+### Milestone A: Off-chain wallet (connect + refresh + send)
+
+1. **`wallet/src-tauri/Cargo.toml`** — add `mugraph-core`, `reqwest`, `redb`,
+   `tokio` as workspace dependencies.
+2. **`wallet/src-tauri/src/node_client.rs`** — HTTP client for the node
+   (mirror `simulator/src/client.rs`). Methods: `info`, `refresh`.
+3. **`wallet/src-tauri/src/store.rs`** — local redb storage with `config`,
+   `keypair`, `delegate_info`, `notes`, `activity`, `blinding_factors` tables.
+   Crash-recovery scan for orphaned blinding factors on startup.
+4. **`wallet/src-tauri/src/commands.rs`** — Tauri commands: `connect`,
+   `get_wallet_state`, `refresh_notes`, `send`, `sync`.
+5. **`wallet/src-tauri/src/lib.rs`** — wire up `AppState` and commands.
 6. **`wallet/src/lib/api.ts`** — TypeScript invoke wrappers.
 7. **`wallet/src/lib/walletStore.ts`** — reactive state from Tauri backend.
 8. **`wallet/src/App.tsx`** — swap stub imports for live state.
-9. **Action screen components** — wire forms to invoke calls.
-10. **Settings screen** — node URL configuration.
+9. **Action screen components** — wire send/receive forms to invoke calls.
+10. **Settings screen** — node URL configuration, network selector, sync.
+
+At this point the wallet can connect to a dev-mode node, receive emitted
+notes, refresh (split/merge) them, and send bearer tokens to other users.
+
+### Milestone B: Cardano L1 integration (deposit + withdraw)
+
+11. **`wallet/src-tauri/src/node_client.rs`** — add `deposit`, `withdraw`
+    methods.
+12. **Ed25519 key management** — generate and store a separate
+    `ed25519_dalek::SigningKey` for CIP-8 deposit authentication.
+13. **Deposit flow** — Cardano transaction building with inline Plutus datum
+    (`whisky-csl`), CIP-8 signature construction, BDHKE output blinding.
+14. **Withdraw flow** — Cardano transaction building for script UTxO spending,
+    change output blinding, witness attachment.
+15. **Deposit/withdraw UI** — wire `DepositDetails` and `WithdrawDetails`
+    screens to invoke calls.
