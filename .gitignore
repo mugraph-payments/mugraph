@@ -10,3 +10,4 @@ proptest-regressions
 target
 /result
 /.lobster
+.lobster/
