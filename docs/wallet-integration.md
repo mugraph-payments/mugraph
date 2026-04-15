@@ -45,6 +45,50 @@ network calls go through Tauri commands in the Rust backend. This keeps
 secret material (blinding factors, nonces, keypair) in Rust and avoids
 CORS/CSP issues.
 
+## Product Decisions Locked for v1
+
+The following product decisions are treated as fixed requirements for the
+implementation described below:
+
+- **Live-only wallet**: remove stub mode from the shipped app. The current
+  stub data remains a development artifact only until live integration is
+  complete.
+- **Guided setup is mandatory**: first run must collect configuration for
+  **all three networks** (`mainnet`, `preprod`, `preview`) before the wallet
+  is considered ready.
+- **Network model**: the wallet uses one shared Mugraph identity and one
+  shared in-app Cardano payment keypair across all networks, while notes,
+  activity, node URLs, and chain state stay partitioned per network.
+- **Node/provider model**: the wallet must not require node API changes.
+  It talks to exactly one configured Mugraph node per network, and it talks
+  directly to Cardano providers for chain queries/submission when needed.
+- **Provider configuration**: use one provider account model globally
+  (same provider type and credentials reused across networks), with the
+  network-specific endpoint derived from the selected network.
+- **Startup/default network**: after setup, open the **last used network**.
+  If one network later has broken configuration, warn at startup but allow
+  the user to continue using healthy networks.
+- **Receive semantics**: `Receive` is **off-chain only**. Cardano L1 money-in
+  belongs exclusively to the separate `Deposit` flow.
+- **Deposit UX**: before a user can deposit, show the in-app Cardano funding
+  address (and QR) so they can fund the wallet externally. No richer Cardano
+  balance dashboard is required for v1.
+- **Send transport**: support both copy/paste text and QR transfer. Use a
+  JSON envelope with explicit hex-encoded note fields; do **not** add a
+  schema version field in v1.
+- **Receive request enforcement**: strict asset/amount/label matching applies
+  only to off-chain wallet-to-wallet requests, where the request payload is
+  carried by the wallet format itself. It does not apply to plain Cardano
+  address transfers.
+- **Imported note trust model**: imported notes must auto-refresh
+  immediately. If refresh fails, keep them in the notes list as a special
+  quarantined/untrusted status, exclude them from spendable balance, and put
+  the wallet into an attention state.
+- **Withdrawal failure UX**: if a withdrawal fails after notes are burned,
+  surface a hard attention banner with recovery/support guidance.
+- **Coin selection**: use a simple deterministic largest-first note/UTxO
+  selection strategy in v1.
+
 ## Phase 1: Tauri Backend — Node Client and Local Storage
 
 ### 1.1 Add `mugraph-core` dependency to the wallet crate
@@ -102,23 +146,37 @@ the reference pattern (it already implements `health`, `public_key`, `emit`,
 ### 1.3 Local note storage
 
 Create `wallet/src-tauri/src/store.rs` using `redb` (already a workspace
-dependency). Store:
+dependency). Because v1 uses a **shared identity with per-network chain
+state**, the store should separate global identity/config from per-network
+state. At minimum, store:
 
-| Table              | Key             | Value                                    |
-| ------------------ | --------------- | ---------------------------------------- |
-| `config`           | `"node_url"`    | String (e.g. `http://localhost:9999`)    |
-| `config`           | `"network"`     | String (`mainnet`, `preprod`, `preview`) |
-| `config`           | `"label"`       | String (wallet label)                    |
-| `keypair`          | `"secret_key"`  | `SecretKey` bytes (32 bytes, Ristretto)  |
-| `keypair`          | `"ed25519_sk"`  | Ed25519 signing key (32 bytes)           |
-| `delegate_info`    | `"pk"`          | `PublicKey` bytes                        |
-| `delegate_info`    | `"script_addr"` | String (Cardano script address)          |
-| `notes`            | nonce (Hash)    | Serialized `Note` + status + created_at  |
-| `activity`         | id (String)     | Serialized activity record               |
-| `blinding_factors` | nonce (Hash)    | Scalar bytes (32 bytes)                  |
+| Table               | Key                           | Value                                       |
+| ------------------- | ----------------------------- | ------------------------------------------- |
+| `config_global`     | `"label"`                     | String (wallet label)                       |
+| `config_global`     | `"last_network"`              | String (`mainnet`, `preprod`, `preview`)    |
+| `provider_config`   | `"type"`                      | String (`blockfrost` or `maestro`)          |
+| `provider_config`   | `"api_key"`                   | String                                      |
+| `provider_config`   | `"base_url_override"`         | Optional String                             |
+| `node_config`       | `<network>`                   | String node URL for that network            |
+| `keypair`           | `"secret_key"`                | `SecretKey` bytes (32 bytes, Ristretto)     |
+| `keypair`           | `"ed25519_sk"`                | Ed25519 signing key (32 bytes)              |
+| `cardano_keypair`   | `"payment_sk"`                | Cardano payment signing key bytes           |
+| `cardano_keypair`   | `"payment_vk"`                | Cardano payment verification key bytes      |
+| `delegate_info`     | `<network>:pk`                | `PublicKey` bytes                           |
+| `delegate_info`     | `<network>:script_addr`       | String (Cardano script address)             |
+| `notes`             | `<network>:<nonce>`           | Serialized `Note` + status + created_at     |
+| `activity`          | `<network>:<id>`              | Serialized activity record                  |
+| `blinding_factors`  | `<network>:<nonce>`           | Scalar bytes (32 bytes)                     |
+| `offchain_requests` | id                            | Serialized receive request metadata         |
+| `cardano_utxos`     | `<network>:<tx_hash>#<index>` | Cached in-app Cardano funding UTxO metadata |
 
-The `keypair` table stores two long-lived keys, both generated on first
-launch and persisted:
+This layout makes the shared-vs-network-specific split explicit:
+
+- Global tables hold identity, provider credentials, and last-used UI state.
+- Per-network tables/key prefixes isolate notes, activity, delegate info,
+  script addresses, and in-flight blinded operations.
+
+The wallet persists three long-lived keys, all generated on first launch:
 
 - `secret_key`: the wallet's `mugraph_core::Keypair` (Ristretto group).
   The `PublicKey` from this keypair is the wallet's identity for BDHKE
@@ -127,6 +185,9 @@ launch and persisted:
   authentication and withdrawal witness signatures. The `Blake2b-224` hash
   of the corresponding `VerifyingKey` is the `user_pubkey_hash` in deposit
   datums.
+- `payment_sk` / `payment_vk`: one shared in-app Cardano payment keypair used
+  to derive network-specific Cardano addresses for `mainnet`, `preprod`, and
+  `preview`.
 
 The `blinding_factors` table is the safety net for in-flight operations:
 
@@ -151,48 +212,71 @@ which already has a field for this purpose.
 ### 1.4 Expose Tauri commands
 
 Replace the placeholder `greet` command in `wallet/src-tauri/src/lib.rs` with
-real commands:
+commands that match the final product model:
 
 ```rust
 #[tauri::command]
-async fn connect(node_url: String, state: State<'_, AppState>) -> Result<NodeInfo, String>;
+async fn complete_guided_setup(config: SetupConfig, state: State<'_, AppState>) -> Result<SetupResult, String>;
 
 #[tauri::command]
-async fn get_wallet_state(state: State<'_, AppState>) -> Result<WalletSnapshot, String>;
+async fn get_wallet_state(network: String, state: State<'_, AppState>) -> Result<WalletSnapshot, String>;
 
 #[tauri::command]
-async fn deposit(utxo_ref: String, amount: u64, asset: String, state: State<'_, AppState>) -> Result<DepositResult, String>;
+async fn switch_network(network: String, state: State<'_, AppState>) -> Result<WalletSnapshot, String>;
 
 #[tauri::command]
-async fn withdraw(destination: String, amount: u64, asset: String, state: State<'_, AppState>) -> Result<WithdrawResult, String>;
+async fn create_receive_request(input: ReceiveRequestInput, state: State<'_, AppState>) -> Result<ReceiveRequest, String>;
 
 #[tauri::command]
-async fn send(notes: Vec<String>, state: State<'_, AppState>) -> Result<SendResult, String>;
+async fn import_notes(payload: String, state: State<'_, AppState>) -> Result<ImportResult, String>;
+
+#[tauri::command]
+async fn deposit(input: DepositInput, state: State<'_, AppState>) -> Result<DepositResult, String>;
+
+#[tauri::command]
+async fn withdraw(input: WithdrawInput, state: State<'_, AppState>) -> Result<WithdrawResult, String>;
+
+#[tauri::command]
+async fn send(input: SendInput, state: State<'_, AppState>) -> Result<SendResult, String>;
 
 #[tauri::command]
 async fn refresh_notes(note_ids: Vec<String>, target_denominations: Vec<u64>, state: State<'_, AppState>) -> Result<RefreshResult, String>;
 
 #[tauri::command]
-async fn sync(state: State<'_, AppState>) -> Result<SyncResult, String>;
+async fn sync(network: String, state: State<'_, AppState>) -> Result<SyncResult, String>;
 ```
 
-`AppState` holds the `NodeClient`, `redb::Database`, and the wallet's
-`Keypair`.
+`AppState` should hold:
+
+- the `redb::Database`
+- the wallet's Mugraph `Keypair`
+- the wallet's Ed25519 signing key
+- the shared in-app Cardano payment keypair
+- provider configuration
+- one `NodeClient` per configured network
 
 ## Phase 2: Core Wallet Operations in Rust
 
 ### 2.1 Connect (bootstrap)
 
-1. If this is the first launch, generate both keys and persist to the
-   `keypair` table (this step is independent of node connectivity):
+1. Guided setup runs on first launch and must collect configuration for all
+   three networks:
+   - one node URL for `mainnet`
+   - one node URL for `preprod`
+   - one node URL for `preview`
+   - one provider type (`blockfrost` or `maestro`)
+   - one provider credential set reused across all three networks
+2. If this is the first launch, generate all wallet keys and persist them
+   (this step is independent of node connectivity):
    - `Keypair::random(&mut rng)` for BDHKE operations.
    - `ed25519_dalek::SigningKey::generate(&mut rng)` for CIP-8/witness
-     authentication (only needed for deposit/withdraw, but generated
-     eagerly to keep first-launch atomic).
-2. Call `Request::Info` on the node.
-3. Receive `Response::Info { delegate_pk, cardano_script_address }`.
-4. Store `delegate_pk` and `script_address` locally.
-5. Return identity info to the frontend.
+     authentication.
+   - one Cardano payment keypair for the in-app funding wallet.
+3. For each configured network, call `Request::Info` on that network's node.
+4. Receive `Response::Info { delegate_pk, cardano_script_address }` and store
+   the delegate/script pair under that network namespace.
+5. Mark setup complete only after all three networks have passed bootstrap.
+6. Open the last-used network on subsequent launches.
 
 ### 2.2 Deposit (Cardano L1 to Mugraph L2)
 
@@ -217,12 +301,16 @@ The `intent_hash` is a Blake2b-256 hash over the canonical payload (see
 reference, blinded output encodings, delegate public key, script address,
 nonce, and network. This means the wallet must:
 
-1. Decide on the output denominations and blinding ahead of time.
-2. Compute the canonical payload and its Blake2b-256 hash.
-3. Build the Cardano transaction that sends funds to `script_address` with
+1. Show the in-app Cardano funding address/QR to the user so they can fund
+   the wallet externally before attempting a deposit.
+2. Select source UTxOs from the in-app Cardano wallet using a simple
+   deterministic largest-first strategy.
+3. Decide on the output denominations and blinding ahead of time.
+4. Compute the canonical payload and its Blake2b-256 hash.
+5. Build the Cardano transaction that sends funds to `script_address` with
    the datum containing `user_pubkey_hash`, `node_pubkey_hash`, and the
    computed `intent_hash`.
-4. Submit the transaction on-chain.
+6. Submit the transaction on-chain.
 
 This requires `whisky-csl` (or a Cardano transaction builder library) in the
 wallet backend to construct and serialize the CBOR transaction with the inline
@@ -305,15 +393,10 @@ script UTxOs held by the node. This is a significant piece of work requiring
 
 1. User specifies a destination Cardano address and amount.
 2. Wallet selects notes that cover the amount (coin selection).
-3. Wallet queries for spendable script UTxOs at the node's script address.
-   **Open question**: the node does not currently expose an RPC method to
-   list available script UTxOs. The wallet either needs:
-   - A new node RPC method (e.g. `list_script_utxos`) that returns UTxOs
-     the wallet's deposit pubkey hash can claim, or
-   - Direct access to a Cardano provider (Blockfrost/Maestro) to query the
-     script address, filtering by datum `user_pubkey_hash`.
-     The first option is simpler and avoids giving the wallet its own provider
-     credentials.
+3. Wallet queries spendable script UTxOs directly from the configured
+   Cardano provider (Blockfrost or Maestro) at the node's script address,
+   filtering by datum `user_pubkey_hash` because v1 does not change the node
+   API surface.
 4. Wallet builds the Cardano transaction:
    - **Inputs**: script UTxOs at the node's script address. Each input must
      carry the deposit datum (`user_pubkey_hash`, `node_pubkey_hash`,
@@ -376,12 +459,39 @@ Sending notes between users does NOT touch the node. Notes are bearer tokens.
 1. User selects notes to send.
 2. If exact denominations aren't available, perform a **refresh** first (see
    2.5) to split/merge notes into the desired amounts.
-3. Serialize the selected `Note` objects.
-4. Transfer the serialized notes to the recipient via any channel (QR code,
-   NFC, file, network message — transport is out of scope for now).
+3. Serialize the selected `Note` objects into a v1 JSON envelope for text or
+   QR transfer. The envelope is intentionally unversioned in v1 and should
+   contain:
+
+   ```json
+   {
+     "network": "preprod",
+     "delegate_pk": "<hex>",
+     "sender_label": "Everyday Wallet",
+     "created_at": "2026-04-15T12:00:00Z",
+     "notes": [
+       {
+         "amount": 1200,
+         "policy_id": "<hex>",
+         "asset_name": "<hex>",
+         "delegate": "<hex>",
+         "nonce": "<hex>",
+         "signature": "<hex>"
+       }
+     ]
+   }
+   ```
+
+   Use explicit hex-encoded fields rather than opaque note blobs.
+
+4. Offer both transport modes:
+   - copy/paste text for any payload size
+   - QR only when the payload fits a practical single-code limit; otherwise
+     require text sharing in v1
 5. Mark sent notes as `spent` locally.
-6. Recipient imports the notes and verifies each signature against the
-   delegate public key:
+6. Recipient imports the envelope, validates that the envelope network and
+   delegate match the active wallet/network, and verifies each signature
+   against the delegate public key:
    `crypto::verify(&delegate_pk, note.commitment().as_ref(), note.signature)?`
    (returns `Result<bool>` — check the bool is `true`)
 
@@ -510,18 +620,24 @@ Tauri IPC calls using `@tauri-apps/api/core`:
 ```typescript
 import { invoke } from "@tauri-apps/api/core";
 
-// Instead of importing walletState from stubWallet:
-const walletState = await invoke<WalletState>("get_wallet_state");
+const walletState = await invoke<WalletState>("get_wallet_state", {
+  network: activeNetwork,
+});
 ```
 
 ### 3.2 State management
 
 Add a lightweight state layer (React context or a small store) that:
 
-- Calls `get_wallet_state` on mount and after every mutation.
-- Provides the `WalletState` to all components via context.
-- Exposes mutation functions (`deposit`, `withdraw`, `send`, `refreshNotes`)
-  that invoke the corresponding Tauri commands and trigger a re-fetch.
+- requires guided setup before entering the main wallet shell
+- restores the last-used network on launch
+- calls `get_wallet_state(activeNetwork)` on mount and after every mutation
+- provides the active-network `WalletState` to all components via context
+- exposes mutation functions (`createReceiveRequest`, `importNotes`,
+  `deposit`, `withdraw`, `send`, `refreshNotes`) that invoke the
+  corresponding Tauri commands and trigger a re-fetch
+- surfaces startup warnings for broken network configs without blocking
+  healthy networks
 
 The existing `WalletState` TypeScript type is already well-structured for
 this, but several fields require data that notes alone do not carry:
@@ -540,15 +656,15 @@ this, but several fields require data that notes alone do not carry:
 
 ### 3.3 Wire up action screens
 
-| Screen            | Current behavior      | Integrated behavior                           |
-| ----------------- | --------------------- | --------------------------------------------- |
-| `SendDetails`     | Static draft display  | Invoke `send`, serialize notes, show QR/share |
-| `ReceiveDetails`  | Static QR placeholder | Display script address + QR for deposits      |
-| `DepositDetails`  | Static form display   | Invoke `deposit` with UTxO ref                |
-| `WithdrawDetails` | Static form display   | Invoke `withdraw` with destination + amount   |
-| `NotesPanel`      | Static note list      | Live notes from local store                   |
-| `ActivityPanel`   | Static activity list  | Live activity from local store                |
-| `AssetPanel`      | Static asset list     | Computed from live note aggregation           |
+| Screen            | Current behavior      | Integrated behavior                                                                                |
+| ----------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `SendDetails`     | Static draft display  | Invoke `send`, emit text/QR off-chain envelope                                                     |
+| `ReceiveDetails`  | Static QR placeholder | Create strict off-chain receive requests only; no Cardano L1 semantics                             |
+| `DepositDetails`  | Static form display   | Show funding address/QR first, then build/sign the on-chain deposit and submit the off-chain claim |
+| `WithdrawDetails` | Static form display   | Invoke `withdraw` with destination + amount and escalate failed burns via hard attention state     |
+| `NotesPanel`      | Static note list      | Live notes from local store, including quarantine states                                           |
+| `ActivityPanel`   | Static activity list  | Live activity from local store                                                                     |
+| `AssetPanel`      | Static asset list     | Computed from live note aggregation                                                                |
 
 ### 3.4 Error handling
 
@@ -563,20 +679,44 @@ to wallet status and UI state:
 | Blinding factor persistence | `attention`    | Block operation until resolved     |
 | Orphaned blinding factors   | `attention`    | Startup recovery prompt            |
 
-The `WalletMode` type should be extended from `"stub"` to `"stub" | "live"`.
-When in `"live"` mode, the frontend renders real data and error states.
-When in `"stub"` mode, the existing hardcoded data is used (useful for UI
-development without a running node).
+The shipped wallet should run in **live-only** mode. Stub data may remain in
+source control temporarily for UI development, but it is not part of the
+runtime product model and should not appear as a user-facing mode toggle.
+
+Off-chain receive requests should use a strict wallet-defined payload so the
+receiver can enforce the requested asset/amount/label exactly when the sender
+uses the same wallet flow. At minimum, the request payload should carry:
+
+```json
+{
+  "network": "preprod",
+  "delegate_pk": "<hex>",
+  "recipient_label": "Everyday Wallet",
+  "asset": {
+    "policy_id": "<hex>",
+    "asset_name": "<hex>"
+  },
+  "amount": 1200,
+  "label": "Invoice #482"
+}
+```
+
+`ReceiveDetails` creates this payload for text/QR sharing. `import_notes` or a
+paired send flow must reject note envelopes that do not match the active
+request when the user is fulfilling a strict off-chain request.
 
 ### 3.5 Settings screen
 
 The settings screen already shows delegate PK and script address. Wire these
-to the real values from `connect`. Add:
+to the real values from live bootstrap/setup. Add:
 
-- Node URL input (stored in local config).
+- Node URL inputs for all three networks.
+- One shared provider configuration block (provider type, API key, optional
+  base URL override) reused across networks.
 - Network selector (mainnet/preprod/preview).
 - Manual sync trigger.
-- Wallet mode toggle (stub/live) for development.
+- Startup warning surface for broken network configs that does not block
+  healthy networks.
 
 ## Phase 4: Security Considerations
 
@@ -628,6 +768,14 @@ Notes received off-chain (via send) should be refreshed immediately. This is
 the only way to guarantee they haven't been double-spent. The UI should make
 this the default flow: receive -> auto-refresh -> confirmed.
 
+If auto-refresh fails:
+
+- keep the imported notes in the notes list with a dedicated quarantined /
+  untrusted status
+- exclude quarantined notes from spendable balances and send/withdraw flows
+- surface wallet status as `attention`
+- provide a retry/discard path from the note detail or notes list
+
 ## Phase 5: Future Work
 
 These items are not part of the initial integration but should be considered:
@@ -635,8 +783,8 @@ These items are not part of the initial integration but should be considered:
 - **CIP-30 integration**: Connect to browser-based Cardano wallets (Nami,
   Eternl, Lace) for deposit transactions. Would require a WebView bridge or
   a separate flow.
-- **QR code transport for sends**: Encode serialized notes as QR codes for
-  in-person payments. The note JSON is small enough (~300 bytes) to fit.
+- **Multipart QR transport**: v1 only supports single-code QR sends. A later
+  version may add multipart QR transfer for larger note bundles.
 - **NFC transport**: For mobile targets (if Tauri mobile support is added).
 - **Multi-delegate support**: Track notes across multiple delegates. The
   `Note.delegate` field already carries the delegate public key, so the data
@@ -670,7 +818,8 @@ wallet that can be tested end-to-end against a dev-mode node (which can
 7. **`wallet/src/lib/walletStore.ts`** — reactive state from Tauri backend.
 8. **`wallet/src/App.tsx`** — swap stub imports for live state.
 9. **Action screen components** — wire send/receive forms to invoke calls.
-10. **Settings screen** — node URL configuration, network selector, sync.
+10. **Settings screen** — guided setup support, three node URL inputs,
+    shared provider config, network selector, sync, startup warnings.
 
 At this point the wallet can connect to a dev-mode node, receive emitted
 notes, refresh (split/merge) them, and send bearer tokens to other users.
@@ -694,4 +843,5 @@ building), `coset` (COSE_Sign1), `blake2` (intent hash), `hex`.
 14. **Withdraw flow** — Cardano transaction building for script UTxO spending,
     change output blinding, witness attachment.
 15. **Deposit/withdraw UI** — wire `DepositDetails` and `WithdrawDetails`
-    screens to invoke calls.
+    screens to invoke calls, including the funding-address-first deposit UX
+    and hard attention handling for failed withdrawals.
