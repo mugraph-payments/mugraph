@@ -33,11 +33,21 @@ export interface StoredNote {
   created_at: number;
 }
 
+export interface ActivityRecord {
+  id: string;
+  kind: string;
+  timestamp: number;
+  details: string;
+}
+
 export interface WalletSnapshot {
+  label: string;
   network: string;
   notes: StoredNote[];
+  activity: ActivityRecord[];
   delegate_pk: string | null;
   cardano_script_address: string | null;
+  cardano_funding_address: string | null;
   has_orphaned_blinding_factors: boolean;
 }
 

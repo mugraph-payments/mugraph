@@ -43,10 +43,13 @@ pub struct NetworkBootstrap {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletSnapshot {
+    pub label: String,
     pub network: String,
     pub notes: Vec<StoredNote>,
+    pub activity: Vec<crate::store::ActivityRecord>,
     pub delegate_pk: Option<PublicKey>,
     pub cardano_script_address: Option<String>,
+    pub cardano_funding_address: Option<String>,
     pub has_orphaned_blinding_factors: bool,
 }
 
@@ -216,9 +219,18 @@ pub async fn get_wallet_state(
     network: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<WalletSnapshot, String> {
+    let label = state
+        .store
+        .get_config("label")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "Mugraph Wallet".to_string());
     let notes = state
         .store
         .list_notes(&network)
+        .map_err(|e| e.to_string())?;
+    let activity = state
+        .store
+        .list_activity(&network)
         .map_err(|e| e.to_string())?;
     let delegate_pk = state
         .store
@@ -233,11 +245,19 @@ pub async fn get_wallet_state(
         .scan_orphaned_blinding_factors(&network)
         .map_err(|e| e.to_string())?;
 
+    // Derive the in-app Cardano funding address for this network
+    let funding_addr =
+        crate::cardano_tx::derive_address(&state.cardano_payment_vk, &network)
+            .ok();
+
     Ok(WalletSnapshot {
+        label,
         network,
         notes,
+        activity,
         delegate_pk,
         cardano_script_address: script_addr,
+        cardano_funding_address: funding_addr,
         has_orphaned_blinding_factors: !orphans.is_empty(),
     })
 }
@@ -314,6 +334,17 @@ pub async fn import_notes(
         .get_delegate_pk(&network)
         .map_err(|e| e.to_string())?
         .ok_or("no delegate pk for network")?;
+
+    // Validate envelope delegate matches the active wallet's delegate for this network
+    if let Some(envelope_delegate) = envelope["delegate_pk"].as_str() {
+        let expected_delegate_hex = hex::encode(delegate_pk.0);
+        if envelope_delegate != expected_delegate_hex {
+            return Err(format!(
+                "envelope delegate_pk mismatch: expected {}, got {}",
+                expected_delegate_hex, envelope_delegate
+            ));
+        }
+    }
 
     let mut imported = 0;
     let mut quarantined = 0;
@@ -566,16 +597,26 @@ pub async fn send(
         notes.push(stored.note);
     }
 
-    let now = std::time::SystemTime::now()
+    let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    // ISO 8601 format as specified in the reference
+    let created_at_iso = format!(
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        1970 + now_secs / 31_536_000,
+        (now_secs % 31_536_000) / 2_592_000 + 1,
+        (now_secs % 2_592_000) / 86_400 + 1,
+        (now_secs % 86_400) / 3_600,
+        (now_secs % 3_600) / 60,
+        now_secs % 60,
+    );
 
     let envelope = serde_json::json!({
         "network": input.network,
-        "delegate_pk": format!("{delegate_pk}"),
+        "delegate_pk": hex::encode(delegate_pk.0),
         "sender_label": label,
-        "created_at": now,
+        "created_at": created_at_iso,
         "notes": notes,
     });
 
@@ -1443,14 +1484,19 @@ mod tests {
     #[test]
     fn wallet_snapshot_serializes() {
         let snap = WalletSnapshot {
+            label: "Test Wallet".to_string(),
             network: "preprod".to_string(),
             notes: vec![],
+            activity: vec![],
             delegate_pk: None,
             cardano_script_address: None,
+            cardano_funding_address: Some("addr_test1abc".to_string()),
             has_orphaned_blinding_factors: false,
         };
         let json = serde_json::to_string(&snap).unwrap();
         assert!(json.contains("preprod"));
+        assert!(json.contains("Test Wallet"));
+        assert!(json.contains("addr_test1abc"));
     }
 
     #[test]

@@ -87,11 +87,28 @@ export function snapshotToWalletState(snapshot: WalletSnapshot): WalletState {
     createdAt: new Date(stored.created_at * 1000).toISOString(),
   }));
 
-  const status: WalletStatus = snapshot.has_orphaned_blinding_factors ? "attention" : "ready";
+  const hasQuarantined = snapshot.notes.some((n) => n.status === "quarantined");
+  const status: WalletStatus =
+    snapshot.has_orphaned_blinding_factors || hasQuarantined ? "attention" : "ready";
+
+  const activity = snapshot.activity.map((a) => ({
+    id: a.id,
+    kind: a.kind as "deposit" | "refresh" | "withdraw",
+    status: "completed" as const,
+    assetTicker: "ADA",
+    amount: 0,
+    summary: a.details,
+    reference: a.id,
+    createdAt: new Date(a.timestamp * 1000).toISOString(),
+  }));
+
+  const pendingActivityCount = snapshot.activity.filter(
+    (a) => a.kind === "withdraw" || a.kind === "deposit",
+  ).length;
 
   return {
     identity: {
-      label: "Mugraph Wallet",
+      label: snapshot.label,
       mode: "live",
       network: snapshot.network as MugraphNetwork,
       status,
@@ -104,11 +121,11 @@ export function snapshotToWalletState(snapshot: WalletSnapshot): WalletState {
       totalValueUsd: 0,
       liquidAssetCount: assets.length,
       noteCount: snapshot.notes.filter((n) => n.status === "available").length,
-      pendingActivityCount: 0,
+      pendingActivityCount,
     },
     assets,
     notes,
-    activity: [],
+    activity,
     actions: [
       {
         id: "send",

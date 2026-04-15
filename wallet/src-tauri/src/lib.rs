@@ -74,7 +74,16 @@ fn init_app_state() -> Arc<AppState> {
             None => {
                 let mut sk = [0u8; 32];
                 rand::Fill::fill(&mut sk, &mut rand::rng());
-                let vk = sk;
+                // Derive the Cardano payment verification key from the signing key
+                // using the CSL library (Ed25519 public key derivation)
+                let csl_priv =
+                    whisky_csl::csl::PrivateKey::from_normal_bytes(&sk)
+                        .expect("valid private key bytes");
+                let csl_pub = csl_priv.to_public();
+                let vk: [u8; 32] = csl_pub
+                    .as_bytes()
+                    .try_into()
+                    .expect("CSL public key is 32 bytes");
                 store
                     .set_cardano_keypair_bytes("payment_sk", &sk)
                     .expect("failed to persist cardano sk");
