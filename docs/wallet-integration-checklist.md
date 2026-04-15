@@ -189,10 +189,10 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Additional dependencies
 
-- [ ] Add `whisky-csl` (Cardano tx building) to `wallet/src-tauri/Cargo.toml`
-- [ ] Add `coset` (COSE_Sign1) dependency
-- [ ] Add `blake2` (intent hash) dependency
-- [ ] Add `hex` dependency
+- [ ] Add `whisky-csl` (Cardano tx building) to `wallet/src-tauri/Cargo.toml` — deferred: uplc version conflict
+- [x] Add `coset` (COSE_Sign1) dependency
+- [x] Add `blake2` (intent hash) dependency
+- [x] Add `hex` dependency
 
 ### Node client extensions
 
@@ -201,11 +201,11 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### CIP-8 signature construction
 
-- [ ] Implement COSE_Sign1 envelope builder
-- [ ] Set `alg: EdDSA` in protected header
-- [ ] Embed canonical payload bytes from `build_canonical_payload`
-- [ ] Sign `tbs_data` with Ed25519 key
-- [ ] Serialize with `to_tagged_vec()`
+- [x] Implement COSE_Sign1 envelope builder
+- [x] Set `alg: EdDSA` in protected header
+- [x] Embed canonical payload bytes from `build_canonical_payload`
+- [x] Sign `tbs_data` with Ed25519 key
+- [x] Serialize with `to_tagged_vec()`
 
 ### 2.2 Deposit — Stage A: On-chain deposit transaction
 
@@ -294,4 +294,4 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 - [x] Auto-refresh imported notes immediately on receive
 - [x] On refresh failure: quarantine notes (exclude from balance, set `attention` status)
-- [ ] Provide retry/discard UI for quarantined notes
+- [x] Provide retry/discard UI for quarantined notes

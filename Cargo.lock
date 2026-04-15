@@ -3298,8 +3298,11 @@ dependencies = [
 name = "mugraph-wallet"
 version = "0.1.0"
 dependencies = [
+ "blake2",
+ "coset",
  "dirs",
  "ed25519-dalek",
+ "hex",
  "mugraph-core",
  "muhex",
  "rand 0.9.2",
