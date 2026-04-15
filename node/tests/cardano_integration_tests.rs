@@ -2,7 +2,9 @@
 
 use mugraph_node::{
     cardano::{
-        build_script_address, compute_script_hash, generate_payment_keypair,
+        build_script_address,
+        compute_script_hash,
+        generate_payment_keypair,
     },
     provider::{Provider, UtxoInfo},
 };

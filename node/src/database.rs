@@ -4,15 +4,31 @@ use metrics::counter;
 use mugraph_core::{
     error::Error,
     types::{
-        CardanoWallet, CrossNodeMessageRecord, CrossNodeTransferRecord,
-        DepositRecord, IdempotencyRecord, Signature, TransferAuditEvent,
-        UtxoRef, WithdrawalKey, WithdrawalRecord,
+        CardanoWallet,
+        CrossNodeMessageRecord,
+        CrossNodeTransferRecord,
+        DepositRecord,
+        IdempotencyRecord,
+        Signature,
+        TransferAuditEvent,
+        UtxoRef,
+        WithdrawalKey,
+        WithdrawalRecord,
     },
 };
 use redb::{
-    Builder, Database as Redb, Key, ReadOnlyTable, ReadTransaction,
-    ReadableDatabase, StorageBackend, Table, TableDefinition, Value,
-    WriteTransaction, backends::FileBackend,
+    Builder,
+    Database as Redb,
+    Key,
+    ReadOnlyTable,
+    ReadTransaction,
+    ReadableDatabase,
+    StorageBackend,
+    Table,
+    TableDefinition,
+    Value,
+    WriteTransaction,
+    backends::FileBackend,
 };
 
 pub const NOTES: TableDefinition<Signature, bool> =

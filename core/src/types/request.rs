@@ -2,8 +2,14 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::types::{
-    AssetName, BlindSignature, PolicyId, Refresh, TransferAckPayload,
-    TransferInitPayload, TransferNoticePayload, TransferStatusQueryPayload,
+    AssetName,
+    BlindSignature,
+    PolicyId,
+    Refresh,
+    TransferAckPayload,
+    TransferInitPayload,
+    TransferNoticePayload,
+    TransferStatusQueryPayload,
     XNodeEnvelope,
 };
 
@@ -104,10 +110,18 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::types::{
-        Refresh, Request, TransferAckPayload, TransferAckStatus,
-        TransferInitPayload, TransferNoticePayload, TransferNoticeStage,
-        TransferQueryType, TransferStatusQueryPayload, XNodeAuth,
-        XNodeEnvelope, XNodeMessageType,
+        Refresh,
+        Request,
+        TransferAckPayload,
+        TransferAckStatus,
+        TransferInitPayload,
+        TransferNoticePayload,
+        TransferNoticeStage,
+        TransferQueryType,
+        TransferStatusQueryPayload,
+        XNodeAuth,
+        XNodeEnvelope,
+        XNodeMessageType,
     };
 
     #[proptest]

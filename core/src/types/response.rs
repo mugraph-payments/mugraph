@@ -56,9 +56,14 @@ mod tests {
     use test_strategy::proptest;
 
     use crate::types::{
-        Response, TransferChainState, TransferCreditState,
-        TransferSettlementState, TransferStatusPayload, XNodeAuth,
-        XNodeEnvelope, XNodeMessageType,
+        Response,
+        TransferChainState,
+        TransferCreditState,
+        TransferSettlementState,
+        TransferStatusPayload,
+        XNodeAuth,
+        XNodeEnvelope,
+        XNodeMessageType,
     };
 
     #[proptest]

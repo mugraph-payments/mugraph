@@ -6,7 +6,9 @@ mod wallet;
 pub use address::{build_script_address, compute_script_hash};
 pub use keys::{generate_payment_keypair, import_payment_key};
 pub use validator_artifacts::{
-    compile_validator, get_validator_dir, load_validator_cbor,
+    compile_validator,
+    get_validator_dir,
+    load_validator_cbor,
     validator_artifacts_exist,
 };
 pub use wallet::setup_cardano_wallet;

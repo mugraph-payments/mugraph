@@ -2,7 +2,13 @@ use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr, eyre};
 use mugraph_core::types::{
-    AssetName, Note, PolicyId, PublicKey, Refresh, Request, Response,
+    AssetName,
+    Note,
+    PolicyId,
+    PublicKey,
+    Refresh,
+    Request,
+    Response,
 };
 use reqwest::Url;
 

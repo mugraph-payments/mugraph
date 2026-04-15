@@ -5,7 +5,12 @@ use std::{
 
 use clap::Parser;
 use mugraph_core::types::{
-    Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh,
+    Asset,
+    BlindSignature,
+    Note,
+    PolicyId,
+    PublicKey,
+    Refresh,
 };
 use reqwest::Url;
 

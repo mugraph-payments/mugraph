@@ -55,6 +55,8 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] Implement `switch_network` command
 - [ ] Implement `create_receive_request` command
 - [ ] Implement `import_notes` command
+- [ ] Implement `deposit` command
+- [ ] Implement `withdraw` command
 - [ ] Implement `send` command
 - [ ] Implement `refresh_notes` command
 - [ ] Implement `sync` command
@@ -69,6 +71,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] Collect one node URL per network
 - [ ] Collect one provider type (blockfrost or maestro)
 - [ ] Collect one provider credential set (reused across networks)
+- [ ] Use one shared Mugraph identity and one shared in-app Cardano payment keypair across all networks
 - [ ] On first launch: generate `Keypair::random()` for BDHKE operations and persist
 - [ ] On first launch: generate `ed25519_dalek::SigningKey` for CIP-8/witness auth and persist
 - [ ] On first launch: generate one Cardano payment keypair and persist
@@ -78,39 +81,41 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] On subsequent launches: open last-used network
 - [ ] Handle broken network config at startup: warn but allow healthy networks
 
+#### 2.4 Send (off-chain, user to user)
+
+- [ ] Implement coin selection (largest-first deterministic)
+- [ ] If exact denominations unavailable: trigger refresh first to split/merge
+- [ ] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
+- [ ] Do not add a schema/version field to the v1 off-chain send envelope
+- [ ] Support copy/paste text transport
+- [ ] Support QR transport (when payload fits single-code limit; otherwise require text)
+- [ ] Mark sent notes as `spent` locally
+- [ ] Implement import: validate envelope network + delegate match active wallet
+- [ ] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)` and require the returned bool to be `true`
+- [ ] Implement auto-refresh of imported notes immediately after import
+- [ ] If auto-refresh fails: keep notes with quarantined/untrusted status
+- [ ] Exclude quarantined notes from spendable balance
+- [ ] Set wallet status to `attention` when quarantined notes exist
+- [ ] Provide retry/discard path for quarantined notes
+
 #### 2.5 Refresh (split, merge, re-validate)
 
 - [ ] Build `Refresh` using `RefreshBuilder` (`.input()` / `.output()` / `.build()`)
 - [ ] For each output atom: compute commitment via `atom.commitment(&refresh.asset_ids)`
 - [ ] For each output atom: blind commitment via `crypto::blind(&mut rng, commitment.as_ref())`
 - [ ] Convert blinded points to `Signature` and attach to `refresh.blinded_points`
+- [ ] Ensure `refresh.blinded_points` is populated for every output before serialization
 - [ ] Persist each blinding factor to `blinding_factors` table BEFORE sending request
 - [ ] Send `Request::Refresh(refresh)` to node
 - [ ] Receive `Response::Transaction { outputs }`
 - [ ] For each output: recover blinded point for DLEQ verification
 - [ ] For each output: verify DLEQ proof via `crypto::verify_dleq_signature()`
 - [ ] For each output: unblind signature via `crypto::unblind_signature()`
-- [ ] For each output: verify final signature via `crypto::verify()`
+- [ ] For each output: verify final signature via `crypto::verify()` and require the returned bool to be `true`
 - [ ] For each output: construct full `Note` with unblinded signature + `DleqProofWithBlinding`
 - [ ] Store new notes with status `available`
 - [ ] Delete recovered `r` rows from `blinding_factors`
 - [ ] Mark input notes as `spent`
-
-#### 2.4 Send (off-chain, user to user)
-
-- [ ] Implement coin selection (largest-first deterministic)
-- [ ] If exact denominations unavailable: trigger refresh first to split/merge
-- [ ] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
-- [ ] Support copy/paste text transport
-- [ ] Support QR transport (when payload fits single-code limit; otherwise require text)
-- [ ] Mark sent notes as `spent` locally
-- [ ] Implement import: validate envelope network + delegate match active wallet
-- [ ] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)`
-- [ ] Implement auto-refresh of imported notes immediately after import
-- [ ] If auto-refresh fails: keep notes with quarantined/untrusted status
-- [ ] Exclude quarantined notes from spendable balance
-- [ ] Set wallet status to `attention` when quarantined notes exist
-- [ ] Provide retry/discard path for quarantined notes
 
 #### 2.6 Sync
 
@@ -120,11 +125,19 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] Check pending withdrawal on-chain confirmation
 - [ ] Update `lastSyncedAt`
 
+#### 2.7 Milestone A dev/test note seeding
+
+- [ ] Define how Milestone A gets initial notes for end-to-end testing before L1 deposit exists
+- [ ] Use the node's dev-only `emit` capability or another documented manual seeding path for local/dev testing
+
 ### Phase 3: Frontend Integration
 
 #### 3.1 Replace stub data with Tauri invoke calls
 
 - [ ] Replace static imports from `stubWallet.ts` with `invoke()` calls via `@tauri-apps/api/core`
+- [ ] Route all node/provider access through Tauri commands; no direct browser-context RPC calls
+- [ ] Remove any user-facing stub/demo mode from the shipped app (live-only wallet)
+- [ ] Ensure no live/stub mode toggle appears in the production UI
 - [ ] Create `wallet/src/lib/api.ts` — TypeScript invoke wrappers for all commands
 
 #### 3.2 State management (`wallet/src/lib/walletStore.ts`)
@@ -132,8 +145,9 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] Require guided setup completion before entering main wallet shell
 - [ ] Restore last-used network on launch
 - [ ] Call `get_wallet_state(activeNetwork)` on mount and after every mutation
+- [ ] Trigger periodic/background `sync` for the active network
 - [ ] Provide active-network `WalletState` to all components via context
-- [ ] Expose mutation functions: `createReceiveRequest`, `importNotes`, `send`, `refreshNotes`
+- [ ] Expose mutation functions: `createReceiveRequest`, `importNotes`, `deposit`, `withdraw`, `send`, `refreshNotes`, `sync`
 - [ ] Surface startup warnings for broken network configs without blocking healthy networks
 - [ ] Hardcode known test asset metadata (ADA/lovelace, USDM) for Milestone A
 - [ ] Handle missing price data gracefully (zero/omit `totalValueUsd`, `shareOfWalletPct`)
@@ -207,11 +221,14 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### 2.2 Deposit — Stage B: Off-chain deposit claim
 
+- [ ] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit`
+- [ ] Surface pending/confirming deposit status in activity/UI before off-chain claim
 - [ ] For each output note: generate random nonce
 - [ ] For each output note: compute commitment via `Note::commitment()`
 - [ ] For each output note: blind commitment via `crypto::blind()`
 - [ ] Persist `r` to `blinding_factors` table immediately
 - [ ] Pack blinded points into `BlindSignature` with default `DleqProof`
+- [ ] Keep original blinded points in memory so response-side DLEQ proofs can be verified
 - [ ] Build `DepositRequest` with: utxo ref, outputs, message (user_pubkey JSON), CIP-8 signature, nonce, network
 - [ ] Send `Request::Deposit(deposit_request)` to node
 - [ ] Receive `Response::Deposit { signatures, deposit_ref }`
@@ -237,7 +254,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
   - [ ] Fee: under `max_withdrawal_fee` (2M lovelace) within `fee_tolerance_pct` (5%)
   - [ ] User witnesses: Ed25519 signatures over tx body hash
 - [ ] Compute transaction hash (Blake2b-256 of tx body bytes only)
-- [ ] Build `WithdrawRequest` with: notes as `Vec<BlindSignature>`, change_outputs (blinded), tx_cbor (hex), tx_hash (hex)
+- [ ] Build `WithdrawRequest` with: notes as `Vec<BlindSignature>`, change_outputs (blinded), tx_cbor (hex body + user witness set), tx_hash (hex)
 - [ ] Persist each change output blinding factor BEFORE sending request
 - [ ] Send `Request::Withdraw(withdraw_request)` to node
 - [ ] Receive `Response::Withdraw { signed_tx_cbor, tx_hash, change_notes }`

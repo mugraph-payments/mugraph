@@ -4,7 +4,12 @@ use rand::{prelude::*, rngs::StdRng};
 use crate::{
     crypto,
     types::{
-        AssetName, DleqProofWithBlinding, Hash, Keypair, Note, PolicyId,
+        AssetName,
+        DleqProofWithBlinding,
+        Hash,
+        Keypair,
+        Note,
+        PolicyId,
         Signature,
     },
 };
