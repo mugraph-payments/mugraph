@@ -413,6 +413,7 @@ pub async fn import_notes(
 
     let mut imported = 0;
     let mut quarantined = 0;
+    let mut imported_notes: Vec<mugraph_core::types::Note> = Vec::new();
 
     for note_value in notes_array {
         let note: mugraph_core::types::Note =
@@ -445,7 +446,10 @@ pub async fn import_notes(
             .map_err(|e| e.to_string())?;
 
         match status {
-            NoteStatus::Available => imported += 1,
+            NoteStatus::Available => {
+                imported += 1;
+                imported_notes.push(note);
+            }
             NoteStatus::Quarantined => quarantined += 1,
             _ => {}
         }
@@ -453,24 +457,11 @@ pub async fn import_notes(
 
     // Auto-refresh imported notes to re-validate against the delegate.
     // If refresh fails, quarantine the notes.
-    if imported > 0 {
-        let available_notes: Vec<mugraph_core::types::Note> = {
-            let all = state
-                .store
-                .list_notes(&network)
-                .map_err(|e| e.to_string())?;
-            all.into_iter()
-                .filter(|s| s.status == NoteStatus::Available)
-                .map(|s| s.note)
-                .collect()
-        };
-
+    if !imported_notes.is_empty() {
         // Try to refresh through the node — if the node is available
         let clients = state.node_clients.read().await;
         if let Some(client) = clients.get(&network) {
-            // Only refresh the newly imported notes (last `imported` available notes)
-            let to_refresh: Vec<&mugraph_core::types::Note> =
-                available_notes.iter().rev().take(imported).collect();
+            let to_refresh = &imported_notes;
 
             for note in to_refresh {
                 let mut builder = mugraph_core::builder::RefreshBuilder::new();
@@ -692,6 +683,29 @@ pub async fn send(
         "text"
     };
 
+    // Record send activity
+    let send_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let total_sent: u64 = notes.iter().map(|n| n.amount).sum();
+    state
+        .store
+        .put_activity(
+            &input.network,
+            &crate::store::ActivityRecord {
+                id: format!("send-{send_now}"),
+                kind: "send".to_string(),
+                timestamp: send_now,
+                details: format!(
+                    "Sent {} notes totalling {}",
+                    notes.len(),
+                    total_sent
+                ),
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
     Ok(SendResult {
         envelope: envelope_str,
         transport_hint: transport_hint.to_string(),
@@ -864,6 +878,30 @@ pub async fn refresh_notes(
             .update_note_status(&input.network, &note.nonce, NoteStatus::Spent)
             .map_err(|e| e.to_string())?;
     }
+
+    // Record refresh activity
+    let refresh_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let total_refreshed: u64 = input_notes.iter().map(|n| n.amount).sum();
+    state
+        .store
+        .put_activity(
+            &input.network,
+            &crate::store::ActivityRecord {
+                id: format!("refresh-{refresh_now}"),
+                kind: "refresh".to_string(),
+                timestamp: refresh_now,
+                details: format!(
+                    "Refreshed {} inputs into {} outputs totalling {}",
+                    input_notes.len(),
+                    new_count,
+                    total_refreshed,
+                ),
+            },
+        )
+        .map_err(|e| e.to_string())?;
 
     Ok(RefreshResult {
         new_note_count: new_count,

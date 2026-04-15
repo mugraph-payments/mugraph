@@ -94,6 +94,25 @@ fn init_app_state() -> Arc<AppState> {
             }
         };
 
+    // Scan for orphaned blinding factors on startup (Phase 4 requirement).
+    // These represent in-flight operations that crashed between blinding and
+    // storing the final note. Log warnings so the user is aware.
+    for network in &["mainnet", "preprod", "preview"] {
+        match store.scan_orphaned_blinding_factors(network) {
+            Ok(orphans) if !orphans.is_empty() => {
+                eprintln!(
+                    "WARNING: {} orphaned blinding factor(s) found on {network}. \
+                     These may represent lost funds from crashed operations.",
+                    orphans.len()
+                );
+                for orphan in &orphans {
+                    eprintln!("  orphan key: {}", orphan.key);
+                }
+            }
+            _ => {}
+        }
+    }
+
     Arc::new(AppState {
         store,
         keypair,
