@@ -2,17 +2,10 @@ use color_eyre::eyre::{Context, Result};
 use serde::Deserialize;
 
 use super::{
-    AssetAmount,
-    BlockfrostProvider,
-    ChainTip,
-    SubmitResponse,
-    UtxoInfo,
+    AssetAmount, BlockfrostProvider, ChainTip, SubmitResponse, UtxoInfo,
     common::{
-        ADDRESS_UTXO_PAGE_SIZE,
-        ProtocolParams,
-        parse_required,
-        send_with_retry,
-        with_pagination,
+        ADDRESS_UTXO_PAGE_SIZE, ProtocolParams, parse_required,
+        send_with_retry, with_pagination,
     },
 };
 
@@ -363,10 +356,7 @@ struct BlockfrostEpochParams {
 #[cfg(test)]
 mod tests {
     use axum::{
-        Router,
-        http::StatusCode,
-        response::IntoResponse,
-        routing::get,
+        Router, http::StatusCode, response::IntoResponse, routing::get,
     };
     use serde_json::json;
 

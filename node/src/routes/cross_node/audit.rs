@@ -1,12 +1,8 @@
 use mugraph_core::{
     error::Error,
     types::{
-        CrossNodeTransferRecord,
-        TransferAuditEvent,
-        TransferChainState,
-        TransferCreditState,
-        TransferSettlementState,
-        TransferStatusPayload,
+        CrossNodeTransferRecord, TransferAuditEvent, TransferChainState,
+        TransferCreditState, TransferSettlementState, TransferStatusPayload,
         XNodeEnvelope,
     },
 };

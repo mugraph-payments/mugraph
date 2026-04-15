@@ -1,10 +1,7 @@
 //! Tests for Cardano provider implementations
 
 use mugraph_node::provider::{
-    AssetAmount,
-    Provider,
-    TxSettlementState,
-    evaluate_tx_observation,
+    AssetAmount, Provider, TxSettlementState, evaluate_tx_observation,
 };
 use proptest::prelude::*;
 
