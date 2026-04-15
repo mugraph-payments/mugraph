@@ -767,6 +767,207 @@ pub async fn refresh_notes(
 }
 
 #[tauri::command]
+pub async fn deposit(
+    input: DepositInput,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<DepositResult, String> {
+    let delegate_pk = state
+        .store
+        .get_delegate_pk(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no delegate pk for network")?;
+
+    // Build blinded outputs
+    let (blinding_data, blinded_outputs) = {
+        let mut rng = rand::rng();
+        let mut data = Vec::new();
+        let mut outputs = Vec::new();
+
+        for &amount in &input.output_amounts {
+            let nonce = mugraph_core::types::Hash::random(&mut rng);
+            // Build a temporary note to compute commitment
+            let temp_note = mugraph_core::types::Note {
+                amount,
+                delegate: delegate_pk,
+                policy_id: mugraph_core::types::PolicyId::zero(),
+                asset_name: mugraph_core::types::AssetName::empty(),
+                nonce,
+                signature: mugraph_core::types::Signature::zero(),
+                dleq: None,
+            };
+            let commitment = temp_note.commitment();
+            let blinded =
+                mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
+
+            // Persist blinding factor BEFORE sending
+            state
+                .store
+                .put_blinding_factor(
+                    &input.network,
+                    &nonce,
+                    &blinded.factor.to_bytes(),
+                )
+                .map_err(|e| e.to_string())?;
+
+            data.push((
+                nonce,
+                blinded.factor,
+                blinded.point,
+                commitment,
+                amount,
+            ));
+            outputs.push(mugraph_core::types::BlindSignature {
+                signature: mugraph_core::types::Blinded(
+                    mugraph_core::types::Signature::from(blinded.point),
+                ),
+                proof: mugraph_core::types::DleqProof::default(),
+            });
+        }
+        (data, outputs)
+    };
+
+    let deposit_req = mugraph_core::types::DepositRequest {
+        utxo: mugraph_core::types::UtxoReference {
+            tx_hash: input.utxo_tx_hash.clone(),
+            index: input.utxo_index,
+        },
+        outputs: blinded_outputs,
+        message: serde_json::json!({
+            "user_pubkey": muhex::encode(state.ed25519_key.verifying_key().as_bytes())
+        })
+        .to_string(),
+        signature: vec![], // CIP-8 signature placeholder for now
+        nonce: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        network: input.network.clone(),
+    };
+
+    let clients = state.node_clients.read().await;
+    let client = clients
+        .get(&input.network)
+        .ok_or("no node client for network")?;
+
+    let resp = client
+        .deposit(&deposit_req)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Process response signatures
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let mut notes_created = 0;
+    for (i, (nonce, r, bp, commitment, amount)) in
+        blinding_data.iter().enumerate()
+    {
+        if i >= resp.signatures.len() {
+            break;
+        }
+        let sig = &resp.signatures[i];
+
+        // Verify DLEQ
+        let bpt = mugraph_core::types::Signature::from(*bp)
+            .to_point()
+            .map_err(|e| e.to_string())?;
+        let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
+            &delegate_pk,
+            &bpt,
+            &sig.signature,
+            &sig.proof,
+        )
+        .map_err(|e| e.to_string())?;
+        if !dleq_ok {
+            return Err(
+                "DLEQ verification failed for deposit output".to_string()
+            );
+        }
+
+        let unblinded = mugraph_core::crypto::unblind_signature(
+            &sig.signature,
+            r,
+            &delegate_pk,
+        )
+        .map_err(|e| e.to_string())?;
+        let valid = mugraph_core::crypto::verify(
+            &delegate_pk,
+            commitment.as_ref(),
+            unblinded,
+        )
+        .map_err(|e| e.to_string())?;
+        if !valid {
+            return Err("unblinded signature verification failed for deposit"
+                .to_string());
+        }
+
+        let note = mugraph_core::types::Note {
+            amount: *amount,
+            delegate: delegate_pk,
+            policy_id: mugraph_core::types::PolicyId::zero(),
+            asset_name: mugraph_core::types::AssetName::empty(),
+            nonce: *nonce,
+            signature: unblinded,
+            dleq: Some(mugraph_core::types::DleqProofWithBlinding {
+                proof: sig.proof,
+                blinding_factor: (*r).into(),
+            }),
+        };
+
+        state
+            .store
+            .finalize_note(&input.network, &note, NoteStatus::Available, now)
+            .map_err(|e| e.to_string())?;
+        notes_created += 1;
+    }
+
+    // Record activity
+    state
+        .store
+        .put_activity(
+            &input.network,
+            &crate::store::ActivityRecord {
+                id: format!("deposit-{}", resp.deposit_ref),
+                kind: "deposit".to_string(),
+                timestamp: now,
+                details: format!(
+                    "Deposited {} outputs from {}:{}",
+                    notes_created, input.utxo_tx_hash, input.utxo_index
+                ),
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(DepositResult {
+        notes_created,
+        deposit_ref: resp.deposit_ref,
+    })
+}
+
+#[tauri::command]
+pub async fn withdraw(
+    input: WithdrawInput,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<WithdrawResult, String> {
+    let delegate_pk = state
+        .store
+        .get_delegate_pk(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no delegate pk for network")?;
+
+    // Placeholder: in a full implementation, this would build a Cardano
+    // transaction with whisky-csl, but for now we construct the withdraw
+    // request with the notes to burn.
+    let _delegate_pk = delegate_pk;
+
+    // For now, return a placeholder indicating withdraw is not yet fully
+    // implemented (requires Cardano tx building with whisky-csl)
+    Err("withdraw requires Cardano transaction building (whisky-csl) which is not yet integrated".to_string())
+}
+
+#[tauri::command]
 pub async fn sync(
     network: String,
     state: tauri::State<'_, Arc<AppState>>,

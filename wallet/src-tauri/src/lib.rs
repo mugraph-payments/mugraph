@@ -106,6 +106,8 @@ pub fn run() {
             commands::switch_network,
             commands::create_receive_request,
             commands::import_notes,
+            commands::deposit,
+            commands::withdraw,
             commands::send,
             commands::refresh_notes,
             commands::sync,

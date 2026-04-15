@@ -55,8 +55,8 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [x] Implement `switch_network` command
 - [x] Implement `create_receive_request` command
 - [x] Implement `import_notes` command
-- [ ] Implement `deposit` command
-- [ ] Implement `withdraw` command
+- [x] Implement `deposit` command
+- [x] Implement `withdraw` command
 - [x] Implement `send` command
 - [x] Implement `refresh_notes` command
 - [x] Implement `sync` command

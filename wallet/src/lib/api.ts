@@ -105,3 +105,34 @@ export async function refreshNotes(input: {
 export async function syncNetwork(network: string): Promise<SyncResult> {
   return invoke<SyncResult>("sync", { network });
 }
+
+export interface DepositInput {
+  network: string;
+  utxo_tx_hash: string;
+  utxo_index: number;
+  output_amounts: number[];
+}
+
+export interface DepositResult {
+  notes_created: number;
+  deposit_ref: string;
+}
+
+export interface WithdrawInput {
+  network: string;
+  destination_address: string;
+  amount: number;
+}
+
+export interface WithdrawResult {
+  tx_hash: string;
+  change_notes: number;
+}
+
+export async function deposit(input: DepositInput): Promise<DepositResult> {
+  return invoke<DepositResult>("deposit", { input });
+}
+
+export async function withdraw(input: WithdrawInput): Promise<WithdrawResult> {
+  return invoke<WithdrawResult>("withdraw", { input });
+}
