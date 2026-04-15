@@ -10,14 +10,14 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 1.1 Add `mugraph-core` dependency to wallet crate
 
-- [ ] Add `mugraph-core = { workspace = true }` to `wallet/src-tauri/Cargo.toml`
-- [ ] Add `ed25519-dalek = { version = "2.1", features = ["rand_core"] }`
-- [ ] Add `reqwest = { version = "0.12", features = ["json"] }`
-- [ ] Add `redb = { workspace = true }`
-- [ ] Add `rand = { workspace = true }`
-- [ ] Add `serde = { version = "1", features = ["derive"] }`
-- [ ] Add `serde_json = { workspace = true }`
-- [ ] Add `tokio = { workspace = true }`
+- [x] Add `mugraph-core = { workspace = true }` to `wallet/src-tauri/Cargo.toml`
+- [x] Add `ed25519-dalek = { version = "2.1", features = ["rand_core"] }`
+- [x] Add `reqwest = { version = "0.12", features = ["json"] }`
+- [x] Add `redb = { workspace = true }`
+- [x] Add `rand = { workspace = true }`
+- [x] Add `serde = { version = "1", features = ["derive"] }`
+- [x] Add `serde_json = { workspace = true }`
+- [x] Add `tokio = { workspace = true }`
 
 #### 1.2 Implement wallet-side node client (`wallet/src-tauri/src/node_client.rs`)
 
