@@ -355,6 +355,173 @@ pub async fn import_notes(
         }
     }
 
+    // Auto-refresh imported notes to re-validate against the delegate.
+    // If refresh fails, quarantine the notes.
+    if imported > 0 {
+        let available_notes: Vec<mugraph_core::types::Note> = {
+            let all = state
+                .store
+                .list_notes(&network)
+                .map_err(|e| e.to_string())?;
+            all.into_iter()
+                .filter(|s| s.status == NoteStatus::Available)
+                .map(|s| s.note)
+                .collect()
+        };
+
+        // Try to refresh through the node — if the node is available
+        let clients = state.node_clients.read().await;
+        if let Some(client) = clients.get(&network) {
+            // Only refresh the newly imported notes (last `imported` available notes)
+            let to_refresh: Vec<&mugraph_core::types::Note> =
+                available_notes.iter().rev().take(imported).collect();
+
+            for note in to_refresh {
+                let mut builder = mugraph_core::builder::RefreshBuilder::new();
+                builder = builder.input(note.clone());
+                builder = builder.output(
+                    note.policy_id,
+                    note.asset_name,
+                    note.amount,
+                );
+
+                match builder.build() {
+                    Ok(mut refresh) => {
+                        // Blind the single output
+                        let (bf, bp) = {
+                            let mut rng = rand::rng();
+                            let atom = &refresh.atoms[1]; // output is at index 1
+                            let commitment =
+                                atom.commitment(&refresh.asset_ids);
+                            let blinded = mugraph_core::crypto::blind(
+                                &mut rng,
+                                commitment.as_ref(),
+                            );
+                            state
+                                .store
+                                .put_blinding_factor(
+                                    &network,
+                                    &atom.nonce,
+                                    &blinded.factor.to_bytes(),
+                                )
+                                .map_err(|e| e.to_string())?;
+                            (
+                                blinded.factor,
+                                mugraph_core::types::Signature::from(
+                                    blinded.point,
+                                ),
+                            )
+                        };
+                        refresh.blinded_points = vec![bp];
+
+                        match client.refresh(&refresh).await {
+                            Ok(sigs) if !sigs.is_empty() => {
+                                let sig = &sigs[0];
+                                let atom = &refresh.atoms[1];
+                                let commitment =
+                                    atom.commitment(&refresh.asset_ids);
+
+                                let ok = (|| -> Result<bool, String> {
+                                    let bpt = bp
+                                        .to_point()
+                                        .map_err(|e| e.to_string())?;
+                                    let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
+                                        &delegate_pk, &bpt, &sig.signature, &sig.proof,
+                                    ).map_err(|e| e.to_string())?;
+                                    if !dleq_ok {
+                                        return Ok(false);
+                                    }
+                                    let unblinded = mugraph_core::crypto::unblind_signature(
+                                        &sig.signature, &bf, &delegate_pk,
+                                    ).map_err(|e| e.to_string())?;
+                                    mugraph_core::crypto::verify(
+                                        &delegate_pk,
+                                        commitment.as_ref(),
+                                        unblinded,
+                                    )
+                                    .map_err(|e| e.to_string())
+                                })();
+
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs();
+
+                                match ok {
+                                    Ok(true) => {
+                                        let unblinded = mugraph_core::crypto::unblind_signature(
+                                            &sig.signature, &bf, &delegate_pk,
+                                        ).map_err(|e| e.to_string())?;
+                                        let new_note = mugraph_core::types::Note {
+                                            amount: atom.amount,
+                                            delegate: atom.delegate,
+                                            policy_id: refresh.asset_ids[atom.asset_id as usize].policy_id,
+                                            asset_name: refresh.asset_ids[atom.asset_id as usize].asset_name,
+                                            nonce: atom.nonce,
+                                            signature: unblinded,
+                                            dleq: Some(mugraph_core::types::DleqProofWithBlinding {
+                                                proof: sig.proof,
+                                                blinding_factor: bf.into(),
+                                            }),
+                                        };
+                                        // Mark old note spent, store new one
+                                        let _ = state.store.update_note_status(
+                                            &network,
+                                            &note.nonce,
+                                            NoteStatus::Spent,
+                                        );
+                                        let _ = state.store.finalize_note(
+                                            &network,
+                                            &new_note,
+                                            NoteStatus::Available,
+                                            now,
+                                        );
+                                    }
+                                    _ => {
+                                        // Refresh verification failed — quarantine
+                                        let _ = state.store.update_note_status(
+                                            &network,
+                                            &note.nonce,
+                                            NoteStatus::Quarantined,
+                                        );
+                                        let _ =
+                                            state.store.delete_blinding_factor(
+                                                &network,
+                                                &atom.nonce,
+                                            );
+                                        imported -= 1;
+                                        quarantined += 1;
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Refresh RPC failed — quarantine
+                                let _ = state.store.update_note_status(
+                                    &network,
+                                    &note.nonce,
+                                    NoteStatus::Quarantined,
+                                );
+                                imported -= 1;
+                                quarantined += 1;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Build failed (shouldn't happen for 1:1 refresh) — quarantine
+                        let _ = state.store.update_note_status(
+                            &network,
+                            &note.nonce,
+                            NoteStatus::Quarantined,
+                        );
+                        imported -= 1;
+                        quarantined += 1;
+                    }
+                }
+            }
+        }
+        // If no client available, notes stay as-is (available but un-refreshed)
+    }
+
     Ok(ImportResult {
         imported,
         quarantined,

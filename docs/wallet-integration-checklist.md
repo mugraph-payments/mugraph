@@ -84,7 +84,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 #### 2.4 Send (off-chain, user to user)
 
 - [x] Implement coin selection (largest-first deterministic)
-- [ ] If exact denominations unavailable: trigger refresh first to split/merge
+- [x] If exact denominations unavailable: trigger refresh first to split/merge
 - [x] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
 - [x] Do not add a schema/version field to the v1 off-chain send envelope
 - [x] Support copy/paste text transport
@@ -92,7 +92,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [x] Mark sent notes as `spent` locally
 - [x] Implement import: validate envelope network + delegate match active wallet
 - [x] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)` and require the returned bool to be `true`
-- [ ] Implement auto-refresh of imported notes immediately after import
+- [x] Implement auto-refresh of imported notes immediately after import
 - [x] If auto-refresh fails: keep notes with quarantined/untrusted status
 - [x] Exclude quarantined notes from spendable balance
 - [x] Set wallet status to `attention` when quarantined notes exist
