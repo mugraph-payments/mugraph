@@ -67,63 +67,63 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 2.1 Connect / Bootstrap (guided setup)
 
-- [ ] Implement guided setup flow collecting config for all 3 networks (mainnet, preprod, preview)
-- [ ] Collect one node URL per network
-- [ ] Collect one provider type (blockfrost or maestro)
-- [ ] Collect one provider credential set (reused across networks)
-- [ ] Use one shared Mugraph identity and one shared in-app Cardano payment keypair across all networks
-- [ ] On first launch: generate `Keypair::random()` for BDHKE operations and persist
-- [ ] On first launch: generate `ed25519_dalek::SigningKey` for CIP-8/witness auth and persist
-- [ ] On first launch: generate one Cardano payment keypair and persist
-- [ ] For each network: call `Request::Info` on that network's node
-- [ ] Store `delegate_pk` + `cardano_script_address` per network namespace
-- [ ] Mark setup complete only after all 3 networks pass bootstrap
-- [ ] On subsequent launches: open last-used network
-- [ ] Handle broken network config at startup: warn but allow healthy networks
+- [x] Implement guided setup flow collecting config for all 3 networks (mainnet, preprod, preview)
+- [x] Collect one node URL per network
+- [x] Collect one provider type (blockfrost or maestro)
+- [x] Collect one provider credential set (reused across networks)
+- [x] Use one shared Mugraph identity and one shared in-app Cardano payment keypair across all networks
+- [x] On first launch: generate `Keypair::random()` for BDHKE operations and persist
+- [x] On first launch: generate `ed25519_dalek::SigningKey` for CIP-8/witness auth and persist
+- [x] On first launch: generate one Cardano payment keypair and persist
+- [x] For each network: call `Request::Info` on that network's node
+- [x] Store `delegate_pk` + `cardano_script_address` per network namespace
+- [x] Mark setup complete only after all 3 networks pass bootstrap
+- [x] On subsequent launches: open last-used network
+- [x] Handle broken network config at startup: warn but allow healthy networks
 
 #### 2.4 Send (off-chain, user to user)
 
 - [ ] Implement coin selection (largest-first deterministic)
 - [ ] If exact denominations unavailable: trigger refresh first to split/merge
-- [ ] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
-- [ ] Do not add a schema/version field to the v1 off-chain send envelope
+- [x] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
+- [x] Do not add a schema/version field to the v1 off-chain send envelope
 - [ ] Support copy/paste text transport
 - [ ] Support QR transport (when payload fits single-code limit; otherwise require text)
-- [ ] Mark sent notes as `spent` locally
-- [ ] Implement import: validate envelope network + delegate match active wallet
-- [ ] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)` and require the returned bool to be `true`
+- [x] Mark sent notes as `spent` locally
+- [x] Implement import: validate envelope network + delegate match active wallet
+- [x] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)` and require the returned bool to be `true`
 - [ ] Implement auto-refresh of imported notes immediately after import
-- [ ] If auto-refresh fails: keep notes with quarantined/untrusted status
-- [ ] Exclude quarantined notes from spendable balance
-- [ ] Set wallet status to `attention` when quarantined notes exist
+- [x] If auto-refresh fails: keep notes with quarantined/untrusted status
+- [x] Exclude quarantined notes from spendable balance
+- [x] Set wallet status to `attention` when quarantined notes exist
 - [ ] Provide retry/discard path for quarantined notes
 
 #### 2.5 Refresh (split, merge, re-validate)
 
-- [ ] Build `Refresh` using `RefreshBuilder` (`.input()` / `.output()` / `.build()`)
-- [ ] For each output atom: compute commitment via `atom.commitment(&refresh.asset_ids)`
-- [ ] For each output atom: blind commitment via `crypto::blind(&mut rng, commitment.as_ref())`
-- [ ] Convert blinded points to `Signature` and attach to `refresh.blinded_points`
-- [ ] Ensure `refresh.blinded_points` is populated for every output before serialization
-- [ ] Persist each blinding factor to `blinding_factors` table BEFORE sending request
-- [ ] Send `Request::Refresh(refresh)` to node
-- [ ] Receive `Response::Transaction { outputs }`
-- [ ] For each output: recover blinded point for DLEQ verification
-- [ ] For each output: verify DLEQ proof via `crypto::verify_dleq_signature()`
-- [ ] For each output: unblind signature via `crypto::unblind_signature()`
-- [ ] For each output: verify final signature via `crypto::verify()` and require the returned bool to be `true`
-- [ ] For each output: construct full `Note` with unblinded signature + `DleqProofWithBlinding`
-- [ ] Store new notes with status `available`
-- [ ] Delete recovered `r` rows from `blinding_factors`
-- [ ] Mark input notes as `spent`
+- [x] Build `Refresh` using `RefreshBuilder` (`.input()` / `.output()` / `.build()`)
+- [x] For each output atom: compute commitment via `atom.commitment(&refresh.asset_ids)`
+- [x] For each output atom: blind commitment via `crypto::blind(&mut rng, commitment.as_ref())`
+- [x] Convert blinded points to `Signature` and attach to `refresh.blinded_points`
+- [x] Ensure `refresh.blinded_points` is populated for every output before serialization
+- [x] Persist each blinding factor to `blinding_factors` table BEFORE sending request
+- [x] Send `Request::Refresh(refresh)` to node
+- [x] Receive `Response::Transaction { outputs }`
+- [x] For each output: recover blinded point for DLEQ verification
+- [x] For each output: verify DLEQ proof via `crypto::verify_dleq_signature()`
+- [x] For each output: unblind signature via `crypto::unblind_signature()`
+- [x] For each output: verify final signature via `crypto::verify()` and require the returned bool to be `true`
+- [x] For each output: construct full `Note` with unblinded signature + `DleqProofWithBlinding`
+- [x] Store new notes with status `available`
+- [x] Delete recovered `r` rows from `blinding_factors`
+- [x] Mark input notes as `spent`
 
 #### 2.6 Sync
 
-- [ ] Implement periodic `Request::Info` to verify node reachability
-- [ ] Detect if delegate key has changed
+- [x] Implement periodic `Request::Info` to verify node reachability
+- [x] Detect if delegate key has changed
 - [ ] Check pending deposit status
 - [ ] Check pending withdrawal on-chain confirmation
-- [ ] Update `lastSyncedAt`
+- [x] Update `lastSyncedAt`
 
 #### 2.7 Milestone A dev/test note seeding
 

@@ -630,6 +630,17 @@ pub async fn sync(
             .map_err(|e| e.to_string())?;
     }
 
+    // Update lastSyncedAt
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let sync_key = format!("last_synced_at_{network}");
+    state
+        .store
+        .set_config(&sync_key, &now.to_string())
+        .map_err(|e| e.to_string())?;
+
     Ok(SyncResult {
         node_reachable: true,
         delegate_pk_changed: pk_changed,
