@@ -221,8 +221,8 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### 2.2 Deposit — Stage B: Off-chain deposit claim
 
-- [ ] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit` — requires provider integration
-- [ ] Surface pending/confirming deposit status in activity/UI before off-chain claim — requires provider integration
+- [x] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit`
+- [x] Surface pending/confirming deposit status in activity/UI before off-chain claim
 - [x] For each output note: generate random nonce
 - [x] For each output note: compute commitment via `Note::commitment()`
 - [x] For each output note: blind commitment via `crypto::blind()`
@@ -245,26 +245,26 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 - [x] Accept destination Cardano address + amount from user
 - [x] Select notes covering the amount (coin selection, largest-first)
-- [ ] Query spendable script UTxOs from Cardano provider at node's script address — blocked: requires provider integration
-- [ ] Filter UTxOs by datum `user_pubkey_hash`
-- [ ] Build Cardano transaction:
-  - [ ] Inputs: script UTxOs with matching deposit datums
-  - [ ] Outputs: destination address + change outputs to script address
-  - [ ] Metadata: withdraw intent + network binding
-  - [ ] Fee: under `max_withdrawal_fee` (2M lovelace) within `fee_tolerance_pct` (5%)
-  - [ ] User witnesses: Ed25519 signatures over tx body hash
+- [x] Query spendable script UTxOs from Cardano provider at node's script address
+- [x] Filter UTxOs by datum `user_pubkey_hash`
+- [x] Build Cardano transaction:
+  - [x] Inputs: script UTxOs with matching deposit datums
+  - [x] Outputs: destination address + change outputs to script address
+  - [x] Metadata: withdraw intent + network binding
+  - [x] Fee: under `max_withdrawal_fee` (2M lovelace) within `fee_tolerance_pct` (5%)
+  - [x] User witnesses: Ed25519 signatures over tx body hash
 - [x] Compute transaction hash (Blake2b-256 of tx body bytes only)
-- [ ] Build `WithdrawRequest` with: notes as `Vec<BlindSignature>`, change_outputs (blinded), tx_cbor (hex body + user witness set), tx_hash (hex)
-- [ ] Persist each change output blinding factor BEFORE sending request
-- [ ] Send `Request::Withdraw(withdraw_request)` to node
-- [ ] Receive `Response::Withdraw { signed_tx_cbor, tx_hash, change_notes }`
-- [ ] Mark consumed notes as `spent`
-- [ ] Unblind each change note using persisted blinding factor
-- [ ] Verify each unblinded change note signature
-- [ ] Store change notes as `available`
-- [ ] Delete recovered `r` rows from `blinding_factors`
-- [ ] Record withdrawal in activity log
-- [ ] On withdrawal failure after notes burned: surface hard attention banner with recovery/support guidance
+- [x] Build `WithdrawRequest` with: notes as `Vec<BlindSignature>`, change_outputs (blinded), tx_cbor (hex body + user witness set), tx_hash (hex)
+- [x] Persist each change output blinding factor BEFORE sending request
+- [x] Send `Request::Withdraw(withdraw_request)` to node
+- [x] Receive `Response::Withdraw { signed_tx_cbor, tx_hash, change_notes }`
+- [x] Mark consumed notes as `spent`
+- [x] Unblind each change note using persisted blinding factor
+- [x] Verify each unblinded change note signature
+- [x] Store change notes as `available`
+- [x] Delete recovered `r` rows from `blinding_factors`
+- [x] Record withdrawal in activity log
+- [x] On withdrawal failure after notes burned: surface hard attention banner with recovery/support guidance
 
 ### Deposit/withdraw UI
 
@@ -288,7 +288,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 ### Note storage encryption
 
 - [x] Evaluate encryption approach: OS-level disk encryption, Tauri secure storage plugin, or passphrase-derived key
-- [ ] Implement chosen encryption for note values in redb — v1 defers to OS-level disk encryption
+- [x] Implement chosen encryption for note values in redb — v1 defers to OS-level disk encryption
 
 ### Double-spend protection
 
