@@ -1,7 +1,5 @@
 use blake2::{Blake2b, Digest, digest::consts::U32};
-use coset::{
-    CoseSign1, CoseSign1Builder, HeaderBuilder, TaggedCborSerializable,
-};
+use coset::{CoseSign1Builder, HeaderBuilder, TaggedCborSerializable};
 use ed25519_dalek::{Signer, SigningKey};
 
 /// Build a CIP-8 COSE_Sign1 structure for deposit authentication.
@@ -58,6 +56,7 @@ pub fn blake2b_224(data: &[u8]) -> [u8; 28] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use coset::CoseSign1;
     use ed25519_dalek::Verifier;
 
     #[test]

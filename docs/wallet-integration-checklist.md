@@ -189,7 +189,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Additional dependencies
 
-- [ ] Add `whisky-csl` (Cardano tx building) to `wallet/src-tauri/Cargo.toml` — deferred: uplc version conflict
+- [x] Add `whisky-csl` (Cardano tx building) to `wallet/src-tauri/Cargo.toml`
 - [x] Add `coset` (COSE_Sign1) dependency
 - [x] Add `blake2` (intent hash) dependency
 - [x] Add `hex` dependency
@@ -209,15 +209,15 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### 2.2 Deposit — Stage A: On-chain deposit transaction
 
-- [ ] Show in-app Cardano funding address + QR so user can fund wallet externally — blocked: requires whisky-csl for address derivation
-- [ ] Select source UTxOs from in-app Cardano wallet (largest-first strategy) — blocked: requires whisky-csl
+- [x] Show in-app Cardano funding address + QR so user can fund wallet externally
+- [x] Select source UTxOs from in-app Cardano wallet (largest-first strategy)
 - [x] Decide output denominations and blinding ahead of time
 - [x] Compute canonical payload and its Blake2b-256 hash (`intent_hash`)
-- [ ] Build Cardano transaction sending funds to `script_address` with inline Plutus datum: — blocked: requires whisky-csl
+- [x] Build Cardano transaction sending funds to `script_address` with inline Plutus datum:
   - [x] `user_pubkey_hash` (Blake2b-224 of Ed25519 verifying key)
-  - [ ] `node_pubkey_hash` (Blake2b-224 of node's payment_vk) — requires node payment_vk lookup
+  - [x] `node_pubkey_hash` (Blake2b-224 of node's payment_vk)
   - [x] `intent_hash` (Blake2b-256 of canonical JSON payload)
-- [ ] Submit transaction on-chain — blocked: requires whisky-csl
+- [x] Submit transaction on-chain
 
 ### 2.2 Deposit — Stage B: Off-chain deposit claim
 
@@ -253,7 +253,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
   - [ ] Metadata: withdraw intent + network binding
   - [ ] Fee: under `max_withdrawal_fee` (2M lovelace) within `fee_tolerance_pct` (5%)
   - [ ] User witnesses: Ed25519 signatures over tx body hash
-- [ ] Compute transaction hash (Blake2b-256 of tx body bytes only)
+- [x] Compute transaction hash (Blake2b-256 of tx body bytes only)
 - [ ] Build `WithdrawRequest` with: notes as `Vec<BlindSignature>`, change_outputs (blinded), tx_cbor (hex body + user witness set), tx_hash (hex)
 - [ ] Persist each change output blinding factor BEFORE sending request
 - [ ] Send `Request::Withdraw(withdraw_request)` to node
