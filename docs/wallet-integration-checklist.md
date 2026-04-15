@@ -180,7 +180,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### Off-chain receive request payload
 
-- [ ] Define strict receive request JSON payload (network, delegate_pk, recipient_label, asset, amount, label)
+- [x] Define strict receive request JSON payload (network, delegate_pk, recipient_label, asset, amount, label)
 - [ ] `import_notes` / send flow must reject envelopes not matching active strict request
 
 ---
@@ -279,10 +279,10 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Blinding factor persistence protocol
 
-- [ ] Enforce ordering: generate `r` -> write to disk (fsync) -> send request -> unblind -> write Note -> delete `r`
-- [ ] Steps 5+6 (write Note + delete `r`) must be a single redb write transaction
-- [ ] On startup: scan `blinding_factors` for orphaned entries
-- [ ] Surface orphaned entries to user with nonce + timestamp
+- [x] Enforce ordering: generate `r` -> write to disk (fsync) -> send request -> unblind -> write Note -> delete `r`
+- [x] Steps 5+6 (write Note + delete `r`) must be a single redb write transaction
+- [x] On startup: scan `blinding_factors` for orphaned entries
+- [x] Surface orphaned entries to user with nonce + timestamp
 - [ ] Consider extending `blinding_factors` schema for future automatic retry (operation type, blinded point, request context)
 
 ### Note storage encryption
@@ -293,5 +293,5 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 ### Double-spend protection
 
 - [ ] Auto-refresh imported notes immediately on receive
-- [ ] On refresh failure: quarantine notes (exclude from balance, set `attention` status)
+- [x] On refresh failure: quarantine notes (exclude from balance, set `attention` status)
 - [ ] Provide retry/discard UI for quarantined notes
