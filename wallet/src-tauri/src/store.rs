@@ -360,7 +360,7 @@ impl Store {
             .collect();
 
         // Sort largest first (descending by amount)
-        candidates.sort_by(|a, b| b.note.amount.cmp(&a.note.amount));
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.note.amount));
 
         let mut selected = Vec::new();
         let mut total = 0u64;

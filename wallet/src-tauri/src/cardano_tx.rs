@@ -17,34 +17,49 @@ pub fn derive_address(
 
     let cred = csl::Credential::from_keyhash(&pub_key.hash());
     let addr = csl::EnterpriseAddress::new(network_id, &cred);
-    Ok(addr
-        .to_address()
+    addr.to_address()
         .to_bech32(None)
-        .map_err(|e| format!("bech32 error: {e}"))?)
+        .map_err(|e| format!("bech32 error: {e}"))
+}
+
+pub struct DepositTxParams<'a> {
+    pub input_tx_hash: &'a str,
+    pub input_index: u32,
+    pub input_amount_lovelace: u64,
+    pub deposit_amount_lovelace: u64,
+    pub script_address_bech32: &'a str,
+    pub user_ed25519_vk: &'a [u8; 32],
+    pub node_payment_vk: &'a [u8; 28],
+    pub canonical_payload: &'a [u8],
+    pub change_address_bech32: &'a str,
+    pub fee_lovelace: u64,
 }
 
 /// Build a deposit transaction that sends funds to a script address with an
 /// inline Plutus datum containing (user_pubkey_hash, node_pubkey_hash, intent_hash).
 ///
-/// Returns (tx_cbor, tx_hash) as hex strings.
+/// Returns (tx_cbor, tx_hash).
 pub fn build_deposit_tx(
-    input_tx_hash: &str,
-    input_index: u32,
-    input_amount_lovelace: u64,
-    deposit_amount_lovelace: u64,
-    script_address_bech32: &str,
-    user_ed25519_vk: &[u8; 32],
-    node_payment_vk: &[u8; 28],
-    canonical_payload: &[u8],
-    change_address_bech32: &str,
-    fee_lovelace: u64,
+    params: &DepositTxParams<'_>,
 ) -> Result<(Vec<u8>, [u8; 32]), String> {
+    let DepositTxParams {
+        input_tx_hash,
+        input_index,
+        input_amount_lovelace,
+        deposit_amount_lovelace,
+        script_address_bech32,
+        user_ed25519_vk,
+        node_payment_vk,
+        canonical_payload,
+        change_address_bech32,
+        fee_lovelace,
+    } = params;
     // Build input
     let tx_hash_bytes = hex::decode(input_tx_hash)
         .map_err(|e| format!("bad tx hash hex: {e}"))?;
     let tx_hash = csl::TransactionHash::from_bytes(tx_hash_bytes)
         .map_err(|e| format!("bad tx hash: {e}"))?;
-    let input = csl::TransactionInput::new(&tx_hash, input_index);
+    let input = csl::TransactionInput::new(&tx_hash, *input_index);
     let mut inputs = csl::TransactionInputs::new();
     inputs.add(&input);
 
@@ -52,7 +67,7 @@ pub fn build_deposit_tx(
     let script_addr = csl::Address::from_bech32(script_address_bech32)
         .map_err(|e| format!("bad script address: {e}"))?;
 
-    let user_pubkey_hash = blake2b_224(user_ed25519_vk);
+    let user_pubkey_hash = blake2b_224(*user_ed25519_vk);
     let intent_hash = blake2b_256(canonical_payload);
 
     // Build Plutus datum: Constr(0, [user_pk_hash, node_pk_hash, intent_hash])
@@ -78,8 +93,8 @@ pub fn build_deposit_tx(
 
     // Change output
     let change_amount = input_amount_lovelace
-        .checked_sub(deposit_amount_lovelace)
-        .and_then(|v| v.checked_sub(fee_lovelace))
+        .checked_sub(*deposit_amount_lovelace)
+        .and_then(|v| v.checked_sub(*fee_lovelace))
         .ok_or("insufficient input to cover deposit + fee")?;
 
     if change_amount > 0 {
@@ -190,18 +205,18 @@ mod tests {
         let node_pk_hash = [0xBBu8; 28];
         let payload = b"canonical payload";
 
-        let result = build_deposit_tx(
-            &dummy_tx_hash,
-            0,
-            10_000_000,
-            5_000_000,
-            script_addr,
-            &vk,
-            &node_pk_hash,
-            payload,
-            &change_addr,
-            200_000,
-        );
+        let result = build_deposit_tx(&DepositTxParams {
+            input_tx_hash: &dummy_tx_hash,
+            input_index: 0,
+            input_amount_lovelace: 10_000_000,
+            deposit_amount_lovelace: 5_000_000,
+            script_address_bech32: script_addr,
+            user_ed25519_vk: &vk,
+            node_payment_vk: &node_pk_hash,
+            canonical_payload: payload,
+            change_address_bech32: &change_addr,
+            fee_lovelace: 200_000,
+        });
 
         assert!(
             result.is_ok(),
@@ -220,18 +235,18 @@ mod tests {
         let addr = derive_address(&vk, "preprod").unwrap();
         let dummy_tx_hash = "b".repeat(64);
 
-        let (tx_cbor, expected_hash) = build_deposit_tx(
-            &dummy_tx_hash,
-            0,
-            5_000_000,
-            3_000_000,
-            &addr,
-            &vk,
-            &[0xCC; 28],
-            b"test",
-            &addr,
-            200_000,
-        )
+        let (tx_cbor, expected_hash) = build_deposit_tx(&DepositTxParams {
+            input_tx_hash: &dummy_tx_hash,
+            input_index: 0,
+            input_amount_lovelace: 5_000_000,
+            deposit_amount_lovelace: 3_000_000,
+            script_address_bech32: &addr,
+            user_ed25519_vk: &vk,
+            node_payment_vk: &[0xCC; 28],
+            canonical_payload: b"test",
+            change_address_bech32: &addr,
+            fee_lovelace: 200_000,
+        })
         .unwrap();
 
         let computed = compute_tx_hash(&tx_cbor).unwrap();
@@ -245,18 +260,18 @@ mod tests {
         let addr = derive_address(&vk, "preprod").unwrap();
         let dummy_tx_hash = "c".repeat(64);
 
-        let (tx_cbor, tx_hash) = build_deposit_tx(
-            &dummy_tx_hash,
-            0,
-            5_000_000,
-            3_000_000,
-            &addr,
-            &vk,
-            &[0xDD; 28],
-            b"test",
-            &addr,
-            200_000,
-        )
+        let (tx_cbor, tx_hash) = build_deposit_tx(&DepositTxParams {
+            input_tx_hash: &dummy_tx_hash,
+            input_index: 0,
+            input_amount_lovelace: 5_000_000,
+            deposit_amount_lovelace: 3_000_000,
+            script_address_bech32: &addr,
+            user_ed25519_vk: &vk,
+            node_payment_vk: &[0xDD; 28],
+            canonical_payload: b"test",
+            change_address_bech32: &addr,
+            fee_lovelace: 200_000,
+        })
         .unwrap();
 
         let witnessed = attach_user_witness(&tx_cbor, &tx_hash, &sk).unwrap();

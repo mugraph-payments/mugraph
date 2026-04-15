@@ -957,7 +957,7 @@ pub async fn withdraw(
         .map_err(|e| e.to_string())?
         .ok_or("no delegate pk for network")?;
 
-    let script_addr = state
+    let _script_addr = state
         .store
         .get_script_address(&input.network)
         .map_err(|e| e.to_string())?
@@ -1040,16 +1040,18 @@ pub async fn withdraw(
     // let the node handle the signing.
     let dummy_tx_hash = "0".repeat(64);
     let (tx_cbor, tx_hash) = crate::cardano_tx::build_deposit_tx(
-        &dummy_tx_hash,
-        0,
-        total_selected,
-        input.amount,
-        &input.destination_address,
-        &user_vk,
-        &[0u8; 28], // node_payment_vk placeholder
-        b"withdraw",
-        &wallet_addr,
-        200_000,
+        &crate::cardano_tx::DepositTxParams {
+            input_tx_hash: &dummy_tx_hash,
+            input_index: 0,
+            input_amount_lovelace: total_selected,
+            deposit_amount_lovelace: input.amount,
+            script_address_bech32: &input.destination_address,
+            user_ed25519_vk: &user_vk,
+            node_payment_vk: &[0u8; 28],
+            canonical_payload: b"withdraw",
+            change_address_bech32: &wallet_addr,
+            fee_lovelace: 200_000,
+        },
     )
     .map_err(|e| format!("tx build: {e}"))?;
 
