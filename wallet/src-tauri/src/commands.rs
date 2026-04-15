@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use mugraph_core::types::{Keypair, PublicKey};
+use mugraph_core::types::{AssetName, Keypair, PolicyId, PublicKey};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -8,6 +8,53 @@ use crate::{
     node_client::NodeClient,
     store::{NoteStatus, Store, StoredNote},
 };
+
+/// Convert Unix timestamp to ISO 8601 string (UTC).
+fn unix_to_iso8601(ts: u64) -> String {
+    let secs_per_day: u64 = 86_400;
+    let days = ts / secs_per_day;
+    let time_of_day = ts % secs_per_day;
+    let h = time_of_day / 3600;
+    let m = (time_of_day % 3600) / 60;
+    let s = time_of_day % 60;
+
+    // Days since 1970-01-01 to civil date (Algorithm from Howard Hinnant)
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+
+    format!("{year}-{month:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+fn parse_asset(
+    policy_id: &Option<String>,
+    asset_name: &Option<String>,
+) -> (PolicyId, AssetName) {
+    let pid = policy_id
+        .as_ref()
+        .and_then(|s| {
+            let bytes = hex::decode(s).ok()?;
+            if bytes.len() != 28 {
+                return None;
+            }
+            let mut arr = [0u8; 28];
+            arr.copy_from_slice(&bytes);
+            Some(PolicyId(arr))
+        })
+        .unwrap_or_else(PolicyId::zero);
+    let aname = asset_name
+        .as_ref()
+        .and_then(|s| AssetName::new(s.as_bytes()).ok())
+        .unwrap_or_else(AssetName::empty);
+    (pid, aname)
+}
 
 pub struct AppState {
     pub store: Store,
@@ -110,6 +157,10 @@ pub struct DepositInput {
     pub utxo_tx_hash: String,
     pub utxo_index: u16,
     pub output_amounts: Vec<u64>,
+    #[serde(default)]
+    pub policy_id: Option<String>,
+    #[serde(default)]
+    pub asset_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,6 +174,10 @@ pub struct WithdrawInput {
     pub network: String,
     pub destination_address: String,
     pub amount: u64,
+    #[serde(default)]
+    pub policy_id: Option<String>,
+    #[serde(default)]
+    pub asset_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -611,16 +666,7 @@ pub async fn send(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    // ISO 8601 format as specified in the reference
-    let created_at_iso = format!(
-        "{}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        1970 + now_secs / 31_536_000,
-        (now_secs % 31_536_000) / 2_592_000 + 1,
-        (now_secs % 2_592_000) / 86_400 + 1,
-        (now_secs % 86_400) / 3_600,
-        (now_secs % 3_600) / 60,
-        now_secs % 60,
-    );
+    let created_at_iso = unix_to_iso8601(now_secs);
 
     let envelope = serde_json::json!({
         "network": input.network,
@@ -835,6 +881,9 @@ pub async fn deposit(
         .map_err(|e| e.to_string())?
         .ok_or("no delegate pk for network")?;
 
+    let (deposit_policy_id, deposit_asset_name) =
+        parse_asset(&input.policy_id, &input.asset_name);
+
     // Build blinded outputs
     let (blinding_data, blinded_outputs) = {
         let mut rng = rand::rng();
@@ -847,8 +896,8 @@ pub async fn deposit(
             let temp_note = mugraph_core::types::Note {
                 amount,
                 delegate: delegate_pk,
-                policy_id: mugraph_core::types::PolicyId::zero(),
-                asset_name: mugraph_core::types::AssetName::empty(),
+                policy_id: deposit_policy_id,
+                asset_name: deposit_asset_name,
                 nonce,
                 signature: mugraph_core::types::Signature::zero(),
                 dleq: None,
@@ -895,24 +944,40 @@ pub async fn deposit(
         .map_err(|e| e.to_string())?
         .unwrap_or_default();
 
-    // Build canonical payload matching node's CanonicalPayload format
+    // Build canonical payload matching the node's CanonicalPayload struct
+    // field order exactly (utxo, outputs, delegate_pk, script_address, nonce, network)
+    #[derive(Serialize)]
+    struct CanonicalUtxo {
+        tx_hash: String,
+        index: u16,
+    }
+    #[derive(Serialize)]
+    struct CanonicalPayload {
+        utxo: CanonicalUtxo,
+        outputs: Vec<String>,
+        delegate_pk: String,
+        script_address: String,
+        nonce: u64,
+        network: String,
+    }
+
     let output_hexes: Vec<String> = blinded_outputs
         .iter()
         .map(|o| hex::encode(o.signature.0.0))
         .collect();
 
-    let canonical_payload = serde_json::json!({
-        "utxo": {
-            "tx_hash": input.utxo_tx_hash,
-            "index": input.utxo_index,
+    let canonical = CanonicalPayload {
+        utxo: CanonicalUtxo {
+            tx_hash: input.utxo_tx_hash.clone(),
+            index: input.utxo_index,
         },
-        "outputs": output_hexes,
-        "delegate_pk": hex::encode(delegate_pk.0),
-        "script_address": script_address,
-        "nonce": nonce,
-        "network": input.network,
-    });
-    let canonical_bytes = serde_json::to_string(&canonical_payload)
+        outputs: output_hexes,
+        delegate_pk: hex::encode(delegate_pk.0),
+        script_address: script_address.clone(),
+        nonce,
+        network: input.network.clone(),
+    };
+    let canonical_bytes = serde_json::to_string(&canonical)
         .map_err(|e| e.to_string())?
         .into_bytes();
 
@@ -999,8 +1064,8 @@ pub async fn deposit(
         let note = mugraph_core::types::Note {
             amount: *amount,
             delegate: delegate_pk,
-            policy_id: mugraph_core::types::PolicyId::zero(),
-            asset_name: mugraph_core::types::AssetName::empty(),
+            policy_id: deposit_policy_id,
+            asset_name: deposit_asset_name,
             nonce: *nonce,
             signature: unblinded,
             dleq: Some(mugraph_core::types::DleqProofWithBlinding {
@@ -1050,6 +1115,9 @@ pub async fn withdraw(
         .map_err(|e| e.to_string())?
         .ok_or("no delegate pk for network")?;
 
+    let (withdraw_policy_id, withdraw_asset_name) =
+        parse_asset(&input.policy_id, &input.asset_name);
+
     let script_addr = state
         .store
         .get_script_address(&input.network)
@@ -1057,13 +1125,12 @@ pub async fn withdraw(
         .ok_or("no script address for network")?;
 
     // Select notes covering the withdrawal amount
-    // For now, use PolicyId::zero / AssetName::empty (lovelace)
     let selected = state
         .store
         .select_notes(
             &input.network,
-            &mugraph_core::types::PolicyId::zero(),
-            &mugraph_core::types::AssetName::empty(),
+            &withdraw_policy_id,
+            &withdraw_asset_name,
             input.amount,
         )
         .map_err(|e| e.to_string())?;
@@ -1088,8 +1155,8 @@ pub async fn withdraw(
             let temp_note = mugraph_core::types::Note {
                 amount: change_amount,
                 delegate: delegate_pk,
-                policy_id: mugraph_core::types::PolicyId::zero(),
-                asset_name: mugraph_core::types::AssetName::empty(),
+                policy_id: withdraw_policy_id,
+                asset_name: withdraw_asset_name,
                 nonce,
                 signature: mugraph_core::types::Signature::zero(),
                 dleq: None,
@@ -1192,8 +1259,8 @@ pub async fn withdraw(
                 let temp = mugraph_core::types::Note {
                     amount,
                     delegate: delegate_pk,
-                    policy_id: mugraph_core::types::PolicyId::zero(),
-                    asset_name: mugraph_core::types::AssetName::empty(),
+                    policy_id: withdraw_policy_id,
+                    asset_name: withdraw_asset_name,
                     nonce,
                     signature: mugraph_core::types::Signature::zero(),
                     dleq: None,
@@ -1219,8 +1286,8 @@ pub async fn withdraw(
                 let change_note = mugraph_core::types::Note {
                     amount,
                     delegate: delegate_pk,
-                    policy_id: mugraph_core::types::PolicyId::zero(),
-                    asset_name: mugraph_core::types::AssetName::empty(),
+                    policy_id: withdraw_policy_id,
+                    asset_name: withdraw_asset_name,
                     nonce,
                     signature: unblinded,
                     dleq: Some(mugraph_core::types::DleqProofWithBlinding {
@@ -1573,5 +1640,38 @@ mod tests {
         let decoded: SyncResult = serde_json::from_str(&json).unwrap();
         assert!(decoded.node_reachable);
         assert!(!decoded.delegate_pk_changed);
+    }
+
+    #[test]
+    fn unix_to_iso8601_epoch() {
+        assert_eq!(unix_to_iso8601(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn unix_to_iso8601_known_date() {
+        // 2026-04-15T12:00:00Z = 1776254400
+        assert_eq!(unix_to_iso8601(1_776_254_400), "2026-04-15T12:00:00Z");
+    }
+
+    #[test]
+    fn unix_to_iso8601_leap_year() {
+        // 2024-02-29T00:00:00Z = 1709164800
+        assert_eq!(unix_to_iso8601(1_709_164_800), "2024-02-29T00:00:00Z");
+    }
+
+    #[test]
+    fn parse_asset_defaults() {
+        let (pid, aname) = parse_asset(&None, &None);
+        assert_eq!(pid, mugraph_core::types::PolicyId::zero());
+        assert!(aname.is_empty());
+    }
+
+    #[test]
+    fn parse_asset_with_values() {
+        let pid_hex = hex::encode([0xAA; 28]);
+        let (pid, aname) =
+            parse_asset(&Some(pid_hex), &Some("USDM".to_string()));
+        assert_eq!(pid.0, [0xAA; 28]);
+        assert_eq!(aname.as_bytes(), b"USDM");
     }
 }
