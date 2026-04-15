@@ -134,18 +134,18 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 3.1 Replace stub data with Tauri invoke calls
 
-- [ ] Replace static imports from `stubWallet.ts` with `invoke()` calls via `@tauri-apps/api/core`
+- [x] Replace static imports from `stubWallet.ts` with `invoke()` calls via `@tauri-apps/api/core`
 - [x] Route all node/provider access through Tauri commands; no direct browser-context RPC calls
-- [ ] Remove any user-facing stub/demo mode from the shipped app (live-only wallet)
-- [ ] Ensure no live/stub mode toggle appears in the production UI
+- [x] Remove any user-facing stub/demo mode from the shipped app (live-only wallet)
+- [x] Ensure no live/stub mode toggle appears in the production UI
 - [x] Create `wallet/src/lib/api.ts` — TypeScript invoke wrappers for all commands
 
 #### 3.2 State management (`wallet/src/lib/walletStore.ts`)
 
 - [ ] Require guided setup completion before entering main wallet shell
 - [ ] Restore last-used network on launch
-- [ ] Call `get_wallet_state(activeNetwork)` on mount and after every mutation
-- [ ] Trigger periodic/background `sync` for the active network
+- [x] Call `get_wallet_state(activeNetwork)` on mount and after every mutation
+- [x] Trigger periodic/background `sync` for the active network
 - [x] Provide active-network `WalletState` to all components via context
 - [x] Expose mutation functions: `createReceiveRequest`, `importNotes`, `deposit`, `withdraw`, `send`, `refreshNotes`, `sync`
 - [ ] Surface startup warnings for broken network configs without blocking healthy networks
@@ -157,17 +157,17 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 - [ ] `SendDetails` — invoke `send`, emit text/QR off-chain envelope
 - [ ] `ReceiveDetails` — create strict off-chain receive requests only (no L1 semantics)
-- [ ] `NotesPanel` — live notes from local store including quarantine states
-- [ ] `ActivityPanel` — live activity from local store
-- [ ] `AssetPanel` — computed from live note aggregation
+- [x] `NotesPanel` — live notes from local store including quarantine states
+- [x] `ActivityPanel` — live activity from local store
+- [x] `AssetPanel` — computed from live note aggregation
 
 #### 3.4 Error handling
 
-- [ ] Map node unreachable/timeout -> `attention` status + "Node offline" banner with retry
-- [ ] Map BDHKE verification failure -> `attention` status + "Signature mismatch" banner
-- [ ] Map unbalanced refresh -> `ready` status + inline form error
-- [ ] Map blinding factor persistence errors -> `attention` + block operation until resolved
-- [ ] Map orphaned blinding factors -> `attention` + startup recovery prompt
+- [x] Map node unreachable/timeout -> `attention` status + "Node offline" banner with retry
+- [x] Map BDHKE verification failure -> `attention` status + "Signature mismatch" banner
+- [x] Map unbalanced refresh -> `ready` status + inline form error
+- [x] Map blinding factor persistence errors -> `attention` + block operation until resolved
+- [x] Map orphaned blinding factors -> `attention` + startup recovery prompt
 
 #### 3.5 Settings screen
 

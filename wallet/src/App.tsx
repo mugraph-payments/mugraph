@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
 import { WalletActionScreen } from "./components/WalletActionScreen";
@@ -7,20 +7,21 @@ import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
 import { WalletSettingsScreen } from "./components/WalletSettingsScreen";
-import { walletActionDrafts, walletShellState, walletState } from "./data/stubWallet";
+import { walletActionDrafts, walletState as stubWalletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
+import * as api from "./lib/api";
+import { snapshotToWalletState } from "./lib/walletStore";
 import type {
   WalletActiveDestination,
   WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
+  WalletState,
   WalletWithdrawDraft,
 } from "./types/wallet";
 
 function App() {
-  const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>(
-    walletShellState.activeDestination,
-  );
+  const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>("home");
   const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(null);
   const [sendDraft, setSendDraft] = useState<WalletSendDraft>(walletActionDrafts.send);
   const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(walletActionDrafts.receive);
@@ -28,8 +29,35 @@ function App() {
   const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
     walletActionDrafts.withdraw,
   );
+  const [liveState, setLiveState] = useState<WalletState | null>(null);
+  // Network switching will be wired to the settings screen
+  const [activeNetwork, _setActiveNetwork] = useState("preprod");
 
-  const view = useMemo(() => createWalletView(walletState), []);
+  const loadWalletState = useCallback(async (network: string) => {
+    try {
+      const snapshot = await api.getWalletState(network);
+      setLiveState(snapshotToWalletState(snapshot));
+    } catch {
+      // Tauri not available (browser dev mode) — stay on stub
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWalletState(activeNetwork);
+  }, [activeNetwork, loadWalletState]);
+
+  // Periodic sync
+  useEffect(() => {
+    const interval = setInterval(() => {
+      api.syncNetwork(activeNetwork).catch(() => {});
+      loadWalletState(activeNetwork);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [activeNetwork, loadWalletState]);
+
+  const walletState = liveState ?? stubWalletState;
+  const view = useMemo(() => createWalletView(walletState), [walletState]);
+
   const latestDeposit = useMemo(
     () => view.activity.find((item) => item.kindLabel === "Deposit") ?? null,
     [view.activity],
