@@ -49,19 +49,19 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 1.4 Expose Tauri commands (`wallet/src-tauri/src/commands.rs` + `lib.rs`)
 
-- [ ] Define `AppState` struct (redb Database, Mugraph Keypair, Ed25519 signing key, Cardano payment keypair, provider config, per-network NodeClients)
-- [ ] Implement `complete_guided_setup` command
-- [ ] Implement `get_wallet_state` command
-- [ ] Implement `switch_network` command
-- [ ] Implement `create_receive_request` command
-- [ ] Implement `import_notes` command
+- [x] Define `AppState` struct (redb Database, Mugraph Keypair, Ed25519 signing key, Cardano payment keypair, provider config, per-network NodeClients)
+- [x] Implement `complete_guided_setup` command
+- [x] Implement `get_wallet_state` command
+- [x] Implement `switch_network` command
+- [x] Implement `create_receive_request` command
+- [x] Implement `import_notes` command
 - [ ] Implement `deposit` command
 - [ ] Implement `withdraw` command
-- [ ] Implement `send` command
-- [ ] Implement `refresh_notes` command
-- [ ] Implement `sync` command
-- [ ] Remove placeholder `greet` command from `lib.rs`
-- [ ] Wire up AppState and all commands in `lib.rs`
+- [x] Implement `send` command
+- [x] Implement `refresh_notes` command
+- [x] Implement `sync` command
+- [x] Remove placeholder `greet` command from `lib.rs`
+- [x] Wire up AppState and all commands in `lib.rs`
 
 ### Phase 2: Core Wallet Operations in Rust
 
