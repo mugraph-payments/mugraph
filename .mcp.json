@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "lobster": {
-      "args": ["mcp"],
-      "command": "/home/cfcosta/Code/cfcosta/lobster/target/release/lobster"
-    }
-  }
-}
