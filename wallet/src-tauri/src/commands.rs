@@ -71,9 +71,15 @@ pub struct SendInput {
     pub note_nonces: Vec<String>,
 }
 
+/// QR codes practically hold ~2953 bytes in alphanumeric mode.
+/// We use a conservative limit for JSON payloads.
+const QR_PAYLOAD_LIMIT: usize = 2500;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendResult {
     pub envelope: String,
+    /// "qr" if the payload fits a single QR code, "text" otherwise.
+    pub transport_hint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,9 +420,17 @@ pub async fn send(
             .map_err(|e| e.to_string())?;
     }
 
+    let envelope_str =
+        serde_json::to_string(&envelope).map_err(|e| e.to_string())?;
+    let transport_hint = if envelope_str.len() <= QR_PAYLOAD_LIMIT {
+        "qr"
+    } else {
+        "text"
+    };
+
     Ok(SendResult {
-        envelope: serde_json::to_string(&envelope)
-            .map_err(|e| e.to_string())?,
+        envelope: envelope_str,
+        transport_hint: transport_hint.to_string(),
     })
 }
 
@@ -696,9 +710,33 @@ mod tests {
     fn send_result_serializes() {
         let result = SendResult {
             envelope: r#"{"notes":[]}"#.to_string(),
+            transport_hint: "qr".to_string(),
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("envelope"));
+        assert!(json.contains("transport_hint"));
+    }
+
+    #[test]
+    fn transport_hint_text_for_large_payload() {
+        let large = "x".repeat(QR_PAYLOAD_LIMIT + 1);
+        let hint = if large.len() <= QR_PAYLOAD_LIMIT {
+            "qr"
+        } else {
+            "text"
+        };
+        assert_eq!(hint, "text");
+    }
+
+    #[test]
+    fn transport_hint_qr_for_small_payload() {
+        let small = "x".repeat(100);
+        let hint = if small.len() <= QR_PAYLOAD_LIMIT {
+            "qr"
+        } else {
+            "text"
+        };
+        assert_eq!(hint, "qr");
     }
 
     #[test]

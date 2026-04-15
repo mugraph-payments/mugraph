@@ -48,6 +48,8 @@ export interface ImportResult {
 
 export interface SendResult {
   envelope: string;
+  /** "qr" if the payload fits a single QR code, "text" otherwise. */
+  transport_hint: "qr" | "text";
 }
 
 export interface RefreshResult {

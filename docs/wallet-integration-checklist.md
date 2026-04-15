@@ -87,8 +87,8 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] If exact denominations unavailable: trigger refresh first to split/merge
 - [x] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
 - [x] Do not add a schema/version field to the v1 off-chain send envelope
-- [ ] Support copy/paste text transport
-- [ ] Support QR transport (when payload fits single-code limit; otherwise require text)
+- [x] Support copy/paste text transport
+- [x] Support QR transport (when payload fits single-code limit; otherwise require text)
 - [x] Mark sent notes as `spent` locally
 - [x] Implement import: validate envelope network + delegate match active wallet
 - [x] Implement import: verify each note signature via `crypto::verify(&delegate_pk, commitment, signature)` and require the returned bool to be `true`
