@@ -32,20 +32,20 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 1.3 Local note storage (`wallet/src-tauri/src/store.rs`)
 
-- [ ] Create redb database initialization
-- [ ] Create `config_global` table (wallet label, last network)
-- [ ] Create `provider_config` table (type, api_key, base_url_override)
-- [ ] Create `node_config` table (keyed by network -> node URL)
-- [ ] Create `keypair` table (secret_key bytes, ed25519_sk bytes)
-- [ ] Create `cardano_keypair` table (payment_sk, payment_vk)
-- [ ] Create `delegate_info` table (`<network>:pk`, `<network>:script_addr`)
-- [ ] Create `notes` table (`<network>:<nonce>` -> serialized Note + status + created_at)
-- [ ] Create `activity` table (`<network>:<id>` -> serialized activity record)
-- [ ] Create `blinding_factors` table (`<network>:<nonce>` -> Scalar bytes)
-- [ ] Create `offchain_requests` table (id -> serialized receive request metadata)
-- [ ] Create `cardano_utxos` table (`<network>:<tx_hash>#<index>` -> UTxO metadata)
-- [ ] Implement crash-recovery scan for orphaned blinding factors on startup
-- [ ] Surface orphaned factors to user with nonce + timestamp
+- [x] Create redb database initialization
+- [x] Create `config_global` table (wallet label, last network)
+- [x] Create `provider_config` table (type, api_key, base_url_override)
+- [x] Create `node_config` table (keyed by network -> node URL)
+- [x] Create `keypair` table (secret_key bytes, ed25519_sk bytes)
+- [x] Create `cardano_keypair` table (payment_sk, payment_vk)
+- [x] Create `delegate_info` table (`<network>:pk`, `<network>:script_addr`)
+- [x] Create `notes` table (`<network>:<nonce>` -> serialized Note + status + created_at)
+- [x] Create `activity` table (`<network>:<id>` -> serialized activity record)
+- [x] Create `blinding_factors` table (`<network>:<nonce>` -> Scalar bytes)
+- [x] Create `offchain_requests` table (id -> serialized receive request metadata)
+- [x] Create `cardano_utxos` table (`<network>:<tx_hash>#<index>` -> UTxO metadata)
+- [x] Implement crash-recovery scan for orphaned blinding factors on startup
+- [x] Surface orphaned factors to user with nonce + timestamp
 
 #### 1.4 Expose Tauri commands (`wallet/src-tauri/src/commands.rs` + `lib.rs`)
 
