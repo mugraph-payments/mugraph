@@ -196,8 +196,8 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Node client extensions
 
-- [ ] Add `deposit()` method to `NodeClient`
-- [ ] Add `withdraw()` method to `NodeClient`
+- [x] Add `deposit()` method to `NodeClient`
+- [x] Add `withdraw()` method to `NodeClient`
 
 ### CIP-8 signature construction
 

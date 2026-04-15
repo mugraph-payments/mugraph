@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use mugraph_core::types::{
-    BlindSignature, PublicKey, Refresh, Request, Response,
+    BlindSignature, DepositRequest, DepositResponse, PublicKey, Refresh,
+    Request, Response, WithdrawRequest, WithdrawResponse,
 };
 use reqwest::Url;
 
@@ -73,6 +74,46 @@ impl NodeClient {
     ) -> Result<Vec<BlindSignature>, NodeClientError> {
         match self.rpc(&Request::Refresh(refresh.clone())).await? {
             Response::Transaction { outputs } => Ok(outputs),
+            Response::Error { reason } => Err(NodeClientError::Node { reason }),
+            other => {
+                Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))
+            }
+        }
+    }
+
+    pub async fn deposit(
+        &self,
+        req: &DepositRequest,
+    ) -> Result<DepositResponse, NodeClientError> {
+        match self.rpc(&Request::Deposit(req.clone())).await? {
+            Response::Deposit {
+                signatures,
+                deposit_ref,
+            } => Ok(DepositResponse {
+                signatures,
+                deposit_ref,
+            }),
+            Response::Error { reason } => Err(NodeClientError::Node { reason }),
+            other => {
+                Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))
+            }
+        }
+    }
+
+    pub async fn withdraw(
+        &self,
+        req: &WithdrawRequest,
+    ) -> Result<WithdrawResponse, NodeClientError> {
+        match self.rpc(&Request::Withdraw(req.clone())).await? {
+            Response::Withdraw {
+                signed_tx_cbor,
+                tx_hash,
+                change_notes,
+            } => Ok(WithdrawResponse {
+                signed_tx_cbor,
+                tx_hash,
+                change_notes,
+            }),
             Response::Error { reason } => Err(NodeClientError::Node { reason }),
             other => {
                 Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))
