@@ -209,20 +209,20 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### 2.2 Deposit — Stage A: On-chain deposit transaction
 
-- [ ] Show in-app Cardano funding address + QR so user can fund wallet externally
-- [ ] Select source UTxOs from in-app Cardano wallet (largest-first strategy)
-- [ ] Decide output denominations and blinding ahead of time
-- [ ] Compute canonical payload and its Blake2b-256 hash (`intent_hash`)
-- [ ] Build Cardano transaction sending funds to `script_address` with inline Plutus datum:
-  - [ ] `user_pubkey_hash` (Blake2b-224 of Ed25519 verifying key)
-  - [ ] `node_pubkey_hash` (Blake2b-224 of node's payment_vk)
-  - [ ] `intent_hash` (Blake2b-256 of canonical JSON payload)
-- [ ] Submit transaction on-chain
+- [ ] Show in-app Cardano funding address + QR so user can fund wallet externally — blocked: requires whisky-csl for address derivation
+- [ ] Select source UTxOs from in-app Cardano wallet (largest-first strategy) — blocked: requires whisky-csl
+- [x] Decide output denominations and blinding ahead of time
+- [x] Compute canonical payload and its Blake2b-256 hash (`intent_hash`)
+- [ ] Build Cardano transaction sending funds to `script_address` with inline Plutus datum: — blocked: requires whisky-csl
+  - [x] `user_pubkey_hash` (Blake2b-224 of Ed25519 verifying key)
+  - [ ] `node_pubkey_hash` (Blake2b-224 of node's payment_vk) — requires node payment_vk lookup
+  - [x] `intent_hash` (Blake2b-256 of canonical JSON payload)
+- [ ] Submit transaction on-chain — blocked: requires whisky-csl
 
 ### 2.2 Deposit — Stage B: Off-chain deposit claim
 
-- [ ] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit`
-- [ ] Surface pending/confirming deposit status in activity/UI before off-chain claim
+- [ ] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit` — requires provider integration
+- [ ] Surface pending/confirming deposit status in activity/UI before off-chain claim — requires provider integration
 - [x] For each output note: generate random nonce
 - [x] For each output note: compute commitment via `Note::commitment()`
 - [x] For each output note: blind commitment via `crypto::blind()`
@@ -243,9 +243,9 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### 2.3 Withdraw (Mugraph L2 to Cardano L1)
 
-- [ ] Accept destination Cardano address + amount from user
-- [ ] Select notes covering the amount (coin selection, largest-first)
-- [ ] Query spendable script UTxOs from Cardano provider at node's script address
+- [x] Accept destination Cardano address + amount from user
+- [x] Select notes covering the amount (coin selection, largest-first)
+- [ ] Query spendable script UTxOs from Cardano provider at node's script address — blocked: requires provider integration
 - [ ] Filter UTxOs by datum `user_pubkey_hash`
 - [ ] Build Cardano transaction:
   - [ ] Inputs: script UTxOs with matching deposit datums
@@ -283,12 +283,12 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [x] Steps 5+6 (write Note + delete `r`) must be a single redb write transaction
 - [x] On startup: scan `blinding_factors` for orphaned entries
 - [x] Surface orphaned entries to user with nonce + timestamp
-- [ ] Consider extending `blinding_factors` schema for future automatic retry (operation type, blinded point, request context)
+- [x] Consider extending `blinding_factors` schema for future automatic retry (operation type, blinded point, request context)
 
 ### Note storage encryption
 
-- [ ] Evaluate encryption approach: OS-level disk encryption, Tauri secure storage plugin, or passphrase-derived key
-- [ ] Implement chosen encryption for note values in redb
+- [x] Evaluate encryption approach: OS-level disk encryption, Tauri secure storage plugin, or passphrase-derived key
+- [ ] Implement chosen encryption for note values in redb — v1 defers to OS-level disk encryption
 
 ### Double-spend protection
 
