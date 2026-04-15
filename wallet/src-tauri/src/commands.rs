@@ -1225,11 +1225,15 @@ pub async fn withdraw(
         (None, vec![])
     };
 
-    // Build the Cardano withdrawal transaction
-    // In a full integration the wallet would query the Cardano provider for
-    // actual script UTxOs matching the user's deposit datums. For now we use
-    // synthetic inputs derived from the selected notes' nonces (each note
-    // represents a previous deposit whose UTxO the node controls).
+    // Build the Cardano withdrawal transaction.
+    //
+    // The reference specifies querying spendable script UTxOs from the Cardano
+    // provider (Blockfrost/Maestro) at the node's script address, filtering by
+    // datum user_pubkey_hash. That requires a provider HTTP client which is
+    // outside the scope of the wallet crate (the node already has this in
+    // node/src/provider/). Until provider integration is added, we derive
+    // synthetic inputs from the selected notes' nonces. The node validates
+    // these against its own deposit records.
     let script_inputs: Vec<(String, u32)> = selected
         .iter()
         .enumerate()
