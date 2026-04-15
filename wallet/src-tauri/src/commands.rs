@@ -1029,6 +1029,151 @@ pub async fn sync(
     })
 }
 
+#[tauri::command]
+pub async fn retry_quarantined(
+    network: String,
+    nonce_hex: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let nonce_bytes = muhex::decode(&nonce_hex).map_err(|e| e.to_string())?;
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&nonce_bytes);
+    let nonce = mugraph_core::types::Hash(arr);
+
+    let stored = state
+        .store
+        .get_note(&network, &nonce)
+        .map_err(|e| e.to_string())?
+        .ok_or("note not found")?;
+
+    if stored.status != NoteStatus::Quarantined {
+        return Err("note is not quarantined".to_string());
+    }
+
+    // Try refresh through node
+    let delegate_pk = state
+        .store
+        .get_delegate_pk(&network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no delegate pk")?;
+
+    let note = &stored.note;
+    let mut builder = mugraph_core::builder::RefreshBuilder::new();
+    builder = builder.input(note.clone());
+    builder = builder.output(note.policy_id, note.asset_name, note.amount);
+    let mut refresh = builder.build().map_err(|e| e.to_string())?;
+
+    let (bf, bp) = {
+        let mut rng = rand::rng();
+        let atom = &refresh.atoms[1];
+        let commitment = atom.commitment(&refresh.asset_ids);
+        let blinded =
+            mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
+        state
+            .store
+            .put_blinding_factor(
+                &network,
+                &atom.nonce,
+                &blinded.factor.to_bytes(),
+            )
+            .map_err(|e| e.to_string())?;
+        (
+            blinded.factor,
+            mugraph_core::types::Signature::from(blinded.point),
+        )
+    };
+    refresh.blinded_points = vec![bp];
+
+    let clients = state.node_clients.read().await;
+    let client = clients.get(&network).ok_or("no node client")?;
+    let sigs = client.refresh(&refresh).await.map_err(|e| e.to_string())?;
+
+    if sigs.is_empty() {
+        return Err("no signatures returned".to_string());
+    }
+
+    let sig = &sigs[0];
+    let atom = &refresh.atoms[1];
+    let commitment = atom.commitment(&refresh.asset_ids);
+    let bpt = bp.to_point().map_err(|e| e.to_string())?;
+
+    let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
+        &delegate_pk,
+        &bpt,
+        &sig.signature,
+        &sig.proof,
+    )
+    .map_err(|e| e.to_string())?;
+    if !dleq_ok {
+        return Err("DLEQ verification failed".to_string());
+    }
+
+    let unblinded = mugraph_core::crypto::unblind_signature(
+        &sig.signature,
+        &bf,
+        &delegate_pk,
+    )
+    .map_err(|e| e.to_string())?;
+    let valid = mugraph_core::crypto::verify(
+        &delegate_pk,
+        commitment.as_ref(),
+        unblinded,
+    )
+    .map_err(|e| e.to_string())?;
+    if !valid {
+        return Err("signature verification failed — note may be double-spent"
+            .to_string());
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let new_note = mugraph_core::types::Note {
+        amount: atom.amount,
+        delegate: atom.delegate,
+        policy_id: refresh.asset_ids[atom.asset_id as usize].policy_id,
+        asset_name: refresh.asset_ids[atom.asset_id as usize].asset_name,
+        nonce: atom.nonce,
+        signature: unblinded,
+        dleq: Some(mugraph_core::types::DleqProofWithBlinding {
+            proof: sig.proof,
+            blinding_factor: bf.into(),
+        }),
+    };
+
+    state
+        .store
+        .update_note_status(&network, &nonce, NoteStatus::Spent)
+        .map_err(|e| e.to_string())?;
+    state
+        .store
+        .finalize_note(&network, &new_note, NoteStatus::Available, now)
+        .map_err(|e| e.to_string())?;
+
+    Ok("note re-validated successfully".to_string())
+}
+
+#[tauri::command]
+pub async fn discard_quarantined(
+    network: String,
+    nonce_hex: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let nonce_bytes = muhex::decode(&nonce_hex).map_err(|e| e.to_string())?;
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&nonce_bytes);
+    let nonce = mugraph_core::types::Hash(arr);
+
+    state
+        .store
+        .update_note_status(&network, &nonce, NoteStatus::Spent)
+        .map_err(|e| e.to_string())?;
+
+    Ok("quarantined note discarded".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

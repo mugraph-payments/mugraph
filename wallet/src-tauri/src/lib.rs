@@ -111,6 +111,8 @@ pub fn run() {
             commands::send,
             commands::refresh_notes,
             commands::sync,
+            commands::retry_quarantined,
+            commands::discard_quarantined,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

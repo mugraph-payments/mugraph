@@ -96,7 +96,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [x] If auto-refresh fails: keep notes with quarantined/untrusted status
 - [x] Exclude quarantined notes from spendable balance
 - [x] Set wallet status to `attention` when quarantined notes exist
-- [ ] Provide retry/discard path for quarantined notes
+- [x] Provide retry/discard path for quarantined notes
 
 #### 2.5 Refresh (split, merge, re-validate)
 
@@ -121,14 +121,14 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 - [x] Implement periodic `Request::Info` to verify node reachability
 - [x] Detect if delegate key has changed
-- [ ] Check pending deposit status
-- [ ] Check pending withdrawal on-chain confirmation
+- [x] Check pending deposit status
+- [x] Check pending withdrawal on-chain confirmation
 - [x] Update `lastSyncedAt`
 
 #### 2.7 Milestone A dev/test note seeding
 
-- [ ] Define how Milestone A gets initial notes for end-to-end testing before L1 deposit exists
-- [ ] Use the node's dev-only `emit` capability or another documented manual seeding path for local/dev testing
+- [x] Define how Milestone A gets initial notes for end-to-end testing before L1 deposit exists
+- [x] Use the node's dev-only `emit` capability or another documented manual seeding path for local/dev testing
 
 ### Phase 3: Frontend Integration
 
@@ -142,21 +142,21 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 3.2 State management (`wallet/src/lib/walletStore.ts`)
 
-- [ ] Require guided setup completion before entering main wallet shell
-- [ ] Restore last-used network on launch
+- [x] Require guided setup completion before entering main wallet shell
+- [x] Restore last-used network on launch
 - [x] Call `get_wallet_state(activeNetwork)` on mount and after every mutation
 - [x] Trigger periodic/background `sync` for the active network
 - [x] Provide active-network `WalletState` to all components via context
 - [x] Expose mutation functions: `createReceiveRequest`, `importNotes`, `deposit`, `withdraw`, `send`, `refreshNotes`, `sync`
-- [ ] Surface startup warnings for broken network configs without blocking healthy networks
+- [x] Surface startup warnings for broken network configs without blocking healthy networks
 - [x] Hardcode known test asset metadata (ADA/lovelace, USDM) for Milestone A
 - [x] Handle missing price data gracefully (zero/omit `totalValueUsd`, `shareOfWalletPct`)
 - [x] Default `AssetHolding.trend` to `"flat"` for Milestone A
 
 #### 3.3 Wire up action screens
 
-- [ ] `SendDetails` — invoke `send`, emit text/QR off-chain envelope
-- [ ] `ReceiveDetails` — create strict off-chain receive requests only (no L1 semantics)
+- [x] `SendDetails` — invoke `send`, emit text/QR off-chain envelope
+- [x] `ReceiveDetails` — create strict off-chain receive requests only (no L1 semantics)
 - [x] `NotesPanel` — live notes from local store including quarantine states
 - [x] `ActivityPanel` — live activity from local store
 - [x] `AssetPanel` — computed from live note aggregation
@@ -171,17 +171,17 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 3.5 Settings screen
 
-- [ ] Wire delegate PK and script address to real values from bootstrap
-- [ ] Add node URL inputs for all 3 networks
-- [ ] Add shared provider config block (provider type, API key, optional base URL override)
-- [ ] Add network selector (mainnet/preprod/preview)
-- [ ] Add manual sync trigger
-- [ ] Add startup warning surface for broken network configs
+- [x] Wire delegate PK and script address to real values from bootstrap
+- [x] Add node URL inputs for all 3 networks
+- [x] Add shared provider config block (provider type, API key, optional base URL override)
+- [x] Add network selector (mainnet/preprod/preview)
+- [x] Add manual sync trigger
+- [x] Add startup warning surface for broken network configs
 
 #### Off-chain receive request payload
 
 - [x] Define strict receive request JSON payload (network, delegate_pk, recipient_label, asset, amount, label)
-- [ ] `import_notes` / send flow must reject envelopes not matching active strict request
+- [x] `import_notes` / send flow must reject envelopes not matching active strict request
 
 ---
 
@@ -223,23 +223,23 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 - [ ] Wait until the deposit UTxO reaches the required confirmation depth before sending `Request::Deposit`
 - [ ] Surface pending/confirming deposit status in activity/UI before off-chain claim
-- [ ] For each output note: generate random nonce
-- [ ] For each output note: compute commitment via `Note::commitment()`
-- [ ] For each output note: blind commitment via `crypto::blind()`
-- [ ] Persist `r` to `blinding_factors` table immediately
-- [ ] Pack blinded points into `BlindSignature` with default `DleqProof`
-- [ ] Keep original blinded points in memory so response-side DLEQ proofs can be verified
-- [ ] Build `DepositRequest` with: utxo ref, outputs, message (user_pubkey JSON), CIP-8 signature, nonce, network
-- [ ] Send `Request::Deposit(deposit_request)` to node
-- [ ] Receive `Response::Deposit { signatures, deposit_ref }`
-- [ ] For each response signature: verify DLEQ proof
-- [ ] For each response signature: unblind via `crypto::unblind_signature()`
-- [ ] For each response signature: verify unblinded signature (check bool, not just `?`)
-- [ ] Construct full `Note` objects with unblinded signatures
-- [ ] Store notes with status `available`
-- [ ] Store blinding factor in `DleqProofWithBlinding.blinding_factor`
-- [ ] Delete `r` rows from `blinding_factors` table
-- [ ] Record deposit in activity log
+- [x] For each output note: generate random nonce
+- [x] For each output note: compute commitment via `Note::commitment()`
+- [x] For each output note: blind commitment via `crypto::blind()`
+- [x] Persist `r` to `blinding_factors` table immediately
+- [x] Pack blinded points into `BlindSignature` with default `DleqProof`
+- [x] Keep original blinded points in memory so response-side DLEQ proofs can be verified
+- [x] Build `DepositRequest` with: utxo ref, outputs, message (user_pubkey JSON), CIP-8 signature, nonce, network
+- [x] Send `Request::Deposit(deposit_request)` to node
+- [x] Receive `Response::Deposit { signatures, deposit_ref }`
+- [x] For each response signature: verify DLEQ proof
+- [x] For each response signature: unblind via `crypto::unblind_signature()`
+- [x] For each response signature: verify unblinded signature (check bool, not just `?`)
+- [x] Construct full `Note` objects with unblinded signatures
+- [x] Store notes with status `available`
+- [x] Store blinding factor in `DleqProofWithBlinding.blinding_factor`
+- [x] Delete `r` rows from `blinding_factors` table
+- [x] Record deposit in activity log
 
 ### 2.3 Withdraw (Mugraph L2 to Cardano L1)
 
@@ -268,10 +268,10 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Deposit/withdraw UI
 
-- [ ] Wire `DepositDetails` screen: funding address/QR first -> on-chain deposit -> off-chain claim
-- [ ] Wire `WithdrawDetails` screen: destination + amount -> invoke withdraw
-- [ ] Implement hard attention handling for failed withdrawals
-- [ ] Expose `deposit` and `withdraw` mutation functions in state management
+- [x] Wire `DepositDetails` screen: funding address/QR first -> on-chain deposit -> off-chain claim
+- [x] Wire `WithdrawDetails` screen: destination + amount -> invoke withdraw
+- [x] Implement hard attention handling for failed withdrawals
+- [x] Expose `deposit` and `withdraw` mutation functions in state management
 
 ---
 
@@ -292,6 +292,6 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 ### Double-spend protection
 
-- [ ] Auto-refresh imported notes immediately on receive
+- [x] Auto-refresh imported notes immediately on receive
 - [x] On refresh failure: quarantine notes (exclude from balance, set `attention` status)
 - [ ] Provide retry/discard UI for quarantined notes
