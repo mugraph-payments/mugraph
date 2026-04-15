@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    Json,
-    Router,
+    Json, Router,
     extract::State,
     routing::{get, post},
 };
@@ -330,14 +329,8 @@ mod tests {
     };
     use ed25519_dalek::{Signer, SigningKey};
     use mugraph_core::types::{
-        CrossNodeTransferRecord,
-        Request,
-        Response,
-        TransferNoticePayload,
-        TransferNoticeStage,
-        XNodeAuth,
-        XNodeEnvelope,
-        XNodeMessageType,
+        CrossNodeTransferRecord, Request, Response, TransferNoticePayload,
+        TransferNoticeStage, XNodeAuth, XNodeEnvelope, XNodeMessageType,
     };
     use tower::util::ServiceExt;
 
