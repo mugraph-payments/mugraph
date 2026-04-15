@@ -83,7 +83,7 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 2.4 Send (off-chain, user to user)
 
-- [ ] Implement coin selection (largest-first deterministic)
+- [x] Implement coin selection (largest-first deterministic)
 - [ ] If exact denominations unavailable: trigger refresh first to split/merge
 - [x] Serialize selected Notes into v1 JSON envelope (network, delegate_pk, sender_label, created_at, notes array with hex-encoded fields)
 - [x] Do not add a schema/version field to the v1 off-chain send envelope

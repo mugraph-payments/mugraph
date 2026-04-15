@@ -339,6 +339,48 @@ impl Store {
         Ok(notes)
     }
 
+    /// Select available notes for a given asset using largest-first strategy.
+    /// Returns notes whose total covers `target_amount`, or an error if
+    /// insufficient funds.
+    pub fn select_notes(
+        &self,
+        network: &str,
+        policy_id: &mugraph_core::types::PolicyId,
+        asset_name: &mugraph_core::types::AssetName,
+        target_amount: u64,
+    ) -> Result<Vec<StoredNote>, StoreError> {
+        let all = self.list_notes(network)?;
+        let mut candidates: Vec<StoredNote> = all
+            .into_iter()
+            .filter(|s| {
+                s.status == NoteStatus::Available
+                    && s.note.policy_id == *policy_id
+                    && s.note.asset_name == *asset_name
+            })
+            .collect();
+
+        // Sort largest first (descending by amount)
+        candidates.sort_by(|a, b| b.note.amount.cmp(&a.note.amount));
+
+        let mut selected = Vec::new();
+        let mut total = 0u64;
+        for note in candidates {
+            if total >= target_amount {
+                break;
+            }
+            total += note.note.amount;
+            selected.push(note);
+        }
+
+        if total < target_amount {
+            return Err(StoreError::NotFound(format!(
+                "insufficient funds: need {target_amount}, have {total}"
+            )));
+        }
+
+        Ok(selected)
+    }
+
     pub fn update_note_status(
         &self,
         network: &str,
@@ -897,5 +939,78 @@ mod tests {
             store.get_cardano_utxo("preprod:abc#0").unwrap(),
             Some(data.to_vec())
         );
+    }
+
+    // --- Coin selection tests ---
+
+    #[test]
+    fn select_notes_largest_first() {
+        let (_dir, store) = temp_store();
+        let pid = PolicyId([0x22; 28]);
+        let aname = AssetName::new(b"USDM").unwrap();
+
+        for (i, amount) in [100u64, 500, 200, 300].iter().enumerate() {
+            let mut note = test_note();
+            note.amount = *amount;
+            note.nonce = Hash([i as u8; 32]);
+            store
+                .put_note("preprod", &note, NoteStatus::Available, 1000)
+                .unwrap();
+        }
+
+        let selected =
+            store.select_notes("preprod", &pid, &aname, 600).unwrap();
+        // Largest-first: should pick 500, then 300 (= 800 >= 600)
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].note.amount, 500);
+        assert_eq!(selected[1].note.amount, 300);
+    }
+
+    #[test]
+    fn select_notes_insufficient_funds() {
+        let (_dir, store) = temp_store();
+        let pid = PolicyId([0x22; 28]);
+        let aname = AssetName::new(b"USDM").unwrap();
+
+        let note = test_note();
+        store
+            .put_note("preprod", &note, NoteStatus::Available, 1000)
+            .unwrap();
+
+        let result = store.select_notes("preprod", &pid, &aname, 5000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn select_notes_skips_spent_and_quarantined() {
+        let (_dir, store) = temp_store();
+        let pid = PolicyId([0x22; 28]);
+        let aname = AssetName::new(b"USDM").unwrap();
+
+        let mut note1 = test_note();
+        note1.amount = 500;
+        note1.nonce = Hash([1; 32]);
+        store
+            .put_note("preprod", &note1, NoteStatus::Spent, 1000)
+            .unwrap();
+
+        let mut note2 = test_note();
+        note2.amount = 400;
+        note2.nonce = Hash([2; 32]);
+        store
+            .put_note("preprod", &note2, NoteStatus::Quarantined, 1000)
+            .unwrap();
+
+        let mut note3 = test_note();
+        note3.amount = 300;
+        note3.nonce = Hash([3; 32]);
+        store
+            .put_note("preprod", &note3, NoteStatus::Available, 1000)
+            .unwrap();
+
+        let selected =
+            store.select_notes("preprod", &pid, &aname, 200).unwrap();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].note.amount, 300);
     }
 }
