@@ -21,14 +21,14 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 
 #### 1.2 Implement wallet-side node client (`wallet/src-tauri/src/node_client.rs`)
 
-- [ ] Create `NodeClient` struct with `reqwest::Client`, `rpc_url`, `health_url`
-- [ ] Implement `NodeClient::new(base: &Url)` constructor
-- [ ] Implement `health()` method (`GET /health`)
-- [ ] Implement `info()` method (`Request::Info` -> returns `PublicKey`, optional script address)
-- [ ] Implement `refresh()` method (`Request::Refresh` -> returns `Vec<BlindSignature>`)
-- [ ] Wire serialization using tagged union format `{"m": "...", "p": {...}}`
-- [ ] Wire deserialization using `{"m": "...", "r": {...}}` response format
-- [ ] Pattern-match `Response::Error` into proper error propagation
+- [x] Create `NodeClient` struct with `reqwest::Client`, `rpc_url`, `health_url`
+- [x] Implement `NodeClient::new(base: &Url)` constructor
+- [x] Implement `health()` method (`GET /health`)
+- [x] Implement `info()` method (`Request::Info` -> returns `PublicKey`, optional script address)
+- [x] Implement `refresh()` method (`Request::Refresh` -> returns `Vec<BlindSignature>`)
+- [x] Wire serialization using tagged union format `{"m": "...", "p": {...}}`
+- [x] Wire deserialization using `{"m": "...", "r": {...}}` response format
+- [x] Pattern-match `Response::Error` into proper error propagation
 
 #### 1.3 Local note storage (`wallet/src-tauri/src/store.rs`)
 
