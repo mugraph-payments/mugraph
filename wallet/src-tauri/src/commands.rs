@@ -826,6 +826,44 @@ pub async fn deposit(
         (data, outputs)
     };
 
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let script_address = state
+        .store
+        .get_script_address(&input.network)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+
+    // Build canonical payload matching node's CanonicalPayload format
+    let output_hexes: Vec<String> = blinded_outputs
+        .iter()
+        .map(|o| hex::encode(o.signature.0.0))
+        .collect();
+
+    let canonical_payload = serde_json::json!({
+        "utxo": {
+            "tx_hash": input.utxo_tx_hash,
+            "index": input.utxo_index,
+        },
+        "outputs": output_hexes,
+        "delegate_pk": hex::encode(delegate_pk.0),
+        "script_address": script_address,
+        "nonce": nonce,
+        "network": input.network,
+    });
+    let canonical_bytes = serde_json::to_string(&canonical_payload)
+        .map_err(|e| e.to_string())?
+        .into_bytes();
+
+    // Build CIP-8 COSE_Sign1 signature over canonical payload
+    let cip8_signature = crate::cip8::build_cip8_signature(
+        &state.ed25519_key,
+        &canonical_bytes,
+    )?;
+
     let deposit_req = mugraph_core::types::DepositRequest {
         utxo: mugraph_core::types::UtxoReference {
             tx_hash: input.utxo_tx_hash.clone(),
@@ -836,11 +874,8 @@ pub async fn deposit(
             "user_pubkey": muhex::encode(state.ed25519_key.verifying_key().as_bytes())
         })
         .to_string(),
-        signature: vec![], // CIP-8 signature placeholder for now
-        nonce: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        signature: cip8_signature,
+        nonce,
         network: input.network.clone(),
     };
 
@@ -957,7 +992,7 @@ pub async fn withdraw(
         .map_err(|e| e.to_string())?
         .ok_or("no delegate pk for network")?;
 
-    let _script_addr = state
+    let script_addr = state
         .store
         .get_script_address(&input.network)
         .map_err(|e| e.to_string())?
@@ -1027,29 +1062,24 @@ pub async fn withdraw(
         (None, vec![])
     };
 
-    // Build a minimal Cardano transaction for the withdrawal
-    // The wallet's in-app address is the change address
-    let user_vk = state.ed25519_key.verifying_key().to_bytes();
-    let wallet_addr =
-        crate::cardano_tx::derive_address(&user_vk, &input.network)
-            .map_err(|e| format!("address derivation: {e}"))?;
+    // Build the Cardano withdrawal transaction
+    // In a full integration the wallet would query the Cardano provider for
+    // actual script UTxOs matching the user's deposit datums. For now we use
+    // synthetic inputs derived from the selected notes' nonces (each note
+    // represents a previous deposit whose UTxO the node controls).
+    let script_inputs: Vec<(String, u32)> = selected
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (hex::encode(s.note.nonce.0), i as u32))
+        .collect();
 
-    // Build the withdraw request
-    // In production, this would include a real Cardano tx CBOR built
-    // from script UTxOs. For now, we build a minimal skeleton and
-    // let the node handle the signing.
-    let dummy_tx_hash = "0".repeat(64);
-    let (tx_cbor, tx_hash) = crate::cardano_tx::build_deposit_tx(
-        &crate::cardano_tx::DepositTxParams {
-            input_tx_hash: &dummy_tx_hash,
-            input_index: 0,
-            input_amount_lovelace: total_selected,
-            deposit_amount_lovelace: input.amount,
-            script_address_bech32: &input.destination_address,
-            user_ed25519_vk: &user_vk,
-            node_payment_vk: &[0u8; 28],
-            canonical_payload: b"withdraw",
-            change_address_bech32: &wallet_addr,
+    let (tx_cbor, tx_hash) = crate::cardano_tx::build_withdraw_tx(
+        &crate::cardano_tx::WithdrawTxParams {
+            script_inputs: &script_inputs,
+            total_input_lovelace: total_selected,
+            destination_address: &input.destination_address,
+            withdraw_amount_lovelace: input.amount,
+            script_address: &script_addr,
             fee_lovelace: 200_000,
         },
     )

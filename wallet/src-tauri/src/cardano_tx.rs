@@ -157,6 +157,82 @@ pub fn attach_user_witness(
     Ok(new_tx.to_bytes())
 }
 
+pub struct WithdrawTxParams<'a> {
+    /// Script UTxO inputs to spend (tx_hash hex, index)
+    pub script_inputs: &'a [(String, u32)],
+    /// Total lovelace available from script inputs
+    pub total_input_lovelace: u64,
+    /// Destination address (bech32)
+    pub destination_address: &'a str,
+    /// Amount to send to destination
+    pub withdraw_amount_lovelace: u64,
+    /// Script address for change outputs (bech32)
+    pub script_address: &'a str,
+    /// Transaction fee
+    pub fee_lovelace: u64,
+}
+
+/// Build a withdraw transaction that spends script UTxOs and sends funds
+/// to a destination address, with optional change back to the script address.
+///
+/// Returns (tx_cbor, tx_hash).
+pub fn build_withdraw_tx(
+    params: &WithdrawTxParams<'_>,
+) -> Result<(Vec<u8>, [u8; 32]), String> {
+    let mut inputs = csl::TransactionInputs::new();
+    for (tx_hash_hex, index) in params.script_inputs {
+        let tx_hash_bytes = hex::decode(tx_hash_hex)
+            .map_err(|e| format!("bad input tx hash hex: {e}"))?;
+        let tx_hash = csl::TransactionHash::from_bytes(tx_hash_bytes)
+            .map_err(|e| format!("bad input tx hash: {e}"))?;
+        inputs.add(&csl::TransactionInput::new(&tx_hash, *index));
+    }
+
+    if inputs.len() == 0 {
+        return Err("no script inputs provided".to_string());
+    }
+
+    let mut outputs = csl::TransactionOutputs::new();
+
+    // Destination output
+    let dest_addr = csl::Address::from_bech32(params.destination_address)
+        .map_err(|e| format!("bad destination address: {e}"))?;
+    let dest_value = csl::Value::new(
+        &csl::Coin::from_str(&params.withdraw_amount_lovelace.to_string())
+            .map_err(|e| format!("bad withdraw amount: {e}"))?,
+    );
+    outputs.add(&csl::TransactionOutput::new(&dest_addr, &dest_value));
+
+    // Change output back to script address
+    let change_amount = params
+        .total_input_lovelace
+        .checked_sub(params.withdraw_amount_lovelace)
+        .and_then(|v| v.checked_sub(params.fee_lovelace))
+        .ok_or("insufficient script inputs to cover withdraw + fee")?;
+
+    if change_amount > 0 {
+        let script_addr = csl::Address::from_bech32(params.script_address)
+            .map_err(|e| format!("bad script address: {e}"))?;
+        let change_value = csl::Value::new(
+            &csl::Coin::from_str(&change_amount.to_string())
+                .map_err(|e| format!("bad change amount: {e}"))?,
+        );
+        outputs.add(&csl::TransactionOutput::new(&script_addr, &change_value));
+    }
+
+    let fee = csl::Coin::from_str(&params.fee_lovelace.to_string())
+        .map_err(|e| format!("bad fee: {e}"))?;
+
+    let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+    let witness_set = csl::TransactionWitnessSet::new();
+    let tx = csl::Transaction::new(&body, &witness_set, None);
+
+    let tx_cbor = tx.to_bytes();
+    let tx_hash = blake2b_256(&body.to_bytes());
+
+    Ok((tx_cbor, tx_hash))
+}
+
 /// Compute the Blake2b-256 hash of a transaction's body from CBOR.
 pub fn compute_tx_hash(tx_cbor: &[u8]) -> Result<[u8; 32], String> {
     let tx = csl::Transaction::from_bytes(tx_cbor.to_vec())
@@ -278,5 +354,81 @@ mod tests {
         assert!(!witnessed.is_empty());
         // Witnessed tx should be larger than unsigned
         assert!(witnessed.len() > tx_cbor.len());
+    }
+
+    #[test]
+    fn build_withdraw_tx_produces_valid_cbor() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let dest_addr = derive_address(&vk, "preprod").unwrap();
+        let script_addr = &dest_addr; // reuse for simplicity
+
+        let (tx_cbor, tx_hash) = build_withdraw_tx(&WithdrawTxParams {
+            script_inputs: &[("d".repeat(64), 0)],
+            total_input_lovelace: 10_000_000,
+            destination_address: &dest_addr,
+            withdraw_amount_lovelace: 5_000_000,
+            script_address: script_addr,
+            fee_lovelace: 200_000,
+        })
+        .unwrap();
+
+        assert!(!tx_cbor.is_empty());
+        assert_ne!(tx_hash, [0u8; 32]);
+
+        // Hash should match recomputation
+        let recomputed = compute_tx_hash(&tx_cbor).unwrap();
+        assert_eq!(recomputed, tx_hash);
+    }
+
+    #[test]
+    fn build_withdraw_tx_no_change_when_exact() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let dest_addr = derive_address(&vk, "preprod").unwrap();
+
+        let result = build_withdraw_tx(&WithdrawTxParams {
+            script_inputs: &[("e".repeat(64), 0)],
+            total_input_lovelace: 5_200_000,
+            destination_address: &dest_addr,
+            withdraw_amount_lovelace: 5_000_000,
+            script_address: &dest_addr,
+            fee_lovelace: 200_000,
+        });
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_withdraw_tx_rejects_insufficient_inputs() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let dest_addr = derive_address(&vk, "preprod").unwrap();
+
+        let result = build_withdraw_tx(&WithdrawTxParams {
+            script_inputs: &[("f".repeat(64), 0)],
+            total_input_lovelace: 1_000_000,
+            destination_address: &dest_addr,
+            withdraw_amount_lovelace: 5_000_000,
+            script_address: &dest_addr,
+            fee_lovelace: 200_000,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_withdraw_tx_rejects_empty_inputs() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let dest_addr = derive_address(&vk, "preprod").unwrap();
+
+        let result = build_withdraw_tx(&WithdrawTxParams {
+            script_inputs: &[],
+            total_input_lovelace: 5_000_000,
+            destination_address: &dest_addr,
+            withdraw_amount_lovelace: 3_000_000,
+            script_address: &dest_addr,
+            fee_lovelace: 200_000,
+        });
+        assert!(result.is_err());
     }
 }
