@@ -1,6 +1,6 @@
 export type MugraphNetwork = "mainnet" | "preprod" | "preview";
 
-export type WalletMode = "stub";
+export type WalletMode = "stub" | "live";
 export type WalletStatus = "ready" | "syncing" | "attention";
 export type WalletNoteSource = "deposit" | "refresh" | "withdraw" | "change";
 export type WalletNoteStatus = "available" | "pending" | "reserved" | "spent";

@@ -135,10 +135,10 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 #### 3.1 Replace stub data with Tauri invoke calls
 
 - [ ] Replace static imports from `stubWallet.ts` with `invoke()` calls via `@tauri-apps/api/core`
-- [ ] Route all node/provider access through Tauri commands; no direct browser-context RPC calls
+- [x] Route all node/provider access through Tauri commands; no direct browser-context RPC calls
 - [ ] Remove any user-facing stub/demo mode from the shipped app (live-only wallet)
 - [ ] Ensure no live/stub mode toggle appears in the production UI
-- [ ] Create `wallet/src/lib/api.ts` — TypeScript invoke wrappers for all commands
+- [x] Create `wallet/src/lib/api.ts` — TypeScript invoke wrappers for all commands
 
 #### 3.2 State management (`wallet/src/lib/walletStore.ts`)
 
@@ -146,12 +146,12 @@ Exhaustive task checklist derived from [wallet-integration.md](./wallet-integrat
 - [ ] Restore last-used network on launch
 - [ ] Call `get_wallet_state(activeNetwork)` on mount and after every mutation
 - [ ] Trigger periodic/background `sync` for the active network
-- [ ] Provide active-network `WalletState` to all components via context
-- [ ] Expose mutation functions: `createReceiveRequest`, `importNotes`, `deposit`, `withdraw`, `send`, `refreshNotes`, `sync`
+- [x] Provide active-network `WalletState` to all components via context
+- [x] Expose mutation functions: `createReceiveRequest`, `importNotes`, `deposit`, `withdraw`, `send`, `refreshNotes`, `sync`
 - [ ] Surface startup warnings for broken network configs without blocking healthy networks
-- [ ] Hardcode known test asset metadata (ADA/lovelace, USDM) for Milestone A
-- [ ] Handle missing price data gracefully (zero/omit `totalValueUsd`, `shareOfWalletPct`)
-- [ ] Default `AssetHolding.trend` to `"flat"` for Milestone A
+- [x] Hardcode known test asset metadata (ADA/lovelace, USDM) for Milestone A
+- [x] Handle missing price data gracefully (zero/omit `totalValueUsd`, `shareOfWalletPct`)
+- [x] Default `AssetHolding.trend` to `"flat"` for Milestone A
 
 #### 3.3 Wire up action screens
 
