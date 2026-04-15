@@ -49,6 +49,7 @@ export interface WalletSnapshot {
   cardano_script_address: string | null;
   cardano_funding_address: string | null;
   has_orphaned_blinding_factors: boolean;
+  last_synced_at: number | null;
 }
 
 export interface ImportResult {

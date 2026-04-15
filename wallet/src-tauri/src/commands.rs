@@ -51,6 +51,7 @@ pub struct WalletSnapshot {
     pub cardano_script_address: Option<String>,
     pub cardano_funding_address: Option<String>,
     pub has_orphaned_blinding_factors: bool,
+    pub last_synced_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,6 +251,14 @@ pub async fn get_wallet_state(
         crate::cardano_tx::derive_address(&state.cardano_payment_vk, &network)
             .ok();
 
+    // Load last synced timestamp for this network
+    let sync_key = format!("last_synced_at_{network}");
+    let last_synced_at = state
+        .store
+        .get_config(&sync_key)
+        .map_err(|e| e.to_string())?
+        .and_then(|s| s.parse::<u64>().ok());
+
     Ok(WalletSnapshot {
         label,
         network,
@@ -259,6 +268,7 @@ pub async fn get_wallet_state(
         cardano_script_address: script_addr,
         cardano_funding_address: funding_addr,
         has_orphaned_blinding_factors: !orphans.is_empty(),
+        last_synced_at,
     })
 }
 
@@ -667,6 +677,13 @@ pub async fn refresh_notes(
             .get_note(&input.network, &nonce)
             .map_err(|e| e.to_string())?
             .ok_or("note not found")?;
+
+        if stored.status != NoteStatus::Available {
+            return Err(format!(
+                "note {} is {:?}, only available notes can be refreshed",
+                nonce_hex, stored.status
+            ));
+        }
 
         input_notes.push(stored.note);
     }
@@ -1492,11 +1509,13 @@ mod tests {
             cardano_script_address: None,
             cardano_funding_address: Some("addr_test1abc".to_string()),
             has_orphaned_blinding_factors: false,
+            last_synced_at: Some(1700000000),
         };
         let json = serde_json::to_string(&snap).unwrap();
         assert!(json.contains("preprod"));
         assert!(json.contains("Test Wallet"));
         assert!(json.contains("addr_test1abc"));
+        assert!(json.contains("1700000000"));
     }
 
     #[test]

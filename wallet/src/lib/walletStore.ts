@@ -114,7 +114,9 @@ export function snapshotToWalletState(snapshot: WalletSnapshot): WalletState {
       status,
       delegatePk: snapshot.delegate_pk ?? "",
       scriptAddress: snapshot.cardano_script_address ?? "",
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: snapshot.last_synced_at
+        ? new Date(snapshot.last_synced_at * 1000).toISOString()
+        : new Date().toISOString(),
     },
     summary: {
       totalValueAda: 0,
