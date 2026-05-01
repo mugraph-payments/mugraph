@@ -55,12 +55,14 @@ impl NodeClient {
 
     pub async fn info(
         &self,
-    ) -> Result<(PublicKey, Option<String>), NodeClientError> {
+    ) -> Result<(PublicKey, Option<String>, Option<String>), NodeClientError>
+    {
         match self.rpc(&Request::Info).await? {
             Response::Info {
                 delegate_pk,
                 cardano_script_address,
-            } => Ok((delegate_pk, cardano_script_address)),
+                cardano_payment_vk,
+            } => Ok((delegate_pk, cardano_script_address, cardano_payment_vk)),
             Response::Error { reason } => Err(NodeClientError::Node { reason }),
             other => {
                 Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))

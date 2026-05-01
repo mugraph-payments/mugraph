@@ -279,6 +279,31 @@ impl Store {
             .map(|v| String::from_utf8_lossy(v.value()).to_string()))
     }
 
+    pub fn set_node_payment_vk(
+        &self,
+        network: &str,
+        vk: &[u8],
+    ) -> Result<(), StoreError> {
+        let key = format!("{network}:node_payment_vk");
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(DELEGATE_INFO)?;
+            table.insert(key.as_str(), vk)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn get_node_payment_vk(
+        &self,
+        network: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let key = format!("{network}:node_payment_vk");
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(DELEGATE_INFO)?;
+        Ok(table.get(key.as_str())?.map(|v| v.value().to_vec()))
+    }
+
     // --- Notes ---
 
     fn note_key(network: &str, nonce: &Hash) -> String {
@@ -754,6 +779,22 @@ mod tests {
             store.get_script_address("preprod").unwrap(),
             Some("addr_test1abc".to_string())
         );
+    }
+
+    #[test]
+    fn node_payment_vk_per_network() {
+        let (_dir, store) = temp_store();
+        let vk_pre = vec![0xBBu8; 32];
+        let vk_main = vec![0xCCu8; 32];
+        store.set_node_payment_vk("preprod", &vk_pre).unwrap();
+        store.set_node_payment_vk("mainnet", &vk_main).unwrap();
+
+        assert_eq!(store.get_node_payment_vk("preprod").unwrap(), Some(vk_pre));
+        assert_eq!(
+            store.get_node_payment_vk("mainnet").unwrap(),
+            Some(vk_main)
+        );
+        assert_eq!(store.get_node_payment_vk("preview").unwrap(), None);
     }
 
     // --- Notes tests ---

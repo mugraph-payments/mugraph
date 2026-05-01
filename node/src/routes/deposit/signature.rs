@@ -133,18 +133,19 @@ pub(super) fn verify_cip8_cose_signature(
     verify_cip8_cose_signature_with_claims(request, &claims, payload)
 }
 
-/// UTXO reference for canonical payload serialization
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct CanonicalUtxo {
-    pub(super) tx_hash: String,
-    pub(super) index: u16,
-}
-
 /// Canonical payload for signature verification
 /// Sorted JSON with no extra whitespace
+///
+/// Does not include the deposit UTxO reference. The wallet builds the
+/// canonical before the deposit Cardano tx is constructed (the datum's
+/// intent_hash needs to be in the body, and the body's hash is the deposit
+/// UTxO's tx_hash). Identity is bound by `delegate_pk`, `script_address`,
+/// and `network`; replay protection by `nonce`. The deposit UTxO itself is
+/// validated independently by source_validation: chain-look-up confirms the
+/// UTxO sits at `script_address` with confirmation depth, and the datum
+/// re-binds `user_pubkey_hash` and `node_pubkey_hash`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct CanonicalPayload {
-    pub(super) utxo: CanonicalUtxo,
     pub(super) outputs: Vec<String>,
     #[serde(rename = "delegate_pk")]
     pub(super) delegate_pk: String,
@@ -172,10 +173,6 @@ pub(super) fn build_canonical_payload(
         .unwrap_or_else(|_| request.network.clone());
 
     let payload = CanonicalPayload {
-        utxo: CanonicalUtxo {
-            tx_hash: request.utxo.tx_hash.clone(),
-            index: request.utxo.index,
-        },
         outputs,
         delegate_pk: hex::encode(delegate_pk.0),
         script_address: script_address.to_string(),

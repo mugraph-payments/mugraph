@@ -238,7 +238,7 @@ pub async fn complete_guided_setup(
     for (network, url) in urls {
         let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
         let client = NodeClient::new(&parsed).map_err(|e| e.to_string())?;
-        let (delegate_pk, script_addr) =
+        let (delegate_pk, script_addr, payment_vk_hex) =
             client.info().await.map_err(|e| e.to_string())?;
 
         state
@@ -249,6 +249,14 @@ pub async fn complete_guided_setup(
             state
                 .store
                 .set_script_address(network, addr)
+                .map_err(|e| e.to_string())?;
+        }
+        if let Some(ref vk_hex) = payment_vk_hex {
+            let vk_bytes = hex::decode(vk_hex)
+                .map_err(|e| format!("invalid node payment_vk hex: {e}"))?;
+            state
+                .store
+                .set_node_payment_vk(network, &vk_bytes)
                 .map_err(|e| e.to_string())?;
         }
 
@@ -941,7 +949,75 @@ pub async fn deposit(
     let (deposit_policy_id, deposit_asset_name) =
         parse_asset(&input.policy_id, &input.asset_name);
 
-    // Build blinded outputs
+    let script_address = state
+        .store
+        .get_script_address(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no script address for network")?;
+
+    let node_payment_vk = state
+        .store
+        .get_node_payment_vk(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no node payment_vk; rerun guided setup or /sync")?;
+    if node_payment_vk.len() != 32 {
+        return Err(format!(
+            "node payment_vk has unexpected length {} (want 32)",
+            node_payment_vk.len()
+        ));
+    }
+    let node_pubkey_hash = crate::cip8::blake2b_224(&node_payment_vk);
+
+    let funding_address = crate::cardano_tx::derive_address(
+        &state.cardano_payment_vk,
+        &input.network,
+    )
+    .map_err(|e| format!("derive funding address: {e}"))?;
+
+    // Look up the funding UTxO via the configured Cardano provider so we
+    // know its lovelace value. We run this inside a scoped read so the lock
+    // is released before any subsequent state mutation.
+    let funding_lovelace = {
+        let provider_guard = state.provider.read().await;
+        let provider = provider_guard
+            .as_ref()
+            .ok_or("no Cardano provider configured")?;
+        let utxos = provider
+            .get_address_utxos(&funding_address)
+            .await
+            .map_err(|e| e.to_string())?;
+        let funding = utxos
+            .iter()
+            .find(|u| {
+                u.tx_hash == input.utxo_tx_hash
+                    && u.output_index == input.utxo_index
+            })
+            .ok_or_else(|| {
+                format!(
+                    "funding UTxO {}:{} not found at {}",
+                    input.utxo_tx_hash, input.utxo_index, funding_address
+                )
+            })?;
+        funding
+            .amount
+            .iter()
+            .find(|a| a.unit == "lovelace")
+            .and_then(|a| a.quantity.parse::<u64>().ok())
+            .ok_or("funding UTxO has no lovelace amount")?
+    };
+
+    let deposit_amount: u64 = input.output_amounts.iter().sum();
+    let fee_lovelace: u64 = 200_000;
+    if funding_lovelace < deposit_amount.saturating_add(fee_lovelace) {
+        return Err(format!(
+            "funding UTxO has {funding_lovelace} lovelace; need at least \
+             {} (deposit + {fee_lovelace} fee)",
+            deposit_amount + fee_lovelace
+        ));
+    }
+
+    // Build blinded outputs (and persist their blinding factors before any
+    // network call leaves the wallet).
     let (blinding_data, blinded_outputs) = {
         let mut rng = rand::rng();
         let mut data = Vec::new();
@@ -949,7 +1025,6 @@ pub async fn deposit(
 
         for &amount in &input.output_amounts {
             let nonce = mugraph_core::types::Hash::random(&mut rng);
-            // Build a temporary note to compute commitment
             let temp_note = mugraph_core::types::Note {
                 amount,
                 delegate: delegate_pk,
@@ -963,7 +1038,6 @@ pub async fn deposit(
             let blinded =
                 mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
 
-            // Persist blinding factor BEFORE sending
             state
                 .store
                 .put_blinding_factor(
@@ -995,22 +1069,14 @@ pub async fn deposit(
         .unwrap_or_default()
         .as_secs();
 
-    let script_address = state
-        .store
-        .get_script_address(&input.network)
-        .map_err(|e| e.to_string())?
-        .unwrap_or_default();
-
-    // Build canonical payload matching the node's CanonicalPayload struct
-    // field order exactly (utxo, outputs, delegate_pk, script_address, nonce, network)
-    #[derive(Serialize)]
-    struct CanonicalUtxo {
-        tx_hash: String,
-        index: u16,
-    }
+    // Canonical payload mirrors `node/src/routes/deposit/signature.rs::CanonicalPayload`.
+    // It intentionally does NOT include the deposit UTxO ref: the wallet
+    // builds the deposit Cardano tx with the resulting `intent_hash` in
+    // its inline datum, so the deposit UTxO's tx_hash isn't known until
+    // after this canonical is fixed. Identity binding comes from
+    // delegate_pk + script_address + network; replay protection from nonce.
     #[derive(Serialize)]
     struct CanonicalPayload {
-        utxo: CanonicalUtxo,
         outputs: Vec<String>,
         delegate_pk: String,
         script_address: String,
@@ -1024,10 +1090,6 @@ pub async fn deposit(
         .collect();
 
     let canonical = CanonicalPayload {
-        utxo: CanonicalUtxo {
-            tx_hash: input.utxo_tx_hash.clone(),
-            index: input.utxo_index,
-        },
         outputs: output_hexes,
         delegate_pk: hex::encode(delegate_pk.0),
         script_address: script_address.clone(),
@@ -1038,16 +1100,64 @@ pub async fn deposit(
         .map_err(|e| e.to_string())?
         .into_bytes();
 
-    // Build CIP-8 COSE_Sign1 signature over canonical payload
+    // Build CIP-8 COSE_Sign1 signature over canonical payload.
     let cip8_signature = crate::cip8::build_cip8_signature(
         &state.ed25519_key,
         &canonical_bytes,
     )?;
 
+    // Build the deposit Cardano tx (funding UTxO -> script address with
+    // inline datum) and submit it via the provider. The deposit UTxO ends
+    // up at index 0 of the resulting tx (build_deposit_tx places it first).
+    let user_ed25519_vk: [u8; 32] =
+        state.ed25519_key.verifying_key().to_bytes();
+    let (tx_cbor, tx_hash_bytes) = crate::cardano_tx::build_deposit_tx(
+        &crate::cardano_tx::DepositTxParams {
+            input_tx_hash: &input.utxo_tx_hash,
+            input_index: input.utxo_index as u32,
+            input_amount_lovelace: funding_lovelace,
+            deposit_amount_lovelace: deposit_amount,
+            script_address_bech32: &script_address,
+            user_ed25519_vk: &user_ed25519_vk,
+            node_payment_vk: &node_pubkey_hash,
+            canonical_payload: &canonical_bytes,
+            change_address_bech32: &funding_address,
+            fee_lovelace,
+        },
+    )
+    .map_err(|e| format!("build deposit tx: {e}"))?;
+
+    let witnessed_cbor = crate::cardano_tx::attach_user_witness(
+        &tx_cbor,
+        &tx_hash_bytes,
+        &state.ed25519_key,
+    )
+    .map_err(|e| format!("witness deposit tx: {e}"))?;
+
+    let submitted_tx_hash = {
+        let provider_guard = state.provider.read().await;
+        let provider = provider_guard
+            .as_ref()
+            .ok_or("no Cardano provider configured")?;
+        provider
+            .submit_tx(&witnessed_cbor)
+            .await
+            .map_err(|e| format!("submit deposit tx: {e}"))?
+            .tx_hash
+    };
+
+    let expected_tx_hash = hex::encode(tx_hash_bytes);
+    if submitted_tx_hash != expected_tx_hash {
+        return Err(format!(
+            "provider returned tx_hash {submitted_tx_hash}, expected \
+             {expected_tx_hash} (CBOR mismatch)"
+        ));
+    }
+
     let deposit_req = mugraph_core::types::DepositRequest {
         utxo: mugraph_core::types::UtxoReference {
-            tx_hash: input.utxo_tx_hash.clone(),
-            index: input.utxo_index,
+            tx_hash: expected_tx_hash,
+            index: 0,
         },
         outputs: blinded_outputs,
         message: serde_json::json!({
@@ -1424,7 +1534,7 @@ pub async fn sync(
     }
 
     // Get current info
-    let (new_pk, script_addr) =
+    let (new_pk, script_addr, payment_vk_hex) =
         client.info().await.map_err(|e| e.to_string())?;
 
     let old_pk = state
@@ -1441,6 +1551,14 @@ pub async fn sync(
         state
             .store
             .set_script_address(&network, addr)
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(ref vk_hex) = payment_vk_hex {
+        let vk_bytes = hex::decode(vk_hex)
+            .map_err(|e| format!("invalid node payment_vk hex: {e}"))?;
+        state
+            .store
+            .set_node_payment_vk(&network, &vk_bytes)
             .map_err(|e| e.to_string())?;
     }
 

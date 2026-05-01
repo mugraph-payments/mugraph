@@ -28,8 +28,8 @@ use self::{
 use self::{
     persistence::{insert_deposit_if_absent, store_wallet_if_absent},
     signature::{
-        CanonicalPayload, CanonicalUtxo, build_canonical_payload,
-        compute_intent_hash, verify_cip8_cose_signature,
+        CanonicalPayload, build_canonical_payload, compute_intent_hash,
+        verify_cip8_cose_signature,
     },
     source_validation::{validate_deposit_amounts, validate_deposit_datum},
 };
@@ -251,10 +251,6 @@ mod tests {
         let payload =
             build_canonical_payload(&request, &delegate_pk, "addr_test1...");
         let expected = serde_json::to_string(&CanonicalPayload {
-            utxo: CanonicalUtxo {
-                tx_hash: request.utxo.tx_hash.clone(),
-                index: request.utxo.index,
-            },
             outputs: vec![],
             delegate_pk: hex::encode(delegate_pk.0),
             script_address: "addr_test1...".to_string(),

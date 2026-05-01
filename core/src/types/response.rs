@@ -17,6 +17,10 @@ pub enum Response {
         delegate_pk: PublicKey,
         /// Cardano script address for deposits
         cardano_script_address: Option<String>,
+        /// Node Cardano payment verification key (hex encoded). Required by
+        /// the wallet to embed `node_pubkey_hash` in deposit datums.
+        #[serde(default)]
+        cardano_payment_vk: Option<String>,
     },
     #[serde(rename = "emit")]
     Emit(Box<Note>),
