@@ -14,7 +14,6 @@ import * as api from "./lib/api";
 import { snapshotToWalletState } from "./lib/walletStore";
 import type {
   WalletActiveDestination,
-  WalletDepositDraft,
   WalletReceiveDraft,
   WalletSendDraft,
   WalletState,
@@ -26,11 +25,11 @@ function App() {
   const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(null);
   const [sendDraft, setSendDraft] = useState<WalletSendDraft>(walletActionDrafts.send);
   const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(walletActionDrafts.receive);
-  const [depositDraft, setDepositDraft] = useState<WalletDepositDraft>(walletActionDrafts.deposit);
   const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
     walletActionDrafts.withdraw,
   );
   const [liveState, setLiveState] = useState<WalletState | null>(null);
+  const [fundingAddress, setFundingAddress] = useState<string | null>(null);
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [tauriAvailable, setTauriAvailable] = useState(true);
   // Network switching will be wired to the settings screen
@@ -40,6 +39,7 @@ function App() {
     try {
       const snapshot = await api.getWalletState(network);
       setLiveState(snapshotToWalletState(snapshot));
+      setFundingAddress(snapshot.cardano_funding_address);
       setSetupComplete(snapshot.setup_complete);
       setTauriAvailable(true);
     } catch {
@@ -47,6 +47,11 @@ function App() {
       setTauriAvailable(false);
     }
   }, []);
+
+  const refreshActiveNetwork = useCallback(
+    () => loadWalletState(activeNetwork),
+    [activeNetwork, loadWalletState],
+  );
 
   useEffect(() => {
     loadWalletState(activeNetwork);
@@ -120,11 +125,11 @@ function App() {
       case "settings":
         return (
           <WalletSettingsScreen
+            network={activeNetwork}
+            fundingAddress={fundingAddress}
             delegatePkShort={view.identity.delegatePkShort}
             scriptAddressShort={view.identity.scriptAddressShort}
             syncPostureLabel={`${view.identity.statusLabel} on ${view.identity.networkLabel}`}
-            depositDraft={depositDraft}
-            onDepositDraftChange={setDepositDraft}
             withdrawDraft={withdrawDraft}
             onWithdrawDraftChange={setWithdrawDraft}
             latestDepositReference={latestDeposit?.referenceShort ?? "No deposit reference"}
@@ -133,6 +138,7 @@ function App() {
             topAssetLabel={topAssetLabel}
             assetOptions={assetOptions}
             notes={view.notes}
+            onMutationDone={refreshActiveNetwork}
           />
         );
       case "activity":

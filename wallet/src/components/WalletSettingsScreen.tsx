@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { WalletNoteView } from "../lib/walletView";
-import type { WalletDepositDraft, WalletWithdrawDraft } from "../types/wallet";
+import type { WalletWithdrawDraft } from "../types/wallet";
 import { DepositDetails } from "./DepositDetails";
 import { NotesPanel } from "./NotesPanel";
 import { WithdrawDetails } from "./WithdrawDetails";
@@ -12,11 +12,11 @@ interface AssetOption {
 }
 
 interface WalletSettingsScreenProps {
+  network: string;
+  fundingAddress: string | null;
   delegatePkShort: string;
   scriptAddressShort: string;
   syncPostureLabel: string;
-  depositDraft: WalletDepositDraft;
-  onDepositDraftChange: (draft: WalletDepositDraft) => void;
   withdrawDraft: WalletWithdrawDraft;
   onWithdrawDraftChange: (draft: WalletWithdrawDraft) => void;
   latestDepositReference: string;
@@ -25,14 +25,16 @@ interface WalletSettingsScreenProps {
   topAssetLabel: string;
   assetOptions: AssetOption[];
   notes: WalletNoteView[];
+  /** Refresh the wallet snapshot after a successful mutation. */
+  onMutationDone: () => Promise<void> | void;
 }
 
 export function WalletSettingsScreen({
+  network,
+  fundingAddress,
   delegatePkShort,
   scriptAddressShort,
   syncPostureLabel,
-  depositDraft,
-  onDepositDraftChange,
   withdrawDraft,
   onWithdrawDraftChange,
   latestDepositReference,
@@ -41,6 +43,7 @@ export function WalletSettingsScreen({
   topAssetLabel,
   assetOptions,
   notes,
+  onMutationDone,
 }: WalletSettingsScreenProps) {
   const [activeAdvancedAction, setActiveAdvancedAction] = useState<
     "deposit" | "withdraw" | "notes"
@@ -114,13 +117,13 @@ export function WalletSettingsScreen({
 
         {activeAdvancedAction === "deposit" ? (
           <DepositDetails
+            network={network}
+            fundingAddress={fundingAddress}
             scriptAddressShort={scriptAddressShort}
             delegatePkShort={delegatePkShort}
             latestDepositReference={latestDepositReference}
             pendingActivityCount={pendingActivityCount}
-            draft={depositDraft}
-            assetOptions={assetOptions}
-            onDraftChange={onDepositDraftChange}
+            onDone={onMutationDone}
           />
         ) : activeAdvancedAction === "withdraw" ? (
           <WithdrawDetails
