@@ -2,6 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityPanel } from "./components/ActivityPanel";
 import { AssetPanel } from "./components/AssetPanel";
+import { GuidedSetupScreen } from "./components/GuidedSetupScreen";
 import { WalletActionScreen } from "./components/WalletActionScreen";
 import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
@@ -30,6 +31,8 @@ function App() {
     walletActionDrafts.withdraw,
   );
   const [liveState, setLiveState] = useState<WalletState | null>(null);
+  const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
+  const [tauriAvailable, setTauriAvailable] = useState(true);
   // Network switching will be wired to the settings screen
   const [activeNetwork, _setActiveNetwork] = useState("preprod");
 
@@ -37,8 +40,11 @@ function App() {
     try {
       const snapshot = await api.getWalletState(network);
       setLiveState(snapshotToWalletState(snapshot));
+      setSetupComplete(snapshot.setup_complete);
+      setTauriAvailable(true);
     } catch {
       // Tauri not available (browser dev mode) — stay on stub
+      setTauriAvailable(false);
     }
   }, []);
 
@@ -133,6 +139,11 @@ function App() {
         return <ActivityPanel activity={view.activity} />;
     }
   })();
+
+  // Gate on guided setup (only when we successfully reached the Tauri backend).
+  if (tauriAvailable && setupComplete === false) {
+    return <GuidedSetupScreen onComplete={() => loadWalletState(activeNetwork)} />;
+  }
 
   return (
     <div className="min-h-dvh text-slate-50">
