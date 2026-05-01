@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     node_client::NodeClient,
+    provider::CardanoProvider,
     store::{NoteStatus, Store, StoredNote},
 };
 
@@ -63,6 +64,7 @@ pub struct AppState {
     pub cardano_payment_sk: [u8; 32],
     pub cardano_payment_vk: [u8; 32],
     pub node_clients: RwLock<HashMap<String, NodeClient>>,
+    pub provider: RwLock<Option<CardanoProvider>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,6 +258,23 @@ pub async fn complete_guided_setup(
             delegate_pk,
             cardano_script_address: script_addr,
         });
+    }
+
+    // Initialize the Cardano provider with the configured credentials
+    // One provider reused across all networks, with network-specific endpoint
+    // derived from the provider type.
+    {
+        let base_override = config.provider_base_url_override.as_deref();
+        // Create a provider for the default network; the same credentials work
+        // across networks — only the base URL changes.
+        let cardano_provider = CardanoProvider::new(
+            &config.provider_type,
+            &config.provider_api_key,
+            "preprod",
+            base_override,
+        )
+        .map_err(|e| e.to_string())?;
+        *state.provider.write().await = Some(cardano_provider);
     }
 
     state

@@ -2,6 +2,7 @@ pub mod cardano_tx;
 pub mod cip8;
 pub mod commands;
 pub mod node_client;
+pub mod provider;
 pub mod store;
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -113,6 +114,29 @@ fn init_app_state() -> Arc<AppState> {
         }
     }
 
+    // Try to restore the provider from stored credentials
+    let provider = match (
+        store.get_provider_config("type").unwrap(),
+        store.get_provider_config("api_key").unwrap(),
+    ) {
+        (Some(ptype), Some(api_key)) => {
+            let base_override =
+                store.get_provider_config("base_url_override").unwrap();
+            let network = store
+                .get_config("last_network")
+                .unwrap()
+                .unwrap_or_else(|| "preprod".to_string());
+            provider::CardanoProvider::new(
+                &ptype,
+                &api_key,
+                &network,
+                base_override.as_deref(),
+            )
+            .ok()
+        }
+        _ => None,
+    };
+
     Arc::new(AppState {
         store,
         keypair,
@@ -120,6 +144,7 @@ fn init_app_state() -> Arc<AppState> {
         cardano_payment_sk,
         cardano_payment_vk,
         node_clients: RwLock::new(HashMap::new()),
+        provider: RwLock::new(provider),
     })
 }
 
