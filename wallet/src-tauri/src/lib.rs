@@ -13,6 +13,9 @@ use store::Store;
 use tokio::sync::RwLock;
 
 fn data_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("MUGRAPH_WALLET_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("mugraph-wallet")
