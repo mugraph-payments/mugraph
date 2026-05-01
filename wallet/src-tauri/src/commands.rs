@@ -203,6 +203,13 @@ pub async fn complete_guided_setup(
     config: SetupConfig,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<SetupResult, String> {
+    complete_guided_setup_impl(config, state.inner().clone()).await
+}
+
+pub async fn complete_guided_setup_impl(
+    config: SetupConfig,
+    state: Arc<AppState>,
+) -> Result<SetupResult, String> {
     // Store config
     state
         .store
@@ -312,6 +319,13 @@ pub async fn get_wallet_state(
     network: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<WalletSnapshot, String> {
+    get_wallet_state_impl(network, state.inner().clone()).await
+}
+
+pub async fn get_wallet_state_impl(
+    network: String,
+    state: Arc<AppState>,
+) -> Result<WalletSnapshot, String> {
     let label = state
         .store
         .get_config("label")
@@ -376,6 +390,13 @@ pub async fn get_wallet_state(
 pub async fn list_funding_utxos(
     network: String,
     state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<FundingUtxo>, String> {
+    list_funding_utxos_impl(network, state.inner().clone()).await
+}
+
+pub async fn list_funding_utxos_impl(
+    network: String,
+    state: Arc<AppState>,
 ) -> Result<Vec<FundingUtxo>, String> {
     let funding_address =
         crate::cardano_tx::derive_address(&state.cardano_payment_vk, &network)
@@ -462,6 +483,13 @@ pub async fn create_receive_request(
 pub async fn import_notes(
     payload: String,
     state: tauri::State<'_, Arc<AppState>>,
+) -> Result<ImportResult, String> {
+    import_notes_impl(payload, state.inner().clone()).await
+}
+
+pub async fn import_notes_impl(
+    payload: String,
+    state: Arc<AppState>,
 ) -> Result<ImportResult, String> {
     let envelope: serde_json::Value =
         serde_json::from_str(&payload).map_err(|e| e.to_string())?;
@@ -699,6 +727,13 @@ pub async fn import_notes(
 pub async fn send(
     input: SendInput,
     state: tauri::State<'_, Arc<AppState>>,
+) -> Result<SendResult, String> {
+    send_impl(input, state.inner().clone()).await
+}
+
+pub async fn send_impl(
+    input: SendInput,
+    state: Arc<AppState>,
 ) -> Result<SendResult, String> {
     let delegate_pk = state
         .store
@@ -992,6 +1027,13 @@ pub async fn refresh_notes(
 pub async fn deposit(
     input: DepositInput,
     state: tauri::State<'_, Arc<AppState>>,
+) -> Result<DepositResult, String> {
+    deposit_impl(input, state.inner().clone()).await
+}
+
+pub async fn deposit_impl(
+    input: DepositInput,
+    state: Arc<AppState>,
 ) -> Result<DepositResult, String> {
     let delegate_pk = state
         .store
@@ -1328,6 +1370,13 @@ pub async fn deposit(
 pub async fn withdraw(
     input: WithdrawInput,
     state: tauri::State<'_, Arc<AppState>>,
+) -> Result<WithdrawResult, String> {
+    withdraw_impl(input, state.inner().clone()).await
+}
+
+pub async fn withdraw_impl(
+    input: WithdrawInput,
+    state: Arc<AppState>,
 ) -> Result<WithdrawResult, String> {
     let delegate_pk = state
         .store

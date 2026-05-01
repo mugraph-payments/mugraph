@@ -1,20 +1,14 @@
-import { CheckCircle, Plus, QrCode, Sparkle, X } from "@phosphor-icons/react";
+import { CheckCircle, Copy, Sparkle } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useState } from "react";
-import type { WalletSendDraft, WalletSendEntry } from "../types/wallet";
-
-type SendStep = "form" | "qr" | "confirmed";
-
-interface SendAssetOption {
-  id: string;
-  label: string;
-  balanceLabel: string;
-}
+import { useMemo, useState } from "react";
+import * as api from "../lib/api";
+import type { WalletNote } from "../types/wallet";
 
 interface SendDetailsProps {
-  draft: WalletSendDraft;
-  assetOptions: SendAssetOption[];
-  onDraftChange: (draft: WalletSendDraft) => void;
+  network: string;
+  notes: WalletNote[];
+  /** Refresh wallet state after a successful send. */
+  onDone: () => Promise<void> | void;
 }
 
 const successMessages = [
@@ -23,239 +17,75 @@ const successMessages = [
   "That note is on its way.",
 ];
 
-function isEntryValid(entry: WalletSendEntry): boolean {
-  if (!entry.assetId) return false;
-  const n = Number(entry.amountInput.trim());
-  return Number.isFinite(n) && n > 0;
+function formatLovelace(lovelace: number): string {
+  return `${(lovelace / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 })} ADA`;
 }
 
-/** Extract the numeric portion from a formatted balance like "12,483.54 ADA" */
-function maxFromLabel(label: string): string {
-  const num = label.split(" ")[0]?.replace(/,/g, "") ?? "0";
-  return num;
+function shortNonce(nonce: string): string {
+  return `${nonce.slice(0, 10)}…`;
 }
 
-function QrPlaceholder({ lines }: { lines: string[] }) {
-  return (
-    <div className="flex flex-col items-center gap-4 py-2">
-      <div
-        className="wallet-soft-float flex h-48 w-48 items-center justify-center rounded-2xl border border-white/10 bg-white p-3"
-        aria-label="Transaction QR code"
-      >
-        <svg viewBox="0 0 21 21" className="h-full w-full" shapeRendering="crispEdges">
-          <rect width="21" height="21" fill="white" />
-          <rect x="0" y="0" width="7" height="7" fill="black" />
-          <rect x="1" y="1" width="5" height="5" fill="white" />
-          <rect x="2" y="2" width="3" height="3" fill="black" />
-          <rect x="14" y="0" width="7" height="7" fill="black" />
-          <rect x="15" y="1" width="5" height="5" fill="white" />
-          <rect x="16" y="2" width="3" height="3" fill="black" />
-          <rect x="0" y="14" width="7" height="7" fill="black" />
-          <rect x="1" y="15" width="5" height="5" fill="white" />
-          <rect x="2" y="16" width="3" height="3" fill="black" />
-          <rect x="8" y="0" width="1" height="1" fill="black" />
-          <rect x="10" y="0" width="1" height="1" fill="black" />
-          <rect x="8" y="2" width="1" height="1" fill="black" />
-          <rect x="10" y="2" width="1" height="1" fill="black" />
-          <rect x="12" y="2" width="1" height="1" fill="black" />
-          <rect x="8" y="4" width="1" height="1" fill="black" />
-          <rect x="11" y="4" width="1" height="1" fill="black" />
-          <rect x="9" y="6" width="1" height="1" fill="black" />
-          <rect x="11" y="6" width="1" height="1" fill="black" />
-          <rect x="0" y="8" width="1" height="1" fill="black" />
-          <rect x="2" y="8" width="1" height="1" fill="black" />
-          <rect x="4" y="8" width="1" height="1" fill="black" />
-          <rect x="6" y="8" width="1" height="1" fill="black" />
-          <rect x="9" y="8" width="1" height="1" fill="black" />
-          <rect x="11" y="8" width="1" height="1" fill="black" />
-          <rect x="14" y="8" width="1" height="1" fill="black" />
-          <rect x="16" y="8" width="1" height="1" fill="black" />
-          <rect x="18" y="8" width="1" height="1" fill="black" />
-          <rect x="20" y="8" width="1" height="1" fill="black" />
-          <rect x="8" y="9" width="1" height="1" fill="black" />
-          <rect x="10" y="9" width="1" height="1" fill="black" />
-          <rect x="14" y="9" width="1" height="1" fill="black" />
-          <rect x="17" y="9" width="1" height="1" fill="black" />
-          <rect x="9" y="10" width="1" height="1" fill="black" />
-          <rect x="12" y="10" width="1" height="1" fill="black" />
-          <rect x="15" y="10" width="1" height="1" fill="black" />
-          <rect x="18" y="10" width="1" height="1" fill="black" />
-          <rect x="20" y="10" width="1" height="1" fill="black" />
-          <rect x="8" y="11" width="1" height="1" fill="black" />
-          <rect x="11" y="11" width="1" height="1" fill="black" />
-          <rect x="14" y="11" width="1" height="1" fill="black" />
-          <rect x="16" y="11" width="1" height="1" fill="black" />
-          <rect x="19" y="11" width="1" height="1" fill="black" />
-          <rect x="8" y="12" width="1" height="1" fill="black" />
-          <rect x="10" y="12" width="1" height="1" fill="black" />
-          <rect x="12" y="12" width="1" height="1" fill="black" />
-          <rect x="15" y="12" width="1" height="1" fill="black" />
-          <rect x="17" y="12" width="1" height="1" fill="black" />
-          <rect x="20" y="12" width="1" height="1" fill="black" />
-          <rect x="9" y="14" width="1" height="1" fill="black" />
-          <rect x="11" y="14" width="1" height="1" fill="black" />
-          <rect x="14" y="14" width="1" height="1" fill="black" />
-          <rect x="17" y="14" width="1" height="1" fill="black" />
-          <rect x="19" y="14" width="1" height="1" fill="black" />
-          <rect x="8" y="16" width="1" height="1" fill="black" />
-          <rect x="10" y="16" width="1" height="1" fill="black" />
-          <rect x="15" y="16" width="1" height="1" fill="black" />
-          <rect x="18" y="16" width="1" height="1" fill="black" />
-          <rect x="9" y="18" width="1" height="1" fill="black" />
-          <rect x="12" y="18" width="1" height="1" fill="black" />
-          <rect x="14" y="18" width="1" height="1" fill="black" />
-          <rect x="16" y="18" width="1" height="1" fill="black" />
-          <rect x="20" y="18" width="1" height="1" fill="black" />
-          <rect x="8" y="20" width="1" height="1" fill="black" />
-          <rect x="10" y="20" width="1" height="1" fill="black" />
-          <rect x="14" y="20" width="1" height="1" fill="black" />
-          <rect x="17" y="20" width="1" height="1" fill="black" />
-          <rect x="19" y="20" width="1" height="1" fill="black" />
-        </svg>
-      </div>
-      <div className="text-center">
-        {lines.map((line) => (
-          <p key={line} className="wallet-data text-sm font-medium text-slate-200">
-            {line}
-          </p>
-        ))}
-      </div>
-      <p className="text-center text-xs text-slate-400">
-        A quick scan keeps the handoff private and tidy.
-      </p>
-    </div>
+export function SendDetails({ network, notes, onDone }: SendDetailsProps) {
+  const available = useMemo(() => notes.filter((n) => n.status === "available"), [notes]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [envelope, setEnvelope] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const successMessage = useMemo(
+    () => successMessages[Math.floor(Math.random() * successMessages.length)],
+    [envelope],
   );
-}
-
-function SendEntryCard({
-  entry,
-  index,
-  assetOptions,
-  usedAssetIds,
-  canRemove,
-  onUpdate,
-  onRemove,
-}: {
-  entry: WalletSendEntry;
-  index: number;
-  assetOptions: SendAssetOption[];
-  usedAssetIds: Set<string>;
-  canRemove: boolean;
-  onUpdate: (patch: Partial<WalletSendEntry>) => void;
-  onRemove: () => void;
-}) {
-  const selectedAsset = assetOptions.find((a) => a.id === entry.assetId) ?? null;
-  const available = assetOptions.filter((a) => !usedAssetIds.has(a.id) || a.id === entry.assetId);
-
-  function handleMax() {
-    if (!selectedAsset) return;
-    onUpdate({ amountInput: maxFromLabel(selectedAsset.balanceLabel) });
-  }
-
-  return (
-    <div className="wallet-subtle-card relative space-y-3 p-4 sm:p-5">
-      {canRemove ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="wallet-interactive absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:text-rose-300"
-          aria-label={`Remove asset ${index + 1}`}
-        >
-          <X className="h-3.5 w-3.5" weight="bold" />
-        </button>
-      ) : null}
-
-      <div>
-        <span className="text-xs font-medium text-slate-400">Asset</span>
-        <select
-          value={entry.assetId}
-          onChange={(e) => onUpdate({ assetId: e.target.value })}
-          className="wallet-input mt-2 w-full text-sm"
-        >
-          <option value="">Select asset</option>
-          {available.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <span className="text-xs font-medium text-slate-400">Amount</span>
-        <div className="relative mt-2">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={entry.amountInput}
-            onChange={(e) => onUpdate({ amountInput: e.target.value })}
-            placeholder="0.00"
-            aria-invalid={entry.amountInput.trim() ? !isEntryValid(entry) : undefined}
-            className="wallet-input wallet-data w-full pr-16 text-sm"
-          />
-          <button
-            type="button"
-            onClick={handleMax}
-            disabled={!selectedAsset}
-            className="wallet-interactive absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-white/[0.12] hover:text-slate-50 disabled:opacity-30"
-          >
-            Max
-          </button>
-        </div>
-        {entry.amountInput.trim() && !isEntryValid(entry) ? (
-          <p className="wallet-hint text-rose-300">
-            Enter a positive amount for the selected asset.
-          </p>
-        ) : null}
-        {selectedAsset ? (
-          <p className="mt-2 text-xs text-slate-400">
-            Available{" "}
-            <span className="wallet-data font-medium text-slate-300">
-              {selectedAsset.balanceLabel}
-            </span>
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsProps) {
-  const [step, setStep] = useState<SendStep>("form");
-  const [confirmedLines, setConfirmedLines] = useState<string[]>([]);
-  const [successMessage, setSuccessMessage] = useState(successMessages[0]);
   const prefersReducedMotion = useReducedMotion();
-  const { entries } = draft;
-  const validEntries = entries.filter(isEntryValid);
-  const isReady = validEntries.length > 0;
 
-  function updateEntry(index: number, patch: Partial<WalletSendEntry>) {
-    const next = entries.map((e, i) => (i === index ? { ...e, ...patch } : e));
-    onDraftChange({ entries: next });
-  }
+  const total = useMemo(
+    () => available.filter((n) => selected.has(n.nonce)).reduce((a, n) => a + n.amount, 0),
+    [available, selected],
+  );
 
-  function removeEntry(index: number) {
-    onDraftChange({ entries: entries.filter((_, i) => i !== index) });
-  }
-
-  function addEntry() {
-    onDraftChange({ entries: [...entries, { assetId: "", amountInput: "" }] });
-  }
-
-  function usedAssetIds(exceptIndex: number): Set<string> {
-    return new Set(entries.filter((_, i) => i !== exceptIndex).map((e) => e.assetId));
-  }
-
-  function buildLines() {
-    return validEntries.map((e) => {
-      const opt = assetOptions.find((a) => a.id === e.assetId);
-      return `${e.amountInput.trim()} ${opt?.label ?? ""}`;
+  function toggle(nonce: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(nonce)) next.delete(nonce);
+      else next.add(nonce);
+      return next;
     });
   }
 
-  if (step === "confirmed") {
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (selected.size === 0 || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api.sendNotes({
+        network,
+        note_nonces: Array.from(selected),
+      });
+      setEnvelope(res.envelope);
+      setSelected(new Set());
+      await onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCopy() {
+    if (!envelope) return;
+    try {
+      await navigator.clipboard.writeText(envelope);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // best-effort; ignore
+    }
+  }
+
+  if (envelope) {
     return (
-      <div className="mx-auto grid w-full max-w-lg gap-5 py-2" role="status" aria-live="polite">
+      <div className="mx-auto grid w-full max-w-2xl gap-5 py-2" role="status" aria-live="polite">
         <div className="flex flex-col items-center gap-3 text-center">
           <motion.div
             initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.82, y: 6 }}
@@ -265,46 +95,32 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
           >
             <CheckCircle className="h-12 w-12 text-teal-300" weight="duotone" />
           </motion.div>
+          <h3 className="wallet-heading text-[1.625rem] text-slate-50">Notes ready to share</h3>
+          <p className="text-sm text-teal-300">{successMessage}</p>
+          <p className="text-center text-xs text-slate-400">
+            Paste this envelope into the recipient's Receive → Import tab.
+          </p>
+        </div>
 
-          <motion.div
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-            className="grid gap-2"
+        <div className="wallet-subtle-card grid gap-3 p-4 sm:p-5">
+          <textarea
+            readOnly
+            value={envelope}
+            className="wallet-input wallet-code h-48 resize-none break-all text-xs text-slate-200"
+          />
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="wallet-interactive wallet-cta-secondary inline-flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium text-slate-200"
           >
-            <h3 className="wallet-heading text-[1.625rem] text-slate-50">Transfer confirmed</h3>
-            <p className="text-sm text-teal-300">{successMessage}</p>
-          </motion.div>
-
-          <motion.div
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-            className="text-center"
-          >
-            {confirmedLines.map((line) => (
-              <p key={line} className="wallet-data text-sm text-slate-300">
-                {line}
-              </p>
-            ))}
-          </motion.div>
-
-          <motion.p
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}
-            className="text-center text-xs text-slate-400"
-          >
-            The recipient scanned the code and the transfer has been recorded.
-          </motion.p>
+            <Copy className="h-3.5 w-3.5" weight="bold" />
+            {copied ? "Copied" : "Copy envelope"}
+          </button>
         </div>
 
         <button
           type="button"
-          onClick={() => {
-            onDraftChange({ entries: [{ assetId: "", amountInput: "" }] });
-            setStep("form");
-          }}
+          onClick={() => setEnvelope(null)}
           className="wallet-interactive wallet-cta-secondary mx-auto rounded-xl border px-6 py-2.5 text-sm font-medium text-slate-200"
         >
           New transfer
@@ -313,81 +129,71 @@ export function SendDetails({ draft, assetOptions, onDraftChange }: SendDetailsP
     );
   }
 
-  if (step === "qr" && isReady) {
-    const lines = buildLines();
-    return (
-      <div className="mx-auto grid w-full max-w-lg gap-4 py-2">
-        <QrPlaceholder lines={lines} />
-        <p className="text-center text-xs text-slate-400">
-          Show this code to the recipient, then confirm once they have scanned it.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setConfirmedLines(lines);
-            setSuccessMessage(successMessages[Math.floor(Math.random() * successMessages.length)]);
-            setStep("confirmed");
-          }}
-          className="wallet-interactive wallet-cta-primary flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50"
-        >
-          <CheckCircle className="h-4 w-4" weight="duotone" />
-          Confirm transfer
-        </button>
-        <button
-          type="button"
-          onClick={() => setStep("form")}
-          className="wallet-interactive mx-auto rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-slate-200"
-        >
-          Edit transaction
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="grid w-full max-w-2xl gap-4">
-      {entries.map((entry, index) => (
-        <SendEntryCard
-          key={index}
-          entry={entry}
-          index={index}
-          assetOptions={assetOptions}
-          usedAssetIds={usedAssetIds(index)}
-          canRemove={entries.length > 1}
-          onUpdate={(patch) => updateEntry(index, patch)}
-          onRemove={() => removeEntry(index)}
-        />
-      ))}
+    <form className="grid w-full max-w-2xl gap-4" onSubmit={handleSubmit}>
+      {available.length === 0 ? (
+        <div className="wallet-subtle-card p-4 text-sm text-slate-300">
+          No spendable notes. Deposit funds first or wait for a refresh.
+        </div>
+      ) : (
+        <div className="grid gap-2">
+          {available.map((note) => {
+            const checked = selected.has(note.nonce);
+            return (
+              <button
+                key={note.nonce}
+                type="button"
+                aria-pressed={checked}
+                onClick={() => toggle(note.nonce)}
+                className={`wallet-choice grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 ${
+                  checked ? "border-teal-300/30 bg-teal-400/10" : "border-white/10 bg-white/[0.03]"
+                }`}
+              >
+                <span
+                  className={`inline-flex h-4 w-4 items-center justify-center rounded border ${
+                    checked ? "border-teal-300/60 bg-teal-300/20 text-teal-200" : "border-white/20"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {checked ? "✓" : ""}
+                </span>
+                <span className="wallet-code break-all text-left text-xs text-slate-300">
+                  {shortNonce(note.nonce)}
+                </span>
+                <span className="wallet-data text-right text-sm font-medium text-slate-100">
+                  {formatLovelace(note.amount)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-        {entries.length < assetOptions.length ? (
-          <button
-            type="button"
-            onClick={addEntry}
-            className="wallet-interactive flex w-fit items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200"
-          >
-            <Plus className="h-3.5 w-3.5" weight="bold" />
-            Add asset
-          </button>
-        ) : (
-          <span />
-        )}
+      {error ? (
+        <p className="wallet-hint text-rose-300" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-        <button
-          type="button"
-          disabled={!isReady}
-          onClick={() => setStep("qr")}
-          className="wallet-interactive wallet-cta-primary flex min-w-[13rem] items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold text-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-        >
-          <QrCode className="h-4 w-4" weight="duotone" />
-          Generate QR code
-        </button>
-      </div>
+      {selected.size > 0 ? (
+        <p className="wallet-meta-note text-slate-500">
+          Sending {selected.size} note{selected.size === 1 ? "" : "s"} totalling{" "}
+          {formatLovelace(total)}
+        </p>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={selected.size === 0 || submitting}
+        className="wallet-interactive wallet-cta-primary w-full rounded-2xl border px-4 py-3 text-base font-medium text-slate-50 disabled:opacity-45 disabled:active:scale-100"
+      >
+        {submitting ? "Building envelope…" : "Send selected notes"}
+      </button>
 
       <p className="wallet-meta-note flex items-center gap-2 text-slate-500">
         <Sparkle className="h-3.5 w-3.5 text-slate-400" weight="fill" />
-        We keep the handoff short so the transfer feels instant in person.
+        Selected notes are marked spent locally as soon as the envelope is built.
       </p>
-    </div>
+    </form>
   );
 }

@@ -21,8 +21,11 @@ fn data_dir() -> PathBuf {
         .join("mugraph-wallet")
 }
 
-fn init_app_state() -> Arc<AppState> {
-    let db_path = data_dir().join("wallet.redb");
+/// Build an `AppState` rooted at an explicit data directory. Used by the
+/// Tauri runtime via `init_app_state` and by integration tests that want
+/// isolated, ephemeral wallet instances.
+pub fn init_app_state_at(dir: &std::path::Path) -> Arc<AppState> {
+    let db_path = dir.join("wallet.redb");
     std::fs::create_dir_all(db_path.parent().unwrap()).ok();
     let store = Store::open(&db_path).expect("failed to open wallet database");
 
@@ -149,6 +152,10 @@ fn init_app_state() -> Arc<AppState> {
         node_clients: RwLock::new(HashMap::new()),
         provider: RwLock::new(provider),
     })
+}
+
+pub fn init_app_state() -> Arc<AppState> {
+    init_app_state_at(&data_dir())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

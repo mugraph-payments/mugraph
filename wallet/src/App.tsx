@@ -8,38 +8,28 @@ import { WalletBottomNav } from "./components/WalletBottomNav";
 import { WalletHeader } from "./components/WalletHeader";
 import { WalletHomeScreen } from "./components/WalletHomeScreen";
 import { WalletSettingsScreen } from "./components/WalletSettingsScreen";
-import { walletActionDrafts, walletState as stubWalletState } from "./data/stubWallet";
+import { walletState as stubWalletState } from "./data/stubWallet";
 import { createWalletView } from "./lib/walletView";
 import * as api from "./lib/api";
 import { snapshotToWalletState } from "./lib/walletStore";
-import type {
-  WalletActiveDestination,
-  WalletReceiveDraft,
-  WalletSendDraft,
-  WalletState,
-  WalletWithdrawDraft,
-} from "./types/wallet";
+import type { WalletActiveDestination, WalletState } from "./types/wallet";
 
 function App() {
   const [activeDestination, setActiveDestination] = useState<WalletActiveDestination>("home");
   const [activeConsumerAction, setActiveConsumerAction] = useState<"send" | "receive" | null>(null);
-  const [sendDraft, setSendDraft] = useState<WalletSendDraft>(walletActionDrafts.send);
-  const [receiveDraft, setReceiveDraft] = useState<WalletReceiveDraft>(walletActionDrafts.receive);
-  const [withdrawDraft, setWithdrawDraft] = useState<WalletWithdrawDraft>(
-    walletActionDrafts.withdraw,
-  );
   const [liveState, setLiveState] = useState<WalletState | null>(null);
   const [fundingAddress, setFundingAddress] = useState<string | null>(null);
+  const [hasOrphans, setHasOrphans] = useState(false);
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [tauriAvailable, setTauriAvailable] = useState(true);
-  // Network switching will be wired to the settings screen
-  const [activeNetwork, _setActiveNetwork] = useState("preprod");
+  const [activeNetwork, setActiveNetwork] = useState("preprod");
 
   const loadWalletState = useCallback(async (network: string) => {
     try {
       const snapshot = await api.getWalletState(network);
       setLiveState(snapshotToWalletState(snapshot));
       setFundingAddress(snapshot.cardano_funding_address);
+      setHasOrphans(snapshot.has_orphaned_blinding_factors);
       setSetupComplete(snapshot.setup_complete);
       setTauriAvailable(true);
     } catch {
@@ -52,6 +42,15 @@ function App() {
     () => loadWalletState(activeNetwork),
     [activeNetwork, loadWalletState],
   );
+
+  const handleNetworkChange = useCallback(async (network: string) => {
+    try {
+      await api.switchNetwork(network);
+    } catch {
+      // ignore — falling through to refresh below
+    }
+    setActiveNetwork(network);
+  }, []);
 
   useEffect(() => {
     loadWalletState(activeNetwork);
@@ -105,12 +104,11 @@ function App() {
             activeAction={activeConsumerAction}
             onActionSelect={handlePrimaryActionSelect}
             onClose={() => setActiveConsumerAction(null)}
-            sendDraft={sendDraft}
-            onSendDraftChange={setSendDraft}
-            receiveDraft={receiveDraft}
-            onReceiveDraftChange={setReceiveDraft}
+            network={activeNetwork}
+            notes={walletState.notes}
             assetOptions={assetOptions}
             identity={view.identity}
+            onMutationDone={refreshActiveNetwork}
           />
         ) : (
           <WalletHomeScreen
@@ -130,14 +128,13 @@ function App() {
             delegatePkShort={view.identity.delegatePkShort}
             scriptAddressShort={view.identity.scriptAddressShort}
             syncPostureLabel={`${view.identity.statusLabel} on ${view.identity.networkLabel}`}
-            withdrawDraft={withdrawDraft}
-            onWithdrawDraftChange={setWithdrawDraft}
             latestDepositReference={latestDeposit?.referenceShort ?? "No deposit reference"}
             latestWithdrawReference={latestWithdraw?.referenceShort ?? "No withdraw reference"}
             pendingActivityCount={walletState.summary.pendingActivityCount}
             topAssetLabel={topAssetLabel}
             assetOptions={assetOptions}
             notes={view.notes}
+            onNetworkChange={handleNetworkChange}
             onMutationDone={refreshActiveNetwork}
           />
         );
@@ -169,6 +166,20 @@ function App() {
           </aside>
 
           <main className="grid min-h-0 items-start gap-6 pb-24 lg:pb-4 xl:gap-8">
+            {hasOrphans || walletState.identity.status === "attention" ? (
+              <div
+                role="alert"
+                className="wallet-panel-soft border-amber-300/30 bg-amber-400/10 p-4 text-sm text-amber-100"
+              >
+                <p className="font-medium">Attention needed</p>
+                <p className="mt-1 text-xs text-amber-200/80">
+                  {hasOrphans
+                    ? "Orphaned blinding factors detected — an in-flight operation crashed before completing. Inspect the wallet's data dir for recovery."
+                    : "One or more notes are quarantined. Open the Notes panel to retry or discard them."}
+                </p>
+              </div>
+            ) : null}
+
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={`${activeDestination}-${activeConsumerAction ?? "none"}`}

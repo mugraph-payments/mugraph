@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { WalletNoteView } from "../lib/walletView";
-import type { WalletWithdrawDraft } from "../types/wallet";
 import { DepositDetails } from "./DepositDetails";
 import { NotesPanel } from "./NotesPanel";
 import { WithdrawDetails } from "./WithdrawDetails";
@@ -17,17 +16,23 @@ interface WalletSettingsScreenProps {
   delegatePkShort: string;
   scriptAddressShort: string;
   syncPostureLabel: string;
-  withdrawDraft: WalletWithdrawDraft;
-  onWithdrawDraftChange: (draft: WalletWithdrawDraft) => void;
   latestDepositReference: string;
   latestWithdrawReference: string;
   pendingActivityCount: number;
   topAssetLabel: string;
   assetOptions: AssetOption[];
   notes: WalletNoteView[];
+  /** Switch the active network. Persisted via the backend. */
+  onNetworkChange: (network: string) => Promise<void> | void;
   /** Refresh the wallet snapshot after a successful mutation. */
   onMutationDone: () => Promise<void> | void;
 }
+
+const NETWORK_OPTIONS: { value: string; label: string }[] = [
+  { value: "mainnet", label: "Mainnet" },
+  { value: "preprod", label: "Preprod" },
+  { value: "preview", label: "Preview" },
+];
 
 export function WalletSettingsScreen({
   network,
@@ -35,14 +40,13 @@ export function WalletSettingsScreen({
   delegatePkShort,
   scriptAddressShort,
   syncPostureLabel,
-  withdrawDraft,
-  onWithdrawDraftChange,
   latestDepositReference,
   latestWithdrawReference,
   pendingActivityCount,
   topAssetLabel,
   assetOptions,
   notes,
+  onNetworkChange,
   onMutationDone,
 }: WalletSettingsScreenProps) {
   const [activeAdvancedAction, setActiveAdvancedAction] = useState<
@@ -58,7 +62,21 @@ export function WalletSettingsScreen({
         </div>
 
         <section className="wallet-panel-soft p-4 sm:p-5">
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-4">
+            <div>
+              <p className="wallet-kicker text-slate-500">Network</p>
+              <select
+                className="wallet-input mt-2 w-full text-sm"
+                value={network}
+                onChange={(event) => void onNetworkChange(event.target.value)}
+              >
+                {NETWORK_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <p className="wallet-kicker text-slate-500">Delegate</p>
               <p className="wallet-code mt-2 break-all text-sm text-slate-100">{delegatePkShort}</p>
@@ -127,13 +145,13 @@ export function WalletSettingsScreen({
           />
         ) : activeAdvancedAction === "withdraw" ? (
           <WithdrawDetails
+            network={network}
             latestWithdrawReference={latestWithdrawReference}
             pendingActivityCount={pendingActivityCount}
             scriptAddressShort={scriptAddressShort}
             topAssetLabel={topAssetLabel}
-            draft={withdrawDraft}
             assetOptions={assetOptions}
-            onDraftChange={onWithdrawDraftChange}
+            onDone={onMutationDone}
           />
         ) : (
           <NotesPanel notes={notes} />

@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowSquareIn, ArrowSquareOut } from "@phosphor-icons/react";
 import type { WalletIdentityView } from "../lib/walletView";
-import type { WalletReceiveDraft, WalletSendDraft } from "../types/wallet";
+import type { WalletNote } from "../types/wallet";
 import { ReceiveDetails } from "./ReceiveDetails";
 import { SendDetails } from "./SendDetails";
 
@@ -14,24 +14,22 @@ interface WalletActionScreenProps {
   activeAction: "send" | "receive";
   onActionSelect: (actionId: "send" | "receive") => void;
   onClose: () => void;
-  sendDraft: WalletSendDraft;
-  onSendDraftChange: (draft: WalletSendDraft) => void;
-  receiveDraft: WalletReceiveDraft;
-  onReceiveDraftChange: (draft: WalletReceiveDraft) => void;
+  network: string;
+  notes: WalletNote[];
   assetOptions: AssetOption[];
   identity: WalletIdentityView;
+  onMutationDone: () => Promise<void> | void;
 }
 
 export function WalletActionScreen({
   activeAction,
   onActionSelect,
   onClose,
-  sendDraft,
-  onSendDraftChange,
-  receiveDraft,
-  onReceiveDraftChange,
+  network,
+  notes,
   assetOptions,
   identity,
+  onMutationDone,
 }: WalletActionScreenProps) {
   return (
     <section className="wallet-panel p-5 sm:p-6 lg:p-7">
@@ -90,21 +88,16 @@ export function WalletActionScreen({
         </div>
 
         {activeAction === "send" ? (
-          <SendDetails
-            draft={sendDraft}
-            assetOptions={assetOptions}
-            onDraftChange={onSendDraftChange}
-          />
+          <SendDetails network={network} notes={notes} onDone={onMutationDone} />
         ) : (
           <ReceiveDetails
+            network={network}
             label={identity.label}
             delegatePkShort={identity.delegatePkShort}
             scriptAddressShort={identity.scriptAddressShort}
             networkLabel={identity.networkLabel}
-            lastSyncedRelative={identity.lastSyncedRelative}
-            draft={receiveDraft}
             assetOptions={assetOptions}
-            onDraftChange={onReceiveDraftChange}
+            onDone={onMutationDone}
           />
         )}
       </div>

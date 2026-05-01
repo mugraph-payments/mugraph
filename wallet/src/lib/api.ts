@@ -129,6 +129,8 @@ export interface DepositInput {
   utxo_tx_hash: string;
   utxo_index: number;
   output_amounts: number[];
+  policy_id?: string;
+  asset_name?: string;
 }
 
 export interface DepositResult {
@@ -140,6 +142,8 @@ export interface WithdrawInput {
   network: string;
   destination_address: string;
   amount: number;
+  policy_id?: string;
+  asset_name?: string;
 }
 
 export interface WithdrawResult {
