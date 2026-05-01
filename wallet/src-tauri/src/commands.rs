@@ -101,6 +101,16 @@ pub struct WalletSnapshot {
     pub cardano_funding_address: Option<String>,
     pub has_orphaned_blinding_factors: bool,
     pub last_synced_at: Option<u64>,
+    /// Guided setup has been completed at least once. The frontend uses this
+    /// to gate on showing the setup form before the main wallet shell.
+    pub setup_complete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FundingUtxo {
+    pub tx_hash: String,
+    pub output_index: u16,
+    pub lovelace: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -341,6 +351,13 @@ pub async fn get_wallet_state(
         .map_err(|e| e.to_string())?
         .and_then(|s| s.parse::<u64>().ok());
 
+    let setup_complete = state
+        .store
+        .get_config("setup_complete")
+        .map_err(|e| e.to_string())?
+        .as_deref()
+        == Some("true");
+
     Ok(WalletSnapshot {
         label,
         network,
@@ -351,7 +368,43 @@ pub async fn get_wallet_state(
         cardano_funding_address: funding_addr,
         has_orphaned_blinding_factors: !orphans.is_empty(),
         last_synced_at,
+        setup_complete,
     })
+}
+
+#[tauri::command]
+pub async fn list_funding_utxos(
+    network: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<FundingUtxo>, String> {
+    let funding_address =
+        crate::cardano_tx::derive_address(&state.cardano_payment_vk, &network)
+            .map_err(|e| format!("derive funding address: {e}"))?;
+
+    let provider_guard = state.provider.read().await;
+    let provider = provider_guard
+        .as_ref()
+        .ok_or("no Cardano provider configured")?;
+    let utxos = provider
+        .get_address_utxos(&funding_address)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(utxos
+        .into_iter()
+        .filter_map(|u| {
+            let lovelace = u
+                .amount
+                .iter()
+                .find(|a| a.unit == "lovelace")
+                .and_then(|a| a.quantity.parse::<u64>().ok())?;
+            Some(FundingUtxo {
+                tx_hash: u.tx_hash,
+                output_index: u.output_index,
+                lovelace,
+            })
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -1756,6 +1809,7 @@ mod tests {
             cardano_funding_address: Some("addr_test1abc".to_string()),
             has_orphaned_blinding_factors: false,
             last_synced_at: Some(1700000000),
+            setup_complete: true,
         };
         let json = serde_json::to_string(&snap).unwrap();
         assert!(json.contains("preprod"));

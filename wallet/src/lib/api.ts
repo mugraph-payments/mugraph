@@ -50,6 +50,13 @@ export interface WalletSnapshot {
   cardano_funding_address: string | null;
   has_orphaned_blinding_factors: boolean;
   last_synced_at: number | null;
+  setup_complete: boolean;
+}
+
+export interface FundingUtxo {
+  tx_hash: string;
+  output_index: number;
+  lovelace: number;
 }
 
 export interface ImportResult {
@@ -146,4 +153,8 @@ export async function deposit(input: DepositInput): Promise<DepositResult> {
 
 export async function withdraw(input: WithdrawInput): Promise<WithdrawResult> {
   return invoke<WithdrawResult>("withdraw", { input });
+}
+
+export async function listFundingUtxos(network: string): Promise<FundingUtxo[]> {
+  return invoke<FundingUtxo[]>("list_funding_utxos", { network });
 }
