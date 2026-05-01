@@ -3198,6 +3198,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-chain"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "blake2",
+ "clap",
+ "color-eyre",
+ "hex",
+ "pallas-addresses",
+ "pallas-primitives",
+ "pallas-traverse",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "muda"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
