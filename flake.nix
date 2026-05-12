@@ -31,6 +31,13 @@
             pkgs = import nixpkgs {
               inherit system;
 
+              # Needed for the Android SDK/NDK (unfree + license acceptance)
+              # used by the `android` devShell.
+              config = {
+                allowUnfree = true;
+                android_sdk.accept_license = true;
+              };
+
               overlays = [
                 rust-overlay.overlays.default
                 (import ./nix inputs)

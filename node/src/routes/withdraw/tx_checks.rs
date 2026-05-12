@@ -301,7 +301,7 @@ fn validate_withdraw_intent_metadata_from_tx(
                 if let Ok(h_txt) = val.as_text() {
                     type Blake2b256 =
                         blake2::Blake2b<blake2::digest::consts::U32>;
-                    let h = Blake2b256::digest(&tx.body().to_bytes());
+                    let h = Blake2b256::digest(tx.body().to_bytes());
                     let mut h_arr = [0u8; 32];
                     h_arr.copy_from_slice(&h);
                     let expected_hex = hex::encode(h_arr);

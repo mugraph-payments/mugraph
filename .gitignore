@@ -11,3 +11,4 @@ target
 /result
 /.lobster
 .lobster/
+wallet/src-tauri/gen

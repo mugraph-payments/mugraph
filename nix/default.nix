@@ -43,13 +43,37 @@ let
       };
     }).config.build.wrapper;
 
+  # mold/lld linker flags, scoped to the host target rather than a global
+  # RUSTFLAGS — a global one would override the NDK linker that `cargo tauri
+  # android` sets up for the *-linux-android targets and break those builds.
+  hostRustflagsEnv =
+    "CARGO_TARGET_"
+    + prev.lib.toUpper (
+      builtins.replaceStrings [ "-" "." ] [ "_" "_" ] prev.stdenv.hostPlatform.rust.rustcTarget
+    )
+    + "_RUSTFLAGS";
+
   devShells.default = mkShell {
-    inherit (lib.env) RUST_LOG RUSTFLAGS;
+    inherit (lib.env) RUST_LOG;
+    # JDK + Android SDK/NDK so `cargo tauri android {init,dev,build}` works.
+    inherit (lib.androidEnv)
+      JAVA_HOME
+      ANDROID_HOME
+      ANDROID_SDK_ROOT
+      ANDROID_NDK_ROOT
+      ANDROID_NDK_HOME
+      NDK_HOME
+      GRADLE_OPTS
+      ;
+    ${hostRustflagsEnv} = lib.env.RUSTFLAGS;
 
     name = "mu-shell";
 
     packages = [
-      lib.rust
+      lib.androidRust
+      prev.jdk17
+      lib.androidComposition.androidsdk
+
       scripts
 
       prev.aiken
