@@ -3343,8 +3343,6 @@ dependencies = [
 [[package]]
 name = "muhex"
 version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a22b04b8d708e564856610903662ee519cc3f4f32e238927521d8d8d8311721a"
 dependencies = [
  "serde",
 ]

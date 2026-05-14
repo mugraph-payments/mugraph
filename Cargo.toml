@@ -38,3 +38,6 @@ whisky = "0.9.6"
 opt-level = 3
 debug = false
 lto = "fat"
+
+[patch.crates-io]
+muhex = { path = "../../cfcosta/muhex" }
