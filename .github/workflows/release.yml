@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build APK (aarch64, unsigned)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build APK
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            cd wallet
+            bun install --frozen-lockfile
+            cargo tauri android build --target aarch64 --apk
+          '
+
+      - name: Locate APK
+        id: apk
+        run: |
+          set -euo pipefail
+          APK=$(find wallet/src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print -quit)
+          test -n "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mugraph-wallet-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+  build-ipa:
+    name: Build IPA (aarch64, unsigned)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+
+      - name: Install Rust + iOS target
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wallet/src-tauri -> target
+
+      - name: Install JS deps
+        working-directory: wallet
+        run: bun install --frozen-lockfile
+
+      - name: Initialize iOS project
+        working-directory: wallet
+        run: bunx tauri ios init
+
+      # We don't have Apple signing material set up yet, so we can't run the
+      # full `tauri ios build` pipeline (it requires xcodebuild -exportArchive
+      # with a real signing identity). Instead, drive xcodebuild directly with
+      # codesigning disabled and hand-package the resulting .app into an .ipa.
+      # The output is an unsigned IPA suitable for inspection / re-signing —
+      # it can't be installed on a device or uploaded to TestFlight as-is.
+      - name: Build unsigned iOS app
+        working-directory: wallet/src-tauri/gen/apple
+        run: |
+          set -euo pipefail
+          PROJECT=$(ls -d *.xcodeproj | head -1)
+          echo "Project: $PROJECT"
+          xcodebuild -list -project "$PROJECT"
+          SCHEME="${PROJECT%.xcodeproj}_iOS"
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            ENABLE_BITCODE=NO
+
+      - name: Package as IPA
+        working-directory: wallet/src-tauri/gen/apple
+        run: |
+          set -euo pipefail
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -qr mugraph-wallet-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mugraph-wallet-ipa
+          path: wallet/src-tauri/gen/apple/mugraph-wallet-unsigned.ipa
+          if-no-files-found: error
