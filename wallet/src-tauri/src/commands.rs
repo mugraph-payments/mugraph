@@ -1094,6 +1094,8 @@ pub async fn withdraw_impl(
     input: WithdrawInput,
     state: Arc<AppState>,
 ) -> Result<WithdrawResult, String> {
+    const FEE_LOVELACE: u64 = 200_000;
+
     let delegate_pk = state
         .store
         .get_delegate_pk(&input.network)
@@ -1102,6 +1104,13 @@ pub async fn withdraw_impl(
 
     let (withdraw_policy_id, withdraw_asset_name) =
         parse_asset(&input.policy_id, &input.asset_name);
+    let withdraw_asset = mugraph_core::types::Asset {
+        policy_id: withdraw_policy_id,
+        asset_name: withdraw_asset_name,
+    };
+    if !withdraw_asset.is_ada() {
+        return Err("only ADA withdrawals are supported".to_string());
+    }
 
     let script_addr = state
         .store
@@ -1109,107 +1118,98 @@ pub async fn withdraw_impl(
         .map_err(|e| e.to_string())?
         .ok_or("no script address for network")?;
 
-    // Select notes covering the withdrawal amount
+    let node_payment_vk = state
+        .store
+        .get_node_payment_vk(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no node payment_vk; rerun guided setup or /sync")?;
+    let node_pubkey_hash = crate::cip8::blake2b_224(&node_payment_vk);
+    let user_pubkey_hash =
+        crate::cip8::blake2b_224(state.ed25519_key.verifying_key().as_bytes());
+
+    // The notes pay for the payout and the transaction fee.
+    let outflow = input
+        .amount
+        .checked_add(FEE_LOVELACE)
+        .ok_or("withdrawal amount is too large")?;
     let selected = state
         .store
         .select_notes(
             &input.network,
             &withdraw_policy_id,
             &withdraw_asset_name,
-            input.amount,
+            outflow,
         )
         .map_err(|e| e.to_string())?;
-
-    // Build notes to burn
-    let notes_to_burn: Vec<mugraph_core::types::BlindSignature> = selected
-        .iter()
-        .map(|s| mugraph_core::types::BlindSignature {
-            signature: mugraph_core::types::Blinded(s.note.signature),
-            proof: mugraph_core::types::DleqProof::default(),
-        })
-        .collect();
-
     let total_selected: u64 = selected.iter().map(|s| s.note.amount).sum();
-    let change_amount = total_selected.saturating_sub(input.amount);
+    let note_change = total_selected - outflow;
 
-    // Blind change outputs if there is change
-    let (change_blinding, change_outputs) = if change_amount > 0 {
-        let (bf, bp, nonce) = {
-            let mut rng = rand::rng();
-            let nonce = mugraph_core::types::Hash::random(&mut rng);
-            let temp_note = mugraph_core::types::Note {
-                amount: change_amount,
-                delegate: delegate_pk,
-                policy_id: withdraw_policy_id,
-                asset_name: withdraw_asset_name,
-                nonce,
-                signature: mugraph_core::types::Signature::zero(),
-                dleq: None,
+    // Pick vault UTxOs that hold only lovelace, until they cover the
+    // outflow. The rest goes back to the vault.
+    let (vault_inputs, vault_total) = {
+        let provider_guard = state.provider.read().await;
+        let provider = provider_guard
+            .as_ref()
+            .ok_or("no Cardano provider configured")?;
+        let utxos = provider
+            .get_address_utxos(&script_addr)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut inputs = Vec::new();
+        let mut total = 0u64;
+        for utxo in utxos {
+            if total >= outflow {
+                break;
+            }
+            let [amount] = utxo.amount.as_slice() else {
+                continue;
             };
-            let commitment = temp_note.commitment();
-            let blinded =
-                mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
-            state
-                .store
-                .put_blinding_factor(
-                    &input.network,
-                    &nonce,
-                    &blinded.factor.to_bytes(),
-                )
-                .map_err(|e| e.to_string())?;
-            (
-                blinded.factor,
-                mugraph_core::types::Signature::from(blinded.point),
-                nonce,
-            )
-        };
-        let change_sig = mugraph_core::types::BlindSignature {
-            signature: mugraph_core::types::Blinded(bp),
-            proof: mugraph_core::types::DleqProof::default(),
-        };
-        (Some((bf, nonce, change_amount)), vec![change_sig])
-    } else {
-        (None, vec![])
-    };
+            if amount.unit != "lovelace" {
+                continue;
+            }
+            let Ok(lovelace) = amount.quantity.parse::<u64>() else {
+                continue;
+            };
+            inputs.push((utxo.tx_hash, utxo.output_index as u32));
+            total += lovelace;
+        }
 
-    // Build the Cardano withdrawal transaction.
-    //
-    // The reference specifies querying spendable script UTxOs from the Cardano
-    // provider (Blockfrost/Maestro) at the node's script address, filtering by
-    // datum user_pubkey_hash. That requires a provider HTTP client which is
-    // outside the scope of the wallet crate (the node already has this in
-    // node/src/provider/). Until provider integration is added, we derive
-    // synthetic inputs from the selected notes' nonces. The node validates
-    // these against its own deposit records.
-    let script_inputs: Vec<(String, u32)> = selected
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (hex::encode(s.note.nonce.0), i as u32))
-        .collect();
+        if total < outflow {
+            return Err(format!(
+                "vault holds {total} lovelace in plain UTxOs; need {outflow}"
+            ));
+        }
+        (inputs, total)
+    };
 
     let (tx_cbor, tx_hash) = crate::cardano_tx::build_withdraw_tx(
         &crate::cardano_tx::WithdrawTxParams {
-            script_inputs: &script_inputs,
-            total_input_lovelace: total_selected,
+            script_inputs: &vault_inputs,
+            total_input_lovelace: vault_total,
             destination_address: &input.destination_address,
             withdraw_amount_lovelace: input.amount,
             script_address: &script_addr,
-            fee_lovelace: 200_000,
+            fee_lovelace: FEE_LOVELACE,
+            node_pubkey_hash: &node_pubkey_hash,
+            user_pubkey_hash: &user_pubkey_hash,
         },
     )
     .map_err(|e| format!("tx build: {e}"))?;
 
-    let witnessed_cbor = crate::cardano_tx::attach_user_witness(
-        &tx_cbor,
-        &tx_hash,
-        &state.ed25519_key,
-    )
-    .map_err(|e| format!("witness: {e}"))?;
+    // Blind the note change (and save the blinding factors) before the
+    // request leaves the wallet.
+    let (change_outputs, pending_change) = crate::notes::blind_new_notes(
+        &state.store,
+        &input.network,
+        delegate_pk,
+        &[(withdraw_asset, note_change)],
+    )?;
 
     let withdraw_req = mugraph_core::types::WithdrawRequest {
-        notes: notes_to_burn,
+        notes: selected.iter().map(|s| s.note.clone()).collect(),
         change_outputs,
-        tx_cbor: hex::encode(&witnessed_cbor),
+        tx_cbor: hex::encode(&tx_cbor),
         tx_hash: hex::encode(tx_hash),
     };
 
@@ -1241,71 +1241,14 @@ pub async fn withdraw_impl(
     }
 
     // Unblind and store change notes
-    let mut change_count = 0;
-    if let Some((bf, nonce, amount)) = change_blinding {
-        if let Some(change_sig) = resp.change_notes.first() {
-            let commitment = {
-                let temp = mugraph_core::types::Note {
-                    amount,
-                    delegate: delegate_pk,
-                    policy_id: withdraw_policy_id,
-                    asset_name: withdraw_asset_name,
-                    nonce,
-                    signature: mugraph_core::types::Signature::zero(),
-                    dleq: None,
-                };
-                temp.commitment()
-            };
-
-            let unblinded = mugraph_core::crypto::unblind_signature(
-                &change_sig.signature,
-                &bf,
-                &delegate_pk,
-            )
+    let change_notes =
+        crate::notes::finish_notes(client, pending_change, &resp.change_notes)
+            .await?;
+    for note in &change_notes {
+        state
+            .store
+            .finalize_note(&input.network, note, NoteStatus::Available, now)
             .map_err(|e| e.to_string())?;
-
-            let valid = mugraph_core::crypto::verify_note_proof(
-                &delegate_pk,
-                commitment.as_ref(),
-                unblinded,
-                &mugraph_core::types::DleqProofWithBlinding {
-                    proof: change_sig.proof,
-                    blinding_factor: bf.into(),
-                },
-            )
-            .map_err(|e| e.to_string())?;
-
-            if valid {
-                let change_note = mugraph_core::types::Note {
-                    amount,
-                    delegate: delegate_pk,
-                    policy_id: withdraw_policy_id,
-                    asset_name: withdraw_asset_name,
-                    nonce,
-                    signature: unblinded,
-                    dleq: Some(mugraph_core::types::DleqProofWithBlinding {
-                        proof: change_sig.proof,
-                        blinding_factor: bf.into(),
-                    }),
-                };
-                state
-                    .store
-                    .finalize_note(
-                        &input.network,
-                        &change_note,
-                        NoteStatus::Available,
-                        now,
-                    )
-                    .map_err(|e| e.to_string())?;
-                change_count = 1;
-            } else {
-                // Failed verification on change note — hard attention
-                state
-                    .store
-                    .delete_blinding_factor(&input.network, &nonce)
-                    .map_err(|e| e.to_string())?;
-            }
-        }
     }
 
     // Record activity
@@ -1327,7 +1270,7 @@ pub async fn withdraw_impl(
 
     Ok(WithdrawResult {
         tx_hash: resp.tx_hash,
-        change_notes: change_count,
+        change_notes: change_notes.len(),
     })
 }
 

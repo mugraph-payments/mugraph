@@ -1,6 +1,6 @@
 use mugraph_core::{
     error::Error,
-    types::{Signature, WithdrawRequest, WithdrawalRecord, WithdrawalStatus},
+    types::{WithdrawRequest, WithdrawalRecord, WithdrawalStatus},
 };
 use redb::ReadableTable;
 
@@ -42,8 +42,7 @@ pub(super) fn atomic_burn_and_record_pending(
         let mut notes_table = write_tx.open_table(NOTES)?;
 
         for note in &request.notes {
-            let sig_bytes: &[u8; 32] = note.signature.0.as_ref();
-            let signature = Signature::from(*sig_bytes);
+            let signature = note.signature;
 
             if notes_table.get(signature)?.is_some() {
                 return Err(Error::AlreadySpent { signature });

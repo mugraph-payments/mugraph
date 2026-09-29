@@ -22,6 +22,22 @@ pub fn derive_address(
         .map_err(|e| format!("bech32 error: {e}"))
 }
 
+/// The vault datum: Constr(0, [user_pk_hash, node_pk_hash, intent_hash]).
+fn vault_datum(
+    user_pubkey_hash: &[u8; 28],
+    node_pubkey_hash: &[u8; 28],
+    intent_hash: &[u8; 32],
+) -> csl::PlutusData {
+    let mut fields = csl::PlutusList::new();
+    fields.add(&csl::PlutusData::new_bytes(user_pubkey_hash.to_vec()));
+    fields.add(&csl::PlutusData::new_bytes(node_pubkey_hash.to_vec()));
+    fields.add(&csl::PlutusData::new_bytes(intent_hash.to_vec()));
+    csl::PlutusData::new_constr_plutus_data(&csl::ConstrPlutusData::new(
+        &csl::BigNum::zero(),
+        &fields,
+    ))
+}
+
 pub struct DepositTxParams<'a> {
     pub input_tx_hash: &'a str,
     pub input_index: u32,
@@ -70,14 +86,7 @@ pub fn build_deposit_tx(
     let user_pubkey_hash = blake2b_224(*user_ed25519_vk);
     let intent_hash = blake2b_256(canonical_payload);
 
-    // Build Plutus datum: Constr(0, [user_pk_hash, node_pk_hash, intent_hash])
-    let mut datum_fields = csl::PlutusList::new();
-    datum_fields.add(&csl::PlutusData::new_bytes(user_pubkey_hash.to_vec()));
-    datum_fields.add(&csl::PlutusData::new_bytes(node_payment_vk.to_vec()));
-    datum_fields.add(&csl::PlutusData::new_bytes(intent_hash.to_vec()));
-    let datum = csl::PlutusData::new_constr_plutus_data(
-        &csl::ConstrPlutusData::new(&csl::BigNum::zero(), &datum_fields),
-    );
+    let datum = vault_datum(&user_pubkey_hash, node_payment_vk, &intent_hash);
 
     let deposit_value = csl::Value::new(
         &csl::Coin::from_str(&deposit_amount_lovelace.to_string())
@@ -170,6 +179,11 @@ pub struct WithdrawTxParams<'a> {
     pub script_address: &'a str,
     /// Transaction fee
     pub fee_lovelace: u64,
+    /// The node's payment key hash. The vault validator needs the node's
+    /// signature, and the vault change datum names the node.
+    pub node_pubkey_hash: &'a [u8; 28],
+    /// The user key hash for the vault change datum.
+    pub user_pubkey_hash: &'a [u8; 28],
 }
 
 /// Build a withdraw transaction that spends script UTxOs and sends funds
@@ -217,13 +231,28 @@ pub fn build_withdraw_tx(
             &csl::Coin::from_str(&change_amount.to_string())
                 .map_err(|e| format!("bad change amount: {e}"))?,
         );
-        outputs.add(&csl::TransactionOutput::new(&script_addr, &change_value));
+        // Without this datum, the vault validator can not spend the
+        // change, and the funds are locked.
+        let mut change =
+            csl::TransactionOutput::new(&script_addr, &change_value);
+        change.set_plutus_data(&vault_datum(
+            params.user_pubkey_hash,
+            params.node_pubkey_hash,
+            &[0u8; 32],
+        ));
+        outputs.add(&change);
     }
 
     let fee = csl::Coin::from_str(&params.fee_lovelace.to_string())
         .map_err(|e| format!("bad fee: {e}"))?;
 
-    let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+    let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
+    let node_key_hash =
+        csl::Ed25519KeyHash::from_bytes(params.node_pubkey_hash.to_vec())
+            .map_err(|e| format!("bad node key hash: {e}"))?;
+    let mut required = csl::Ed25519KeyHashes::new();
+    required.add(&node_key_hash);
+    body.set_required_signers(&required);
     let witness_set = csl::TransactionWitnessSet::new();
     let tx = csl::Transaction::new(&body, &witness_set, None);
 
@@ -370,6 +399,8 @@ mod tests {
             withdraw_amount_lovelace: 5_000_000,
             script_address: script_addr,
             fee_lovelace: 200_000,
+            node_pubkey_hash: &[2u8; 28],
+            user_pubkey_hash: &[1u8; 28],
         })
         .unwrap();
 
@@ -394,6 +425,8 @@ mod tests {
             withdraw_amount_lovelace: 5_000_000,
             script_address: &dest_addr,
             fee_lovelace: 200_000,
+            node_pubkey_hash: &[2u8; 28],
+            user_pubkey_hash: &[1u8; 28],
         });
         assert!(result.is_ok());
     }
@@ -411,6 +444,8 @@ mod tests {
             withdraw_amount_lovelace: 5_000_000,
             script_address: &dest_addr,
             fee_lovelace: 200_000,
+            node_pubkey_hash: &[2u8; 28],
+            user_pubkey_hash: &[1u8; 28],
         });
         assert!(result.is_err());
     }
@@ -428,7 +463,46 @@ mod tests {
             withdraw_amount_lovelace: 3_000_000,
             script_address: &dest_addr,
             fee_lovelace: 200_000,
+            node_pubkey_hash: &[2u8; 28],
+            user_pubkey_hash: &[1u8; 28],
         });
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_withdraw_tx_requires_the_node_and_keeps_vault_change_spendable() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let dest_addr = derive_address(&vk, "preprod").unwrap();
+        let node_hash = [2u8; 28];
+
+        let (tx_cbor, _) = build_withdraw_tx(&WithdrawTxParams {
+            script_inputs: &[("a".repeat(64), 0)],
+            total_input_lovelace: 10_000_000,
+            destination_address: &dest_addr,
+            withdraw_amount_lovelace: 5_000_000,
+            script_address: &dest_addr,
+            fee_lovelace: 200_000,
+            node_pubkey_hash: &node_hash,
+            user_pubkey_hash: &[1u8; 28],
+        })
+        .unwrap();
+
+        let tx = csl::Transaction::from_bytes(tx_cbor).unwrap();
+        let required: Vec<Vec<u8>> = tx
+            .body()
+            .required_signers()
+            .expect("the node must be a required signer")
+            .into_iter()
+            .map(|h| h.to_bytes())
+            .collect();
+        assert_eq!(required, vec![node_hash.to_vec()]);
+
+        let change = tx.body().outputs().get(1);
+        let datum = change
+            .plutus_data()
+            .expect("vault change needs an inline datum");
+        let fields = datum.as_constr_plutus_data().unwrap().data();
+        assert_eq!(fields.get(1).as_bytes().unwrap(), node_hash.to_vec());
     }
 }

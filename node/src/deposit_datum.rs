@@ -12,6 +12,7 @@ pub struct DepositDatum {
 pub enum DepositDatumContext {
     DepositUtxo,
     WithdrawalInput { input_index: usize },
+    WithdrawalOutput { output_index: usize },
 }
 
 impl DepositDatumContext {
@@ -23,6 +24,12 @@ impl DepositDatumContext {
                     format!(
                         "Invalid datum hex for input {}: {}",
                         input_index, err
+                    )
+                }
+                Self::WithdrawalOutput { output_index } => {
+                    format!(
+                        "Invalid datum hex for output {}: {}",
+                        output_index, err
                     )
                 }
             },
@@ -39,6 +46,12 @@ impl DepositDatumContext {
                         input_index, err
                     )
                 }
+                Self::WithdrawalOutput { output_index } => {
+                    format!(
+                        "Invalid datum CBOR for output {}: {}",
+                        output_index, err
+                    )
+                }
             },
         }
     }
@@ -51,6 +64,12 @@ impl DepositDatumContext {
                     format!(
                         "Datum for input {} is not a constructor as expected",
                         input_index
+                    )
+                }
+                Self::WithdrawalOutput { output_index } => {
+                    format!(
+                        "Datum for output {} is not a constructor as expected",
+                        output_index
                     )
                 }
             },
@@ -70,6 +89,10 @@ impl DepositDatumContext {
                     "Unexpected datum constructor {} for input {} (expected 0)",
                     actual, input_index
                 ),
+                Self::WithdrawalOutput { output_index } => format!(
+                    "Unexpected datum constructor {} for output {} (expected 0)",
+                    actual, output_index
+                ),
             },
         }
     }
@@ -83,6 +106,10 @@ impl DepositDatumContext {
                 Self::WithdrawalInput { input_index } => format!(
                     "Datum for input {} has {} fields (expected 3)",
                     input_index, actual
+                ),
+                Self::WithdrawalOutput { output_index } => format!(
+                    "Datum for output {} has {} fields (expected 3)",
+                    output_index, actual
                 ),
             },
         }
@@ -98,6 +125,10 @@ impl DepositDatumContext {
                     "Datum for input {} missing user_pubkey_hash bytes",
                     input_index
                 ),
+                Self::WithdrawalOutput { output_index } => format!(
+                    "Datum for output {} missing user_pubkey_hash bytes",
+                    output_index
+                ),
             },
         }
     }
@@ -111,6 +142,10 @@ impl DepositDatumContext {
                 Self::WithdrawalInput { input_index } => format!(
                     "Datum for input {} missing node_pubkey_hash bytes",
                     input_index
+                ),
+                Self::WithdrawalOutput { output_index } => format!(
+                    "Datum for output {} missing node_pubkey_hash bytes",
+                    output_index
                 ),
             },
         }
@@ -126,6 +161,12 @@ impl DepositDatumContext {
                     format!(
                         "Datum for input {} missing intent_hash bytes",
                         input_index
+                    )
+                }
+                Self::WithdrawalOutput { output_index } => {
+                    format!(
+                        "Datum for output {} missing intent_hash bytes",
+                        output_index
                     )
                 }
             },

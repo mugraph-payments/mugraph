@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use blake2::Digest;
-use mugraph_core::{error::Error, types::BlindSignature};
+use mugraph_core::error::Error;
 use whisky_csl::csl;
 
 use super::ParsedWithdrawalTx;
-use crate::network::CardanoNetwork;
+use crate::{
+    deposit_datum::{DepositDatumContext, parse_deposit_datum},
+    network::CardanoNetwork,
+};
 
 pub(super) fn validate_parsed_fee(
     parsed_tx: &ParsedWithdrawalTx,
@@ -59,6 +61,45 @@ fn max_acceptable_fee(max_fee_lovelace: u64, tolerance_pct: u8) -> u64 {
     max_fee_lovelace.saturating_mul(tolerance_factor) / 100
 }
 
+/// Adds the quantities in `value` to `totals`, with the unit strings that
+/// Cardano providers use: "lovelace", or the policy ID and the raw asset
+/// name bytes in hex.
+fn add_value_units(
+    value: &csl::Value,
+    totals: &mut BTreeMap<String, u128>,
+) -> Result<(), Error> {
+    let parse = |qty: String| {
+        qty.parse::<u128>().map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid amount {}: {}", qty, e),
+        })
+    };
+
+    *totals.entry("lovelace".to_string()).or_default() +=
+        parse(value.coin().to_str())?;
+
+    if let Some(ma) = value.multiasset() {
+        let policies = ma.keys();
+        for i in 0..policies.len() {
+            let policy = policies.get(i);
+            let Some(assets) = ma.get(&policy) else {
+                continue;
+            };
+            let names = assets.keys();
+            for j in 0..names.len() {
+                let name = names.get(j);
+                let Some(qty) = assets.get(&name) else {
+                    continue;
+                };
+                let unit =
+                    format!("{}{}", policy.to_hex(), hex::encode(name.name()));
+                *totals.entry(unit).or_default() += parse(qty.to_str())?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) fn validate_transaction_balance_with_parsed_tx(
     parsed_tx: &ParsedWithdrawalTx,
     input_totals: &HashMap<String, u128>,
@@ -90,15 +131,20 @@ pub(super) fn validate_transaction_balance(
     input_totals: &HashMap<String, u128>,
     max_fee: u64,
 ) -> Result<(), Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| {
-        Error::InvalidInput {
-            reason: format!("Invalid transaction CBOR: {}", e),
-        }
-    })?;
-
+    let tx = parse_tx(tx_cbor)?;
     validate_transaction_balance_from_tx(&tx, input_totals, max_fee)
 }
 
+#[cfg(test)]
+fn parse_tx(tx_cbor: &[u8]) -> Result<csl::Transaction, Error> {
+    csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| {
+        Error::InvalidInput {
+            reason: format!("Invalid transaction CBOR: {}", e),
+        }
+    })
+}
+
+/// Checks the ledger balance: inputs = outputs + fee, for each unit.
 fn validate_transaction_balance_from_tx(
     tx: &csl::Transaction,
     input_totals: &HashMap<String, u128>,
@@ -119,58 +165,13 @@ fn validate_transaction_balance_from_tx(
         });
     }
 
-    let mut output_totals: HashMap<String, u128> = HashMap::new();
+    let mut output_totals = BTreeMap::new();
     for output in &tx.body().outputs() {
-        let coin = output.amount().coin();
-        let entry = output_totals.entry("lovelace".to_string()).or_insert(0);
-        *entry = entry.saturating_add(coin.to_str().parse::<u128>().map_err(
-            |e| Error::InvalidInput {
-                reason: format!("Invalid lovelace amount: {}", e),
-            },
-        )?);
-
-        if let Some(ma) = output.amount().multiasset() {
-            let policies = ma.keys();
-            for idx in 0..policies.len() {
-                let policy = policies.get(idx);
-                if let Some(assets) = ma.get(&policy) {
-                    let names = assets.keys();
-                    for j in 0..names.len() {
-                        let asset_name = names.get(j);
-                        let qty = assets.get(&asset_name).unwrap();
-                        let unit = format!(
-                            "{}{}",
-                            policy.to_hex(),
-                            asset_name.to_hex()
-                        );
-                        let e = output_totals.entry(unit).or_insert(0);
-                        *e = e.saturating_add(
-                            qty.to_str().parse::<u128>().map_err(|e| {
-                                Error::InvalidInput {
-                                    reason: format!(
-                                        "Invalid multiasset quantity: {}",
-                                        e
-                                    ),
-                                }
-                            })?,
-                        );
-                    }
-                }
-            }
-        }
+        add_value_units(&output.amount(), &mut output_totals)?;
     }
 
     let in_lovelace = input_totals.get("lovelace").copied().unwrap_or(0);
     let out_lovelace = output_totals.get("lovelace").copied().unwrap_or(0);
-
-    if in_lovelace < fee_u128 {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Insufficient lovelace: inputs {} < fee {}",
-                in_lovelace, fee_u128
-            ),
-        });
-    }
 
     if in_lovelace != out_lovelace.saturating_add(fee_u128) {
         return Err(Error::InvalidInput {
@@ -184,12 +185,15 @@ fn validate_transaction_balance_from_tx(
         });
     }
 
-    for (unit, in_qty) in input_totals.iter() {
-        if unit == "lovelace" {
-            continue;
-        }
+    let units: std::collections::BTreeSet<&String> = input_totals
+        .keys()
+        .chain(output_totals.keys())
+        .filter(|unit| *unit != "lovelace")
+        .collect();
+    for unit in units {
+        let in_qty = input_totals.get(unit).copied().unwrap_or(0);
         let out_qty = output_totals.get(unit).copied().unwrap_or(0);
-        if *in_qty != out_qty {
+        if in_qty != out_qty {
             return Err(Error::InvalidInput {
                 reason: format!(
                     "Asset imbalance for {}: inputs {}, outputs {}",
@@ -199,172 +203,43 @@ fn validate_transaction_balance_from_tx(
         }
     }
 
-    for (unit, out_qty) in output_totals.iter() {
-        let in_qty = input_totals.get(unit).copied().unwrap_or(0);
-        if *out_qty > in_qty && unit != "lovelace" {
-            return Err(Error::InvalidInput {
-                reason: format!(
-                    "Outputs create extra asset {}: outputs {}, inputs {}",
-                    unit, out_qty, in_qty
-                ),
-            });
-        }
-        if unit == "lovelace" && *out_qty > in_lovelace {
-            return Err(Error::InvalidInput {
-                reason: format!(
-                    "Outputs create extra lovelace: outputs {}, inputs {}",
-                    out_qty, in_lovelace
-                ),
-            });
-        }
-    }
-
     Ok(())
 }
 
-pub(super) fn validate_withdraw_intent_metadata_with_parsed_tx(
+pub(super) fn validate_network_and_vault_outputs_with_parsed_tx(
     parsed_tx: &ParsedWithdrawalTx,
-    network: &str,
-) -> Result<(), Error> {
-    validate_withdraw_intent_metadata_from_tx(&parsed_tx.tx, network)
+    wallet: &mugraph_core::types::CardanoWallet,
+) -> Result<BTreeMap<String, u128>, Error> {
+    validate_network_and_vault_outputs_from_tx(&parsed_tx.tx, wallet)
 }
 
 #[cfg(test)]
-pub(super) fn validate_withdraw_intent_metadata(
-    tx_cbor: &[u8],
-    network: &str,
-) -> Result<(), Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| {
-        Error::InvalidInput {
-            reason: format!("Invalid transaction CBOR: {}", e),
-        }
-    })?;
-
-    validate_withdraw_intent_metadata_from_tx(&tx, network)
-}
-
-fn validate_withdraw_intent_metadata_from_tx(
-    tx: &csl::Transaction,
-    network: &str,
-) -> Result<(), Error> {
-    let expected_network =
-        CardanoNetwork::parse(network).map_err(|e| Error::InvalidInput {
-            reason: e.to_string(),
-        })?;
-
-    let aux = tx.auxiliary_data().ok_or_else(|| Error::InvalidInput {
-        reason: "Transaction missing auxiliary data for intent binding"
-            .to_string(),
-    })?;
-
-    let metadata = aux.metadata().ok_or_else(|| Error::InvalidInput {
-        reason: "Auxiliary data missing metadata map".to_string(),
-    })?;
-
-    let label =
-        csl::BigNum::from_str("1914").map_err(|e| Error::InvalidInput {
-            reason: format!("Invalid metadatum label: {}", e),
-        })?;
-    let metadatum =
-        metadata.get(&label).ok_or_else(|| Error::InvalidInput {
-            reason: "Metadata label 1914 missing for intent binding"
-                .to_string(),
-        })?;
-
-    let map = metadatum.as_map().map_err(|e| Error::InvalidInput {
-        reason: format!("Metadata label 1914 must be a map: {}", e),
-    })?;
-
-    let mut network_ok = false;
-    let mut hash_ok = false;
-
-    let keys = map.keys();
-    for i in 0..keys.len() {
-        let key_md = keys.get(i);
-        let key_txt = match key_md.as_text() {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-
-        let val = map.get(&key_md).map_err(|e| Error::InvalidInput {
-            reason: format!("Metadata map lookup failed: {}", e),
-        })?;
-
-        match key_txt.as_str() {
-            "network" => {
-                if let Ok(n_txt) = val.as_text() {
-                    network_ok = CardanoNetwork::parse(&n_txt).ok()
-                        == Some(expected_network);
-                }
-            }
-            "tx_body_hash" => {
-                if let Ok(h_txt) = val.as_text() {
-                    type Blake2b256 =
-                        blake2::Blake2b<blake2::digest::consts::U32>;
-                    let h = Blake2b256::digest(tx.body().to_bytes());
-                    let mut h_arr = [0u8; 32];
-                    h_arr.copy_from_slice(&h);
-                    let expected_hex = hex::encode(h_arr);
-                    hash_ok = h_txt.eq_ignore_ascii_case(&expected_hex);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if !network_ok {
-        return Err(Error::InvalidInput {
-            reason: "Intent metadata network mismatch".to_string(),
-        });
-    }
-    if !hash_ok {
-        return Err(Error::InvalidInput {
-            reason: "Intent metadata tx_body_hash mismatch".to_string(),
-        });
-    }
-
-    Ok(())
-}
-
-pub(super) fn validate_network_and_change_outputs_with_parsed_tx(
-    parsed_tx: &ParsedWithdrawalTx,
-    wallet: &mugraph_core::types::CardanoWallet,
-    change_outputs: &[BlindSignature],
-) -> Result<(), Error> {
-    validate_network_and_change_outputs_from_tx(
-        &parsed_tx.tx,
-        wallet,
-        change_outputs,
-    )
-}
-
-#[cfg(test)]
-pub(super) fn validate_network_and_change_outputs(
+pub(super) fn validate_network_and_vault_outputs(
     tx_cbor: &[u8],
     wallet: &mugraph_core::types::CardanoWallet,
-    change_outputs: &[BlindSignature],
-) -> Result<(), Error> {
-    let tx = csl::Transaction::from_bytes(tx_cbor.to_vec()).map_err(|e| {
-        Error::InvalidInput {
-            reason: format!("Invalid transaction CBOR: {}", e),
-        }
-    })?;
-
-    validate_network_and_change_outputs_from_tx(&tx, wallet, change_outputs)
+) -> Result<BTreeMap<String, u128>, Error> {
+    validate_network_and_vault_outputs_from_tx(&parse_tx(tx_cbor)?, wallet)
 }
 
-fn validate_network_and_change_outputs_from_tx(
+/// Checks that each output is on the wallet's network, and that each
+/// output to the vault has an inline datum for this node. Without that
+/// datum, the vault validator can not spend the output, and the funds
+/// are locked. Returns the total value that goes back to the vault.
+fn validate_network_and_vault_outputs_from_tx(
     tx: &csl::Transaction,
     wallet: &mugraph_core::types::CardanoWallet,
-    change_outputs: &[BlindSignature],
-) -> Result<(), Error> {
+) -> Result<BTreeMap<String, u128>, Error> {
     let expected_network_id = CardanoNetwork::parse(&wallet.network)
         .map_err(|e| Error::InvalidInput {
             reason: e.to_string(),
         })?
         .address_network_id();
 
-    let mut script_output_indexes = Vec::new();
+    let node_pk_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+        .ok()
+        .map(|pk| pk.hash().to_bytes());
+
+    let mut vault_totals = BTreeMap::new();
 
     for (idx, output) in (&tx.body().outputs()).into_iter().enumerate() {
         let addr = output.address();
@@ -387,21 +262,65 @@ fn validate_network_and_change_outputs_from_tx(
         let bech32 = addr.to_bech32(None).map_err(|e| Error::InvalidInput {
             reason: format!("Invalid output address: {}", e),
         })?;
-
-        if bech32 == wallet.script_address {
-            script_output_indexes.push(idx);
+        if bech32 != wallet.script_address {
+            continue;
         }
+
+        let datum =
+            output.plutus_data().ok_or_else(|| Error::InvalidInput {
+                reason: format!("Vault output {} has no inline datum", idx),
+            })?;
+        let datum = parse_deposit_datum(
+            &hex::encode(datum.to_bytes()),
+            DepositDatumContext::WithdrawalOutput { output_index: idx },
+        )?;
+        if Some(datum.node_pubkey_hash.to_vec()) != node_pk_hash {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Vault output {} node_pubkey_hash is not this node",
+                    idx
+                ),
+            });
+        }
+
+        add_value_units(&output.amount(), &mut vault_totals)?;
     }
 
-    if script_output_indexes.len() != change_outputs.len() {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Script change outputs must match request.change_outputs by count and transaction output order: found {} script outputs at indexes {:?}, but request provided {} change_outputs",
-                script_output_indexes.len(),
-                script_output_indexes,
-                change_outputs.len()
-            ),
-        });
+    Ok(vault_totals)
+}
+
+/// Checks that the notes pay for exactly what leaves the vault.
+///
+/// For each unit: burned notes - change notes = vault inputs - vault
+/// outputs. The value that leaves the vault includes the transaction fee.
+pub(super) fn validate_withdraw_value(
+    vault_in: &BTreeMap<String, u128>,
+    vault_out: &BTreeMap<String, u128>,
+    notes: &BTreeMap<String, u128>,
+    change: &BTreeMap<String, u128>,
+) -> Result<(), Error> {
+    let units: std::collections::BTreeSet<&String> = vault_in
+        .keys()
+        .chain(vault_out.keys())
+        .chain(notes.keys())
+        .chain(change.keys())
+        .collect();
+
+    for unit in units {
+        let get = |m: &BTreeMap<String, u128>| {
+            m.get(unit).copied().unwrap_or(0) as i128
+        };
+        let outflow = get(vault_in) - get(vault_out);
+        let paid = get(notes) - get(change);
+
+        if outflow != paid {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Notes value {} for {} does not match the vault outflow {}",
+                    paid, unit, outflow
+                ),
+            });
+        }
     }
 
     Ok(())

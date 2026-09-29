@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::types::{
-    AssetName, BlindSignature, BlindedOutput, PolicyId, Refresh,
+    AssetName, BlindSignature, BlindedOutput, Note, PolicyId, Refresh,
     TransferAckPayload, TransferInitPayload, TransferNoticePayload,
     TransferStatusQueryPayload, XNodeEnvelope,
 };
@@ -72,12 +72,12 @@ pub struct UtxoReference {
 /// User provides unsigned transaction spending script UTxOs
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
 pub struct WithdrawRequest {
-    /// Notes to burn (blinded inputs)
-    pub notes: Vec<BlindSignature>,
-    /// Blinded change outputs to sign for any transaction outputs that pay back
-    /// to the script address. These are matched to script outputs by count and
-    /// transaction output order.
-    pub change_outputs: Vec<BlindSignature>,
+    /// Notes to burn. For each asset, their value minus the change
+    /// outputs must equal the value that leaves the vault (fee included).
+    pub notes: Vec<Note>,
+    /// Blinded notes for the change, if the burned notes are worth more
+    /// than the value that leaves the vault.
+    pub change_outputs: Vec<BlindedOutput>,
     /// Unsigned transaction CBOR (hex encoded)
     pub tx_cbor: String,
     /// Transaction hash (expected)

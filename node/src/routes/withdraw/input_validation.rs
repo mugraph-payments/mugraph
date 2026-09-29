@@ -1,14 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use color_eyre::eyre::Result;
-use mugraph_core::{error::Error, types::BlindSignature};
+use mugraph_core::error::Error;
 use whisky_csl::csl;
 
 use super::ParsedWithdrawalTx;
 use crate::{
     deposit_datum::{DepositDatumContext, parse_deposit_datum},
     provider::Provider,
-    routes::Context,
 };
 
 fn extract_transaction_inputs_from_tx(
@@ -55,67 +54,42 @@ fn checked_output_index(index: u32, input_pos: usize) -> Result<u16, Error> {
     })
 }
 
-pub(super) async fn validate_user_witnesses_with_parsed_tx(
+/// Checks the transaction signers.
+///
+/// Each witness that the transaction carries must be valid. The node's
+/// key hash must be in `required_signers`, because the vault validator
+/// only lets the node spend vault UTxOs. The node adds its own witness
+/// after all checks pass, so the transaction can arrive without
+/// witnesses.
+pub(super) fn validate_signers_with_parsed_tx(
     parsed_tx: &ParsedWithdrawalTx,
-    notes: &[BlindSignature],
-    expected_user_hashes: &HashSet<String>,
     wallet: &mugraph_core::types::CardanoWallet,
 ) -> Result<(), Error> {
-    validate_user_witnesses_from_tx(
-        &parsed_tx.tx,
-        &parsed_tx.tx_hash,
-        notes,
-        expected_user_hashes,
-        wallet,
-    )
-    .await
-}
+    let tx = &parsed_tx.tx;
+    verify_witness_set(tx, &parsed_tx.tx_hash)?;
 
-#[cfg(test)]
-pub(super) async fn validate_user_witnesses(
-    tx_cbor: &[u8],
-    notes: &[BlindSignature],
-    expected_user_hashes: &HashSet<String>,
-    wallet: &mugraph_core::types::CardanoWallet,
-) -> Result<(), Error> {
-    let parsed_tx = ParsedWithdrawalTx::parse(&hex::encode(tx_cbor))?;
-    validate_user_witnesses_with_parsed_tx(
-        &parsed_tx,
-        notes,
-        expected_user_hashes,
-        wallet,
-    )
-    .await
-}
+    let node_hash = csl::PublicKey::from_bytes(&wallet.payment_vk)
+        .map_err(|e| Error::InvalidKey {
+            reason: format!("Invalid node payment_vk: {}", e),
+        })?
+        .hash()
+        .to_hex();
 
-async fn validate_user_witnesses_from_tx(
-    tx: &csl::Transaction,
-    tx_hash: &[u8; 32],
-    notes: &[BlindSignature],
-    expected_user_hashes: &HashSet<String>,
-    _wallet: &mugraph_core::types::CardanoWallet,
-) -> Result<(), Error> {
-    let body_hash_bytes = tx_hash.to_vec();
+    let required: Vec<String> = tx
+        .body()
+        .required_signers()
+        .map(|signers| signers.into_iter().map(|s| s.to_hex()).collect())
+        .unwrap_or_default();
 
-    let (witness_key_hashes, verified_witnesses) =
-        verify_witness_set(tx, &body_hash_bytes)?;
-    let required_signer_hashes = collect_required_signer_hashes(tx)?;
-
-    ensure_required_signers_have_witnesses(
-        &required_signer_hashes,
-        &witness_key_hashes,
-    )?;
-    ensure_expected_owner_hashes_are_bound(
-        expected_user_hashes,
-        &required_signer_hashes,
-        &witness_key_hashes,
-    )?;
-
-    tracing::info!(
-        "Validated {} witness signatures for {} notes",
-        verified_witnesses,
-        notes.len()
-    );
+    if !required.contains(&node_hash) {
+        return Err(Error::InvalidSignature {
+            reason: format!(
+                "Transaction required_signers must include the node key hash {}",
+                node_hash
+            ),
+            signature: mugraph_core::types::Signature::default(),
+        });
+    }
 
     Ok(())
 }
@@ -123,31 +97,25 @@ async fn validate_user_witnesses_from_tx(
 fn verify_witness_set(
     tx: &csl::Transaction,
     body_hash_bytes: &[u8],
-) -> Result<(HashSet<String>, usize), Error> {
+) -> Result<(), Error> {
     let witness_set = tx.witness_set();
-    let mut verified_witnesses = 0usize;
-    let mut witness_key_hashes = HashSet::new();
 
     if let Some(vkeys) = witness_set.vkeys() {
         for (idx, witness) in (&vkeys).into_iter().enumerate() {
             let pk: csl::PublicKey = witness.vkey().public_key();
-            let sig = witness.signature();
-            if !pk.verify(body_hash_bytes, &sig) {
+            if !pk.verify(body_hash_bytes, &witness.signature()) {
                 return Err(Error::InvalidSignature {
                     reason: format!("VKey witness {} signature invalid", idx),
                     signature: mugraph_core::types::Signature::default(),
                 });
             }
-            witness_key_hashes.insert(pk.hash().to_hex());
-            verified_witnesses += 1;
         }
     }
 
     if let Some(bootstraps) = witness_set.bootstraps() {
         for (idx, witness) in (&bootstraps).into_iter().enumerate() {
             let pk: csl::PublicKey = witness.vkey().public_key();
-            let sig = witness.signature();
-            if !pk.verify(body_hash_bytes, &sig) {
+            if !pk.verify(body_hash_bytes, &witness.signature()) {
                 return Err(Error::InvalidSignature {
                     reason: format!(
                         "Bootstrap witness {} signature invalid",
@@ -156,90 +124,6 @@ fn verify_witness_set(
                     signature: mugraph_core::types::Signature::default(),
                 });
             }
-            witness_key_hashes.insert(pk.hash().to_hex());
-            verified_witnesses += 1;
-        }
-    }
-
-    if verified_witnesses == 0 {
-        return Err(Error::InvalidSignature {
-            reason: "No valid witnesses found in transaction".to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    Ok((witness_key_hashes, verified_witnesses))
-}
-
-fn collect_required_signer_hashes(
-    tx: &csl::Transaction,
-) -> Result<Vec<String>, Error> {
-    let required = tx.body().required_signers().ok_or_else(|| Error::InvalidSignature {
-        reason: "Transaction missing required_signers; cannot bind witnesses to note owners"
-            .to_string(),
-        signature: mugraph_core::types::Signature::default(),
-    })?;
-
-    Ok(required.into_iter().map(|signer| signer.to_hex()).collect())
-}
-
-fn ensure_required_signers_have_witnesses(
-    required_signer_hashes: &[String],
-    witness_key_hashes: &HashSet<String>,
-) -> Result<(), Error> {
-    let missing: Vec<String> = required_signer_hashes
-        .iter()
-        .filter(|signer_hash| !witness_key_hashes.contains(*signer_hash))
-        .cloned()
-        .collect();
-
-    if missing.is_empty() {
-        return Ok(());
-    }
-
-    Err(Error::InvalidSignature {
-        reason: format!(
-            "Missing witnesses for required_signers: {:?}",
-            missing
-        ),
-        signature: mugraph_core::types::Signature::default(),
-    })
-}
-
-fn ensure_expected_owner_hashes_are_bound(
-    expected_user_hashes: &HashSet<String>,
-    required_signer_hashes: &[String],
-    witness_key_hashes: &HashSet<String>,
-) -> Result<(), Error> {
-    if expected_user_hashes.is_empty() {
-        return Err(Error::InvalidSignature {
-            reason: "No expected user hashes derived from inputs".to_string(),
-            signature: mugraph_core::types::Signature::default(),
-        });
-    }
-
-    for expected in expected_user_hashes {
-        if !required_signer_hashes
-            .iter()
-            .any(|signer_hash| signer_hash == expected)
-        {
-            return Err(Error::InvalidSignature {
-                reason: format!(
-                    "Required signer set does not include input owner hash {}",
-                    expected
-                ),
-                signature: mugraph_core::types::Signature::default(),
-            });
-        }
-
-        if !witness_key_hashes.contains(expected) {
-            return Err(Error::InvalidSignature {
-                reason: format!(
-                    "Missing witness for input owner hash {}",
-                    expected
-                ),
-                signature: mugraph_core::types::Signature::default(),
-            });
         }
     }
 
@@ -249,37 +133,23 @@ fn ensure_expected_owner_hashes_are_bound(
 pub(super) async fn validate_script_inputs_with_parsed_tx(
     parsed_tx: &ParsedWithdrawalTx,
     wallet: &mugraph_core::types::CardanoWallet,
-    ctx: &Context,
     provider: &Provider,
-) -> Result<
-    (
-        HashMap<String, u128>,
-        HashSet<String>,
-        Vec<mugraph_core::types::UtxoRef>,
-    ),
-    Error,
-> {
+) -> Result<(HashMap<String, u128>, Vec<mugraph_core::types::UtxoRef>), Error> {
     let inputs = extract_transaction_inputs_from_tx(&parsed_tx.tx)?;
-    validate_script_inputs_with_extracted_inputs(inputs, wallet, ctx, provider)
-        .await
+    validate_script_inputs_with_extracted_inputs(inputs, wallet, provider).await
 }
 
+/// Checks that every input is a vault UTxO for this node, and adds up
+/// their value.
+///
+/// The vault is one pool: any vault UTxO can pay for a withdrawal,
+/// because the notes, not the depositor, prove the claim on the value.
 async fn validate_script_inputs_with_extracted_inputs(
     inputs: Vec<(Vec<u8>, u32)>,
     wallet: &mugraph_core::types::CardanoWallet,
-    ctx: &Context,
     provider: &Provider,
-) -> Result<
-    (
-        HashMap<String, u128>,
-        HashSet<String>,
-        Vec<mugraph_core::types::UtxoRef>,
-    ),
-    Error,
-> {
+) -> Result<(HashMap<String, u128>, Vec<mugraph_core::types::UtxoRef>), Error> {
     use mugraph_core::types::UtxoRef;
-
-    use crate::database::DEPOSITS;
 
     if inputs.is_empty() {
         return Err(Error::InvalidInput {
@@ -288,10 +158,8 @@ async fn validate_script_inputs_with_extracted_inputs(
     }
 
     let mut totals: HashMap<String, u128> = HashMap::new();
-    let mut required_user_hashes: HashSet<String> = HashSet::new();
-    let mut consumed_deposits: Vec<UtxoRef> = Vec::new();
-    let read_tx = ctx.database.read()?;
-    let deposits_table = read_tx.open_table(DEPOSITS)?;
+    let mut consumed: Vec<UtxoRef> = Vec::new();
+    let mut seen: HashSet<(Vec<u8>, u32)> = HashSet::new();
 
     let node_pk =
         csl::PublicKey::from_bytes(&wallet.payment_vk).map_err(|e| {
@@ -306,150 +174,17 @@ async fn validate_script_inputs_with_extracted_inputs(
         .expect("Cardano key hashes are always 28 bytes");
 
     for (i, (tx_hash_bytes, index)) in inputs.iter().enumerate() {
+        if !seen.insert((tx_hash_bytes.clone(), *index)) {
+            return Err(Error::InvalidInput {
+                reason: format!("Input {} is listed more than once", i),
+            });
+        }
+
         let tx_hash = hex::encode(tx_hash_bytes);
         let output_index = checked_output_index(*index, i)?;
 
-        tracing::debug!("Validating input {}: {}:{}", i, &tx_hash[..16], index);
-
-        match provider.get_utxo(&tx_hash, output_index).await {
-            Ok(Some(utxo_info)) => {
-                if utxo_info.address != wallet.script_address {
-                    return Err(Error::InvalidInput {
-                        reason: format!(
-                            "Input {} ({}:{}) is not from script address. Expected {}, got {}",
-                            i,
-                            &tx_hash[..16],
-                            index,
-                            wallet.script_address,
-                            utxo_info.address
-                        ),
-                    });
-                }
-
-                let datum_hex = utxo_info
-                    .datum
-                    .as_ref()
-                    .ok_or_else(|| Error::InvalidInput {
-                        reason: format!(
-                            "Input {} ({}:{}) missing inline datum; required for witness binding",
-                            i,
-                            &tx_hash[..16],
-                            index
-                        ),
-                    })?;
-
-                let datum = parse_deposit_datum(
-                    datum_hex,
-                    DepositDatumContext::WithdrawalInput { input_index: i },
-                )?;
-
-                required_user_hashes
-                    .insert(hex::encode(datum.user_pubkey_hash));
-
-                if datum.node_pubkey_hash != node_pk_hash {
-                    return Err(Error::InvalidInput {
-                        reason: format!(
-                            "Input {} node_pubkey_hash mismatch; expected our node, got {}",
-                            i,
-                            hex::encode(datum.node_pubkey_hash)
-                        ),
-                    });
-                }
-
-                for asset in &utxo_info.amount {
-                    let qty: u128 =
-                        asset.quantity.parse::<u128>().map_err(|e| {
-                            Error::InvalidInput {
-                                reason: format!(
-                                    "Invalid asset quantity: {}",
-                                    e
-                                ),
-                            }
-                        })?;
-                    let entry = totals.entry(asset.unit.clone()).or_insert(0);
-                    *entry = entry.saturating_add(qty);
-                }
-
-                let tx_hash_array: [u8; 32] = tx_hash_bytes
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| Error::InvalidInput {
-                        reason: format!(
-                            "Invalid tx_hash length for input {}",
-                            i
-                        ),
-                    })?;
-                let utxo_ref = UtxoRef::new(tx_hash_array, output_index);
-                consumed_deposits.push(utxo_ref.clone());
-
-                match deposits_table.get(&utxo_ref)? {
-                    Some(deposit) => {
-                        let deposit_record = deposit.value();
-                        if deposit_record.spent {
-                            return Err(Error::InvalidInput {
-                                reason: format!(
-                                    "Input {} ({}:{}) deposit already spent",
-                                    i,
-                                    &tx_hash[..16],
-                                    index
-                                ),
-                            });
-                        }
-
-                        if deposit_record.intent_hash != [0u8; 32]
-                            && datum.intent_hash != deposit_record.intent_hash
-                        {
-                            return Err(Error::InvalidInput {
-                                reason: format!(
-                                    "Intent hash mismatch for input {}: datum {}, expected {}",
-                                    i,
-                                    hex::encode(datum.intent_hash),
-                                    hex::encode(deposit_record.intent_hash)
-                                ),
-                            });
-                        }
-
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_secs())
-                            .unwrap_or(0);
-                        if now > deposit_record.expires_at {
-                            return Err(Error::InvalidInput {
-                                reason: format!(
-                                    "Input {} ({}:{}) deposit expired at {}",
-                                    i,
-                                    &tx_hash[..16],
-                                    index,
-                                    deposit_record.expires_at
-                                ),
-                            });
-                        }
-
-                        tracing::info!(
-                            "Input {}: deposit valid (block {}, expires {})",
-                            i,
-                            deposit_record.block_height,
-                            deposit_record.expires_at
-                        );
-                    }
-                    None => {
-                        tracing::warn!(
-                            "Input {} ({}:{}) not found in DEPOSITS table",
-                            i,
-                            &tx_hash[..16],
-                            index
-                        );
-                        return Err(Error::InvalidInput {
-                            reason: format!(
-                                "Input {} ({}:{}) deposit not found. Deposits must be recorded before withdrawal.",
-                                i,
-                                &tx_hash[..16],
-                                index
-                            ),
-                        });
-                    }
-                }
-            }
+        let utxo_info = match provider.get_utxo(&tx_hash, output_index).await {
+            Ok(Some(utxo_info)) => utxo_info,
             Ok(None) => {
                 return Err(Error::InvalidInput {
                     reason: format!(
@@ -465,17 +200,64 @@ async fn validate_script_inputs_with_extracted_inputs(
                     reason: format!("Failed to verify input {}: {}", i, e),
                 });
             }
+        };
+
+        if utxo_info.address != wallet.script_address {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Input {} ({}:{}) is not from script address. Expected {}, got {}",
+                    i,
+                    &tx_hash[..16],
+                    index,
+                    wallet.script_address,
+                    utxo_info.address
+                ),
+            });
         }
+
+        let datum_hex =
+            utxo_info
+                .datum
+                .as_ref()
+                .ok_or_else(|| Error::InvalidInput {
+                    reason: format!(
+                        "Input {} ({}:{}) missing inline datum",
+                        i,
+                        &tx_hash[..16],
+                        index
+                    ),
+                })?;
+        let datum = parse_deposit_datum(
+            datum_hex,
+            DepositDatumContext::WithdrawalInput { input_index: i },
+        )?;
+        if datum.node_pubkey_hash != node_pk_hash {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Input {} node_pubkey_hash mismatch; expected our node, got {}",
+                    i,
+                    hex::encode(datum.node_pubkey_hash)
+                ),
+            });
+        }
+
+        for asset in &utxo_info.amount {
+            let qty: u128 = asset.quantity.parse::<u128>().map_err(|e| {
+                Error::InvalidInput {
+                    reason: format!("Invalid asset quantity: {}", e),
+                }
+            })?;
+            *totals.entry(asset.unit.clone()).or_insert(0) += qty;
+        }
+
+        let tx_hash_array: [u8; 32] = tx_hash_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| Error::InvalidInput {
+                reason: format!("Invalid tx_hash length for input {}", i),
+            })?;
+        consumed.push(UtxoRef::new(tx_hash_array, output_index));
     }
 
-    tracing::info!(
-        "Aggregated input totals: {:?}",
-        totals
-            .iter()
-            .map(|(k, v)| format!("{}:{}", k, v))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    Ok((totals, required_user_hashes, consumed_deposits))
+    Ok((totals, consumed))
 }

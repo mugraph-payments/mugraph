@@ -1,14 +1,14 @@
 //! Serde and encoding smoke tests for withdrawal request types.
 
-use mugraph_core::types::{BlindSignature, WithdrawRequest};
+use mugraph_core::types::{BlindedOutput, Note, WithdrawRequest};
 
 #[test]
 fn withdraw_request_serde_roundtrip_preserves_change_outputs() {
     let request = WithdrawRequest {
-        notes: vec![BlindSignature::default()],
+        notes: vec![Note::default()],
         change_outputs: vec![
-            BlindSignature::default(),
-            BlindSignature::default(),
+            BlindedOutput::default(),
+            BlindedOutput::default(),
         ],
         tx_cbor: "abcdef".to_string(),
         tx_hash: "hash123".to_string(),

@@ -1,14 +1,17 @@
+use std::collections::{BTreeMap, HashSet};
+
 #[cfg(test)]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[cfg(test)]
 use blake2::Digest;
 use color_eyre::eyre::Result;
 use mugraph_core::{
-    crypto,
     error::Error,
+    keyset,
     types::{
-        BlindSignature, Keypair, Response, WithdrawRequest, WithdrawalStatus,
+        BlindSignature, BlindedOutput, Keypair, Note, Response,
+        WithdrawRequest, WithdrawalStatus,
     },
 };
 #[cfg(test)]
@@ -30,17 +33,15 @@ mod tx_checks;
 pub(super) use self::parsed_tx::ParsedWithdrawalTx;
 #[cfg(test)]
 use self::{
-    input_validation::{checked_output_index, validate_user_witnesses},
+    input_validation::checked_output_index,
     tx_checks::{
-        validate_network_and_change_outputs, validate_transaction_balance,
+        validate_network_and_vault_outputs, validate_transaction_balance,
         validate_transaction_balance_with_tolerance,
-        validate_withdraw_intent_metadata,
     },
 };
 use self::{
     input_validation::{
-        validate_script_inputs_with_parsed_tx,
-        validate_user_witnesses_with_parsed_tx,
+        validate_script_inputs_with_parsed_tx, validate_signers_with_parsed_tx,
     },
     io::{create_provider, load_wallet, submit_transaction},
     state::{
@@ -48,23 +49,21 @@ use self::{
         mark_withdrawal_failed,
     },
     tx_checks::{
-        validate_network_and_change_outputs_with_parsed_tx,
-        validate_parsed_fee, validate_transaction_balance_with_parsed_tx,
-        validate_withdraw_intent_metadata_with_parsed_tx,
+        validate_network_and_vault_outputs_with_parsed_tx, validate_parsed_fee,
+        validate_transaction_balance_with_parsed_tx, validate_withdraw_value,
     },
 };
 
 /// Handle withdrawal request
 ///
-/// 1. Parse and validate the withdrawal request
-/// 2. Verify transaction CBOR and recompute hash
-/// 3. Ensure all inputs reference script UTxOs
-/// 4. Validate user signatures (transaction witnesses via whisky-csl)
-/// 5. Check outputs match burned notes minus fees
-/// 6. Burn notes
-/// 7. Attach node witness and re-serialize
-/// 8. Submit transaction to provider
-/// 9. Return signed CBOR + hash + change notes
+/// 1. Parse the transaction and check idempotency, size and fee
+/// 2. Verify each burned note, and each change output
+/// 3. Ensure all inputs are vault UTxOs for this node
+/// 4. Check the witnesses and that the node is a required signer
+/// 5. Check the ledger balance, the network, and the vault outputs
+/// 6. Check that notes - change = the value that leaves the vault
+/// 7. Attach the node witness, burn the notes, and submit
+/// 8. Return signed CBOR + hash + change notes
 pub async fn handle_withdraw(
     request: &WithdrawRequest,
     ctx: &Context,
@@ -78,10 +77,8 @@ pub async fn handle_withdraw(
     let provider = create_provider(ctx)?;
     let parsed_tx = ParsedWithdrawalTx::parse(&request.tx_cbor)?;
 
-    // 2. Check idempotency via WITHDRAWALS table
     check_idempotency(request, ctx)?;
 
-    // 3. Validate transaction size and fee
     if parsed_tx.tx_cbor.len() > ctx.config.max_tx_size() {
         return Err(Error::InvalidInput {
             reason: format!(
@@ -92,17 +89,14 @@ pub async fn handle_withdraw(
         });
     }
 
-    // Validate fee with tolerance
     let _fee = validate_parsed_fee(
         &parsed_tx,
         ctx.config.max_withdrawal_fee(),
         ctx.config.fee_tolerance_pct(),
     )?;
 
-    // 4. Load wallet needed for validations and signing
     let wallet = load_wallet(ctx)?;
 
-    // 5. Verify provided hash matches recomputed hash
     let computed_hash = parsed_tx.tx_hash_hex.clone();
     if computed_hash != request.tx_hash {
         return Err(Error::InvalidInput {
@@ -113,50 +107,38 @@ pub async fn handle_withdraw(
         });
     }
 
-    // 6. Ensure all inputs reference script UTxOs and validate deposit state
-    let (input_totals, required_user_hashes, consumed_deposits) =
-        validate_script_inputs_with_parsed_tx(
-            &parsed_tx, &wallet, ctx, &provider,
-        )
-        .await?;
+    // 2. The notes are the claim on the vault, so check them first.
+    let note_totals = validate_notes(&request.notes, &ctx.keypair)?;
+    let change_totals = validate_change_outputs(&request.change_outputs)?;
 
-    // 6b. Enforce intent and network binding via auxiliary metadata
-    validate_withdraw_intent_metadata_with_parsed_tx(
-        &parsed_tx,
-        &wallet.network,
-    )?;
+    // 3. Inputs must be vault UTxOs for this node
+    let (input_totals, consumed_deposits) =
+        validate_script_inputs_with_parsed_tx(&parsed_tx, &wallet, &provider)
+            .await?;
 
-    // 7. Validate user witnesses (basic count check)
-    validate_user_witnesses_with_parsed_tx(
-        &parsed_tx,
-        &request.notes,
-        &required_user_hashes,
-        &wallet,
-    )
-    .await?;
+    // 4. Witnesses and required signers
+    validate_signers_with_parsed_tx(&parsed_tx, &wallet)?;
 
-    // 8. Validate transaction value balance
+    // 5. Ledger balance, network, and vault outputs
     validate_transaction_balance_with_parsed_tx(
         &parsed_tx,
         &input_totals,
         ctx.config.max_withdrawal_fee(),
         ctx.config.fee_tolerance_pct(),
     )?;
+    let vault_out =
+        validate_network_and_vault_outputs_with_parsed_tx(&parsed_tx, &wallet)?;
 
-    // 9. Enforce network consistency and validate any change back to the script
-    validate_network_and_change_outputs_with_parsed_tx(
-        &parsed_tx,
-        &wallet,
-        &request.change_outputs,
+    // 6. The notes pay for exactly the value that leaves the vault
+    let vault_in: BTreeMap<String, u128> = input_totals.into_iter().collect();
+    validate_withdraw_value(
+        &vault_in,
+        &vault_out,
+        &note_totals,
+        &change_totals,
     )?;
 
-    // 9. Create signed transaction (without burning notes yet)
-    // This prepares the transaction for submission but doesn't modify state
-
-    // Node signature is attached to the transaction witness set
-    // The validator checks that the transaction is properly signed (off-chain verification)
-    // No redeemer is needed - all validation happens through witnesses
-
+    // 7. Sign, burn, and submit
     let signed_cbor = attach_witness_to_transaction(
         &parsed_tx.tx_cbor,
         &parsed_tx.tx_hash,
@@ -168,14 +150,9 @@ pub async fn handle_withdraw(
     let signed_cbor_hex = hex::encode(&signed_cbor);
 
     // Calculate change notes before any state changes
-    let change_notes = calculate_change_notes(
-        request,
-        &parsed_tx.tx_cbor,
-        &wallet,
-        &ctx.keypair,
-    )?;
+    let change_notes = calculate_change_notes(request, &ctx.keypair)?;
 
-    // 9. Update state atomically BEFORE submitting to provider
+    // Update state atomically BEFORE submitting to provider
     // This ensures we only submit if we can properly track the withdrawal
     let pending_tx_hash = request.tx_hash.clone();
     match atomic_burn_and_record_pending(request, ctx, &pending_tx_hash) {
@@ -188,7 +165,6 @@ pub async fn handle_withdraw(
         }
     }
 
-    // 10. Submit transaction to provider
     let submit_response = match submit_transaction(&signed_cbor_hex, &provider)
         .await
     {
@@ -230,7 +206,6 @@ pub async fn handle_withdraw(
         });
     }
 
-    // 11. Mark withdrawal as completed
     let mark_result =
         mark_withdrawal_completed(ctx, &pending_tx_hash, &consumed_deposits);
 
@@ -240,6 +215,84 @@ pub async fn handle_withdraw(
         pending_tx_hash,
         change_notes,
     )
+}
+
+/// Verifies each note that the withdrawal burns, and returns their total
+/// value for each unit.
+///
+/// A note is valid only if this node signed it with the key for its asset
+/// and amount. The spent check happens later, in the same database
+/// transaction that burns the notes.
+fn validate_notes(
+    notes: &[Note],
+    keypair: &Keypair,
+) -> Result<BTreeMap<String, u128>, Error> {
+    if notes.is_empty() {
+        return Err(Error::InvalidInput {
+            reason: "No notes to burn".to_string(),
+        });
+    }
+
+    let mut seen = HashSet::new();
+    let mut totals = BTreeMap::new();
+
+    for (i, note) in notes.iter().enumerate() {
+        if note.delegate != keypair.public_key {
+            return Err(Error::InvalidInput {
+                reason: format!("Note {} is for a different delegate", i),
+            });
+        }
+
+        if !seen.insert(note.signature) {
+            return Err(Error::InvalidInput {
+                reason: format!("Note {} is in the request more than once", i),
+            });
+        }
+
+        let asset = mugraph_core::types::Asset {
+            policy_id: note.policy_id,
+            asset_name: note.asset_name,
+        };
+        if !keyset::verify(
+            &keypair.secret_key,
+            &asset,
+            note.amount,
+            note.commitment().as_ref(),
+            note.signature,
+        )? {
+            return Err(Error::InvalidSignature {
+                reason: format!("Note {} has an invalid signature", i),
+                signature: note.signature,
+            });
+        }
+
+        *totals.entry(asset.cardano_unit()).or_default() += note.amount as u128;
+    }
+
+    Ok(totals)
+}
+
+/// Checks that each change output is one denomination, and returns their
+/// total value for each unit.
+fn validate_change_outputs(
+    outputs: &[BlindedOutput],
+) -> Result<BTreeMap<String, u128>, Error> {
+    let mut totals = BTreeMap::new();
+
+    for (i, output) in outputs.iter().enumerate() {
+        if !keyset::is_denomination(output.amount) {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Change output {} amount {} is not a power of two",
+                    i, output.amount
+                ),
+            });
+        }
+        *totals.entry(output.asset().cardano_unit()).or_default() +=
+            output.amount as u128;
+    }
+
+    Ok(totals)
 }
 
 fn finalize_withdraw_response(
@@ -311,22 +364,22 @@ fn check_idempotency(
     Ok(())
 }
 
-/// Calculate change notes by signing the request-provided blinded change
-/// outputs.
+/// Signs each change output with the key for its asset and amount.
 fn calculate_change_notes(
     request: &WithdrawRequest,
-    _tx_cbor: &[u8],
-    _wallet: &mugraph_core::types::CardanoWallet,
     keypair: &Keypair,
 ) -> Result<Vec<BlindSignature>, Error> {
     let mut rng = rand::rng();
     let mut change_notes = Vec::with_capacity(request.change_outputs.len());
 
-    for change_output in &request.change_outputs {
-        let blinded_point = change_output.signature.0.to_point()?;
-        let signed =
-            crypto::sign_blinded(&mut rng, &keypair.secret_key, &blinded_point);
-        change_notes.push(signed);
+    for output in &request.change_outputs {
+        change_notes.push(keyset::sign_blinded(
+            &mut rng,
+            &keypair.secret_key,
+            &output.asset(),
+            output.amount,
+            &output.point.to_point()?,
+        )?);
     }
 
     Ok(change_notes)
@@ -344,9 +397,9 @@ mod tests {
         routing::{get, post},
     };
     use ed25519_dalek::SigningKey;
-    use pallas_codec::minicbor;
-    use pallas_primitives::{
-        BoundedBytes, Constr, MaybeIndefArray, alonzo::PlutusData,
+    use mugraph_core::{
+        keyset,
+        types::{Asset, BlindedOutput, Note, PendingNote, blind_new_note},
     };
     use rand::{SeedableRng, rngs::StdRng};
     use serde_json::json;
@@ -359,6 +412,9 @@ mod tests {
         database::{CARDANO_WALLET, DEPOSITS, Database, NOTES, WITHDRAWALS},
         routes::Context,
     };
+
+    const USER_ADDRESS: &str =
+        "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh";
 
     fn test_context() -> Context {
         test_context_with_provider_url(None)
@@ -398,6 +454,16 @@ mod tests {
             config,
             peer_registry: None,
         }
+    }
+
+    /// A valid testnet enterprise address, used as the vault address.
+    fn vault_address() -> String {
+        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![9u8; 28]).unwrap();
+        let cred = csl::Credential::from_keyhash(&key_hash);
+        csl::EnterpriseAddress::new(0, &cred)
+            .to_address()
+            .to_bech32(None)
+            .unwrap()
     }
 
     fn insert_wallet(
@@ -441,14 +507,6 @@ mod tests {
             now + 3600,
             intent_hash,
         );
-        seed_deposit_record(ctx, utxo_ref, record);
-    }
-
-    fn seed_deposit_record(
-        ctx: &Context,
-        utxo_ref: mugraph_core::types::UtxoRef,
-        record: mugraph_core::types::DepositRecord,
-    ) {
         let write_tx = ctx.database.write().unwrap();
         {
             let mut table = write_tx.open_table(DEPOSITS).unwrap();
@@ -472,247 +530,231 @@ mod tests {
         write_tx.commit().unwrap();
     }
 
-    fn build_datum_cbor_hex(
-        user_hash: Vec<u8>,
-        node_hash: Vec<u8>,
-        intent_hash: Vec<u8>,
-    ) -> String {
-        let datum = PlutusData::Constr(Constr {
-            tag: 121,
-            any_constructor: None,
-            fields: MaybeIndefArray::Def(vec![
-                PlutusData::BoundedBytes(BoundedBytes::from(user_hash)),
-                PlutusData::BoundedBytes(BoundedBytes::from(node_hash)),
-                PlutusData::BoundedBytes(BoundedBytes::from(intent_hash)),
-            ]),
-        });
-
-        hex::encode(minicbor::to_vec(&datum).unwrap())
-    }
-
-    fn build_withdraw_request(
-        user_sk: &SigningKey,
-        input_tx_hash: [u8; 32],
-        input_value: u64,
-        output_value: u64,
-        fee: u64,
-        network: &str,
-    ) -> WithdrawRequest {
-        build_withdraw_request_with_balance_check(
-            user_sk,
-            input_tx_hash,
-            input_value,
-            output_value,
-            fee,
-            network,
-            true,
-        )
-    }
-
-    fn build_withdraw_request_with_outputs(
-        user_sk: &SigningKey,
-        input_tx_hash: [u8; 32],
-        input_value: u64,
-        outputs_spec: &[(String, u64)],
-        fee: u64,
-        network: &str,
-        change_outputs: Vec<BlindSignature>,
-        assert_balanced: bool,
-    ) -> WithdrawRequest {
-        let tx_hash =
-            csl::TransactionHash::from_bytes(input_tx_hash.to_vec()).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let mut outputs = csl::TransactionOutputs::new();
-        let mut output_total = 0u64;
-        for (address, amount) in outputs_spec {
-            let addr = csl::Address::from_bech32(address).unwrap();
-            let output_coin = csl::Coin::from_str(&amount.to_string()).unwrap();
-            let value = csl::Value::new(&output_coin);
-            outputs.add(&csl::TransactionOutput::new(&addr, &value));
-            output_total = output_total.saturating_add(*amount);
-        }
-
-        let fee_coin = csl::Coin::from_str(&fee.to_string()).unwrap();
-        let mut body =
-            csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee_coin);
-
-        let pk = user_sk.verifying_key();
-        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap().hash();
-        let mut required = csl::Ed25519KeyHashes::new();
-        required.add(&pk_hash);
-        body.set_required_signers(&required);
-
-        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-        let body_hash = Blake2b256::digest(body.to_bytes());
-        let tx_body_hash_hex = hex::encode(body_hash);
-
-        let mut metadata_map = csl::MetadataMap::new();
-        metadata_map
-            .insert_str(
-                "network",
-                &csl::TransactionMetadatum::new_text(network.to_string())
-                    .unwrap(),
-            )
-            .unwrap();
-        metadata_map
-            .insert_str(
-                "tx_body_hash",
-                &csl::TransactionMetadatum::new_text(tx_body_hash_hex).unwrap(),
-            )
-            .unwrap();
-        let metadatum = csl::TransactionMetadatum::new_map(&metadata_map);
-        let mut general_md = csl::GeneralTransactionMetadata::new();
-        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
-        let mut aux = csl::AuxiliaryData::new();
-        aux.set_metadata(&general_md);
-
-        let tx_hash_csl =
-            csl::TransactionHash::from_bytes(body_hash.to_vec()).unwrap();
-        let private =
-            csl::PrivateKey::from_normal_bytes(user_sk.as_bytes()).unwrap();
-        let witness = csl::make_vkey_witness(&tx_hash_csl, &private);
-        let mut witness_set = csl::TransactionWitnessSet::new();
-        let mut vkeys = csl::Vkeywitnesses::new();
-        vkeys.add(&witness);
-        witness_set.set_vkeys(&vkeys);
-
-        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
-        let tx_cbor = tx.to_bytes();
-        let tx_hash = hex::encode(compute_tx_hash(&tx_cbor).unwrap());
-
-        if assert_balanced {
-            assert_eq!(
-                input_value,
-                output_total + fee,
-                "test transaction must balance"
-            );
-        }
-
-        WithdrawRequest {
-            notes: vec![BlindSignature {
-                signature: mugraph_core::types::Blinded(
-                    mugraph_core::types::Signature::from([9u8; 32]),
-                ),
-                proof: Default::default(),
-            }],
-            change_outputs,
-            tx_cbor: hex::encode(tx_cbor),
-            tx_hash,
-        }
-    }
-
-    fn build_withdraw_request_with_balance_check(
-        user_sk: &SigningKey,
-        input_tx_hash: [u8; 32],
-        input_value: u64,
-        output_value: u64,
-        fee: u64,
-        network: &str,
-        assert_balanced: bool,
-    ) -> WithdrawRequest {
-        build_withdraw_request_with_outputs(
-            user_sk,
-            input_tx_hash,
-            input_value,
-            &[(
-                "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
-                    .to_string(),
-                output_value,
-            )],
-            fee,
-            network,
-            vec![],
-            assert_balanced,
-        )
-    }
-
-    fn build_withdraw_request_without_inputs(
-        user_sk: &SigningKey,
-        output_value: u64,
-        fee: u64,
-        network: &str,
-    ) -> WithdrawRequest {
-        let inputs = csl::TransactionInputs::new();
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-        let output_coin =
-            csl::Coin::from_str(&output_value.to_string()).unwrap();
-        let value = csl::Value::new(&output_coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee_coin = csl::Coin::from_str(&fee.to_string()).unwrap();
-        let mut body =
-            csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee_coin);
-
-        let pk = user_sk.verifying_key();
-        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap().hash();
-        let mut required = csl::Ed25519KeyHashes::new();
-        required.add(&pk_hash);
-        body.set_required_signers(&required);
-
-        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-        let body_hash = Blake2b256::digest(body.to_bytes());
-        let tx_body_hash_hex = hex::encode(body_hash);
-
-        let mut metadata_map = csl::MetadataMap::new();
-        metadata_map
-            .insert_str(
-                "network",
-                &csl::TransactionMetadatum::new_text(network.to_string())
-                    .unwrap(),
-            )
-            .unwrap();
-        metadata_map
-            .insert_str(
-                "tx_body_hash",
-                &csl::TransactionMetadatum::new_text(tx_body_hash_hex).unwrap(),
-            )
-            .unwrap();
-        let metadatum = csl::TransactionMetadatum::new_map(&metadata_map);
-        let mut general_md = csl::GeneralTransactionMetadata::new();
-        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
-        let mut aux = csl::AuxiliaryData::new();
-        aux.set_metadata(&general_md);
-
-        let tx_hash_csl =
-            csl::TransactionHash::from_bytes(body_hash.to_vec()).unwrap();
-        let private =
-            csl::PrivateKey::from_normal_bytes(user_sk.as_bytes()).unwrap();
-        let witness = csl::make_vkey_witness(&tx_hash_csl, &private);
-        let mut witness_set = csl::TransactionWitnessSet::new();
-        let mut vkeys = csl::Vkeywitnesses::new();
-        vkeys.add(&witness);
-        witness_set.set_vkeys(&vkeys);
-
-        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
-        let tx_cbor = tx.to_bytes();
-
-        WithdrawRequest {
-            notes: vec![BlindSignature {
-                signature: mugraph_core::types::Blinded(
-                    mugraph_core::types::Signature::from([9u8; 32]),
-                ),
-                proof: Default::default(),
-            }],
-            change_outputs: vec![],
-            tx_hash: hex::encode(compute_tx_hash(&tx_cbor).unwrap()),
-            tx_cbor: hex::encode(tx_cbor),
-        }
-    }
-
     fn withdrawal_key_from_hex(
         tx_hash: &str,
     ) -> mugraph_core::types::WithdrawalKey {
         let bytes = hex::decode(tx_hash).unwrap();
         let array: [u8; 32] = bytes.try_into().unwrap();
         mugraph_core::types::WithdrawalKey::new(0, array)
+    }
+
+    fn node_hash(payment_vk: &[u8]) -> Vec<u8> {
+        csl::PublicKey::from_bytes(payment_vk)
+            .unwrap()
+            .hash()
+            .to_bytes()
+    }
+
+    /// The vault datum: (user_pubkey_hash, node_pubkey_hash, intent_hash).
+    fn vault_datum(node_hash: &[u8]) -> csl::PlutusData {
+        let mut fields = csl::PlutusList::new();
+        fields.add(&csl::PlutusData::new_bytes(vec![1u8; 28]));
+        fields.add(&csl::PlutusData::new_bytes(node_hash.to_vec()));
+        fields.add(&csl::PlutusData::new_bytes(vec![0u8; 32]));
+        csl::PlutusData::new_constr_plutus_data(&csl::ConstrPlutusData::new(
+            &csl::BigNum::zero(),
+            &fields,
+        ))
+    }
+
+    fn vault_datum_hex(node_hash: &[u8]) -> String {
+        hex::encode(vault_datum(node_hash).to_bytes())
+    }
+
+    /// One output of a test transaction.
+    struct Out {
+        address: String,
+        lovelace: u64,
+        /// The datum node hash for a vault output, if any.
+        datum_node_hash: Option<Vec<u8>>,
+    }
+
+    fn to_user(lovelace: u64) -> Out {
+        Out {
+            address: USER_ADDRESS.to_string(),
+            lovelace,
+            datum_node_hash: None,
+        }
+    }
+
+    fn to_vault(lovelace: u64, node_hash: &[u8]) -> Out {
+        Out {
+            address: vault_address(),
+            lovelace,
+            datum_node_hash: Some(node_hash.to_vec()),
+        }
+    }
+
+    /// Builds a withdrawal transaction that spends one vault UTxO.
+    fn build_tx(
+        input_tx_hash: [u8; 32],
+        outputs: &[Out],
+        fee: u64,
+        required_signers: &[Vec<u8>],
+        signers: &[&SigningKey],
+    ) -> (Vec<u8>, String) {
+        let tx_hash =
+            csl::TransactionHash::from_bytes(input_tx_hash.to_vec()).unwrap();
+        let mut inputs = csl::TransactionInputs::new();
+        inputs.add(&csl::TransactionInput::new(&tx_hash, 0));
+
+        let mut tx_outputs = csl::TransactionOutputs::new();
+        for out in outputs {
+            let addr = csl::Address::from_bech32(&out.address).unwrap();
+            let value = csl::Value::new(
+                &csl::Coin::from_str(&out.lovelace.to_string()).unwrap(),
+            );
+            let mut output = csl::TransactionOutput::new(&addr, &value);
+            if let Some(hash) = &out.datum_node_hash {
+                output.set_plutus_data(&vault_datum(hash));
+            }
+            tx_outputs.add(&output);
+        }
+
+        let fee = csl::Coin::from_str(&fee.to_string()).unwrap();
+        let mut body =
+            csl::TransactionBody::new_tx_body(&inputs, &tx_outputs, &fee);
+        if !required_signers.is_empty() {
+            let mut required = csl::Ed25519KeyHashes::new();
+            for hash in required_signers {
+                required.add(
+                    &csl::Ed25519KeyHash::from_bytes(hash.clone()).unwrap(),
+                );
+            }
+            body.set_required_signers(&required);
+        }
+
+        let body_hash = tx_hash_from_body(&body);
+        let mut witness_set = csl::TransactionWitnessSet::new();
+        if !signers.is_empty() {
+            let mut vkeys = csl::Vkeywitnesses::new();
+            for signer in signers {
+                let private =
+                    csl::PrivateKey::from_normal_bytes(signer.as_bytes())
+                        .unwrap();
+                vkeys.add(&csl::make_vkey_witness(&body_hash, &private));
+            }
+            witness_set.set_vkeys(&vkeys);
+        }
+
+        let tx = csl::Transaction::new(&body, &witness_set, None);
+        let tx_cbor = tx.to_bytes();
+        let tx_hash = hex::encode(compute_tx_hash(&tx_cbor).unwrap());
+        (tx_cbor, tx_hash)
+    }
+
+    /// Notes for `amount` lovelace, one for each denomination.
+    fn issue_notes(ctx: &Context, amount: u64) -> Vec<Note> {
+        let mut rng = StdRng::seed_from_u64(amount);
+        keyset::split_amount(amount)
+            .into_iter()
+            .map(|part| {
+                keyset::issue_note(
+                    &mut rng,
+                    &ctx.keypair.secret_key,
+                    &Asset::default(),
+                    part,
+                )
+                .unwrap()
+            })
+            .collect()
+    }
+
+    fn blinded_change(
+        ctx: &Context,
+        amount: u64,
+    ) -> (Vec<BlindedOutput>, Vec<PendingNote>) {
+        let mut rng = StdRng::seed_from_u64(amount + 1);
+        keyset::split_amount(amount)
+            .into_iter()
+            .map(|part| {
+                blind_new_note(
+                    &mut rng,
+                    ctx.keypair.public_key,
+                    &Asset::default(),
+                    part,
+                )
+            })
+            .unzip()
+    }
+
+    fn request(
+        tx: (Vec<u8>, String),
+        notes: Vec<Note>,
+        change_outputs: Vec<BlindedOutput>,
+    ) -> WithdrawRequest {
+        WithdrawRequest {
+            notes,
+            change_outputs,
+            tx_cbor: hex::encode(tx.0),
+            tx_hash: tx.1,
+        }
+    }
+
+    /// A withdrawal of 1 ADA from a 1.17 ADA vault UTxO, with a 0.17 ADA
+    /// fee. The notes pay for the payout and the fee.
+    struct Scenario {
+        ctx: Context,
+        request: WithdrawRequest,
+        input_tx_hash: [u8; 32],
+    }
+
+    async fn scenario(
+        input_tx_hash: [u8; 32],
+        submit_status: StatusCode,
+        submit_hash: Option<String>,
+    ) -> Scenario {
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let hash = node_hash(&payment_vk);
+        let tx = build_tx(
+            input_tx_hash,
+            &[to_user(1_000_000)],
+            170_000,
+            std::slice::from_ref(&hash),
+            &[],
+        );
+        let tx_hash = tx.1.clone();
+
+        let provider_url = spawn_withdraw_provider_mock(
+            vault_address(),
+            vault_datum_hex(&hash),
+            1_170_000,
+            submit_status,
+            submit_hash.unwrap_or_else(|| tx_hash.clone()),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+
+        let notes = issue_notes(&ctx, 1_170_000);
+        Scenario {
+            request: request(tx, notes, vec![]),
+            ctx,
+            input_tx_hash,
+        }
+    }
+
+    fn note_is_burned(ctx: &Context, note: &Note) -> bool {
+        let read_tx = ctx.database.read().unwrap();
+        let notes = read_tx.open_table(NOTES).unwrap();
+        notes.get(note.signature).unwrap().is_some()
+    }
+
+    fn assert_preflight_rejection_leaves_state_untouched(
+        ctx: &Context,
+        request: &WithdrawRequest,
+    ) {
+        for note in &request.notes {
+            assert!(!note_is_burned(ctx, note), "note must not be burned");
+        }
+        let read_tx = ctx.database.read().unwrap();
+        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
+        if let Ok(bytes) = hex::decode(&request.tx_hash)
+            && bytes.len() == 32
+        {
+            let key = withdrawal_key_from_hex(&request.tx_hash);
+            assert!(withdrawals.get(&key).unwrap().is_none());
+        }
     }
 
     async fn spawn_withdraw_provider_mock(
@@ -722,27 +764,17 @@ mod tests {
         submit_status: StatusCode,
         submit_hash: String,
     ) -> String {
+        type MockState = (String, String, u64, StatusCode, String);
+
         async fn tx_info() -> impl IntoResponse {
             (StatusCode::OK, axum::Json(json!({"block_height": 90})))
         }
 
         async fn tx_utxos(
             Path(tx_hash): Path<String>,
-            axum::extract::State(state): axum::extract::State<(
-                String,
-                String,
-                u64,
-                StatusCode,
-                String,
-            )>,
+            axum::extract::State(state): axum::extract::State<MockState>,
         ) -> impl IntoResponse {
-            let (
-                script_address,
-                _datum_hex,
-                input_value,
-                _submit_status,
-                _submit_hash,
-            ) = state;
+            let (script_address, _, input_value, _, _) = state;
             (
                 StatusCode::OK,
                 axum::Json(json!({
@@ -759,40 +791,16 @@ mod tests {
         }
 
         async fn datum_cbor(
-            axum::extract::State(state): axum::extract::State<(
-                String,
-                String,
-                u64,
-                StatusCode,
-                String,
-            )>,
+            axum::extract::State(state): axum::extract::State<MockState>,
         ) -> impl IntoResponse {
-            let (
-                _script_address,
-                datum_hex,
-                _input_value,
-                _submit_status,
-                _submit_hash,
-            ) = state;
+            let (_, datum_hex, _, _, _) = state;
             (StatusCode::OK, axum::Json(json!({"cbor": datum_hex})))
         }
 
         async fn submit(
-            axum::extract::State(state): axum::extract::State<(
-                String,
-                String,
-                u64,
-                StatusCode,
-                String,
-            )>,
+            axum::extract::State(state): axum::extract::State<MockState>,
         ) -> impl IntoResponse {
-            let (
-                _script_address,
-                _datum_hex,
-                _input_value,
-                submit_status,
-                submit_hash,
-            ) = state;
+            let (_, _, _, submit_status, submit_hash) = state;
             if submit_status.is_success() {
                 (submit_status, axum::Json(json!(submit_hash))).into_response()
             } else {
@@ -883,6 +891,8 @@ mod tests {
         format!("http://{addr}")
     }
 
+    // --- Pure checks ------------------------------------------------------
+
     #[test]
     fn rejects_input_index_overflow() {
         let err = checked_output_index(u16::MAX as u32 + 1, 0).unwrap_err();
@@ -921,707 +931,399 @@ mod tests {
         assert!(res.is_ok());
     }
 
-    /// required_signers present but missing matching witness => reject
-    #[tokio::test]
-    async fn test_required_signer_missing_witness() {
-        let sk = SigningKey::from_bytes(&[1u8; 32]);
-        let pk = sk.verifying_key();
-        let pk_hash = csl::PublicKey::from_bytes(pk.as_bytes())
-            .unwrap()
-            .hash()
-            .to_hex();
-        let mut expected = HashSet::new();
-        expected.insert(pk_hash.clone());
-
-        let tx = minimal_tx_with_required_signer(&pk_hash, None);
-        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test...".to_string(),
-            "preprod".to_string(),
+    #[test]
+    fn test_multiasset_imbalance_rejected() {
+        // Inputs: 1 ADA + 5 tokens; Outputs: 1 ADA + 6 tokens -> should fail
+        let policy_hex = "00".repeat(28); // 28-byte script hash in hex
+        let asset_hex = "746f6b656e"; // "token"
+        let tx = tx_with_multiasset_output(
+            1_000_000,
+            &[(&policy_hex, asset_hex, 6)],
         );
-
-        let res =
-            validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
-                .await;
+        let tx_cbor = tx.to_bytes();
+        let mut inputs = HashMap::new();
+        inputs.insert("lovelace".to_string(), 1_000_000u128);
+        inputs.insert(format!("{}{}", policy_hex, asset_hex), 5u128);
+        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
         assert!(res.is_err());
     }
 
-    /// required_signers present and matching witness => ok
-    #[tokio::test]
-    async fn test_required_signer_with_witness() {
-        let sk = SigningKey::from_bytes(&[2u8; 32]);
-        let pk = sk.verifying_key();
-        let pk_csl = csl::PublicKey::from_bytes(pk.as_bytes()).unwrap();
-        let pk_hash = pk_csl.hash().to_hex();
-        let mut expected = HashSet::new();
-        expected.insert(pk_hash.clone());
-
-        let tx_body_only =
-            minimal_tx_with_required_signer(&pk_hash, None).body();
-        let tx_hash_csl = tx_hash_from_body(&tx_body_only);
-        let private =
-            csl::PrivateKey::from_normal_bytes(sk.as_bytes()).unwrap();
-        let vkey_witness = csl::make_vkey_witness(&tx_hash_csl, &private);
-
-        let mut witness_set = csl::TransactionWitnessSet::new();
-        let mut vkeys = csl::Vkeywitnesses::new();
-        vkeys.add(&vkey_witness);
-        witness_set.set_vkeys(&vkeys);
-
-        let tx = csl::Transaction::new(&tx_body_only, &witness_set, None);
-
-        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test...".to_string(),
-            "preprod".to_string(),
+    #[test]
+    fn test_multiasset_balance_accepted() {
+        // Inputs: 1 ADA + 5 tokens; Outputs: 1 ADA + 5 tokens -> balanced.
+        // Units use the raw asset name bytes, as the provider shows them.
+        let policy_hex = "00".repeat(28);
+        let asset_hex = "746f6b656e";
+        let tx = tx_with_multiasset_output(
+            1_000_000,
+            &[(&policy_hex, asset_hex, 5)],
         );
+        let mut inputs = HashMap::new();
+        inputs.insert("lovelace".to_string(), 1_000_000u128);
+        inputs.insert(format!("{}{}", policy_hex, asset_hex), 5u128);
 
-        let res =
-            validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
-                .await;
-        assert!(res.is_ok());
+        validate_transaction_balance(&tx.to_bytes(), &inputs, 200_000)
+            .expect("a balanced multi-asset transaction must pass");
     }
 
-    #[tokio::test]
-    async fn test_multi_owner_missing_from_required_signers() {
-        let sk1 = SigningKey::from_bytes(&[3u8; 32]);
-        let sk2 = SigningKey::from_bytes(&[4u8; 32]);
-        let pk1_hash =
-            csl::PublicKey::from_bytes(sk1.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_hex();
-        let pk2_hash =
-            csl::PublicKey::from_bytes(sk2.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_hex();
-
-        let expected = HashSet::from([pk1_hash.clone(), pk2_hash.clone()]);
-        let tx_body = minimal_tx_body_with_required_signers(
-            std::slice::from_ref(&pk1_hash),
+    #[test]
+    fn test_multiasset_phantom_asset_rejected() {
+        // Inputs: only ADA; Outputs: ADA + new token -> should fail
+        let policy_hex = "00".repeat(28);
+        let asset_hex = "746f6b656e";
+        let tx = tx_with_multiasset_output(
+            1_000_000,
+            &[(&policy_hex, asset_hex, 1)],
         );
-        let tx_hash_csl = tx_hash_from_body(&tx_body);
-        let witness_set = witness_set_with_vkey_signers(&tx_hash_csl, &[&sk1]);
-        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
-
-        let notes: Vec<BlindSignature> =
-            vec![BlindSignature::default(), BlindSignature::default()];
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test...".to_string(),
-            "preprod".to_string(),
-        );
-
-        let err =
-            validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
-                .await
-                .unwrap_err();
-        assert!(
-            format!("{err:?}").contains(
-                "Required signer set does not include input owner hash"
-            )
-        );
+        let tx_cbor = tx.to_bytes();
+        let mut inputs = HashMap::new();
+        inputs.insert("lovelace".to_string(), 1_100_000u128); // cover fee + output
+        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
+        assert!(res.is_err());
     }
 
-    #[tokio::test]
-    async fn test_multi_owner_missing_witness_for_required_signer() {
-        let sk1 = SigningKey::from_bytes(&[5u8; 32]);
-        let sk2 = SigningKey::from_bytes(&[6u8; 32]);
-        let pk1_hash =
-            csl::PublicKey::from_bytes(sk1.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_hex();
-        let pk2_hash =
-            csl::PublicKey::from_bytes(sk2.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_hex();
-
-        let expected = HashSet::from([pk1_hash.clone(), pk2_hash.clone()]);
-        let tx_body = minimal_tx_body_with_required_signers(&[
-            pk1_hash.clone(),
-            pk2_hash.clone(),
-        ]);
-        let tx_hash_csl = tx_hash_from_body(&tx_body);
-        let witness_set = witness_set_with_vkey_signers(&tx_hash_csl, &[&sk1]);
-        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
-
-        let notes: Vec<BlindSignature> =
-            vec![BlindSignature::default(), BlindSignature::default()];
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test...".to_string(),
-            "preprod".to_string(),
-        );
-
-        let err =
-            validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
-                .await
-                .unwrap_err();
-        assert!(
-            format!("{err:?}")
-                .contains("Missing witnesses for required_signers")
-        );
+    fn totals(pairs: &[(&str, u128)]) -> BTreeMap<String, u128> {
+        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
     }
 
-    #[tokio::test]
-    async fn test_bootstrap_witness_counts_when_valid() {
-        let key = csl::Bip32PrivateKey::generate_ed25519_bip32().unwrap();
-        let byron_address = csl::ByronAddress::from_base58(
-            "Ae2tdPwUPEZ5uzkzh1o2DHECiUi3iugvnnKHRisPgRRP3CTF4KCMvy54Xd3",
+    #[test]
+    fn withdraw_value_accepts_notes_equal_to_the_vault_outflow() {
+        validate_withdraw_value(
+            &totals(&[("lovelace", 1_170_000)]),
+            &totals(&[("lovelace", 100_000)]),
+            &totals(&[("lovelace", 1_170_000)]),
+            &totals(&[("lovelace", 100_000)]),
         )
-        .unwrap();
-        let required_hash = key.to_raw_key().to_public().hash().to_hex();
-        let expected = HashSet::from([required_hash.clone()]);
-        let tx_body = minimal_tx_body_with_required_signers(&[required_hash]);
-        let tx_hash_csl = tx_hash_from_body(&tx_body);
-        let bootstrap = csl::make_icarus_bootstrap_witness(
-            &tx_hash_csl,
-            &byron_address,
-            &key,
-        );
-
-        let mut witness_set = csl::TransactionWitnessSet::new();
-        let mut bootstraps = csl::BootstrapWitnesses::new();
-        bootstraps.add(&bootstrap);
-        witness_set.set_bootstraps(&bootstraps);
-
-        let tx = csl::Transaction::new(&tx_body, &witness_set, None);
-        let notes: Vec<BlindSignature> = vec![BlindSignature::default()];
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test...".to_string(),
-            "preprod".to_string(),
-        );
-
-        let res =
-            validate_user_witnesses(&tx.to_bytes(), &notes, &expected, &wallet)
-                .await;
-        assert!(res.is_ok());
+        .expect("notes - change == vault in - vault out");
     }
 
     #[test]
-    fn test_intent_metadata_binding() {
-        // Build tx body
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-
-        // Compute body hash
-        let body_bytes = body.to_bytes();
-        type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-        let h = Blake2b256::digest(&body_bytes);
-        let mut h_arr = [0u8; 32];
-        h_arr.copy_from_slice(&h);
-        let h_hex = hex::encode(h_arr);
-
-        // Build metadata label 1914 with network + tx_body_hash
-        let mut md_map = csl::MetadataMap::new();
-        let md_network =
-            csl::TransactionMetadatum::new_text("preprod".to_string()).unwrap();
-        let md_hash =
-            csl::TransactionMetadatum::new_text(h_hex.clone()).unwrap();
-        md_map.insert_str("network", &md_network).unwrap();
-        md_map.insert_str("tx_body_hash", &md_hash).unwrap();
-        let metadatum = csl::TransactionMetadatum::new_map(&md_map);
-        let mut general_md = csl::GeneralTransactionMetadata::new();
-        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
-        let mut aux = csl::AuxiliaryData::new();
-        aux.set_metadata(&general_md);
-
-        let witness_set = csl::TransactionWitnessSet::new();
-        let tx = csl::Transaction::new(&body, &witness_set, Some(aux));
-
-        assert!(
-            validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod")
-                .is_ok()
-        );
-
-        // Tamper network
-        assert!(
-            validate_withdraw_intent_metadata(&tx.to_bytes(), "mainnet")
-                .is_err()
-        );
-    }
-
-    /// Reject script-address outputs when request.change_outputs does not match them
-    #[test]
-    fn test_reject_change_output_to_script() {
-        // Build tx with output to script address
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        // Build a valid testnet enterprise address to reuse as script address
-        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![1u8; 28]).unwrap();
-        let cred = csl::Credential::from_keyhash(&key_hash);
-        let addr = csl::EnterpriseAddress::new(0, &cred).to_address();
-        let script_addr = addr.to_bech32(None).unwrap();
-
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let witness_set = csl::TransactionWitnessSet::new();
-        let tx = csl::Transaction::new(&body, &witness_set, None);
-
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr.to_string(),
-            "preprod".to_string(),
-        );
-
-        let err =
-            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
-                .unwrap_err();
-        assert!(
-            format!("{:?}", err).contains("request provided 0 change_outputs")
-        );
-    }
-
-    #[test]
-    fn test_accept_no_script_change_with_empty_change_outputs() {
-        let tx = minimal_tx_with_values(1_000_000, 170_000);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test1script_different".to_string(),
-            "preprod".to_string(),
-        );
-
-        validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
-            .expect("no script outputs with empty change_outputs should pass");
-    }
-
-    #[test]
-    fn test_reject_change_output_without_change_outputs() {
-        // Build tx with output to script address
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![1u8; 28]).unwrap();
-        let cred = csl::Credential::from_keyhash(&key_hash);
-        let addr = csl::EnterpriseAddress::new(0, &cred).to_address();
-        let script_addr = addr.to_bech32(None).unwrap();
-
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let witness_set = csl::TransactionWitnessSet::new();
-        let tx = csl::Transaction::new(&body, &witness_set, None);
-
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr,
-            "preprod".to_string(),
-        );
-
-        let err =
-            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
-                .unwrap_err();
-        assert!(
-            format!("{:?}", err).contains("request provided 0 change_outputs")
-        );
-    }
-
-    #[test]
-    fn test_reject_change_output_count_mismatch() {
-        let (tx, script_addr) = tx_with_output_addresses(&[true, true], None);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr,
-            "preprod".to_string(),
-        );
-
-        let err = validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[BlindSignature::default()],
+    fn withdraw_value_rejects_notes_below_the_vault_outflow() {
+        let err = validate_withdraw_value(
+            &totals(&[("lovelace", 1_170_000)]),
+            &totals(&[]),
+            &totals(&[("lovelace", 1)]),
+            &totals(&[]),
         )
         .unwrap_err();
-        assert!(format!("{:?}", err).contains("found 2 script outputs"));
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
     }
 
     #[test]
-    fn test_reject_change_output_order_mismatch() {
-        let (tx, script_addr) =
-            tx_with_output_addresses(&[true, true], Some(1_000_000));
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr,
-            "preprod".to_string(),
-        );
-
-        let err = validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[BlindSignature::default()],
+    fn withdraw_value_rejects_notes_above_the_vault_outflow() {
+        let err = validate_withdraw_value(
+            &totals(&[("lovelace", 1_000_000)]),
+            &totals(&[]),
+            &totals(&[("lovelace", 1_000_001)]),
+            &totals(&[]),
         )
         .unwrap_err();
-        assert!(format!("{:?}", err).contains("transaction output order"));
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
     }
 
     #[test]
-    fn test_non_script_outputs_are_ignored_for_change_matching() {
-        let (tx, script_addr) =
-            tx_with_output_addresses(&[false, true, false, true], None);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr,
-            "preprod".to_string(),
-        );
-
-        validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[BlindSignature::default(), BlindSignature::default()],
+    fn withdraw_value_rejects_tokens_that_leave_without_notes() {
+        let token = format!("{}{}", "11".repeat(28), "746f6b656e");
+        let err = validate_withdraw_value(
+            &totals(&[("lovelace", 1_000_000), (&token, 5)]),
+            &totals(&[]),
+            &totals(&[("lovelace", 1_000_000)]),
+            &totals(&[]),
         )
-        .expect(
-            "non-script outputs should be ignored when matching change_outputs",
-        );
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
     }
 
     #[test]
-    fn test_accept_change_outputs_when_count_matches() {
-        let (tx, script_addr) =
-            tx_with_output_addresses(&[true, false, true], None);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            script_addr,
-            "preprod".to_string(),
-        );
+    fn validate_notes_sums_valid_notes_by_asset() {
+        let ctx = test_context();
+        let notes = issue_notes(&ctx, 1_170_000);
 
-        validate_network_and_change_outputs(
-            &tx.to_bytes(),
-            &wallet,
-            &[BlindSignature::default(), BlindSignature::default()],
-        )
-        .expect("matching script output count should pass");
-    }
-
-    fn sample_change_output(seed: u64, message: &[u8]) -> BlindSignature {
-        let mut rng = StdRng::seed_from_u64(seed);
-        let blind = mugraph_core::crypto::blind(&mut rng, message);
-        BlindSignature {
-            signature: mugraph_core::types::Blinded(blind.point.into()),
-            proof: Default::default(),
-        }
+        let sums = validate_notes(&notes, &ctx.keypair).unwrap();
+        assert_eq!(sums, totals(&[("lovelace", 1_170_000)]));
     }
 
     #[test]
-    fn test_calculate_change_notes_returns_empty_for_no_change_outputs() {
-        let tx = minimal_tx_with_values(1_000_000, 170_000);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test1different_script_address".to_string(),
-            "preprod".to_string(),
-        );
-        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
-        let keypair = mugraph_core::types::Keypair {
-            public_key: sk.public(),
-            secret_key: sk,
-        };
+    fn validate_notes_rejects_an_empty_list() {
+        let ctx = test_context();
+        let err = validate_notes(&[], &ctx.keypair).unwrap_err();
+        assert!(format!("{err:?}").contains("No notes"), "{err:?}");
+    }
 
-        let notes = calculate_change_notes(
-            &WithdrawRequest {
-                notes: vec![],
-                change_outputs: vec![],
-                tx_cbor: String::new(),
-                tx_hash: String::new(),
-            },
-            &tx.to_bytes(),
-            &wallet,
-            &keypair,
+    #[test]
+    fn validate_notes_rejects_a_note_from_another_key() {
+        let ctx = test_context();
+        let other = mugraph_core::types::Keypair::random(&mut rand::rng());
+        let mut note = keyset::issue_note(
+            &mut rand::rng(),
+            &other.secret_key,
+            &Asset::default(),
+            8,
         )
         .unwrap();
+        note.delegate = ctx.keypair.public_key;
 
-        assert!(notes.is_empty());
+        let err = validate_notes(&[note], &ctx.keypair).unwrap_err();
+        assert!(matches!(err, Error::InvalidSignature { .. }), "{err:?}");
     }
 
     #[test]
-    fn test_calculate_change_notes_signs_request_change_outputs() {
-        let tx = minimal_tx_with_values(1_000_000, 170_000);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test1different_script_address".to_string(),
-            "preprod".to_string(),
-        );
-        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
-        let keypair = mugraph_core::types::Keypair {
-            public_key: sk.public(),
-            secret_key: sk,
-        };
-        let change_outputs = vec![
-            sample_change_output(1, b"change-a"),
-            sample_change_output(2, b"change-b"),
-        ];
+    fn validate_notes_rejects_a_note_for_another_delegate() {
+        let ctx = test_context();
+        let mut note = issue_notes(&ctx, 8).remove(0);
+        note.delegate = mugraph_core::types::PublicKey::default();
 
-        let notes = calculate_change_notes(
-            &WithdrawRequest {
-                notes: vec![],
-                change_outputs: change_outputs.clone(),
-                tx_cbor: String::new(),
-                tx_hash: String::new(),
-            },
-            &tx.to_bytes(),
-            &wallet,
-            &keypair,
-        )
-        .unwrap();
-
-        assert_eq!(notes.len(), 2);
-        for (change_output, note) in change_outputs.iter().zip(notes.iter()) {
-            let blinded_point = change_output.signature.0.to_point().unwrap();
-            assert!(
-                mugraph_core::crypto::verify_dleq_signature(
-                    &keypair.public_key,
-                    &blinded_point,
-                    &note.signature,
-                    &note.proof,
-                )
-                .unwrap()
-            );
-        }
+        let err = validate_notes(&[note], &ctx.keypair).unwrap_err();
+        assert!(format!("{err:?}").contains("delegate"), "{err:?}");
     }
 
     #[test]
-    fn test_calculate_change_notes_preserves_input_order() {
-        let tx = minimal_tx_with_values(1_000_000, 170_000);
-        let wallet = mugraph_core::types::CardanoWallet::new(
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            "addr_test1different_script_address".to_string(),
-            "preprod".to_string(),
-        );
-        let sk = mugraph_core::types::SecretKey::from([7u8; 32]);
-        let keypair = mugraph_core::types::Keypair {
-            public_key: sk.public(),
-            secret_key: sk,
-        };
-        let first = sample_change_output(11, b"first");
-        let second = sample_change_output(22, b"second");
-        let change_outputs = vec![first, second];
+    fn validate_notes_rejects_the_same_note_twice() {
+        let ctx = test_context();
+        let note = issue_notes(&ctx, 8).remove(0);
 
-        let notes = calculate_change_notes(
-            &WithdrawRequest {
-                notes: vec![],
-                change_outputs: change_outputs.clone(),
-                tx_cbor: String::new(),
-                tx_hash: String::new(),
-            },
-            &tx.to_bytes(),
-            &wallet,
-            &keypair,
-        )
-        .unwrap();
-
-        let first_point = change_outputs[0].signature.0.to_point().unwrap();
-        let second_point = change_outputs[1].signature.0.to_point().unwrap();
-
-        assert!(
-            mugraph_core::crypto::verify_dleq_signature(
-                &keypair.public_key,
-                &first_point,
-                &notes[0].signature,
-                &notes[0].proof,
-            )
-            .unwrap()
-        );
-        assert!(
-            mugraph_core::crypto::verify_dleq_signature(
-                &keypair.public_key,
-                &second_point,
-                &notes[1].signature,
-                &notes[1].proof,
-            )
-            .unwrap()
-        );
-        assert!(
-            !mugraph_core::crypto::verify_dleq_signature(
-                &keypair.public_key,
-                &second_point,
-                &notes[0].signature,
-                &notes[0].proof,
-            )
-            .unwrap()
-        );
+        let err =
+            validate_notes(&[note.clone(), note], &ctx.keypair).unwrap_err();
+        assert!(format!("{err:?}").contains("more than once"), "{err:?}");
     }
 
-    /// Reject outputs on wrong network
+    #[test]
+    fn validate_change_outputs_rejects_an_amount_that_is_not_a_denomination() {
+        let ctx = test_context();
+        let (mut outputs, _) = blinded_change(&ctx, 8);
+        outputs[0].amount = 7;
+
+        let err = validate_change_outputs(&outputs).unwrap_err();
+        assert!(format!("{err:?}").contains("power of two"), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn signers_must_include_the_node() {
+        let (_, payment_vk) = generate_payment_keypair().unwrap();
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            payment_vk.clone(),
+            vec![],
+            vec![],
+            vault_address(),
+            "preprod".to_string(),
+        );
+        let tx = build_tx([1u8; 32], &[to_user(1_000_000)], 170_000, &[], &[]);
+        let parsed = ParsedWithdrawalTx::parse(&hex::encode(&tx.0)).unwrap();
+
+        let err =
+            validate_signers_with_parsed_tx(&parsed, &wallet).unwrap_err();
+        assert!(format!("{err:?}").contains("required_signers"), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn signers_accept_a_transaction_without_witnesses() {
+        let (_, payment_vk) = generate_payment_keypair().unwrap();
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            payment_vk.clone(),
+            vec![],
+            vec![],
+            vault_address(),
+            "preprod".to_string(),
+        );
+        let tx = build_tx(
+            [1u8; 32],
+            &[to_user(1_000_000)],
+            170_000,
+            &[node_hash(&payment_vk)],
+            &[],
+        );
+        let parsed = ParsedWithdrawalTx::parse(&hex::encode(&tx.0)).unwrap();
+
+        validate_signers_with_parsed_tx(&parsed, &wallet)
+            .expect("the node adds its own witness later");
+    }
+
+    #[tokio::test]
+    async fn signers_reject_an_invalid_witness() {
+        let (_, payment_vk) = generate_payment_keypair().unwrap();
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            payment_vk.clone(),
+            vec![],
+            vec![],
+            vault_address(),
+            "preprod".to_string(),
+        );
+        let signer = SigningKey::from_bytes(&[5u8; 32]);
+        let (signed, _) = build_tx(
+            [1u8; 32],
+            &[to_user(1_000_000)],
+            170_000,
+            &[node_hash(&payment_vk)],
+            &[&signer],
+        );
+        let (other, _) = build_tx(
+            [1u8; 32],
+            &[to_user(1_000_000)],
+            170_001,
+            &[node_hash(&payment_vk)],
+            &[],
+        );
+
+        // Put the witness for one body on a different body.
+        let signed = csl::Transaction::from_bytes(signed).unwrap();
+        let other = csl::Transaction::from_bytes(other).unwrap();
+        let tampered =
+            csl::Transaction::new(&other.body(), &signed.witness_set(), None);
+        let parsed =
+            ParsedWithdrawalTx::parse(&hex::encode(tampered.to_bytes()))
+                .unwrap();
+
+        let err =
+            validate_signers_with_parsed_tx(&parsed, &wallet).unwrap_err();
+        assert!(matches!(err, Error::InvalidSignature { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn vault_outputs_must_carry_a_datum_for_this_node() {
+        let (_, payment_vk) = generate_payment_keypair().unwrap();
+        let hash = node_hash(&payment_vk);
+        let wallet = mugraph_core::types::CardanoWallet::new(
+            vec![],
+            payment_vk,
+            vec![],
+            vec![],
+            vault_address(),
+            "preprod".to_string(),
+        );
+
+        let (good, _) = build_tx(
+            [1u8; 32],
+            &[to_user(900_000), to_vault(100_000, &hash)],
+            170_000,
+            std::slice::from_ref(&hash),
+            &[],
+        );
+        let out = validate_network_and_vault_outputs(&good, &wallet).unwrap();
+        assert_eq!(out, totals(&[("lovelace", 100_000)]));
+
+        let no_datum = Out {
+            datum_node_hash: None,
+            ..to_vault(100_000, &hash)
+        };
+        let (bad, _) = build_tx(
+            [1u8; 32],
+            &[to_user(900_000), no_datum],
+            170_000,
+            std::slice::from_ref(&hash),
+            &[],
+        );
+        let err =
+            validate_network_and_vault_outputs(&bad, &wallet).unwrap_err();
+        assert!(format!("{err:?}").contains("datum"), "{err:?}");
+
+        let (other_node, _) = build_tx(
+            [1u8; 32],
+            &[to_user(900_000), to_vault(100_000, &[7u8; 28])],
+            170_000,
+            std::slice::from_ref(&hash),
+            &[],
+        );
+        let err = validate_network_and_vault_outputs(&other_node, &wallet)
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("node_pubkey_hash"), "{err:?}");
+    }
+
     #[test]
     fn test_reject_output_wrong_network() {
-        // Build tx with mainnet address while wallet is preprod
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        // mainnet enterprise address (network id 1)
-        let key_hash = csl::Ed25519KeyHash::from_bytes(vec![2u8; 28]).unwrap();
-        let cred = csl::Credential::from_keyhash(&key_hash);
-        let addr = csl::EnterpriseAddress::new(1, &cred).to_address();
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let witness_set = csl::TransactionWitnessSet::new();
-        let tx = csl::Transaction::new(&body, &witness_set, None);
-
+        let tx = {
+            let tx_hash =
+                csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
+            let mut inputs = csl::TransactionInputs::new();
+            inputs.add(&csl::TransactionInput::new(&tx_hash, 0));
+            let key_hash =
+                csl::Ed25519KeyHash::from_bytes(vec![7u8; 28]).unwrap();
+            let mainnet = csl::EnterpriseAddress::new(
+                1,
+                &csl::Credential::from_keyhash(&key_hash),
+            )
+            .to_address();
+            let mut outputs = csl::TransactionOutputs::new();
+            outputs.add(&csl::TransactionOutput::new(
+                &mainnet,
+                &csl::Value::new(&csl::Coin::from_str("1000000").unwrap()),
+            ));
+            let body = csl::TransactionBody::new_tx_body(
+                &inputs,
+                &outputs,
+                &csl::Coin::from_str("170000").unwrap(),
+            );
+            csl::Transaction::new(
+                &body,
+                &csl::TransactionWitnessSet::new(),
+                None,
+            )
+        };
         let wallet = mugraph_core::types::CardanoWallet::new(
             vec![],
             vec![],
             vec![],
             vec![],
-            {
-                let key_hash =
-                    csl::Ed25519KeyHash::from_bytes(vec![3u8; 28]).unwrap();
-                let cred = csl::Credential::from_keyhash(&key_hash);
-                csl::EnterpriseAddress::new(0, &cred)
-                    .to_address()
-                    .to_bech32(None)
-                    .unwrap()
-            },
+            vault_address(),
             "preprod".to_string(),
         );
 
-        let err =
-            validate_network_and_change_outputs(&tx.to_bytes(), &wallet, &[])
-                .unwrap_err();
+        let err = validate_network_and_vault_outputs(&tx.to_bytes(), &wallet)
+            .unwrap_err();
         assert!(format!("{:?}", err).contains("network_id 1"));
     }
 
-    #[tokio::test]
-    async fn handle_withdraw_happy_path_marks_withdrawal_completed_and_spends_deposit()
-     {
-        let user_sk = SigningKey::from_bytes(&[3u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xabu8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
+    #[test]
+    fn test_calculate_change_notes_signs_with_denomination_keys() {
+        let ctx = test_context();
+        let (outputs, pending) = blinded_change(&ctx, 100_000);
+        let request = WithdrawRequest {
+            notes: vec![],
+            change_outputs: outputs,
+            tx_cbor: String::new(),
+            tx_hash: String::new(),
+        };
 
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        let signatures =
+            calculate_change_notes(&request, &ctx.keypair).unwrap();
+        assert_eq!(signatures.len(), pending.len());
+
+        let keys = keyset::keyset(&ctx.keypair.secret_key, &Asset::default());
+        for (pending, signature) in pending.into_iter().zip(&signatures) {
+            let public_key =
+                keyset::keyset_public_key(&keys, pending.note.amount).unwrap();
+            pending
+                .finish(signature, &public_key)
+                .expect("change note verifies with its denomination key");
+        }
+    }
+
+    // --- The full handler -------------------------------------------------
+
+    #[tokio::test]
+    async fn handle_withdraw_happy_path_burns_notes_and_completes() {
+        let input_tx_hash = [0xabu8; 32];
+        let s = scenario(input_tx_hash, StatusCode::OK, None).await;
         seed_deposit(
-            &ctx,
+            &s.ctx,
             mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
             [0u8; 32],
         );
 
-        let response = handle_withdraw(&request, &ctx)
+        let response = handle_withdraw(&s.request, &s.ctx)
             .await
             .expect("withdraw accepted");
         assert!(matches!(response, Response::Withdraw { .. }));
 
-        let read_tx = ctx.database.read().unwrap();
-        let notes = read_tx.open_table(NOTES).unwrap();
-        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
-        assert!(notes.get(note_signature).unwrap().is_some());
+        for note in &s.request.notes {
+            assert!(note_is_burned(&s.ctx, note));
+        }
 
+        let read_tx = s.ctx.database.read().unwrap();
         let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
-        let key = withdrawal_key_from_hex(&request.tx_hash);
+        let key = withdrawal_key_from_hex(&s.request.tx_hash);
         assert_eq!(
             withdrawals.get(&key).unwrap().unwrap().value().status,
             mugraph_core::types::WithdrawalStatus::Completed
@@ -1639,768 +1341,309 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_withdraw_happy_path_returns_signed_change_notes() {
-        let user_sk = SigningKey::from_bytes(&[4u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+    async fn handle_withdraw_spends_a_vault_utxo_without_a_deposit_record() {
+        // The vault is one pool: a withdrawal can spend any vault UTxO,
+        // for example the vault change of an earlier withdrawal.
+        let s = scenario([0xaeu8; 32], StatusCode::OK, None).await;
+
+        handle_withdraw(&s.request, &s.ctx)
+            .await
+            .expect("withdraw accepted");
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_happy_path_returns_valid_change_notes() {
         let input_tx_hash = [0xacu8; 32];
-        let input_value = 1_170_000u64;
-
-        let script_addr = {
-            let key_hash =
-                csl::Ed25519KeyHash::from_bytes(vec![9u8; 28]).unwrap();
-            let cred = csl::Credential::from_keyhash(&key_hash);
-            csl::EnterpriseAddress::new(0, &cred)
-                .to_address()
-                .to_bech32(None)
-                .unwrap()
-        };
-        let change_outputs = vec![sample_change_output(31, b"script-change")];
-        let request = build_withdraw_request_with_outputs(
-            &user_sk,
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let hash = node_hash(&payment_vk);
+        // 1.17 ADA in; 0.9 ADA to the user, 0.1 ADA back to the vault,
+        // 0.17 ADA fee. Notes of 1.17 ADA burn, and 0.1 ADA comes back
+        // as change notes.
+        let tx = build_tx(
             input_tx_hash,
-            input_value,
-            &[
-                (
-                    "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
-                        .to_string(),
-                    900_000,
-                ),
-                (script_addr.clone(), 100_000),
-            ],
+            &[to_user(900_000), to_vault(100_000, &hash)],
             170_000,
-            "preprod",
-            change_outputs.clone(),
-            true,
+            std::slice::from_ref(&hash),
+            &[],
         );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
         let provider_url = spawn_withdraw_provider_mock(
-            script_addr.clone(),
-            datum_hex,
-            input_value,
+            vault_address(),
+            vault_datum_hex(&hash),
+            1_170_000,
             StatusCode::OK,
-            request.tx_hash.clone(),
+            tx.1.clone(),
         )
         .await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, &script_addr);
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+
+        let (change, pending) = blinded_change(&ctx, 100_000);
+        let request = request(tx, issue_notes(&ctx, 1_170_000), change);
 
         let response = handle_withdraw(&request, &ctx)
             .await
             .expect("withdraw accepted");
 
-        match response {
-            Response::Withdraw { change_notes, .. } => {
-                assert!(!change_notes.is_empty());
-                assert_eq!(change_notes.len(), change_outputs.len());
-            }
-            other => panic!("unexpected response: {other:?}"),
+        let Response::Withdraw { change_notes, .. } = response else {
+            panic!("unexpected response");
+        };
+        let keys = keyset::keyset(&ctx.keypair.secret_key, &Asset::default());
+        assert_eq!(change_notes.len(), pending.len());
+        for (pending, signature) in pending.into_iter().zip(&change_notes) {
+            let public_key =
+                keyset::keyset_public_key(&keys, pending.note.amount).unwrap();
+            pending.finish(signature, &public_key).unwrap();
         }
     }
 
-    fn assert_preflight_rejection_leaves_state_untouched(
-        ctx: &Context,
-        tx_hash: &str,
-    ) {
-        let read_tx = ctx.database.read().unwrap();
-        let notes = read_tx.open_table(NOTES).unwrap();
-        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
-        assert!(notes.get(note_signature).unwrap().is_none());
+    #[tokio::test]
+    async fn handle_withdraw_rejects_a_forged_note_without_mutating_state() {
+        let mut s = scenario([0xb1u8; 32], StatusCode::OK, None).await;
+        let other = mugraph_core::types::Keypair::random(&mut rand::rng());
+        let mut forged = keyset::issue_note(
+            &mut rand::rng(),
+            &other.secret_key,
+            &Asset::default(),
+            s.request.notes[0].amount,
+        )
+        .unwrap();
+        forged.delegate = s.ctx.keypair.public_key;
+        s.request.notes[0] = forged;
 
-        let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
-        let key = withdrawal_key_from_hex(tx_hash);
-        assert!(withdrawals.get(&key).unwrap().is_none());
+        let err = handle_withdraw(&s.request, &s.ctx).await.unwrap_err();
+        assert!(matches!(err, Error::InvalidSignature { .. }), "{err:?}");
+        assert_preflight_rejection_leaves_state_untouched(&s.ctx, &s.request);
     }
 
     #[tokio::test]
-    async fn handle_withdraw_hash_mismatch_does_not_mutate_notes_or_withdrawals()
-     {
-        let user_sk = SigningKey::from_bytes(&[13u8; 32]);
+    async fn handle_withdraw_rejects_notes_worth_less_than_the_outflow() {
+        let mut s = scenario([0xb2u8; 32], StatusCode::OK, None).await;
+        // Keep only the smallest note: far less than 1.17 ADA.
+        s.request.notes.truncate(1);
+
+        let err = handle_withdraw(&s.request, &s.ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
+        assert_preflight_rejection_leaves_state_untouched(&s.ctx, &s.request);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_a_tx_without_the_node_as_signer() {
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let request = build_withdraw_request(
-            &user_sk,
-            [0xadu8; 32],
+        let hash = node_hash(&payment_vk);
+        let tx =
+            build_tx([0xb3u8; 32], &[to_user(1_000_000)], 170_000, &[], &[]);
+        let provider_url = spawn_withdraw_provider_mock(
+            vault_address(),
+            vault_datum_hex(&hash),
             1_170_000,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
+            StatusCode::OK,
+            tx.1.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
-        let ctx = test_context_with_provider_url(Some(
-            "http://127.0.0.1:1".to_string(),
-        ));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("required_signers"), "{err:?}");
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
+    }
 
-        let mut mismatched = request.clone();
-        mismatched.tx_hash = "ff".repeat(32);
+    #[tokio::test]
+    async fn handle_withdraw_hash_mismatch_does_not_mutate_state() {
+        let mut s = scenario([0xb4u8; 32], StatusCode::OK, None).await;
+        s.request.tx_hash = "ff".repeat(32);
 
-        let err = handle_withdraw(&mismatched, &ctx).await.unwrap_err();
+        let err = handle_withdraw(&s.request, &s.ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("Transaction hash mismatch"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &mismatched.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&s.ctx, &s.request);
     }
 
     #[tokio::test]
-    async fn handle_withdraw_change_output_preflight_rejection_leaves_state_untouched()
-     {
-        let user_sk = SigningKey::from_bytes(&[12u8; 32]);
+    async fn handle_withdraw_balance_failure_does_not_mutate_state() {
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xaeu8; 32];
-        let input_value = 1_170_000u64;
+        let hash = node_hash(&payment_vk);
+        // The outputs and fee add up to more than the 1.17 ADA input.
+        let tx = build_tx(
+            [0xb5u8; 32],
+            &[to_user(1_100_000)],
+            170_000,
+            std::slice::from_ref(&hash),
+            &[],
+        );
+        let provider_url = spawn_withdraw_provider_mock(
+            vault_address(),
+            vault_datum_hex(&hash),
+            1_170_000,
+            StatusCode::OK,
+            tx.1.clone(),
+        )
+        .await;
+        let ctx = test_context_with_provider_url(Some(provider_url));
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
-        let script_addr = {
-            let key_hash =
-                csl::Ed25519KeyHash::from_bytes(vec![8u8; 28]).unwrap();
-            let cred = csl::Credential::from_keyhash(&key_hash);
-            csl::EnterpriseAddress::new(0, &cred)
-                .to_address()
-                .to_bech32(None)
-                .unwrap()
+        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        assert!(format!("{err:?}").contains("Lovelace imbalance"), "{err:?}");
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
+    }
+
+    #[tokio::test]
+    async fn handle_withdraw_rejects_transactions_without_inputs() {
+        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+        let hash = node_hash(&payment_vk);
+        let tx = {
+            let inputs = csl::TransactionInputs::new();
+            let mut outputs = csl::TransactionOutputs::new();
+            outputs.add(&csl::TransactionOutput::new(
+                &csl::Address::from_bech32(USER_ADDRESS).unwrap(),
+                &csl::Value::new(&csl::Coin::from_str("1000000").unwrap()),
+            ));
+            let mut body = csl::TransactionBody::new_tx_body(
+                &inputs,
+                &outputs,
+                &csl::Coin::from_str("170000").unwrap(),
+            );
+            let mut required = csl::Ed25519KeyHashes::new();
+            required.add(&csl::Ed25519KeyHash::from_bytes(hash).unwrap());
+            body.set_required_signers(&required);
+            let tx = csl::Transaction::new(
+                &body,
+                &csl::TransactionWitnessSet::new(),
+                None,
+            );
+            let cbor = tx.to_bytes();
+            let hash = hex::encode(compute_tx_hash(&cbor).unwrap());
+            (cbor, hash)
         };
-        let request = build_withdraw_request_with_outputs(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            &[
-                (
-                    "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh"
-                        .to_string(),
-                    900_000,
-                ),
-                (script_addr.clone(), 100_000),
-            ],
-            170_000,
-            "preprod",
-            vec![],
-            true,
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            script_addr.clone(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, &script_addr);
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(
-            format!("{err:?}").contains("request provided 0 change_outputs")
-        );
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_metadata_mismatch_does_not_mutate_notes_or_withdrawals()
-     {
-        let user_sk = SigningKey::from_bytes(&[14u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xbdu8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "mainnet",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("network mismatch"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_balance_failure_does_not_mutate_notes_or_withdrawals()
-     {
-        let user_sk = SigningKey::from_bytes(&[15u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xbeu8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request_with_balance_check(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_100_000,
-            170_000,
-            "preprod",
-            false,
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("Lovelace imbalance"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_rejects_already_spent_deposit_without_mutating_state()
-     {
-        let user_sk = SigningKey::from_bytes(&[16u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xbfu8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let mut record = mugraph_core::types::DepositRecord::with_intent_hash(
-            90,
-            now,
-            now + 3600,
-            [0u8; 32],
-        );
-        record.spent = true;
-        seed_deposit_record(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            record,
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("deposit already spent"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_rejects_expired_deposit_without_mutating_state() {
-        let user_sk = SigningKey::from_bytes(&[17u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc0u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let record = mugraph_core::types::DepositRecord::with_intent_hash(
-            90,
-            now.saturating_sub(3600),
-            now.saturating_sub(1),
-            [0u8; 32],
-        );
-        seed_deposit_record(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            record,
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("deposit expired"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_rejects_intent_hash_mismatch_without_mutating_state()
-     {
-        let user_sk = SigningKey::from_bytes(&[18u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc1u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [7u8; 32],
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("Intent hash mismatch"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_rejects_missing_deposit_record_without_mutating_state()
-     {
-        let user_sk = SigningKey::from_bytes(&[19u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc2u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
-        assert!(format!("{err:?}").contains("deposit not found"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
-    }
-
-    #[tokio::test]
-    async fn handle_withdraw_rejects_transactions_without_inputs_before_state_mutation()
-     {
-        let user_sk = SigningKey::from_bytes(&[21u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let request = build_withdraw_request_without_inputs(
-            &user_sk, 1_000_000, 170_000, "preprod",
-        );
-
         let ctx = test_context_with_provider_url(Some(
             "http://127.0.0.1:1".to_string(),
         ));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("No inputs found in transaction"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
     }
 
     #[tokio::test]
     async fn handle_withdraw_rejects_inputs_not_from_script_address() {
-        let user_sk = SigningKey::from_bytes(&[22u8; 32]);
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc4u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
+        let hash = node_hash(&payment_vk);
+        let tx = build_tx(
+            [0xc4u8; 32],
+            &[to_user(1_000_000)],
             170_000,
-            "preprod",
+            std::slice::from_ref(&hash),
+            &[],
         );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
         let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1different".to_string(),
-            datum_hex,
-            input_value,
+            USER_ADDRESS.to_string(),
+            vault_datum_hex(&hash),
+            1_170_000,
             StatusCode::OK,
-            request.tx_hash.clone(),
+            tx.1.clone(),
         )
         .await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("is not from script address"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
     }
 
     #[tokio::test]
     async fn handle_withdraw_rejects_inputs_missing_inline_datum() {
-        let user_sk = SigningKey::from_bytes(&[23u8; 32]);
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc5u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
+        let hash = node_hash(&payment_vk);
+        let tx = build_tx(
+            [0xc5u8; 32],
+            &[to_user(1_000_000)],
             170_000,
-            "preprod",
+            std::slice::from_ref(&hash),
+            &[],
         );
-
         let provider_url = spawn_withdraw_provider_mock_without_inline_datum(
-            "addr_test1script".to_string(),
-            input_value,
+            vault_address(),
+            1_170_000,
         )
         .await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("missing inline datum"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
     }
 
     #[tokio::test]
     async fn handle_withdraw_rejects_inputs_with_wrong_node_hash() {
-        let user_sk = SigningKey::from_bytes(&[24u8; 32]);
-        let wrong_node_sk = SigningKey::from_bytes(&[25u8; 32]);
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc6u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
+        let hash = node_hash(&payment_vk);
+        let tx = build_tx(
+            [0xc6u8; 32],
+            &[to_user(1_000_000)],
             170_000,
-            "preprod",
+            std::slice::from_ref(&hash),
+            &[],
         );
-
-        let wrong_node_hash = csl::PublicKey::from_bytes(
-            wrong_node_sk.verifying_key().as_bytes(),
-        )
-        .unwrap()
-        .hash()
-        .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, wrong_node_hash, vec![0u8; 32]);
         let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
+            vault_address(),
+            vault_datum_hex(&[7u8; 28]),
+            1_170_000,
             StatusCode::OK,
-            request.tx_hash.clone(),
+            tx.1.clone(),
         )
         .await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("node_pubkey_hash mismatch"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
     }
 
     #[tokio::test]
-    async fn handle_withdraw_surfaces_provider_input_verification_errors_without_mutating_state()
-     {
-        let user_sk = SigningKey::from_bytes(&[26u8; 32]);
+    async fn handle_withdraw_surfaces_provider_errors_without_mutating_state() {
         let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xc7u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
+        let hash = node_hash(&payment_vk);
+        let tx = build_tx(
+            [0xc7u8; 32],
+            &[to_user(1_000_000)],
             170_000,
-            "preprod",
+            std::slice::from_ref(&hash),
+            &[],
         );
-
         let provider_url =
             spawn_withdraw_provider_mock_with_utxo_failure().await;
         let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
+        insert_wallet(&ctx, payment_sk, payment_vk, &vault_address());
+        let request = request(tx, issue_notes(&ctx, 1_170_000), vec![]);
 
         let err = handle_withdraw(&request, &ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("Failed to verify input 0"));
-        assert_preflight_rejection_leaves_state_untouched(
-            &ctx,
-            &request.tx_hash,
-        );
+        assert_preflight_rejection_leaves_state_untouched(&ctx, &request);
     }
 
     #[tokio::test]
-    async fn handle_withdraw_submit_failure_marks_withdrawal_failed_without_unburning_notes()
-     {
-        let user_sk = SigningKey::from_bytes(&[4u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
-        let input_tx_hash = [0xcdu8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
+    async fn handle_withdraw_submit_failure_marks_failed_without_unburning() {
+        let s = scenario([0xcdu8; 32], StatusCode::INTERNAL_SERVER_ERROR, None)
+            .await;
 
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            request.tx_hash.clone(),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
-        seed_deposit(
-            &ctx,
-            mugraph_core::types::UtxoRef::new(input_tx_hash, 0),
-            [0u8; 32],
-        );
-
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        let err = handle_withdraw(&s.request, &s.ctx).await.unwrap_err();
         assert!(format!("{err:?}").contains("Transaction submission failed"));
 
-        let read_tx = ctx.database.read().unwrap();
-        let notes = read_tx.open_table(NOTES).unwrap();
-        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
-        assert!(notes.get(note_signature).unwrap().is_some());
-
+        for note in &s.request.notes {
+            assert!(note_is_burned(&s.ctx, note));
+        }
+        let read_tx = s.ctx.database.read().unwrap();
         let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
-        let key = withdrawal_key_from_hex(&request.tx_hash);
+        let key = withdrawal_key_from_hex(&s.request.tx_hash);
         assert_eq!(
             withdrawals.get(&key).unwrap().unwrap().value().status,
             mugraph_core::types::WithdrawalStatus::Failed
@@ -2408,65 +1651,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_withdraw_mismatched_submit_hash_marks_failed_without_spending_deposit()
-     {
-        let user_sk = SigningKey::from_bytes(&[20u8; 32]);
-        let (payment_sk, payment_vk) = generate_payment_keypair().unwrap();
+    async fn handle_withdraw_mismatched_submit_hash_marks_failed() {
         let input_tx_hash = [0xc3u8; 32];
-        let input_value = 1_170_000u64;
-        let request = build_withdraw_request(
-            &user_sk,
-            input_tx_hash,
-            input_value,
-            1_000_000,
-            170_000,
-            "preprod",
-        );
-
-        let node_hash = csl::PublicKey::from_bytes(&payment_vk)
-            .unwrap()
-            .hash()
-            .to_bytes();
-        let user_hash =
-            csl::PublicKey::from_bytes(user_sk.verifying_key().as_bytes())
-                .unwrap()
-                .hash()
-                .to_bytes();
-        let datum_hex =
-            build_datum_cbor_hex(user_hash, node_hash, vec![0u8; 32]);
-        let provider_url = spawn_withdraw_provider_mock(
-            "addr_test1script".to_string(),
-            datum_hex,
-            input_value,
-            StatusCode::OK,
-            "ee".repeat(32),
-        )
-        .await;
-        let ctx = test_context_with_provider_url(Some(provider_url));
-        insert_wallet(&ctx, payment_sk, payment_vk, "addr_test1script");
+        let s = scenario(input_tx_hash, StatusCode::OK, Some("ee".repeat(32)))
+            .await;
         let deposit_ref = mugraph_core::types::UtxoRef::new(input_tx_hash, 0);
-        seed_deposit(&ctx, deposit_ref.clone(), [0u8; 32]);
+        seed_deposit(&s.ctx, deposit_ref.clone(), [0u8; 32]);
 
-        let err = handle_withdraw(&request, &ctx).await.unwrap_err();
+        let err = handle_withdraw(&s.request, &s.ctx).await.unwrap_err();
         assert!(
             format!("{err:?}").contains("Provider returned mismatched tx hash")
         );
 
-        let read_tx = ctx.database.read().unwrap();
-        let notes = read_tx.open_table(NOTES).unwrap();
-        let note_signature = mugraph_core::types::Signature::from([9u8; 32]);
-        assert!(notes.get(note_signature).unwrap().is_some());
-
+        for note in &s.request.notes {
+            assert!(note_is_burned(&s.ctx, note));
+        }
+        let read_tx = s.ctx.database.read().unwrap();
         let withdrawals = read_tx.open_table(WITHDRAWALS).unwrap();
-        let key = withdrawal_key_from_hex(&request.tx_hash);
+        let key = withdrawal_key_from_hex(&s.request.tx_hash);
         assert_eq!(
             withdrawals.get(&key).unwrap().unwrap().value().status,
             mugraph_core::types::WithdrawalStatus::Failed
         );
-
         let deposits = read_tx.open_table(DEPOSITS).unwrap();
         assert!(!deposits.get(&deposit_ref).unwrap().unwrap().value().spent);
+        let _ = s.input_tx_hash;
     }
+
+    // --- Withdrawal state -------------------------------------------------
 
     #[test]
     fn completion_state_failure_returns_error() {
@@ -2488,12 +1700,7 @@ mod tests {
         let request = WithdrawRequest {
             tx_hash: "ab".repeat(32),
             tx_cbor: "00".to_string(),
-            notes: vec![BlindSignature {
-                signature: mugraph_core::types::Blinded(
-                    mugraph_core::types::Signature::from([1u8; 32]),
-                ),
-                proof: Default::default(),
-            }],
+            notes: issue_notes(&ctx, 1),
             change_outputs: vec![],
         };
 
@@ -2519,12 +1726,7 @@ mod tests {
         let request = WithdrawRequest {
             tx_hash: "ab".repeat(32),
             tx_cbor: "00".to_string(),
-            notes: vec![BlindSignature {
-                signature: mugraph_core::types::Blinded(
-                    mugraph_core::types::Signature::from([2u8; 32]),
-                ),
-                proof: Default::default(),
-            }],
+            notes: issue_notes(&ctx, 2),
             change_outputs: vec![],
         };
 
@@ -2582,62 +1784,7 @@ mod tests {
         assert!(!deposits.get(&utxo_ref).unwrap().unwrap().value().spent);
     }
 
-    #[test]
-    fn test_intent_metadata_missing() {
-        let tx = minimal_tx_with_values(1_000_000, 170_000);
-        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod")
-            .unwrap_err();
-        assert!(format!("{:?}", err).contains("auxiliary data"));
-    }
-
-    #[test]
-    fn test_intent_metadata_hash_mismatch() {
-        let tx = tx_with_intent_metadata("preprod", Some("00".repeat(32)));
-        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "preprod")
-            .unwrap_err();
-        assert!(format!("{:?}", err).contains("tx_body_hash mismatch"));
-    }
-
-    #[test]
-    fn test_intent_metadata_network_mismatch() {
-        let tx = tx_with_intent_metadata("preprod", None);
-        let err = validate_withdraw_intent_metadata(&tx.to_bytes(), "mainnet")
-            .unwrap_err();
-        assert!(format!("{:?}", err).contains("network mismatch"));
-    }
-
-    #[test]
-    fn test_multiasset_imbalance_rejected() {
-        // Inputs: 1 ADA + 5 tokens; Outputs: 1 ADA + 6 tokens -> should fail
-        let policy_hex = "00".repeat(28); // 28-byte script hash in hex
-        let asset_hex = "746f6b656e"; // "token"
-        let tx = tx_with_multiasset_output(
-            1_000_000,
-            &[(&policy_hex, asset_hex, 6)],
-        );
-        let tx_cbor = tx.to_bytes();
-        let mut inputs = HashMap::new();
-        inputs.insert("lovelace".to_string(), 1_000_000u128);
-        inputs.insert(format!("{}{}", policy_hex, asset_hex), 5u128);
-        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
-        assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_multiasset_phantom_asset_rejected() {
-        // Inputs: only ADA; Outputs: ADA + new token -> should fail
-        let policy_hex = "00".repeat(28);
-        let asset_hex = "746f6b656e";
-        let tx = tx_with_multiasset_output(
-            1_000_000,
-            &[(&policy_hex, asset_hex, 1)],
-        );
-        let tx_cbor = tx.to_bytes();
-        let mut inputs = HashMap::new();
-        inputs.insert("lovelace".to_string(), 1_100_000u128); // cover fee + output
-        let res = validate_transaction_balance(&tx_cbor, &inputs, 200_000);
-        assert!(res.is_err());
-    }
+    // --- Transaction builders ---------------------------------------------
 
     fn tx_hash_from_body(body: &csl::TransactionBody) -> csl::TransactionHash {
         type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
@@ -2645,66 +1792,6 @@ mod tests {
         let mut tx_hash_arr = [0u8; 32];
         tx_hash_arr.copy_from_slice(&tx_hash);
         csl::TransactionHash::from_bytes(tx_hash_arr.to_vec()).unwrap()
-    }
-
-    fn witness_set_with_vkey_signers(
-        tx_hash: &csl::TransactionHash,
-        signers: &[&SigningKey],
-    ) -> csl::TransactionWitnessSet {
-        let mut witness_set = csl::TransactionWitnessSet::new();
-        let mut vkeys = csl::Vkeywitnesses::new();
-
-        for signer in signers {
-            let private =
-                csl::PrivateKey::from_normal_bytes(signer.as_bytes()).unwrap();
-            let witness = csl::make_vkey_witness(tx_hash, &private);
-            vkeys.add(&witness);
-        }
-
-        witness_set.set_vkeys(&vkeys);
-        witness_set
-    }
-
-    fn minimal_tx_body_with_required_signers(
-        signer_hash_hexes: &[String],
-    ) -> csl::TransactionBody {
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let mut body =
-            csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let mut required = csl::Ed25519KeyHashes::new();
-        for signer_hash_hex in signer_hash_hexes {
-            required
-                .add(&csl::Ed25519KeyHash::from_hex(signer_hash_hex).unwrap());
-        }
-        body.set_required_signers(&required);
-        body
-    }
-
-    fn minimal_tx_with_required_signer(
-        signer_hash_hex: &str,
-        witness_set: Option<csl::TransactionWitnessSet>,
-    ) -> csl::Transaction {
-        let body = minimal_tx_body_with_required_signers(&[
-            signer_hash_hex.to_string()
-        ]);
-        let witness_set =
-            witness_set.unwrap_or_else(csl::TransactionWitnessSet::new);
-        csl::Transaction::new(&body, &witness_set, None)
     }
 
     fn minimal_tx_with_values(
@@ -2716,10 +1803,7 @@ mod tests {
         let mut inputs = csl::TransactionInputs::new();
         inputs.add(&input);
 
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
+        let addr = csl::Address::from_bech32(USER_ADDRESS).unwrap();
         let coin = csl::Coin::from_str(&output_lovelace.to_string()).unwrap();
         let value = csl::Value::new(&coin);
         let output = csl::TransactionOutput::new(&addr, &value);
@@ -2732,96 +1816,6 @@ mod tests {
         csl::Transaction::new(&body, &witness_set, None)
     }
 
-    fn tx_with_output_addresses(
-        is_script_output: &[bool],
-        script_output_override: Option<u64>,
-    ) -> (csl::Transaction, String) {
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let script_key_hash =
-            csl::Ed25519KeyHash::from_bytes(vec![7u8; 28]).unwrap();
-        let script_cred = csl::Credential::from_keyhash(&script_key_hash);
-        let script_addr = csl::EnterpriseAddress::new(0, &script_cred)
-            .to_address()
-            .to_bech32(None)
-            .unwrap();
-        let non_script_addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-
-        let mut outputs = csl::TransactionOutputs::new();
-        for is_script in is_script_output {
-            let addr = if *is_script {
-                csl::Address::from_bech32(&script_addr).unwrap()
-            } else {
-                non_script_addr.clone()
-            };
-            let lovelace = script_output_override.unwrap_or(1_000_000);
-            let coin = csl::Coin::from_str(&lovelace.to_string()).unwrap();
-            let value = csl::Value::new(&coin);
-            outputs.add(&csl::TransactionOutput::new(&addr, &value));
-        }
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-        let witness_set = csl::TransactionWitnessSet::new();
-        (
-            csl::Transaction::new(&body, &witness_set, None),
-            script_addr,
-        )
-    }
-
-    fn tx_with_intent_metadata(
-        network: &str,
-        override_hash: Option<String>,
-    ) -> csl::Transaction {
-        let tx_hash = csl::TransactionHash::from_bytes(vec![0; 32]).unwrap();
-        let input = csl::TransactionInput::new(&tx_hash, 0);
-        let mut inputs = csl::TransactionInputs::new();
-        inputs.add(&input);
-
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
-        let coin = csl::Coin::from_str("1000000").unwrap();
-        let value = csl::Value::new(&coin);
-        let output = csl::TransactionOutput::new(&addr, &value);
-        let mut outputs = csl::TransactionOutputs::new();
-        outputs.add(&output);
-
-        let fee = csl::Coin::from_str("170000").unwrap();
-        let body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
-
-        let body_hash_hex = if let Some(h) = override_hash {
-            h
-        } else {
-            type Blake2b256 = blake2::Blake2b<blake2::digest::consts::U32>;
-            let h = Blake2b256::digest(body.to_bytes());
-            hex::encode(h)
-        };
-
-        let mut md_map = csl::MetadataMap::new();
-        let md_network =
-            csl::TransactionMetadatum::new_text(network.to_string()).unwrap();
-        let md_hash =
-            csl::TransactionMetadatum::new_text(body_hash_hex).unwrap();
-        md_map.insert_str("network", &md_network).unwrap();
-        md_map.insert_str("tx_body_hash", &md_hash).unwrap();
-        let metadatum = csl::TransactionMetadatum::new_map(&md_map);
-        let mut general_md = csl::GeneralTransactionMetadata::new();
-        general_md.insert(&csl::BigNum::from_str("1914").unwrap(), &metadatum);
-        let mut aux = csl::AuxiliaryData::new();
-        aux.set_metadata(&general_md);
-
-        let witness_set = csl::TransactionWitnessSet::new();
-        csl::Transaction::new(&body, &witness_set, Some(aux))
-    }
-
     fn tx_with_multiasset_output(
         lovelace: u64,
         assets: &[(&str, &str, u64)], // (policy_hex, asset_name_hex, qty)
@@ -2831,10 +1825,7 @@ mod tests {
         let mut inputs = csl::TransactionInputs::new();
         inputs.add(&input);
 
-        let addr = csl::Address::from_bech32(
-            "addr_test1vru4e2un2tq50q4rv6qzk7t8w34gjdtw3y2uzuqxzj0ldrqqactxh",
-        )
-        .unwrap();
+        let addr = csl::Address::from_bech32(USER_ADDRESS).unwrap();
         let coin = csl::Coin::from_str(&lovelace.to_string()).unwrap();
         let mut value = csl::Value::new(&coin);
 
