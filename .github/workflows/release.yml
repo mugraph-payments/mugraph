@@ -19,7 +19,8 @@ jobs:
             set -euo pipefail
             cd wallet
             bun install --frozen-lockfile
-            cargo tauri android build --target aarch64 --apk
+            cargo tauri android init --ci
+            cargo tauri android build --target aarch64 --apk true --aab false
           '
 
       - name: Locate APK
@@ -51,7 +52,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: wallet/src-tauri -> target
+          workspaces: ". -> target"
 
       - name: Install JS deps
         working-directory: wallet
@@ -63,23 +64,49 @@ jobs:
 
       # We don't have Apple signing material set up yet, so we can't run the
       # full `tauri ios build` pipeline (it requires xcodebuild -exportArchive
-      # with a real signing identity). Instead, drive xcodebuild directly with
-      # codesigning disabled and hand-package the resulting .app into an .ipa.
-      # The output is an unsigned IPA suitable for inspection / re-signing —
-      # it can't be installed on a device or uploaded to TestFlight as-is.
+      # with a real signing identity). The "Build Rust Code" phase of the
+      # generated project calls `tauri ios xcode-script`, which only works
+      # under `tauri ios build`. So we build the Rust library with cargo,
+      # put it where the project expects it, and turn that phase off. Then
+      # we drive xcodebuild directly with codesigning disabled and
+      # hand-package the resulting .app into an .ipa. The output is an
+      # unsigned IPA suitable for inspection / re-signing — it can't be
+      # installed on a device or uploaded to TestFlight as-is.
+      - name: Build frontend
+        working-directory: wallet
+        run: bun run build
+
+      - name: Build Rust library
+        working-directory: wallet
+        run: |
+          set -euo pipefail
+          cargo build \
+            --manifest-path src-tauri/Cargo.toml \
+            --lib \
+            --release \
+            --target aarch64-apple-ios \
+            --features tauri/custom-protocol
+          mkdir -p src-tauri/gen/apple/Externals/arm64/release
+          cp ../target/aarch64-apple-ios/release/libmugraph_wallet_lib.a \
+            src-tauri/gen/apple/Externals/arm64/release/libapp.a
+
       - name: Build unsigned iOS app
         working-directory: wallet/src-tauri/gen/apple
         run: |
           set -euo pipefail
           PROJECT=$(ls -d *.xcodeproj | head -1)
           echo "Project: $PROJECT"
+          sed -i '' -E 's/shellScript = ".*xcode-script.*";/shellScript = "exit 0";/' \
+            "$PROJECT/project.pbxproj"
+          ! grep -q xcode-script "$PROJECT/project.pbxproj"
           xcodebuild -list -project "$PROJECT"
           SCHEME="${PROJECT%.xcodeproj}_iOS"
           xcodebuild build \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -configuration Release \
+            -configuration release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             -arch arm64 \
             CODE_SIGNING_ALLOWED=NO \
@@ -92,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/*.app Payload/
+          cp -R build/Build/Products/release-iphoneos/*.app Payload/
           zip -qr mugraph-wallet-unsigned.ipa Payload
 
       - uses: actions/upload-artifact@v4
