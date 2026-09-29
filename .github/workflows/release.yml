@@ -78,6 +78,9 @@ jobs:
 
       - name: Build Rust library
         working-directory: wallet
+        env:
+          # Match the deployment target of the generated Xcode project.
+          IPHONEOS_DEPLOYMENT_TARGET: "14.0"
         run: |
           set -euo pipefail
           cargo build \
@@ -99,6 +102,11 @@ jobs:
           sed -i '' -E 's/shellScript = ".*xcode-script.*";/shellScript = "exit 0";/' \
             "$PROJECT/project.pbxproj"
           ! grep -q xcode-script "$PROJECT/project.pbxproj"
+          # On Xcode 26, TOOLCHAIN_DIR can resolve to the Metal toolchain,
+          # which has no Swift compatibility libraries. Use the default one.
+          sed -i '' 's|$(TOOLCHAIN_DIR)|$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain|g' \
+            "$PROJECT/project.pbxproj"
+          grep LIBRARY_SEARCH_PATHS "$PROJECT/project.pbxproj"
           xcodebuild -list -project "$PROJECT"
           SCHEME="${PROJECT%.xcodeproj}_iOS"
           xcodebuild build \
