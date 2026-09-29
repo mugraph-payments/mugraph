@@ -11,11 +11,11 @@ async fn main() -> Result<()> {
 
     match &config {
         Config::GenerateKey => {
+            // Print to stdout, not to the log: the operator must keep the
+            // secret key and pass it to `server --secret-key`.
             let keypair = config.keypair()?;
-            info!(
-                public_key = %keypair.public_key,
-                "No secret key supplied; generated one for this node. Pass --secret-key to reuse it."
-            );
+            println!("secret_key={}", muhex::encode(keypair.secret_key.0));
+            println!("public_key={}", muhex::encode(keypair.public_key.0));
         }
         Config::Server {
             addr, secret_key, ..

@@ -6,7 +6,7 @@ use mugraph_core::{
     error::Error,
     types::{Keypair, SecretKey},
 };
-use rand::{Rng, SeedableRng, rng};
+use rand::{SeedableRng, rng};
 use rand_chacha::ChaCha20Rng;
 
 use crate::network::CardanoNetwork;
@@ -262,10 +262,9 @@ impl Config {
 
     pub fn keypair(&self) -> Result<Keypair, Error> {
         match self {
-            Self::GenerateKey => {
-                let mut rng = ChaCha20Rng::seed_from_u64(rng().random());
-                Ok(Keypair::random(&mut rng))
-            }
+            // The thread RNG has full entropy. A u64 seed has only 64 bits,
+            // which is too little for a master key.
+            Self::GenerateKey => Ok(Keypair::random(&mut rng())),
             Self::Server {
                 secret_key: Some(secret_key),
                 ..
