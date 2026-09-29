@@ -14,8 +14,8 @@ async fn main() -> Result<()> {
             // Print to stdout, not to the log: the operator must keep the
             // secret key and pass it to `server --secret-key`.
             let keypair = config.keypair()?;
-            println!("secret_key={}", muhex::encode(keypair.secret_key.0));
-            println!("public_key={}", muhex::encode(keypair.public_key.0));
+            println!("secret_key={}", hex::encode(keypair.secret_key.0));
+            println!("public_key={}", hex::encode(keypair.public_key.0));
         }
         Config::Server {
             addr, secret_key, ..

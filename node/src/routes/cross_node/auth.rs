@@ -168,7 +168,7 @@ pub(super) fn validate_auth_signature<T: Serialize + Clone>(
             protocol_reject("UNKNOWN_KEY_ID", "untrusted origin node or key id")
         })?;
 
-    let pubkey = muhex::decode(&peer.public_key_hex).map_err(|e| {
+    let pubkey = hex::decode(&peer.public_key_hex).map_err(|e| {
         protocol_reject(
             "SCHEMA_VALIDATION_FAILED",
             format!("invalid trusted peer public key hex: {e}"),
@@ -189,7 +189,7 @@ pub(super) fn validate_auth_signature<T: Serialize + Clone>(
         )
     })?;
 
-    let sig_bytes = muhex::decode(&request.auth.sig).map_err(|e| {
+    let sig_bytes = hex::decode(&request.auth.sig).map_err(|e| {
         protocol_reject(
             "INVALID_SIGNATURE",
             format!("invalid auth signature hex: {e}"),

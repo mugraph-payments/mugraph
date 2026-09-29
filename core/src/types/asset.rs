@@ -27,7 +27,9 @@ pub const ASSET_ID_BYTES_SIZE: usize = POLICY_ID_SIZE + 4 + ASSET_NAME_MAX_SIZE;
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct PolicyId(#[serde(with = "muhex::serde")] pub [u8; POLICY_ID_SIZE]);
+pub struct PolicyId(
+    #[serde(with = "super::hex_array")] pub [u8; POLICY_ID_SIZE],
+);
 
 impl Arbitrary for PolicyId {
     type Parameters = ();
@@ -83,13 +85,13 @@ impl From<[u8; POLICY_ID_SIZE]> for PolicyId {
 
 impl LowerHex for PolicyId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0), f)
+        Display::fmt(&hex::encode(self.0), f)
     }
 }
 
 impl UpperHex for PolicyId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
+        Display::fmt(&hex::encode(self.0).to_uppercase(), f)
     }
 }
 
@@ -203,13 +205,13 @@ impl<'de> Deserialize<'de> for AssetName {
 
 impl LowerHex for AssetName {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.as_bytes()), f)
+        Display::fmt(&hex::encode(self.as_bytes()), f)
     }
 }
 
 impl UpperHex for AssetName {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.as_bytes()).to_uppercase(), f)
+        Display::fmt(&hex::encode(self.as_bytes()).to_uppercase(), f)
     }
 }
 
@@ -269,8 +271,8 @@ impl Asset {
 
         format!(
             "{}{}",
-            muhex::encode(self.policy_id.0),
-            muhex::encode(self.asset_name.as_bytes())
+            hex::encode(self.policy_id.0),
+            hex::encode(self.asset_name.as_bytes())
         )
     }
 
@@ -280,7 +282,7 @@ impl Asset {
             return Ok(Self::default());
         }
 
-        let bytes = muhex::decode(unit).map_err(|e| Error::InvalidInput {
+        let bytes = hex::decode(unit).map_err(|e| Error::InvalidInput {
             reason: format!("Invalid asset unit {unit}: {e}"),
         })?;
         if bytes.len() < POLICY_ID_SIZE {

@@ -117,7 +117,7 @@ mod tests {
         let obj = value.as_object().expect("note should be an object");
         assert_eq!(
             obj.get("policy_id"),
-            Some(&Value::String(muhex::encode(note.policy_id.0)))
+            Some(&Value::String(hex::encode(note.policy_id.0)))
         );
         assert_eq!(
             obj.get("asset_name"),

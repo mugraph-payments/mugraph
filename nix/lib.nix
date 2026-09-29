@@ -121,6 +121,5 @@ in
 
   cargoLock = {
     lockFile = ../Cargo.lock;
-    allowBuiltinFetchGit = true;
   };
 }

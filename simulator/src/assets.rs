@@ -213,7 +213,7 @@ pub fn generate_assets(count: usize, rng: &mut StdRng) -> Vec<SimAsset> {
         .take(count)
         .map(|def| {
             let policy_bytes =
-                muhex::decode(def.policy_id).expect("policy_id must be hex");
+                hex::decode(def.policy_id).expect("policy_id must be hex");
             SimAsset {
                 policy_id: PolicyId(
                     policy_bytes

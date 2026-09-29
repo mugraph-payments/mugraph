@@ -269,11 +269,10 @@ impl Config {
                 secret_key: Some(secret_key),
                 ..
             } => {
-                let key_bytes = muhex::decode(secret_key).map_err(|e| {
-                    Error::InvalidKey {
+                let key_bytes =
+                    hex::decode(secret_key).map_err(|e| Error::InvalidKey {
                         reason: e.to_string(),
-                    }
-                })?;
+                    })?;
 
                 if key_bytes.len() != 32 {
                     return Err(Error::InvalidKey {

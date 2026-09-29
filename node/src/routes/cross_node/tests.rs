@@ -48,7 +48,7 @@ fn write_registry(dir: &TempDir, pk: &SigningKey) -> String {
     let path = dir.path().join("peers.json");
     let json = format!(
         r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":false}}]}}"#,
-        muhex::encode(pk.verifying_key().to_bytes())
+        hex::encode(pk.verifying_key().to_bytes())
     );
     std::fs::write(&path, json).unwrap();
     path.display().to_string()
@@ -118,7 +118,7 @@ fn sign_envelope<T: serde::Serialize + Clone>(
     payload.extend_from_slice(AUTH_DOMAIN_SEP);
     payload.extend_from_slice(&body);
     let sig = sk.sign(&payload);
-    env.auth.sig = muhex::encode(sig.to_bytes());
+    env.auth.sig = hex::encode(sig.to_bytes());
 }
 
 fn create_request() -> XNodeEnvelope<TransferInitPayload> {
@@ -241,7 +241,7 @@ fn runtime_registry_reload_honors_revocation() {
 
     let revoked_json = format!(
         r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":true}}]}}"#,
-        muhex::encode(signer.verifying_key().to_bytes())
+        hex::encode(signer.verifying_key().to_bytes())
     );
     std::fs::write(&registry_path, revoked_json).unwrap();
 

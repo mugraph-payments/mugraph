@@ -212,10 +212,7 @@ async fn deposit_send_import_and_withdraw_keep_the_vault_backed() {
     let envelope = send_impl(
         SendInput {
             network: NETWORK.to_string(),
-            note_nonces: sent
-                .iter()
-                .map(|n| muhex::encode(n.nonce.0))
-                .collect(),
+            note_nonces: sent.iter().map(|n| hex::encode(n.nonce.0)).collect(),
         },
         a.clone(),
     )

@@ -24,7 +24,7 @@ use crate::crypto::Scalar;
 )]
 #[serde(transparent)]
 #[repr(transparent)]
-pub struct Hash(#[serde(with = "muhex::serde")] pub [u8; 32]);
+pub struct Hash(#[serde(with = "super::hex_array")] pub [u8; 32]);
 
 impl Arbitrary for Hash {
     type Parameters = ();
@@ -168,13 +168,13 @@ impl TryFrom<&[u8]> for Hash {
 
 impl LowerHex for Hash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0), f)
+        Display::fmt(&hex::encode(self.0), f)
     }
 }
 
 impl UpperHex for Hash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
+        Display::fmt(&hex::encode(self.0).to_uppercase(), f)
     }
 }
 

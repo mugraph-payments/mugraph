@@ -9,7 +9,7 @@ blake3 = { workspace = true }
 bytemuck = { workspace = true }
 curve25519-dalek = { workspace = true }
 indexmap = { workspace = true }
-muhex = { workspace = true }
+hex = { workspace = true }
 onlyerror = { workspace = true }
 paste = "1.0.15"
 proptest = { workspace = true }

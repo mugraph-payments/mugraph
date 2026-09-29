@@ -149,13 +149,13 @@ pub fn deposit_intent_payload(
         outputs: outputs
             .iter()
             .map(|o| Output {
-                policy_id: muhex::encode(o.policy_id.0),
-                asset_name: muhex::encode(o.asset_name.as_bytes()),
+                policy_id: hex::encode(o.policy_id.0),
+                asset_name: hex::encode(o.asset_name.as_bytes()),
                 amount: o.amount,
-                point: muhex::encode(o.point.0),
+                point: hex::encode(o.point.0),
             })
             .collect(),
-        delegate_pk: muhex::encode(delegate_pk.0),
+        delegate_pk: hex::encode(delegate_pk.0),
         script_address,
         nonce,
         network,

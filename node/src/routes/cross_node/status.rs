@@ -28,6 +28,6 @@ pub(super) fn sign_status_response<T: Serialize + Clone>(
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&sk_bytes);
     let payload = canonical_auth_payload(envelope)?;
     let sig = signing_key.sign(&payload);
-    envelope.auth.sig = muhex::encode(sig.to_bytes());
+    envelope.auth.sig = hex::encode(sig.to_bytes());
     Ok(())
 }

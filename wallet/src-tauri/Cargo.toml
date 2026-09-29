@@ -24,7 +24,6 @@ coset = "0.4"
 dirs = "6"
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 hex = "0.4"
-muhex = { workspace = true }
 rand = { workspace = true }
 rand_core_06 = { package = "rand_core", version = "0.6" }
 redb = { workspace = true }

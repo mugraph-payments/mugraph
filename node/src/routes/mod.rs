@@ -427,7 +427,7 @@ mod tests {
         ));
         let json = format!(
             r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":false}}]}}"#,
-            muhex::encode(pk.verifying_key().to_bytes())
+            hex::encode(pk.verifying_key().to_bytes())
         );
         std::fs::write(&path, json).unwrap();
         path.display().to_string()
@@ -448,7 +448,7 @@ mod tests {
             Vec::with_capacity("mugraph_xnode_auth_v1".len() + body.len());
         payload.extend_from_slice(b"mugraph_xnode_auth_v1");
         payload.extend_from_slice(&body);
-        env.auth.sig = muhex::encode(sk.sign(&payload).to_bytes());
+        env.auth.sig = hex::encode(sk.sign(&payload).to_bytes());
         env
     }
 

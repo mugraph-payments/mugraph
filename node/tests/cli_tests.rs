@@ -23,11 +23,11 @@ fn generate_key_prints_a_usable_secret_key() {
             .to_string()
     };
 
-    let secret: [u8; 32] = muhex::decode(&field("secret_key"))
+    let secret: [u8; 32] = hex::decode(field("secret_key"))
         .unwrap()
         .try_into()
         .unwrap();
-    let public: [u8; 32] = muhex::decode(&field("public_key"))
+    let public: [u8; 32] = hex::decode(field("public_key"))
         .unwrap()
         .try_into()
         .unwrap();

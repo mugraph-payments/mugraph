@@ -80,7 +80,7 @@ fn parse_server_prefers_explicit_cli_overrides() {
 
 #[test]
 fn keypair_accepts_valid_secret_key_hex() {
-    let config = parse_server(&["--secret-key", &muhex::encode([7u8; 32])]);
+    let config = parse_server(&["--secret-key", &hex::encode([7u8; 32])]);
     let keypair = config.keypair().expect("valid secret key");
 
     assert_eq!(*keypair.secret_key, [7u8; 32]);
@@ -97,7 +97,7 @@ fn keypair_rejects_malformed_secret_key_hex() {
 
 #[test]
 fn keypair_rejects_wrong_length_secret_key_hex() {
-    let config = parse_server(&["--secret-key", &muhex::encode([7u8; 31])]);
+    let config = parse_server(&["--secret-key", &hex::encode([7u8; 31])]);
     let err = config.keypair().expect_err("wrong-length hex must fail");
 
     assert!(format!("{err:?}").contains("Secret key must be 32 bytes"));
@@ -118,7 +118,7 @@ fn keypair_is_deterministic_for_same_seed() {
 
 #[test]
 fn keypair_prefers_secret_key_over_seed() {
-    let secret_hex = muhex::encode([9u8; 32]);
+    let secret_hex = hex::encode([9u8; 32]);
     let config = parse_server(&["--seed", "42", "--secret-key", &secret_hex]);
     let keypair = config.keypair().expect("secret key takes precedence");
 

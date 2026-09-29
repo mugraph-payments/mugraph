@@ -60,15 +60,14 @@ impl PeerRegistry {
                 });
             }
 
-            let key_bytes =
-                muhex::decode(&peer.public_key_hex).map_err(|e| {
-                    Error::InvalidInput {
-                        reason: format!(
-                            "peer {} public_key_hex is not valid hex: {e}",
-                            peer.node_id
-                        ),
-                    }
-                })?;
+            let key_bytes = hex::decode(&peer.public_key_hex).map_err(|e| {
+                Error::InvalidInput {
+                    reason: format!(
+                        "peer {} public_key_hex is not valid hex: {e}",
+                        peer.node_id
+                    ),
+                }
+            })?;
 
             if key_bytes.len() != 32 {
                 return Err(Error::InvalidInput {

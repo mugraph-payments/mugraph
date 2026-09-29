@@ -119,7 +119,7 @@ fn request_hash<T: Serialize + Clone>(
     let payload = canonical_idempotency_payload(request)?;
     let mut hasher = Hasher::new();
     hasher.update(&payload);
-    Ok(muhex::encode(*hasher.finalize().as_bytes()))
+    Ok(hex::encode(*hasher.finalize().as_bytes()))
 }
 
 fn canonical_idempotency_payload<T: Serialize + Clone>(

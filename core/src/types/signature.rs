@@ -45,7 +45,7 @@ pub struct Blinded<T>(pub T);
 )]
 #[repr(transparent)]
 #[serde(transparent)]
-pub struct Signature(#[serde(with = "muhex::serde")] pub [u8; 32]);
+pub struct Signature(#[serde(with = "super::hex_array")] pub [u8; 32]);
 
 impl Signature {
     #[inline]
@@ -82,13 +82,13 @@ impl core::fmt::Debug for Signature {
 
 impl LowerHex for Signature {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0), f)
+        Display::fmt(&hex::encode(self.0), f)
     }
 }
 
 impl UpperHex for Signature {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        Display::fmt(&muhex::encode(self.0).to_uppercase(), f)
+        Display::fmt(&hex::encode(self.0).to_uppercase(), f)
     }
 }
 

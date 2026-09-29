@@ -691,8 +691,7 @@ pub async fn send_impl(
 
     let mut notes = Vec::new();
     for nonce_hex in &input.note_nonces {
-        let nonce_bytes =
-            muhex::decode(nonce_hex).map_err(|e| e.to_string())?;
+        let nonce_bytes = hex::decode(nonce_hex).map_err(|e| e.to_string())?;
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&nonce_bytes);
         let nonce = mugraph_core::types::Hash(arr);
@@ -777,8 +776,7 @@ pub async fn refresh_notes(
     // Collect input notes
     let mut input_notes = Vec::new();
     for nonce_hex in &input.note_nonces {
-        let nonce_bytes =
-            muhex::decode(nonce_hex).map_err(|e| e.to_string())?;
+        let nonce_bytes = hex::decode(nonce_hex).map_err(|e| e.to_string())?;
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&nonce_bytes);
         let nonce = mugraph_core::types::Hash(arr);
@@ -1053,7 +1051,7 @@ pub async fn deposit_impl(
         },
         outputs: blinded_outputs,
         message: serde_json::json!({
-            "user_pubkey": muhex::encode(state.ed25519_key.verifying_key().as_bytes())
+            "user_pubkey": hex::encode(state.ed25519_key.verifying_key().as_bytes())
         })
         .to_string(),
         signature: cip8_signature,
@@ -1492,7 +1490,7 @@ pub async fn retry_quarantined(
     nonce_hex: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, String> {
-    let nonce_bytes = muhex::decode(&nonce_hex).map_err(|e| e.to_string())?;
+    let nonce_bytes = hex::decode(&nonce_hex).map_err(|e| e.to_string())?;
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&nonce_bytes);
     let nonce = mugraph_core::types::Hash(arr);
@@ -1551,7 +1549,7 @@ pub async fn discard_quarantined(
     nonce_hex: String,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, String> {
-    let nonce_bytes = muhex::decode(&nonce_hex).map_err(|e| e.to_string())?;
+    let nonce_bytes = hex::decode(&nonce_hex).map_err(|e| e.to_string())?;
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&nonce_bytes);
     let nonce = mugraph_core::types::Hash(arr);
