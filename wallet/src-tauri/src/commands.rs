@@ -1359,7 +1359,9 @@ pub async fn withdraw_impl(
     )?;
 
     let withdraw_req = mugraph_core::types::WithdrawRequest {
-        notes: selected.iter().map(|s| s.note.clone()).collect(),
+        notes: crate::notes::notes_for_node(
+            &selected.iter().map(|s| s.note.clone()).collect::<Vec<_>>(),
+        ),
         change_outputs,
         tx_cbor: hex::encode(&tx_cbor),
         tx_hash: hex::encode(tx_hash),

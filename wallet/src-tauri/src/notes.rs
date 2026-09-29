@@ -14,6 +14,20 @@ use crate::{
     store::Store,
 };
 
+/// Returns the notes in the form that the wallet sends to the node. The
+/// node verifies a note with its secret key, so it does not need the DLEQ
+/// proof. The proof has the blinding factor `r`, and with `r` the node can
+/// calculate `B'` and link the note to the request that made it.
+pub fn notes_for_node(notes: &[Note]) -> Vec<Note> {
+    notes
+        .iter()
+        .map(|note| Note {
+            dleq: None,
+            ..note.clone()
+        })
+        .collect()
+}
+
 /// Gets the delegate's denomination keys for `asset`.
 pub async fn fetch_keyset(
     client: &NodeClient,
@@ -452,5 +466,26 @@ mod tests {
         .unwrap();
 
         assert!(finish_notes(&client, pending, &[]).await.is_err());
+    }
+
+    #[test]
+    fn notes_for_node_remove_the_blinding_factor() {
+        let mut rng = StdRng::seed_from_u64(6);
+        let keypair = Keypair::random(&mut rng);
+        let note = keyset::issue_note(
+            &mut rng,
+            &keypair.secret_key,
+            &Asset::default(),
+            8,
+        )
+        .unwrap();
+        assert!(note.dleq.is_some());
+
+        let sent = notes_for_node(std::slice::from_ref(&note));
+
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].dleq.is_none());
+        assert_eq!(sent[0].signature, note.signature);
+        assert_eq!(sent[0].commitment(), note.commitment());
     }
 }
