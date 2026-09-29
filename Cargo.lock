@@ -3207,6 +3207,8 @@ dependencies = [
  "color-eyre",
  "hex",
  "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
  "pallas-primitives",
  "pallas-traverse",
  "reqwest",
@@ -3215,6 +3217,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uplc",
+ "whisky-csl",
 ]
 
 [[package]]

@@ -237,7 +237,7 @@ async fn tx_submit(
             SubmitError::Decode(_) => {
                 Err((StatusCode::BAD_REQUEST, e.to_string()))
             }
-            SubmitError::InputMissing { .. } => {
+            SubmitError::InputMissing { .. } | SubmitError::Invalid(_) => {
                 Err((StatusCode::BAD_REQUEST, e.to_string()))
             }
             SubmitError::DuplicateTx(_) => {

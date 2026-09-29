@@ -60,8 +60,13 @@ pub struct Chain {
 #[derive(Debug)]
 pub enum SubmitError {
     Decode(String),
-    InputMissing { tx_hash: TxHash, index: u16 },
+    InputMissing {
+        tx_hash: TxHash,
+        index: u16,
+    },
     DuplicateTx(TxHash),
+    /// The transaction breaks a ledger rule (see `validate`).
+    Invalid(String),
 }
 
 impl std::fmt::Display for SubmitError {
@@ -72,6 +77,7 @@ impl std::fmt::Display for SubmitError {
                 write!(f, "input not found: {tx_hash}#{index}")
             }
             Self::DuplicateTx(h) => write!(f, "duplicate tx hash: {h}"),
+            Self::Invalid(e) => write!(f, "invalid tx: {e}"),
         }
     }
 }
@@ -170,6 +176,11 @@ impl Chain {
                 });
             }
         }
+
+        crate::validate::validate_tx(tx_cbor, |hash, index| {
+            self.utxos.get(&(hash.to_string(), index)).cloned()
+        })
+        .map_err(SubmitError::Invalid)?;
 
         // Consume inputs (only after we've confirmed all exist, so a partial
         // tx never half-applies).
