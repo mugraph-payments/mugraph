@@ -410,11 +410,12 @@ mod tests {
 
     fn write_registry(pk: &SigningKey) -> String {
         let path = std::env::temp_dir().join(format!(
-            "mugraph-peer-registry-{}.json",
+            "mugraph-peer-registry-{}-{}.json",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            rand::random::<u64>()
         ));
         let json = format!(
             r#"{{"peers":[{{"node_id":"node://a","endpoint":"https://a.example/rpc","auth_alg":"Ed25519","kid":"k1","public_key_hex":"{}","revoked":false}}]}}"#,
@@ -445,11 +446,12 @@ mod tests {
 
     fn test_context() -> Context {
         let db_path = std::env::temp_dir().join(format!(
-            "mugraph-rpc-test-{}.db",
+            "mugraph-rpc-test-{}-{}.db",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            rand::random::<u64>()
         ));
 
         let database = Arc::new(Database::setup(db_path).unwrap());

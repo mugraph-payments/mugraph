@@ -18,11 +18,12 @@ use redb::ReadableTable;
 
 fn temp_db_path(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "mugraph-verification-{tag}-{}.db",
+        "mugraph-verification-{tag}-{}-{}.db",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        rand::random::<u64>()
     ))
 }
 

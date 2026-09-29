@@ -37,11 +37,12 @@ mod tests {
 
     fn temp_db() -> Database {
         let path = std::env::temp_dir().join(format!(
-            "mugraph-observability-test-{}.db",
+            "mugraph-observability-test-{}-{}.db",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            rand::random::<u64>()
         ));
         let db = Database::setup(path).unwrap();
         db.migrate().unwrap();

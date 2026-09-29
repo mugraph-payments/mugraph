@@ -1223,11 +1223,12 @@ mod handle_deposit_flow_tests {
 
     fn mk_context(provider_url: String) -> Context {
         let db_path = std::env::temp_dir().join(format!(
-            "mugraph-handle-deposit-test-{}.db",
+            "mugraph-handle-deposit-test-{}-{}.db",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            rand::random::<u64>()
         ));
 
         let database = Arc::new(Database::setup(db_path).unwrap());

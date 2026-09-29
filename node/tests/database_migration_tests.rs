@@ -11,11 +11,12 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn temp_db_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "mugraph-db-migration-{}.db",
+        "mugraph-db-migration-{}-{}.db",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        rand::random::<u64>()
     ))
 }
 

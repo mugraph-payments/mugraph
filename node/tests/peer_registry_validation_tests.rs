@@ -11,11 +11,12 @@ fn write_temp(contents: &str) -> tempfile::NamedTempFile {
 #[test]
 fn load_rejects_missing_registry_file() {
     let missing = std::env::temp_dir().join(format!(
-        "missing-peer-registry-{}.json",
+        "missing-peer-registry-{}-{}.json",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        rand::random::<u64>()
     ));
 
     let err = PeerRegistry::load(&missing).unwrap_err();
