@@ -224,6 +224,11 @@ pub struct DepositInput {
 pub struct DepositResult {
     pub notes_created: usize,
     pub deposit_ref: String,
+    /// True if the node did not accept the claim yet. The wallet tries
+    /// again at each sync.
+    pub pending: bool,
+    /// Why the node did not accept the claim, if it did not.
+    pub claim_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1056,18 +1061,65 @@ pub async fn deposit_impl(
         network: input.network.clone(),
     };
 
-    let clients = state.node_clients.read().await;
-    let client = clients
-        .get(&input.network)
-        .ok_or("no node client for network")?;
-
-    let resp = client
-        .deposit(&deposit_req)
-        .await
+    // Save the claim before the node sees it. The node accepts the claim
+    // only after the deposit has enough confirmations, so the wallet
+    // tries again later (see `claim_pending_deposits_impl`).
+    let deposit_ref =
+        format!("{}:{}", deposit_req.utxo.tx_hash, deposit_req.utxo.index);
+    let claim = PendingDeposit {
+        request: deposit_req,
+        pending: pending_notes,
+    };
+    state
+        .store
+        .put_pending_deposit(
+            &input.network,
+            &deposit_ref,
+            &serde_json::to_vec(&claim).map_err(|e| e.to_string())?,
+        )
         .map_err(|e| e.to_string())?;
 
+    match claim_deposit(&state, &input.network, &deposit_ref, claim).await {
+        Ok(notes_created) => Ok(DepositResult {
+            notes_created,
+            deposit_ref,
+            pending: false,
+            claim_error: None,
+        }),
+        Err(e) => Ok(DepositResult {
+            notes_created: 0,
+            deposit_ref,
+            pending: true,
+            claim_error: Some(e),
+        }),
+    }
+}
+
+/// A deposit that the wallet paid on the chain, and the notes that it
+/// asks the node for.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PendingDeposit {
+    request: mugraph_core::types::DepositRequest,
+    pending: Vec<mugraph_core::types::PendingNote>,
+}
+
+/// Sends one deposit claim to the node. If the node accepts it, stores the
+/// new notes and removes the claim. Returns the number of new notes.
+async fn claim_deposit(
+    state: &Arc<AppState>,
+    network: &str,
+    deposit_ref: &str,
+    claim: PendingDeposit,
+) -> Result<usize, String> {
+    let clients = state.node_clients.read().await;
+    let client = clients.get(network).ok_or("no node client for network")?;
+
+    let resp = client
+        .deposit(&claim.request)
+        .await
+        .map_err(|e| e.to_string())?;
     let notes =
-        crate::notes::finish_notes(client, pending_notes, &resp.signatures)
+        crate::notes::finish_notes(client, claim.pending, &resp.signatures)
             .await?;
 
     let now = std::time::SystemTime::now()
@@ -1077,32 +1129,59 @@ pub async fn deposit_impl(
     for note in &notes {
         state
             .store
-            .finalize_note(&input.network, note, NoteStatus::Available, now)
+            .finalize_note(network, note, NoteStatus::Available, now)
             .map_err(|e| e.to_string())?;
     }
-    let notes_created = notes.len();
+    state
+        .store
+        .delete_pending_deposit(network, deposit_ref)
+        .map_err(|e| e.to_string())?;
 
-    // Record activity
     state
         .store
         .put_activity(
-            &input.network,
+            network,
             &crate::store::ActivityRecord {
                 id: format!("deposit-{}", resp.deposit_ref),
                 kind: "deposit".to_string(),
                 timestamp: now,
                 details: format!(
-                    "Deposited {} outputs from {}:{}",
-                    notes_created, input.utxo_tx_hash, input.utxo_index
+                    "Deposited {} notes from {}",
+                    notes.len(),
+                    resp.deposit_ref
                 ),
             },
         )
         .map_err(|e| e.to_string())?;
 
-    Ok(DepositResult {
-        notes_created,
-        deposit_ref: resp.deposit_ref,
-    })
+    Ok(notes.len())
+}
+
+/// Tries each pending deposit claim on `network` again. A claim stays
+/// pending until the node accepts it. Returns the number of claims that
+/// the node accepted.
+pub async fn claim_pending_deposits_impl(
+    network: String,
+    state: Arc<AppState>,
+) -> Result<usize, String> {
+    let claims = state
+        .store
+        .list_pending_deposits(&network)
+        .map_err(|e| e.to_string())?;
+
+    let mut claimed = 0;
+    for (deposit_ref, bytes) in claims {
+        let claim: PendingDeposit =
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        if claim_deposit(&state, &network, &deposit_ref, claim)
+            .await
+            .is_ok()
+        {
+            claimed += 1;
+        }
+    }
+
+    Ok(claimed)
 }
 
 #[tauri::command]
@@ -1381,6 +1460,12 @@ pub async fn sync(
     let pk_changed = old_pk.as_ref() != Some(&info.delegate_pk);
 
     store_node_info(&state.store, &network, &info)?;
+
+    // Try the deposit claims that wait for confirmations. Release the
+    // client lock first, because a claim takes it again.
+    drop(clients);
+    let _ = claim_pending_deposits_impl(network.clone(), state.inner().clone())
+        .await;
 
     // Update lastSyncedAt
     let now = std::time::SystemTime::now()

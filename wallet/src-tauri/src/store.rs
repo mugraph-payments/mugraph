@@ -23,6 +23,8 @@ const OFFCHAIN_REQUESTS: TableDefinition<&str, &[u8]> =
     TableDefinition::new("offchain_requests");
 const CARDANO_UTXOS: TableDefinition<&str, &[u8]> =
     TableDefinition::new("cardano_utxos");
+const PENDING_DEPOSITS: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("pending_deposits");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -93,6 +95,7 @@ impl Store {
             txn.open_table(BLINDING_FACTORS)?;
             txn.open_table(OFFCHAIN_REQUESTS)?;
             txn.open_table(CARDANO_UTXOS)?;
+            txn.open_table(PENDING_DEPOSITS)?;
         }
         txn.commit()?;
 
@@ -604,6 +607,58 @@ impl Store {
 
     // --- Offchain Requests ---
 
+    // --- Pending deposit claims ---
+
+    /// Saves a deposit claim that the node did not accept yet.
+    pub fn put_pending_deposit(
+        &self,
+        network: &str,
+        deposit_ref: &str,
+        claim: &[u8],
+    ) -> Result<(), StoreError> {
+        let key = format!("{network}:{deposit_ref}");
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(PENDING_DEPOSITS)?;
+            table.insert(key.as_str(), claim)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Returns (deposit_ref, claim) for each pending deposit on `network`.
+    pub fn list_pending_deposits(
+        &self,
+        network: &str,
+    ) -> Result<Vec<(String, Vec<u8>)>, StoreError> {
+        let prefix = format!("{network}:");
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(PENDING_DEPOSITS)?;
+        let mut claims = Vec::new();
+        for entry in table.iter()? {
+            let (k, v) = entry?;
+            if let Some(deposit_ref) = k.value().strip_prefix(&prefix) {
+                claims.push((deposit_ref.to_string(), v.value().to_vec()));
+            }
+        }
+        Ok(claims)
+    }
+
+    pub fn delete_pending_deposit(
+        &self,
+        network: &str,
+        deposit_ref: &str,
+    ) -> Result<(), StoreError> {
+        let key = format!("{network}:{deposit_ref}");
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(PENDING_DEPOSITS)?;
+            table.remove(key.as_str())?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
     pub fn put_offchain_request(
         &self,
         id: &str,
@@ -1008,6 +1063,27 @@ mod tests {
     }
 
     // --- Coin selection tests ---
+
+    #[test]
+    fn pending_deposits_round_trip_by_network() {
+        let (_dir, store) = temp_store();
+
+        store
+            .put_pending_deposit("preprod", "aa:0", b"claim")
+            .unwrap();
+        store
+            .put_pending_deposit("mainnet", "bb:1", b"other")
+            .unwrap();
+
+        assert_eq!(
+            store.list_pending_deposits("preprod").unwrap(),
+            vec![("aa:0".to_string(), b"claim".to_vec())]
+        );
+
+        store.delete_pending_deposit("preprod", "aa:0").unwrap();
+        assert!(store.list_pending_deposits("preprod").unwrap().is_empty());
+        assert_eq!(store.list_pending_deposits("mainnet").unwrap().len(), 1);
+    }
 
     #[test]
     fn select_notes_largest_first() {

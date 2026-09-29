@@ -136,6 +136,9 @@ export interface DepositInput {
 export interface DepositResult {
   notes_created: number;
   deposit_ref: string;
+  /** True if the node did not accept the claim yet. The wallet tries again at each sync. */
+  pending: boolean;
+  claim_error: string | null;
 }
 
 export interface WithdrawInput {

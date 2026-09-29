@@ -44,7 +44,7 @@ impl BlindedOutput {
 
 /// The client side of a [`BlindedOutput`]: the note without its signature,
 /// and the blinding factor.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingNote {
     pub note: Note,
     pub blinding_factor: Hash,

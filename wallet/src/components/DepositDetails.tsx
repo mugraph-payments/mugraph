@@ -269,7 +269,9 @@ export function DepositDetails({
 
       {result ? (
         <p className="wallet-hint text-teal-300" role="status">
-          Created {result.notes_created} notes (ref {result.deposit_ref}).
+          {result.pending
+            ? `Deposit sent (ref ${result.deposit_ref}). The node gives the notes after the deposit has enough confirmations. The wallet asks again at each sync.`
+            : `Created ${result.notes_created} notes (ref ${result.deposit_ref}).`}
         </p>
       ) : null}
 

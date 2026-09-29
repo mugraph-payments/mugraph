@@ -10,8 +10,8 @@ use std::sync::Arc;
 use mugraph_wallet_lib::{
     commands::{
         AppState, DepositInput, SendInput, SetupConfig, WithdrawInput,
-        complete_guided_setup_impl, deposit_impl, get_wallet_state_impl,
-        import_notes_impl, send_impl, withdraw_impl,
+        claim_pending_deposits_impl, complete_guided_setup_impl, deposit_impl,
+        get_wallet_state_impl, import_notes_impl, send_impl, withdraw_impl,
     },
     init_app_state_at,
     store::NoteStatus,
@@ -55,7 +55,8 @@ async fn spawn_node(chain_url: &str, db_dir: &TempDir) -> String {
         cardano_payment_sk: None,
         xnode_peer_registry_file: None,
         xnode_node_id: "node://local".to_string(),
-        deposit_confirm_depth: 0,
+        // One confirmation: the deposit block alone is not enough.
+        deposit_confirm_depth: 1,
         deposit_expiration_blocks: 1440,
         min_deposit_value: Some(1_000_000),
         max_tx_size: 16384,
@@ -153,8 +154,9 @@ async fn deposit_send_import_and_withdraw_keep_the_vault_backed() {
         .await
         .unwrap();
 
-    // 1. Deposit 100 ADA.
-    deposit_impl(
+    // 1. Deposit 100 ADA. The deposit transaction is in the newest block,
+    // so the node can not accept the claim yet. The wallet keeps it.
+    let deposit = deposit_impl(
         DepositInput {
             network: NETWORK.to_string(),
             utxo_tx_hash: faucet["tx_hash"].as_str().unwrap().to_string(),
@@ -167,6 +169,28 @@ async fn deposit_send_import_and_withdraw_keep_the_vault_backed() {
     )
     .await
     .expect("deposit");
+    assert_eq!(deposit.notes_created, 0);
+    assert!(deposit.pending, "the claim waits for a confirmation");
+    assert_eq!(total(&a).await, 0);
+
+    // After one more block, the wallet claims the deposit.
+    reqwest::Client::new()
+        .post(format!("{chain_url}/admin/mine"))
+        .json(&json!({"count": 1}))
+        .send()
+        .await
+        .unwrap();
+    let claimed = claim_pending_deposits_impl(NETWORK.to_string(), a.clone())
+        .await
+        .expect("claim");
+    assert_eq!(claimed, 1);
+    assert_eq!(
+        claim_pending_deposits_impl(NETWORK.to_string(), a.clone())
+            .await
+            .expect("claim"),
+        0,
+        "a claimed deposit is no longer pending"
+    );
 
     assert_eq!(total(&a).await, 100_000_000);
     assert!(
