@@ -519,215 +519,113 @@ pub async fn import_notes_impl(
         }
     }
 
-    let mut imported = 0;
-    let mut quarantined = 0;
-    let mut imported_notes: Vec<mugraph_core::types::Note> = Vec::new();
-
+    let mut notes = Vec::with_capacity(notes_array.len());
     for note_value in notes_array {
         let note: mugraph_core::types::Note =
             serde_json::from_value(note_value.clone())
                 .map_err(|e| e.to_string())?;
+        notes.push(note);
+    }
 
-        // Verify signature
-        let commitment = note.commitment();
-        // A received note carries its DLEQ proof and blinding factor, so
-        // the wallet can check it without the delegate's secret key.
-        let valid = note
-            .dleq
-            .as_ref()
-            .map(|proof| {
-                mugraph_core::crypto::verify_note_proof(
-                    &delegate_pk,
-                    commitment.as_ref(),
-                    note.signature,
-                    proof,
-                )
-                .unwrap_or(false)
-            })
-            .unwrap_or(false);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
 
-        let status = if valid {
-            NoteStatus::Available
-        } else {
-            NoteStatus::Quarantined
+    // The wallet needs the delegate's denomination keys to check a note.
+    // Without the node, keep the notes in quarantine until a retry.
+    let clients = state.node_clients.read().await;
+    let Some(client) = clients.get(&network) else {
+        for note in &notes {
+            state
+                .store
+                .put_note(&network, note, NoteStatus::Quarantined, now)
+                .map_err(|e| e.to_string())?;
+        }
+        return Ok(ImportResult {
+            imported: 0,
+            quarantined: notes.len(),
+        });
+    };
+
+    let mut imported = 0;
+    let mut quarantined = 0;
+    let mut keysets: HashMap<mugraph_core::types::Asset, Vec<PublicKey>> =
+        HashMap::new();
+
+    for note in notes {
+        let asset = mugraph_core::types::Asset {
+            policy_id: note.policy_id,
+            asset_name: note.asset_name,
         };
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            keysets.entry(asset)
+        {
+            entry.insert(crate::notes::fetch_keyset(client, &asset).await?);
+        }
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        if note.delegate != delegate_pk
+            || !crate::notes::verify_received_note(&note, &keysets[&asset])
+        {
+            state
+                .store
+                .put_note(&network, &note, NoteStatus::Quarantined, now)
+                .map_err(|e| e.to_string())?;
+            quarantined += 1;
+            continue;
+        }
 
         state
             .store
-            .put_note(&network, &note, status, now)
+            .put_note(&network, &note, NoteStatus::Available, now)
             .map_err(|e| e.to_string())?;
 
-        match status {
-            NoteStatus::Available => {
-                imported += 1;
-                imported_notes.push(note);
-            }
-            NoteStatus::Quarantined => quarantined += 1,
-            _ => {}
-        }
-    }
-
-    // Auto-refresh imported notes to re-validate against the delegate.
-    // If refresh fails, quarantine the notes.
-    if !imported_notes.is_empty() {
-        // Try to refresh through the node — if the node is available
-        let clients = state.node_clients.read().await;
-        if let Some(client) = clients.get(&network) {
-            let to_refresh = &imported_notes;
-
-            for note in to_refresh {
-                let mut builder = mugraph_core::builder::RefreshBuilder::new();
-                builder = builder.input(note.clone());
-                builder = builder.output(
-                    note.policy_id,
-                    note.asset_name,
-                    note.amount,
-                );
-
-                match builder.build() {
-                    Ok(mut refresh) => {
-                        // Blind the single output
-                        let (bf, bp) = {
-                            let mut rng = rand::rng();
-                            let atom = &refresh.atoms[1]; // output is at index 1
-                            let commitment =
-                                atom.commitment(&refresh.asset_ids);
-                            let blinded = mugraph_core::crypto::blind(
-                                &mut rng,
-                                commitment.as_ref(),
-                            );
-                            state
-                                .store
-                                .put_blinding_factor(
-                                    &network,
-                                    &atom.nonce,
-                                    &blinded.factor.to_bytes(),
-                                )
-                                .map_err(|e| e.to_string())?;
-                            (
-                                blinded.factor,
-                                mugraph_core::types::Signature::from(
-                                    blinded.point,
-                                ),
-                            )
-                        };
-                        refresh.blinded_points = vec![bp];
-
-                        match client.refresh(&refresh).await {
-                            Ok(sigs) if !sigs.is_empty() => {
-                                let sig = &sigs[0];
-                                let atom = &refresh.atoms[1];
-                                let commitment =
-                                    atom.commitment(&refresh.asset_ids);
-
-                                let ok = (|| -> Result<bool, String> {
-                                    let bpt = bp
-                                        .to_point()
-                                        .map_err(|e| e.to_string())?;
-                                    let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
-                                        &delegate_pk, &bpt, &sig.signature, &sig.proof,
-                                    ).map_err(|e| e.to_string())?;
-                                    if !dleq_ok {
-                                        return Ok(false);
-                                    }
-                                    let unblinded = mugraph_core::crypto::unblind_signature(
-                                        &sig.signature, &bf, &delegate_pk,
-                                    ).map_err(|e| e.to_string())?;
-                                    mugraph_core::crypto::verify_note_proof(
-                                        &delegate_pk,
-                                        commitment.as_ref(),
-                                        unblinded,
-                                        &mugraph_core::types::DleqProofWithBlinding {
-                                            proof: sig.proof,
-                                            blinding_factor: bf.into(),
-                                        },
-                                    )
-                                    .map_err(|e| e.to_string())
-                                })();
-
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs();
-
-                                match ok {
-                                    Ok(true) => {
-                                        let unblinded = mugraph_core::crypto::unblind_signature(
-                                            &sig.signature, &bf, &delegate_pk,
-                                        ).map_err(|e| e.to_string())?;
-                                        let new_note = mugraph_core::types::Note {
-                                            amount: atom.amount,
-                                            delegate: atom.delegate,
-                                            policy_id: refresh.asset_ids[atom.asset_id as usize].policy_id,
-                                            asset_name: refresh.asset_ids[atom.asset_id as usize].asset_name,
-                                            nonce: atom.nonce,
-                                            signature: unblinded,
-                                            dleq: Some(mugraph_core::types::DleqProofWithBlinding {
-                                                proof: sig.proof,
-                                                blinding_factor: bf.into(),
-                                            }),
-                                        };
-                                        // Mark old note spent, store new one
-                                        let _ = state.store.update_note_status(
-                                            &network,
-                                            &note.nonce,
-                                            NoteStatus::Spent,
-                                        );
-                                        let _ = state.store.finalize_note(
-                                            &network,
-                                            &new_note,
-                                            NoteStatus::Available,
-                                            now,
-                                        );
-                                    }
-                                    _ => {
-                                        // Refresh verification failed — quarantine
-                                        let _ = state.store.update_note_status(
-                                            &network,
-                                            &note.nonce,
-                                            NoteStatus::Quarantined,
-                                        );
-                                        let _ =
-                                            state.store.delete_blinding_factor(
-                                                &network,
-                                                &atom.nonce,
-                                            );
-                                        imported -= 1;
-                                        quarantined += 1;
-                                    }
-                                }
-                            }
-                            _ => {
-                                // Refresh RPC failed — quarantine
-                                let _ = state.store.update_note_status(
-                                    &network,
-                                    &note.nonce,
-                                    NoteStatus::Quarantined,
-                                );
-                                imported -= 1;
-                                quarantined += 1;
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Build failed (shouldn't happen for 1:1 refresh) — quarantine
-                        let _ = state.store.update_note_status(
+        // The sender still knows this note, so swap it for a new note that
+        // only this wallet knows. If the node refuses, the sender (or
+        // someone else) spent it first.
+        match crate::notes::refresh_through_node(
+            &state.store,
+            &network,
+            client,
+            std::slice::from_ref(&note),
+            &[(asset, note.amount)],
+        )
+        .await
+        {
+            Ok(new_notes) => {
+                state
+                    .store
+                    .update_note_status(
+                        &network,
+                        &note.nonce,
+                        NoteStatus::Spent,
+                    )
+                    .map_err(|e| e.to_string())?;
+                for new_note in &new_notes {
+                    state
+                        .store
+                        .finalize_note(
                             &network,
-                            &note.nonce,
-                            NoteStatus::Quarantined,
-                        );
-                        imported -= 1;
-                        quarantined += 1;
-                    }
+                            new_note,
+                            NoteStatus::Available,
+                            now,
+                        )
+                        .map_err(|e| e.to_string())?;
                 }
+                imported += 1;
+            }
+            Err(_) => {
+                state
+                    .store
+                    .update_note_status(
+                        &network,
+                        &note.nonce,
+                        NoteStatus::Quarantined,
+                    )
+                    .map_err(|e| e.to_string())?;
+                quarantined += 1;
             }
         }
-        // If no client available, notes stay as-is (available but un-refreshed)
     }
 
     Ok(ImportResult {
@@ -845,12 +743,6 @@ pub async fn refresh_notes(
     input: RefreshInput,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<RefreshResult, String> {
-    let delegate_pk = state
-        .store
-        .get_delegate_pk(&input.network)
-        .map_err(|e| e.to_string())?
-        .ok_or("no delegate pk for network")?;
-
     // Collect input notes
     let mut input_notes = Vec::new();
     for nonce_hex in &input.note_nonces {
@@ -876,132 +768,41 @@ pub async fn refresh_notes(
         input_notes.push(stored.note);
     }
 
-    // Build refresh
-    let mut builder = mugraph_core::builder::RefreshBuilder::new();
-    for note in &input_notes {
-        builder = builder.input(note.clone());
-    }
-    for &amount in &input.target_amounts {
-        let first = &input_notes[0];
-        builder = builder.output(first.policy_id, first.asset_name, amount);
-    }
-    let mut refresh = builder.build().map_err(|e| e.to_string())?;
-
-    // Blind outputs (scoped to drop rng before .await)
-    let blinding_factors = {
-        let mut rng = rand::rng();
-        let mut factors = Vec::new();
-        let mut points = Vec::new();
-
-        for (i, atom) in refresh.atoms.iter().enumerate() {
-            if refresh.is_output(i) {
-                let commitment = atom.commitment(&refresh.asset_ids);
-                let blinded =
-                    mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
-                factors.push((atom.nonce, blinded.factor));
-                points
-                    .push(mugraph_core::types::Signature::from(blinded.point));
-
-                // Persist blinding factor BEFORE sending
-                state
-                    .store
-                    .put_blinding_factor(
-                        &input.network,
-                        &atom.nonce,
-                        &blinded.factor.to_bytes(),
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-        refresh.blinded_points = points;
-        factors
+    let first = input_notes.first().ok_or("no input notes")?;
+    let asset = mugraph_core::types::Asset {
+        policy_id: first.policy_id,
+        asset_name: first.asset_name,
     };
+    let outputs: Vec<(mugraph_core::types::Asset, u64)> = input
+        .target_amounts
+        .iter()
+        .map(|&amount| (asset, amount))
+        .collect();
 
-    // Send to node
     let clients = state.node_clients.read().await;
     let client = clients
         .get(&input.network)
         .ok_or("no node client for network")?;
-    let signatures =
-        client.refresh(&refresh).await.map_err(|e| e.to_string())?;
+    let new_notes = crate::notes::refresh_through_node(
+        &state.store,
+        &input.network,
+        client,
+        &input_notes,
+        &outputs,
+    )
+    .await?;
 
-    // Process response
-    let mut output_idx = 0;
-    let mut new_count = 0;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-
-    for (i, atom) in refresh.atoms.iter().enumerate() {
-        if !refresh.is_output(i) {
-            continue;
-        }
-
-        let sig = &signatures[output_idx];
-        let (nonce, r) = &blinding_factors[output_idx];
-
-        // Verify DLEQ
-        let bp = refresh.blinded_points[output_idx]
-            .to_point()
-            .map_err(|e| e.to_string())?;
-        let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
-            &delegate_pk,
-            &bp,
-            &sig.signature,
-            &sig.proof,
-        )
-        .map_err(|e| e.to_string())?;
-        if !dleq_ok {
-            return Err("DLEQ verification failed".to_string());
-        }
-
-        // Unblind
-        let unblinded = mugraph_core::crypto::unblind_signature(
-            &sig.signature,
-            r,
-            &delegate_pk,
-        )
-        .map_err(|e| e.to_string())?;
-
-        // Verify final signature
-        let commitment = atom.commitment(&refresh.asset_ids);
-        let valid = mugraph_core::crypto::verify_note_proof(
-            &delegate_pk,
-            commitment.as_ref(),
-            unblinded,
-            &mugraph_core::types::DleqProofWithBlinding {
-                proof: sig.proof,
-                blinding_factor: (*r).into(),
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        if !valid {
-            return Err("unblinded signature verification failed".to_string());
-        }
-
-        let asset = &refresh.asset_ids[atom.asset_id as usize];
-        let note = mugraph_core::types::Note {
-            amount: atom.amount,
-            delegate: atom.delegate,
-            policy_id: asset.policy_id,
-            asset_name: asset.asset_name,
-            nonce: *nonce,
-            signature: unblinded,
-            dleq: Some(mugraph_core::types::DleqProofWithBlinding {
-                proof: sig.proof,
-                blinding_factor: (*r).into(),
-            }),
-        };
-
+    for note in &new_notes {
         state
             .store
-            .finalize_note(&input.network, &note, NoteStatus::Available, now)
+            .finalize_note(&input.network, note, NoteStatus::Available, now)
             .map_err(|e| e.to_string())?;
-
-        output_idx += 1;
-        new_count += 1;
     }
+    let new_count = new_notes.len();
 
     // Mark input notes as spent
     for note in &input_notes {
@@ -1728,110 +1529,39 @@ pub async fn retry_quarantined(
     }
 
     // Try refresh through node
-    let delegate_pk = state
-        .store
-        .get_delegate_pk(&network)
-        .map_err(|e| e.to_string())?
-        .ok_or("no delegate pk")?;
-
     let note = &stored.note;
-    let mut builder = mugraph_core::builder::RefreshBuilder::new();
-    builder = builder.input(note.clone());
-    builder = builder.output(note.policy_id, note.asset_name, note.amount);
-    let mut refresh = builder.build().map_err(|e| e.to_string())?;
-
-    let (bf, bp) = {
-        let mut rng = rand::rng();
-        let atom = &refresh.atoms[1];
-        let commitment = atom.commitment(&refresh.asset_ids);
-        let blinded =
-            mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
-        state
-            .store
-            .put_blinding_factor(
-                &network,
-                &atom.nonce,
-                &blinded.factor.to_bytes(),
-            )
-            .map_err(|e| e.to_string())?;
-        (
-            blinded.factor,
-            mugraph_core::types::Signature::from(blinded.point),
-        )
+    let asset = mugraph_core::types::Asset {
+        policy_id: note.policy_id,
+        asset_name: note.asset_name,
     };
-    refresh.blinded_points = vec![bp];
 
     let clients = state.node_clients.read().await;
     let client = clients.get(&network).ok_or("no node client")?;
-    let sigs = client.refresh(&refresh).await.map_err(|e| e.to_string())?;
-
-    if sigs.is_empty() {
-        return Err("no signatures returned".to_string());
-    }
-
-    let sig = &sigs[0];
-    let atom = &refresh.atoms[1];
-    let commitment = atom.commitment(&refresh.asset_ids);
-    let bpt = bp.to_point().map_err(|e| e.to_string())?;
-
-    let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
-        &delegate_pk,
-        &bpt,
-        &sig.signature,
-        &sig.proof,
+    let new_notes = crate::notes::refresh_through_node(
+        &state.store,
+        &network,
+        client,
+        std::slice::from_ref(note),
+        &[(asset, note.amount)],
     )
-    .map_err(|e| e.to_string())?;
-    if !dleq_ok {
-        return Err("DLEQ verification failed".to_string());
-    }
-
-    let unblinded = mugraph_core::crypto::unblind_signature(
-        &sig.signature,
-        &bf,
-        &delegate_pk,
-    )
-    .map_err(|e| e.to_string())?;
-    let valid = mugraph_core::crypto::verify_note_proof(
-        &delegate_pk,
-        commitment.as_ref(),
-        unblinded,
-        &mugraph_core::types::DleqProofWithBlinding {
-            proof: sig.proof,
-            blinding_factor: bf.into(),
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    if !valid {
-        return Err("signature verification failed — note may be double-spent"
-            .to_string());
-    }
+    .await
+    .map_err(|e| format!("refresh failed — note may be double-spent: {e}"))?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    let new_note = mugraph_core::types::Note {
-        amount: atom.amount,
-        delegate: atom.delegate,
-        policy_id: refresh.asset_ids[atom.asset_id as usize].policy_id,
-        asset_name: refresh.asset_ids[atom.asset_id as usize].asset_name,
-        nonce: atom.nonce,
-        signature: unblinded,
-        dleq: Some(mugraph_core::types::DleqProofWithBlinding {
-            proof: sig.proof,
-            blinding_factor: bf.into(),
-        }),
-    };
-
     state
         .store
         .update_note_status(&network, &nonce, NoteStatus::Spent)
         .map_err(|e| e.to_string())?;
-    state
-        .store
-        .finalize_note(&network, &new_note, NoteStatus::Available, now)
-        .map_err(|e| e.to_string())?;
+    for new_note in &new_notes {
+        state
+            .store
+            .finalize_note(&network, new_note, NoteStatus::Available, now)
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok("note re-validated successfully".to_string())
 }

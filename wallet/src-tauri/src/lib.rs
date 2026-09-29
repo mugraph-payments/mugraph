@@ -2,6 +2,7 @@ pub mod cardano_tx;
 pub mod cip8;
 pub mod commands;
 pub mod node_client;
+pub mod notes;
 pub mod provider;
 pub mod store;
 

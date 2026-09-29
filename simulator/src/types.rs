@@ -5,7 +5,7 @@ use std::{
 
 use clap::Parser;
 use mugraph_core::types::{
-    Asset, BlindSignature, Note, PolicyId, PublicKey, Refresh,
+    Asset, BlindSignature, Note, OutputSecret, PolicyId, PublicKey, Refresh,
 };
 use reqwest::Url;
 
@@ -56,6 +56,8 @@ pub struct Wallet {
 pub struct SimNode {
     pub client: NodeClient,
     pub delegate_pk: PublicKey,
+    /// The denomination public keys of this node, for each asset.
+    pub keysets: HashMap<Asset, Vec<PublicKey>>,
 }
 
 #[derive(Debug, Default)]
@@ -437,7 +439,8 @@ pub struct PendingTx {
     pub spend_amount: u64,
     pub refresh: Refresh,
     pub owners: Vec<usize>,
-    pub delegate: PublicKey,
+    pub secrets: Vec<OutputSecret>,
+    pub keyset: Vec<PublicKey>,
 }
 
 #[derive(Debug)]
@@ -463,10 +466,10 @@ pub struct CrossNodeTxEvent {
 
 #[derive(Debug)]
 pub struct CrossNodeResult {
-    /// Note emitted on the destination node for the receiver
-    pub receiver_note: Note,
-    /// Optional change note from refreshing on the source node (when input > spend)
-    pub change_note: Option<Note>,
+    /// Notes emitted on the destination node for the receiver
+    pub receiver_notes: Vec<Note>,
+    /// Change notes emitted on the destination node (when input > spend)
+    pub change_notes: Vec<Note>,
 }
 
 #[derive(Debug)]

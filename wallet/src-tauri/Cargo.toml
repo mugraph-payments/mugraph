@@ -41,4 +41,6 @@ tokio = { workspace = true }
 whisky-csl = "1.0.24"
 
 [dev-dependencies]
+axum = { workspace = true }
+mugraph-node = { workspace = true }
 tempfile = "3"

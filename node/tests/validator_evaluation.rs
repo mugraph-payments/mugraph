@@ -378,12 +378,18 @@ fn note_from_refresh_output(
         dleq: None,
     };
 
+    let pair = mugraph_core::keyset::denomination_keypair(
+        &keypair.secret_key,
+        asset,
+        atom.amount,
+    )
+    .expect("output amount is a denomination");
     let blind = crypto::blind_note(rng, &note);
-    let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
+    let signed = crypto::sign_blinded(rng, &pair.secret_key, &blind.point);
     note.signature = crypto::unblind_signature(
         &signed.signature,
         &blind.factor,
-        &keypair.public_key,
+        &pair.public_key,
     )
     .expect("unblind_signature failed");
     note.dleq = Some(DleqProofWithBlinding {
@@ -392,6 +398,21 @@ fn note_from_refresh_output(
     });
 
     note
+}
+
+/// Checks a note the same way the node does, with its denomination key.
+fn note_is_valid(keypair: &Keypair, note: &mugraph_core::types::Note) -> bool {
+    mugraph_core::keyset::verify(
+        &keypair.secret_key,
+        &mugraph_core::types::Asset {
+            policy_id: note.policy_id,
+            asset_name: note.asset_name,
+        },
+        note.amount,
+        note.commitment().as_ref(),
+        note.signature,
+    )
+    .expect("verify failed")
 }
 
 /// Build a Conway-era transaction spending multiple script UTxOs.
@@ -1039,7 +1060,7 @@ fn eval_spend_with_native_tokens() {
 /// UTxO remains spendable after arbitrary off-chain activity.
 #[test]
 fn eval_lifecycle_deposit_transfer_withdraw() {
-    use mugraph_core::{builder::RefreshBuilder, crypto, types::Keypair};
+    use mugraph_core::{builder::RefreshBuilder, types::Keypair};
 
     let script_cbor = load_validator_cbor();
     let script_hash = compute_script_hash(&script_cbor);
@@ -1059,7 +1080,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     let ada_name = mugraph_core::types::AssetName::empty();
 
     // --- Phase 1: Deposit (on-chain UTxO creation) ---
-    let deposit_lovelace = 10_000_000u64; // 10 ADA
+    let deposit_lovelace = 1u64 << 23; // about 8.4 ADA, one denomination
     let datum = build_deposit_datum(&user_hash, &node_hash, &intent_hash);
 
     // Node issues a signed note after confirming the deposit on-chain.
@@ -1073,12 +1094,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     .expect("Failed to emit deposit note");
 
     assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_a.commitment().as_ref(),
-            note_a.signature
-        )
-        .expect("verify failed"),
+        note_is_valid(&node_keypair, &note_a),
         "Emitted note signature should be valid"
     );
 
@@ -1089,8 +1105,8 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     // Transfer 1: split 10 ADA → 6 ADA + 4 ADA
     let refresh_1 = RefreshBuilder::new()
         .input(note_a)
-        .output(ada_policy, ada_name, 6_000_000)
-        .output(ada_policy, ada_name, 4_000_000)
+        .output(ada_policy, ada_name, 1 << 22)
+        .output(ada_policy, ada_name, 1 << 22)
         .build()
         .expect("build refresh_1");
     refresh_1.verify().expect("refresh_1 balanced");
@@ -1111,29 +1127,15 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     );
 
     // Verify chained signatures are valid
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_b.commitment().as_ref(),
-            note_b.signature
-        )
-        .expect("verify note_b"),
-    );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_c.commitment().as_ref(),
-            note_c.signature
-        )
-        .expect("verify note_c"),
-    );
+    assert!(note_is_valid(&node_keypair, &note_b),);
+    assert!(note_is_valid(&node_keypair, &note_c),);
     assert_eq!(note_b.amount + note_c.amount, deposit_lovelace);
 
     // Transfer 2: merge 6 ADA + 4 ADA → 10 ADA
     let refresh_2 = RefreshBuilder::new()
         .input(note_b)
         .input(note_c)
-        .output(ada_policy, ada_name, 10_000_000)
+        .output(ada_policy, ada_name, 1 << 23)
         .build()
         .expect("build refresh_2");
     refresh_2.verify().expect("refresh_2 balanced");
@@ -1145,21 +1147,14 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
         &node_keypair,
         &mut rng,
     );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_d.commitment().as_ref(),
-            note_d.signature
-        )
-        .expect("verify note_d"),
-    );
+    assert!(note_is_valid(&node_keypair, &note_d),);
     assert_eq!(note_d.amount, deposit_lovelace);
 
     // Transfer 3: partial spend — 10 ADA → 7 ADA + 3 ADA
     let refresh_3 = RefreshBuilder::new()
         .input(note_d)
-        .output(ada_policy, ada_name, 7_000_000)
-        .output(ada_policy, ada_name, 3_000_000)
+        .output(ada_policy, ada_name, 1 << 22)
+        .output(ada_policy, ada_name, 1 << 22)
         .build()
         .expect("build refresh_3");
     refresh_3.verify().expect("refresh_3 balanced");
@@ -1177,22 +1172,8 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
         &node_keypair,
         &mut rng,
     );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_e.commitment().as_ref(),
-            note_e.signature
-        )
-        .expect("verify note_e"),
-    );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_f.commitment().as_ref(),
-            note_f.signature
-        )
-        .expect("verify note_f"),
-    );
+    assert!(note_is_valid(&node_keypair, &note_e),);
+    assert!(note_is_valid(&node_keypair, &note_f),);
     assert_eq!(note_e.amount + note_f.amount, deposit_lovelace);
 
     // --- Phase 3: Withdrawal (on-chain spend) ---
@@ -1236,7 +1217,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
 /// transfers use the full blind-sign-unblind chain.
 #[test]
 fn eval_lifecycle_batch_withdrawal() {
-    use mugraph_core::{builder::RefreshBuilder, crypto};
+    use mugraph_core::builder::RefreshBuilder;
 
     let script_cbor = load_validator_cbor();
     let script_hash = compute_script_hash(&script_cbor);
@@ -1258,7 +1239,7 @@ fn eval_lifecycle_batch_withdrawal() {
         &node_keypair,
         ada_policy,
         ada_name,
-        5_000_000,
+        1 << 22,
         &mut rng,
     )
     .expect("emit note_1");
@@ -1266,8 +1247,8 @@ fn eval_lifecycle_batch_withdrawal() {
     // Off-chain transfer with chained signatures
     let refresh_1 = RefreshBuilder::new()
         .input(note_1)
-        .output(ada_policy, ada_name, 3_000_000)
-        .output(ada_policy, ada_name, 2_000_000)
+        .output(ada_policy, ada_name, 1 << 21)
+        .output(ada_policy, ada_name, 1 << 21)
         .build()
         .expect("build refresh_1");
     refresh_1.verify().expect("refresh_1 balanced");
@@ -1281,15 +1262,8 @@ fn eval_lifecycle_batch_withdrawal() {
         &node_keypair,
         &mut rng,
     );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_1a.commitment().as_ref(),
-            note_1a.signature
-        )
-        .expect("verify note_1a"),
-    );
-    assert_eq!(note_1a.amount + note_1b.amount, 5_000_000);
+    assert!(note_is_valid(&node_keypair, &note_1a),);
+    assert_eq!(note_1a.amount + note_1b.amount, 1 << 22);
 
     // --- Deposit 2: 8 ADA + native tokens ---
     let datum_2 = build_deposit_datum(&user_hash, &node_hash, &[0x02u8; 32]);
@@ -1301,7 +1275,7 @@ fn eval_lifecycle_batch_withdrawal() {
         &node_keypair,
         token_policy,
         token_name,
-        500,
+        512,
         &mut rng,
     )
     .expect("emit token note");
@@ -1309,8 +1283,8 @@ fn eval_lifecycle_batch_withdrawal() {
     // Off-chain token transfer with chained signatures
     let refresh_2 = RefreshBuilder::new()
         .input(note_token)
-        .output(token_policy, token_name, 300)
-        .output(token_policy, token_name, 200)
+        .output(token_policy, token_name, 256)
+        .output(token_policy, token_name, 256)
         .build()
         .expect("build refresh_2");
     refresh_2.verify().expect("refresh_2 balanced");
@@ -1324,15 +1298,8 @@ fn eval_lifecycle_batch_withdrawal() {
         &node_keypair,
         &mut rng,
     );
-    assert!(
-        crypto::verify(
-            &node_keypair.secret_key,
-            note_2a.commitment().as_ref(),
-            note_2a.signature
-        )
-        .expect("verify note_2a"),
-    );
-    assert_eq!(note_2a.amount + note_2b.amount, 500);
+    assert!(note_is_valid(&node_keypair, &note_2a),);
+    assert_eq!(note_2a.amount + note_2b.amount, 512);
 
     // --- Batch withdrawal: spend both on-chain UTxOs in one transaction ---
     {

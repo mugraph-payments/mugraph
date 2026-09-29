@@ -1,10 +1,10 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{
-    crypto,
     error::Error,
+    keyset,
     types::{
-        AssetName, DleqProofWithBlinding, Hash, Keypair, Note, PolicyId,
-        Refresh, Response, Signature,
+        Asset, AssetName, Hash, Keypair, Note, PolicyId, Refresh, Response,
+        Signature,
     },
 };
 use rand::{CryptoRng, RngCore};
@@ -20,29 +20,15 @@ pub fn emit_note<R: RngCore + CryptoRng>(
     amount: u64,
     rng: &mut R,
 ) -> Result<Note, Error> {
-    let mut note = Note {
-        delegate: keypair.public_key,
-        policy_id,
-        asset_name,
-        nonce: Hash::random(rng),
+    keyset::issue_note(
+        rng,
+        &keypair.secret_key,
+        &Asset {
+            policy_id,
+            asset_name,
+        },
         amount,
-        signature: Signature::default(),
-        dleq: None,
-    };
-
-    let blind = crypto::blind_note(rng, &note);
-    let signed = crypto::sign_blinded(rng, &keypair.secret_key, &blind.point);
-    note.signature = crypto::unblind_signature(
-        &signed.signature,
-        &blind.factor,
-        &keypair.public_key,
-    )?;
-    note.dleq = Some(DleqProofWithBlinding {
-        proof: signed.proof,
-        blinding_factor: blind.factor.into(),
-    });
-
-    Ok(note)
+    )
 }
 
 pub fn refresh(
@@ -52,17 +38,13 @@ pub fn refresh(
 ) -> Result<Response, Error> {
     transaction.verify()?;
 
-    let output_count = transaction
-        .atoms
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| transaction.is_output(*i))
+    let output_count = (0..transaction.atoms.len())
+        .filter(|&i| transaction.is_output(i))
         .count();
 
-    // Validate blinded_points length when provided
-    if !transaction.blinded_points.is_empty()
-        && transaction.blinded_points.len() != output_count
-    {
+    // The node signs only blinded points. If it signed the commitment of
+    // an output, it could link the output to the note when it is spent.
+    if transaction.blinded_points.len() != output_count {
         return Err(Error::InvalidOperation {
             reason: format!(
                 "blinded_points length {} does not match output count {}",
@@ -70,6 +52,20 @@ pub fn refresh(
                 output_count,
             ),
         });
+    }
+
+    for (i, atom) in transaction.atoms.iter().enumerate() {
+        if atom.delegate != keypair.public_key {
+            return Err(Error::InvalidAtom {
+                reason: format!("Atom {} is for a different delegate", i),
+            });
+        }
+
+        if transaction.is_output(i) && atom.nonce != Hash::zero() {
+            return Err(Error::InvalidAtom {
+                reason: format!("Output atom {} must not show its nonce", i),
+            });
+        }
     }
 
     let mut rng = rand::rng();
@@ -81,25 +77,26 @@ pub fn refresh(
         let mut table = w.open_table(NOTES)?;
 
         for (i, atom) in transaction.atoms.iter().enumerate() {
-            if transaction.is_output(i) {
-                let point = if let Some(bp) =
-                    transaction.blinded_points.get(output_idx)
-                {
-                    bp.to_point()?
-                } else {
-                    crypto::hash_to_curve(
-                        atom.commitment(&transaction.asset_ids).as_ref(),
-                    )
-                };
+            let asset = &transaction.asset_ids[atom.asset_id as usize];
 
-                let sig =
-                    crypto::sign_blinded(&mut rng, &keypair.secret_key, &point);
+            if transaction.is_output(i) {
+                let point =
+                    transaction.blinded_points[output_idx].to_point()?;
+                let sig = keyset::sign_blinded(
+                    &mut rng,
+                    &keypair.secret_key,
+                    asset,
+                    atom.amount,
+                    &point,
+                )?;
 
                 outputs.push(sig);
                 output_idx += 1;
                 continue;
             }
 
+            // Refresh::verify() checks that each input has a signature
+            // index in range.
             let signature = match atom.signature {
                 Some(s) => transaction.signatures[s as usize],
                 None => {
@@ -123,8 +120,10 @@ pub fn refresh(
 
             // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
-            if !crypto::verify(
+            if !keyset::verify(
                 &keypair.secret_key,
+                asset,
+                atom.amount,
                 commitment.as_ref(),
                 signature,
             )? {
@@ -145,11 +144,7 @@ pub fn refresh(
 
 #[cfg(test)]
 mod tests {
-    use mugraph_core::{
-        builder::RefreshBuilder,
-        crypto,
-        types::{Hash, Note},
-    };
+    use mugraph_core::builder::RefreshBuilder;
     use rand::{SeedableRng, rngs::StdRng};
 
     use super::*;
@@ -169,99 +164,61 @@ mod tests {
 
     fn signed_note(keypair: &Keypair, amount: u64) -> Note {
         let mut rng = StdRng::seed_from_u64(7);
-        let mut note = Note {
-            delegate: keypair.public_key,
-            policy_id: Default::default(),
-            asset_name: Default::default(),
-            nonce: Hash::random(&mut rng),
+        keyset::issue_note(
+            &mut rng,
+            &keypair.secret_key,
+            &Asset::default(),
             amount,
-            signature: Signature::default(),
-            dleq: None,
-        };
-
-        let blind = crypto::blind_note(&mut rng, &note);
-        let signed =
-            crypto::sign_blinded(&mut rng, &keypair.secret_key, &blind.point);
-        note.signature = crypto::unblind_signature(
-            &signed.signature,
-            &blind.factor,
-            &keypair.public_key,
         )
-        .expect("valid unblind");
-        note
+        .expect("valid note")
     }
 
     #[test]
     fn refresh_with_blinded_points_produces_unblindable_signatures() {
         let mut rng = StdRng::seed_from_u64(42);
         let keypair = Keypair::random(&mut rng);
-        let note = signed_note(&keypair, 100);
+        let note = signed_note(&keypair, 128);
         let db = temp_db();
 
-        // Build refresh: 100 -> 60 + 40
+        // Build refresh: 128 -> 64 + 32 + 32
         let mut refresh_tx = RefreshBuilder::new()
             .input(note.clone())
-            .output(note.policy_id, note.asset_name, 60)
-            .output(note.policy_id, note.asset_name, 40)
+            .output(note.policy_id, note.asset_name, 96)
+            .output(note.policy_id, note.asset_name, 32)
             .build()
             .unwrap();
 
         // Client: blind each output atom's commitment
-        let mut blinding_factors = Vec::new();
-        let mut blinded_points = Vec::new();
-        for (i, atom) in refresh_tx.atoms.iter().enumerate() {
-            if refresh_tx.is_output(i) {
-                let commitment = atom.commitment(&refresh_tx.asset_ids);
-                let blinded = crypto::blind(&mut rng, commitment.as_ref());
-                blinding_factors.push(blinded.factor);
-                blinded_points.push(Signature::from(blinded.point));
-            }
-        }
-        refresh_tx.blinded_points = blinded_points;
+        let secrets = refresh_tx.blind_outputs(&mut rng);
 
         // Server: process refresh
         let response =
             refresh(&refresh_tx, keypair, &db).expect("refresh must succeed");
 
         // Client: unblind and verify each output signature
+        let keys = keyset::keyset(&keypair.secret_key, &Asset::default());
         match response {
             Response::Transaction { outputs } => {
-                assert_eq!(outputs.len(), 2);
+                assert_eq!(outputs.len(), 3);
 
-                let mut output_idx = 0;
-                for (i, atom) in refresh_tx.atoms.iter().enumerate() {
-                    if refresh_tx.is_output(i) {
-                        let commitment = atom.commitment(&refresh_tx.asset_ids);
-                        let sig = &outputs[output_idx];
-                        let r = &blinding_factors[output_idx];
+                for (secret, signed) in secrets.iter().zip(&outputs) {
+                    let amount = refresh_tx.atoms[secret.atom_index].amount;
+                    let public_key =
+                        keyset::keyset_public_key(&keys, amount).unwrap();
+                    let new_note = refresh_tx
+                        .unblind_output(secret, signed, &public_key)
+                        .expect("unblinded signature must verify");
 
-                        // Unblind the signature
-                        let unblinded = crypto::unblind_signature(
-                            &sig.signature,
-                            r,
-                            &keypair.public_key,
+                    assert!(
+                        keyset::verify(
+                            &keypair.secret_key,
+                            &Asset::default(),
+                            new_note.amount,
+                            new_note.commitment().as_ref(),
+                            new_note.signature,
                         )
-                        .expect("unblind must succeed");
-
-                        // Verify the unblinded signature against the
-                        // commitment
-                        assert!(
-                            crypto::verify_note_proof(
-                                &keypair.public_key,
-                                commitment.as_ref(),
-                                unblinded,
-                                &DleqProofWithBlinding {
-                                    proof: sig.proof,
-                                    blinding_factor: (*r).into(),
-                                },
-                            )
-                            .expect("verify must not error"),
-                            "unblinded signature must verify for output {}",
-                            output_idx,
-                        );
-
-                        output_idx += 1;
-                    }
+                        .unwrap()
+                    );
                 }
             }
             other => panic!("expected Transaction response, got {:?}", other),
@@ -270,19 +227,20 @@ mod tests {
 
     #[test]
     fn refresh_rejects_unbalanced_transaction() {
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = StdRng::seed_from_u64(1);
         let keypair = Keypair::random(&mut rng);
-        let note = signed_note(&keypair, 10);
+        let note = signed_note(&keypair, 8);
         let db = temp_db();
 
         let mut refresh_tx = RefreshBuilder::new()
             .input(note.clone())
-            .output(note.policy_id, note.asset_name, 10)
+            .output(note.policy_id, note.asset_name, 8)
             .build()
             .unwrap();
+        refresh_tx.blind_outputs(&mut rng);
 
         // break conservation: output > input
-        refresh_tx.atoms[1].amount = 11;
+        refresh_tx.atoms[1].amount = 16;
 
         let result = refresh(&refresh_tx, keypair, &db);
         assert!(result.is_err(), "unbalanced refresh must be rejected");
@@ -296,14 +254,15 @@ mod tests {
         let db = temp_db();
 
         // A valid point, but not a signature from this node's key.
-        let mut note = signed_note(&other, 10);
+        let mut note = signed_note(&other, 8);
         note.delegate = keypair.public_key;
 
-        let refresh_tx = RefreshBuilder::new()
+        let mut refresh_tx = RefreshBuilder::new()
             .input(note.clone())
-            .output(note.policy_id, note.asset_name, 10)
+            .output(note.policy_id, note.asset_name, 8)
             .build()
             .unwrap();
+        refresh_tx.blind_outputs(&mut rng);
 
         let result = refresh(&refresh_tx, keypair, &db);
         assert!(

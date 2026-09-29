@@ -85,6 +85,38 @@ impl NodeClient {
         }
     }
 
+    /// Emits one note for each denomination of `amount`.
+    pub async fn emit_amount(
+        &self,
+        policy_id: PolicyId,
+        asset_name: AssetName,
+        amount: u64,
+    ) -> Result<Vec<Note>> {
+        let mut notes = Vec::new();
+        for part in mugraph_core::keyset::split_amount(amount) {
+            notes.push(self.emit(policy_id, asset_name, part).await?);
+        }
+        Ok(notes)
+    }
+
+    pub async fn keys(
+        &self,
+        policy_id: PolicyId,
+        asset_name: AssetName,
+    ) -> Result<Vec<PublicKey>> {
+        match self
+            .rpc(&Request::Keys {
+                policy_id,
+                asset_name,
+            })
+            .await?
+        {
+            Response::Keys { keys } => Ok(keys),
+            Response::Error { reason } => Err(eyre!("keys failed: {}", reason)),
+            other => Err(eyre!("unexpected response for keys: {:?}", other)),
+        }
+    }
+
     pub async fn refresh(
         &self,
         refresh: &Refresh,

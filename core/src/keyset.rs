@@ -5,11 +5,14 @@
 //! although the delegate does not see the note. Each amount must be a
 //! power of two, so each asset has 64 keys.
 
+use rand::{CryptoRng, RngCore};
+
 use crate::{
-    crypto::hash_to_scalar_with_domain,
+    crypto::{self, Point, hash_to_scalar_with_domain},
     error::{Error, Result},
     types::{
-        ASSET_ID_BYTES_SIZE, Asset, Keypair, PublicKey, SecretKey,
+        ASSET_ID_BYTES_SIZE, Asset, BlindSignature, DleqProofWithBlinding,
+        Hash, Keypair, Note, PublicKey, SecretKey, Signature,
         write_asset_bytes,
     },
 };
@@ -59,6 +62,65 @@ pub fn denomination_keypair(
         public_key: secret_key.public(),
         secret_key,
     })
+}
+
+/// Signs a blinded point with the key for `asset` and `amount`.
+pub fn sign_blinded<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    master: &SecretKey,
+    asset: &Asset,
+    amount: u64,
+    blinded_point: &Point,
+) -> Result<BlindSignature> {
+    let pair = denomination_keypair(master, asset, amount)?;
+    Ok(crypto::sign_blinded(rng, &pair.secret_key, blinded_point))
+}
+
+/// Checks an unblinded note signature with the key for `asset` and
+/// `amount`. Only the delegate can do this check.
+pub fn verify(
+    master: &SecretKey,
+    asset: &Asset,
+    amount: u64,
+    message: &[u8],
+    signature: Signature,
+) -> Result<bool> {
+    let pair = denomination_keypair(master, asset, amount)?;
+    crypto::verify(&pair.secret_key, message, signature)
+}
+
+/// Makes a note of one denomination, signed by the delegate. The
+/// delegate knows the note, so this is only for tests and dev mode.
+pub fn issue_note<R: RngCore + CryptoRng>(
+    rng: &mut R,
+    master: &SecretKey,
+    asset: &Asset,
+    amount: u64,
+) -> Result<Note> {
+    let pair = denomination_keypair(master, asset, amount)?;
+    let mut note = Note {
+        amount,
+        delegate: master.public(),
+        policy_id: asset.policy_id,
+        asset_name: asset.asset_name,
+        nonce: Hash::random(rng),
+        signature: Signature::default(),
+        dleq: None,
+    };
+
+    let blinded = crypto::blind_note(rng, &note);
+    let signed = crypto::sign_blinded(rng, &pair.secret_key, &blinded.point);
+    note.signature = crypto::unblind_signature(
+        &signed.signature,
+        &blinded.factor,
+        &pair.public_key,
+    )?;
+    note.dleq = Some(DleqProofWithBlinding {
+        proof: signed.proof,
+        blinding_factor: blinded.factor.into(),
+    });
+
+    Ok(note)
 }
 
 /// Returns the 64 public keys for `asset`. The key at index `d` signs
@@ -188,5 +250,45 @@ mod tests {
         let keys = keyset(&master, &asset);
 
         prop_assert!(keyset_public_key(&keys, amount).is_err());
+    }
+
+    #[proptest(cases = 64)]
+    fn test_issue_note_makes_a_valid_note(
+        master: SecretKey,
+        asset: Asset,
+        #[strategy(0u32..64)] d: u32,
+        seed: [u8; 32],
+    ) {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::from_seed(seed);
+        let pair = denomination_keypair(&master, &asset, 1 << d)?;
+
+        let note = issue_note(&mut rng, &master, &asset, 1 << d)?;
+
+        prop_assert_eq!(note.amount, 1 << d);
+        prop_assert_eq!(note.delegate, master.public());
+        prop_assert!(verify(
+            &master,
+            &asset,
+            note.amount,
+            note.commitment().as_ref(),
+            note.signature,
+        )?);
+        prop_assert!(crypto::verify_note_proof(
+            &pair.public_key,
+            note.commitment().as_ref(),
+            note.signature,
+            note.dleq.as_ref().unwrap(),
+        )?);
+    }
+
+    #[proptest]
+    fn test_issue_note_rejects_other_amounts(
+        master: SecretKey,
+        asset: Asset,
+        #[filter(!#amount.is_power_of_two())] amount: u64,
+    ) {
+        let mut rng = rand::rng();
+        prop_assert!(issue_note(&mut rng, &master, &asset, amount).is_err());
     }
 }

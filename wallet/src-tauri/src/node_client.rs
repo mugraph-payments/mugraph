@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use mugraph_core::types::{
-    BlindSignature, DepositRequest, DepositResponse, PublicKey, Refresh,
+    Asset, BlindSignature, DepositRequest, DepositResponse, PublicKey, Refresh,
     Request, Response, WithdrawRequest, WithdrawResponse,
 };
 use reqwest::Url;
@@ -63,6 +63,26 @@ impl NodeClient {
                 cardano_script_address,
                 cardano_payment_vk,
             } => Ok((delegate_pk, cardano_script_address, cardano_payment_vk)),
+            Response::Error { reason } => Err(NodeClientError::Node { reason }),
+            other => {
+                Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))
+            }
+        }
+    }
+
+    /// Gets the delegate's 64 denomination public keys for one asset.
+    pub async fn keys(
+        &self,
+        asset: &Asset,
+    ) -> Result<Vec<PublicKey>, NodeClientError> {
+        match self
+            .rpc(&Request::Keys {
+                policy_id: asset.policy_id,
+                asset_name: asset.asset_name,
+            })
+            .await?
+        {
+            Response::Keys { keys } => Ok(keys),
             Response::Error { reason } => Err(NodeClientError::Node { reason }),
             other => {
                 Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))

@@ -4,10 +4,11 @@ mod simulation;
 mod types;
 mod ui;
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use clap::Parser;
 use color_eyre::eyre::{Result, WrapErr};
+use mugraph_core::types::Asset;
 use rand::{SeedableRng, rngs::StdRng};
 use tokio::sync::{mpsc, watch};
 use tracing::{error, info};
@@ -49,6 +50,7 @@ async fn main() -> Result<()> {
         nodes.push(SimNode {
             client,
             delegate_pk,
+            keysets: HashMap::new(),
         });
     }
 
@@ -62,6 +64,22 @@ async fn main() -> Result<()> {
     let delegates: Vec<_> = nodes.iter().map(|n| n.delegate_pk).collect();
 
     let assets = generate_assets(args.assets, &mut rng);
+    for node in nodes.iter_mut() {
+        for asset in &assets {
+            let keys = node
+                .client
+                .keys(asset.policy_id, asset.asset_name)
+                .await
+                .wrap_err("fetch denomination keys")?;
+            node.keysets.insert(
+                Asset {
+                    policy_id: asset.policy_id,
+                    asset_name: asset.asset_name,
+                },
+                keys,
+            );
+        }
+    }
     let mut state = AppState {
         assets: assets.clone(),
         delegates,

@@ -507,38 +507,27 @@ mod tests {
 
     #[tokio::test]
     async fn rpc_keys_returns_the_denomination_keyset() {
-        let config = unseeded_dev_config();
-        let keypair = config.keypair().unwrap();
-        let app = router(config, keypair).await.unwrap();
+        let ctx = test_context();
+        let secret_key = ctx.keypair.secret_key;
         let asset = mugraph_core::types::Asset {
             policy_id: mugraph_core::types::PolicyId([3u8; 28]),
             asset_name: mugraph_core::types::AssetName::new(b"USD").unwrap(),
         };
 
-        let response = app
-            .oneshot(
-                HttpRequest::post("/rpc")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_vec(&Request::Keys {
-                            policy_id: asset.policy_id,
-                            asset_name: asset.asset_name,
-                        })
-                        .unwrap(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let Json(response) = rpc(
+            State(ctx),
+            Json(Request::Keys {
+                policy_id: asset.policy_id,
+                asset_name: asset.asset_name,
+            }),
+        )
+        .await;
 
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let decoded: Response = serde_json::from_slice(&body).unwrap();
-
-        match decoded {
+        match response {
             Response::Keys { keys } => {
                 assert_eq!(
                     keys,
-                    mugraph_core::keyset::keyset(&keypair.secret_key, &asset)
+                    mugraph_core::keyset::keyset(&secret_key, &asset)
                 );
             }
             other => panic!("unexpected response: {other:?}"),

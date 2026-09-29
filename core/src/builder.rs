@@ -2,6 +2,7 @@ use indexmap::IndexSet;
 
 use crate::{
     error::{Error, Result},
+    keyset::split_amount,
     types::{Asset, AssetName, Atom, Hash, Note, PolicyId, Refresh},
     utils::BitSet32,
 };
@@ -58,17 +59,19 @@ impl RefreshBuilder {
             policy_id,
             asset_name,
         };
-        match self.assets.get_index_of(&asset) {
-            Some(i) => {
-                self.post_balances[i] += amount as u128;
-                self.outputs.push((i as u32, amount));
-            }
+        let index = match self.assets.get_index_of(&asset) {
+            Some(i) => i,
             None => {
-                let index = self.assets.len();
-                self.post_balances[index] += amount as u128;
                 self.assets.insert(asset);
-                self.outputs.push((index as u32, amount));
+                self.assets.len() - 1
             }
+        };
+
+        // Each output atom must be one denomination, so an amount becomes
+        // one atom for each bit that is set.
+        self.post_balances[index] += amount as u128;
+        for part in split_amount(amount) {
+            self.outputs.push((index as u32, part));
         }
 
         self
@@ -149,8 +152,8 @@ mod tests {
         delegate: PublicKey,
         nonce: Hash,
         signature: Signature,
-        #[strategy(1u64..=500_000)] amount: u64,
-        #[strategy(proptest::collection::vec(1u64..=500_000, 1..=4))]
+        #[strategy((0u32..=16).prop_map(|d| 1u64 << d))] amount: u64,
+        #[strategy(proptest::collection::vec(1u64..=500_000, 1..=2))]
         split_weights: Vec<u64>,
     ) {
         let note = Note {
@@ -180,6 +183,7 @@ mod tests {
 
         let refresh = builder.build().unwrap();
         prop_assert!(refresh.verify().is_ok());
+        prop_assert!(refresh.atoms.iter().all(|a| a.amount.is_power_of_two()));
     }
 
     #[proptest]
@@ -189,7 +193,7 @@ mod tests {
         delegate: PublicKey,
         nonce: Hash,
         signature: Signature,
-        #[strategy(2u64..=500_000)] amount: u64,
+        #[strategy((1u32..=16).prop_map(|d| 1u64 << d))] amount: u64,
     ) {
         let note = Note {
             amount,
@@ -221,9 +225,12 @@ mod tests {
         policy_id: PolicyId,
         asset_name: AssetName,
         delegate: PublicKey,
-        #[strategy(proptest::collection::vec(1u64..=100_000, 2..=4))]
+        #[strategy(proptest::collection::vec(
+            (0u32..=12).prop_map(|d| 1u64 << d),
+            2..=4,
+        ))]
         input_amounts: Vec<u64>,
-        #[strategy(proptest::collection::vec(1u64..=100_000, 1..=4))]
+        #[strategy(proptest::collection::vec(1u64..=100_000, 1..=2))]
         split_weights: Vec<u64>,
     ) {
         let total_input: u64 = input_amounts.iter().sum();
@@ -254,16 +261,19 @@ mod tests {
             builder = builder.output(policy_id, asset_name, out_amount);
         }
 
+        let output_atoms: usize =
+            output_amounts.iter().map(|a| a.count_ones() as usize).sum();
+
         prop_assert_eq!(builder.input_count(), input_amounts.len());
-        prop_assert_eq!(builder.output_count(), output_amounts.len());
+        prop_assert_eq!(builder.output_count(), output_atoms);
 
         let refresh = builder.build().unwrap();
         prop_assert!(refresh.verify().is_ok());
 
-        // Verify the refresh has the right atom count
+        // Each output amount becomes one atom for each of its denominations.
         prop_assert_eq!(
             refresh.atoms.len(),
-            input_amounts.len() + output_amounts.len()
+            input_amounts.len() + output_atoms
         );
     }
 }

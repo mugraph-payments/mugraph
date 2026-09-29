@@ -3,11 +3,8 @@ use std::{collections::HashMap, time::Duration};
 use color_eyre::eyre::{Result, eyre};
 use mugraph_core::{
     builder::RefreshBuilder,
-    crypto,
-    types::{
-        Asset, BlindSignature, DleqProofWithBlinding, Hash, Note, PublicKey,
-        Refresh,
-    },
+    keyset,
+    types::{Asset, BlindSignature, Note, OutputSecret, PublicKey, Refresh},
 };
 use rand::{Rng, rngs::StdRng};
 use tokio::time::{MissedTickBehavior, interval};
@@ -36,9 +33,9 @@ pub async fn bootstrap_wallets(
         for asset in assets.iter() {
             for _ in 0..notes_per_wallet {
                 let amount = rng.random_range(amount_range.0..=amount_range.1);
-                let note = node
+                let notes = node
                     .client
-                    .emit(asset.policy_id, asset.asset_name, amount)
+                    .emit_amount(asset.policy_id, asset.asset_name, amount)
                     .await?;
                 state.log(format!(
                     "emit node={} wallet={} asset={} amount={amount}",
@@ -52,7 +49,7 @@ pub async fn bootstrap_wallets(
                     policy_id: asset.policy_id,
                     asset_name: asset.asset_name,
                 };
-                w.notes.entry(key).or_default().push(note);
+                w.notes.entry(key).or_default().extend(notes);
             }
         }
     }
@@ -88,78 +85,51 @@ pub fn build_refresh(
     asset: Asset,
     input_note: Note,
     amount: u64,
-) -> Result<(Refresh, Vec<usize>)> {
+    rng: &mut StdRng,
+) -> Result<(Refresh, Vec<usize>, Vec<OutputSecret>)> {
     let mut builder = RefreshBuilder::new().input(input_note.clone()).output(
         asset.policy_id,
         asset.asset_name,
         amount,
     );
 
-    let mut owners = vec![output_owner];
+    // The builder makes one output atom for each denomination.
+    let mut owners = vec![output_owner; amount.count_ones() as usize];
 
     if input_note.amount > amount {
-        builder = builder.output(
-            asset.policy_id,
-            asset.asset_name,
-            input_note.amount - amount,
-        );
-        owners.push(input_owner);
+        let change = input_note.amount - amount;
+        builder = builder.output(asset.policy_id, asset.asset_name, change);
+        owners.extend(vec![input_owner; change.count_ones() as usize]);
     }
 
-    Ok((builder.build()?, owners))
+    let mut refresh = builder.build()?;
+    let secrets = refresh.blind_outputs(rng);
+
+    Ok((refresh, owners, secrets))
 }
 
 pub fn materialize_outputs(
     refresh: &Refresh,
     outputs: Vec<BlindSignature>,
     owners: &[usize],
-    delegate: PublicKey,
+    secrets: &[OutputSecret],
+    keyset: &[PublicKey],
 ) -> Result<Vec<(usize, Note)>> {
-    let mut created = Vec::new();
-    let mut output_iter = outputs.into_iter();
-    for (atom_idx, atom) in refresh.atoms.iter().enumerate() {
-        if refresh.is_input(atom_idx) {
-            continue;
-        }
+    if outputs.len() != secrets.len() || owners.len() != secrets.len() {
+        return Err(eyre!(
+            "expected {} outputs and owners, got {} outputs and {} owners",
+            secrets.len(),
+            outputs.len(),
+            owners.len()
+        ));
+    }
 
-        let signature = output_iter.next().ok_or_else(|| {
-            eyre!("missing signature for output {}", atom_idx)
-        })?;
-
-        let asset = refresh
-            .asset_ids
-            .get(atom.asset_id as usize)
-            .ok_or_else(|| eyre!("invalid asset index {}", atom.asset_id))?;
-
-        // The simulator does not blind, so B' = Y and the DLEQ proof over
-        // (Y, C) shows that C = k·Y. No other check is necessary.
-        let commitment = atom.commitment(&refresh.asset_ids);
-        let blinded_point = crypto::hash_to_curve(commitment.as_ref());
-        if !crypto::verify_dleq_signature(
-            &delegate,
-            &blinded_point,
-            &signature.signature,
-            &signature.proof,
-        )? {
-            return Err(eyre!("invalid DLEQ proof for output {}", atom_idx));
-        }
-
-        let note = Note {
-            amount: atom.amount,
-            delegate: atom.delegate,
-            policy_id: asset.policy_id,
-            asset_name: asset.asset_name,
-            nonce: atom.nonce,
-            signature: signature.signature.0,
-            dleq: Some(DleqProofWithBlinding {
-                proof: signature.proof,
-                blinding_factor: Hash::zero(),
-            }),
-        };
-
-        let owner = owners
-            .get(created.len())
-            .ok_or_else(|| eyre!("missing owner mapping"))?;
+    let mut created = Vec::with_capacity(outputs.len());
+    for ((secret, signature), owner) in secrets.iter().zip(&outputs).zip(owners)
+    {
+        let amount = refresh.atoms[secret.atom_index].amount;
+        let public_key = keyset::keyset_public_key(keyset, amount)?;
+        let note = refresh.unblind_output(secret, signature, &public_key)?;
         created.push((*owner, note));
     }
 
@@ -187,9 +157,9 @@ async fn cross_node_transfer(
     receiver_id: usize,
 ) -> std::result::Result<CrossNodeResult, CrossNodeError> {
     // Emit the transfer amount on the destination node
-    let receiver_note = dest_node
+    let receiver_notes = dest_node
         .client
-        .emit(asset.policy_id, asset.asset_name, spend_amount)
+        .emit_amount(asset.policy_id, asset.asset_name, spend_amount)
         .await
         .map_err(|e| CrossNodeError {
             reason: format!("destination emit failed: {e}"),
@@ -198,28 +168,29 @@ async fn cross_node_transfer(
 
     // If there's change, also emit it on the destination node to keep atomicity.
     // The change note will be signed by the destination delegate.
-    let change_note = if input_note.amount > spend_amount {
+    let change_notes = if input_note.amount > spend_amount {
         let change_amount = input_note.amount - spend_amount;
-        Some(
-            dest_node
-                .client
-                .emit(asset.policy_id, asset.asset_name, change_amount)
-                .await
-                .map_err(|e| CrossNodeError {
-                    reason: format!(
-                        "change emit failed after receiver note minted: {e}"
-                    ),
-                    // The receiver note was already minted — include it for recovery
-                    recovered_notes: vec![(receiver_id, receiver_note.clone())],
-                })?,
-        )
+        dest_node
+            .client
+            .emit_amount(asset.policy_id, asset.asset_name, change_amount)
+            .await
+            .map_err(|e| CrossNodeError {
+                reason: format!(
+                    "change emit failed after receiver note minted: {e}"
+                ),
+                // The receiver notes were already minted — include them for recovery
+                recovered_notes: receiver_notes
+                    .iter()
+                    .map(|note| (receiver_id, note.clone()))
+                    .collect(),
+            })?
     } else {
-        None
+        vec![]
     };
 
     Ok(CrossNodeResult {
-        receiver_note,
-        change_note,
+        receiver_notes,
+        change_notes,
     })
 }
 
@@ -346,7 +317,8 @@ fn handle_same_node_completion(
             &pending.refresh,
             outputs,
             &pending.owners,
-            pending.delegate,
+            &pending.secrets,
+            &pending.keyset,
         ) {
             Ok(notes) => {
                 complete_same_node_transfer(
@@ -419,26 +391,28 @@ fn handle_cross_node_completion(
         Ok(xnode_result) => {
             throughput.record_ok();
 
-            let recv_key = Asset {
-                policy_id: xnode_result.receiver_note.policy_id,
-                asset_name: xnode_result.receiver_note.asset_name,
-            };
-            state.wallets[receiver_id]
-                .notes
-                .entry(recv_key)
-                .or_default()
-                .push(xnode_result.receiver_note);
+            for note in xnode_result.receiver_notes {
+                let key = Asset {
+                    policy_id: note.policy_id,
+                    asset_name: note.asset_name,
+                };
+                state.wallets[receiver_id]
+                    .notes
+                    .entry(key)
+                    .or_default()
+                    .push(note);
+            }
 
-            if let Some(change_note) = xnode_result.change_note {
-                let change_key = Asset {
-                    policy_id: change_note.policy_id,
-                    asset_name: change_note.asset_name,
+            for note in xnode_result.change_notes {
+                let key = Asset {
+                    policy_id: note.policy_id,
+                    asset_name: note.asset_name,
                 };
                 state.wallets[sender_id]
                     .notes
-                    .entry(change_key)
+                    .entry(key)
                     .or_default()
-                    .push(change_note);
+                    .push(note);
             }
 
             state.wallets[sender_id].sent += 1;
@@ -603,12 +577,13 @@ fn handle_simulation_tick(
         return false;
     }
 
-    let (refresh, owners) = match build_refresh(
+    let (refresh, owners, secrets) = match build_refresh(
         sender_id,
         receiver_id,
         asset,
         input_note.clone(),
         spend_amount,
+        rng,
     ) {
         Ok(res) => res,
         Err(e) => {
@@ -653,7 +628,8 @@ fn handle_simulation_tick(
         spend_amount,
         refresh,
         owners,
-        delegate: note_delegate,
+        secrets,
+        keyset: node.keysets.get(&asset).cloned().unwrap_or_default(),
     };
 
     state.inflight += 1;
@@ -832,7 +808,7 @@ pub async fn simulation_owner_loop(
 mod tests {
     use mugraph_core::types::{AssetName, Hash, PolicyId, Signature};
     use proptest::prelude::*;
-    use rand::SeedableRng;
+    use rand::{SeedableRng, rngs::StdRng};
 
     use super::*;
 
@@ -940,7 +916,7 @@ mod tests {
             asset_name: AssetName::empty(),
         };
         let input_note = Note {
-            amount: 50,
+            amount: 64,
             delegate: PublicKey([1u8; 32]),
             policy_id: asset.policy_id,
             asset_name: asset.asset_name,
@@ -949,7 +925,7 @@ mod tests {
             dleq: None,
         };
         let receiver_note = Note {
-            amount: 50,
+            amount: 64,
             delegate: PublicKey([2u8; 32]),
             policy_id: asset.policy_id,
             asset_name: asset.asset_name,
@@ -958,19 +934,22 @@ mod tests {
             dleq: None,
         };
 
-        let (refresh, owners) =
-            build_refresh(0, 1, asset, input_note.clone(), 50).unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
+        let (refresh, owners, secrets) =
+            build_refresh(0, 1, asset, input_note.clone(), 64, &mut rng)
+                .unwrap();
         let pending = PendingTx {
             id: 7,
             sender_id: 0,
             receiver_id: 1,
             asset,
-            input_amount: 50,
+            input_amount: 64,
             input_note: input_note.clone(),
-            spend_amount: 50,
+            spend_amount: 64,
             refresh,
             owners,
-            delegate: input_note.delegate,
+            secrets,
+            keyset: vec![],
         };
 
         let mut state = AppState {
@@ -1007,7 +986,7 @@ mod tests {
         assert_eq!(state.wallets[0].sent, 1);
         assert_eq!(state.wallets[1].received, 1);
         assert_eq!(state.total_ok, 1);
-        assert_eq!(state.wallets[1].notes.get(&asset).unwrap()[0].amount, 50);
+        assert_eq!(state.wallets[1].notes.get(&asset).unwrap()[0].amount, 64);
         assert_eq!(inflight_amounts.get(&asset).copied().unwrap_or(0), 0);
     }
 
@@ -1680,23 +1659,27 @@ mod tests {
 
         #[test]
         fn prop_build_refresh_conserves_total_amount(
-            (input_amount, spend_amount) in (1u64..=1_000_000)
+            (input_amount, spend_amount) in (0u32..=20)
+                .prop_map(|d| 1u64 << d)
                 .prop_flat_map(|input_amount| (Just(input_amount), 1u64..=input_amount)),
             sender in 0usize..16,
             receiver in 0usize..16,
+            seed: u64,
         ) {
+            let mut rng = StdRng::seed_from_u64(seed);
             let asset = Asset {
                 policy_id: PolicyId([7u8; 28]),
                 asset_name: AssetName::empty(),
             };
             let input_note = note_with_amount(input_amount);
 
-            let (refresh, owners) = build_refresh(
+            let (refresh, owners, secrets) = build_refresh(
                 sender,
                 receiver,
                 asset,
                 input_note,
                 spend_amount,
+                &mut rng,
             ).unwrap();
 
             let output_total: u64 = refresh
@@ -1709,32 +1692,36 @@ mod tests {
 
             prop_assert_eq!(output_total, input_amount);
 
-            if spend_amount < input_amount {
-                prop_assert_eq!(owners.len(), 2);
-                prop_assert_eq!(owners[0], receiver);
-                prop_assert_eq!(owners[1], sender);
-            } else {
-                prop_assert_eq!(owners.len(), 1);
-                prop_assert_eq!(owners[0], receiver);
-            }
+            // One output atom for each denomination: the receiver's
+            // first, then the sender's change.
+            let change = input_amount - spend_amount;
+            let to_receiver = spend_amount.count_ones() as usize;
+            prop_assert_eq!(owners.len(), to_receiver + change.count_ones() as usize);
+            prop_assert_eq!(secrets.len(), owners.len());
+            prop_assert!(owners[..to_receiver].iter().all(|&o| o == receiver));
+            prop_assert!(owners[to_receiver..].iter().all(|&o| o == sender));
         }
 
         #[test]
         fn prop_build_refresh_outputs_never_exceed_input(
-            (input_amount, spend_amount) in (1u64..=500_000)
+            (input_amount, spend_amount) in (0u32..=18)
+                .prop_map(|d| 1u64 << d)
                 .prop_flat_map(|input_amount| (Just(input_amount), 1u64..=input_amount)),
+            seed: u64,
         ) {
+            let mut rng = StdRng::seed_from_u64(seed);
             let asset = Asset {
                 policy_id: PolicyId([7u8; 28]),
                 asset_name: AssetName::empty(),
             };
 
-            let (refresh, _owners) = build_refresh(
+            let (refresh, _owners, _secrets) = build_refresh(
                 1,
                 2,
                 asset,
                 note_with_amount(input_amount),
                 spend_amount,
+                &mut rng,
             ).unwrap();
 
             for (idx, atom) in refresh.atoms.iter().enumerate() {
