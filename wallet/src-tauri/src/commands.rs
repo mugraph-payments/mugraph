@@ -67,6 +67,20 @@ pub struct AppState {
     pub provider: RwLock<Option<CardanoProvider>>,
 }
 
+impl AppState {
+    /// Adds the witness for a funding UTxO: a UTxO at the address of
+    /// `cardano_payment_vk`.
+    pub fn sign_funding_tx(
+        &self,
+        tx_cbor: &[u8],
+        tx_hash: &[u8; 32],
+    ) -> Result<Vec<u8>, String> {
+        let key =
+            ed25519_dalek::SigningKey::from_bytes(&self.cardano_payment_sk);
+        crate::cardano_tx::attach_user_witness(tx_cbor, tx_hash, &key)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupConfig {
     pub label: String,
@@ -991,12 +1005,9 @@ pub async fn deposit_impl(
     )
     .map_err(|e| format!("build deposit tx: {e}"))?;
 
-    let witnessed_cbor = crate::cardano_tx::attach_user_witness(
-        &tx_cbor,
-        &tx_hash_bytes,
-        &state.ed25519_key,
-    )
-    .map_err(|e| format!("witness deposit tx: {e}"))?;
+    let witnessed_cbor = state
+        .sign_funding_tx(&tx_cbor, &tx_hash_bytes)
+        .map_err(|e| format!("witness deposit tx: {e}"))?;
 
     let submitted_tx_hash = {
         let provider_guard = state.provider.read().await;
@@ -1425,6 +1436,47 @@ pub async fn discard_quarantined(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A funding UTxO sits at the address of `cardano_payment_vk`, so its
+    /// witness must come from that key, not from the CIP-8 key.
+    #[test]
+    fn funding_witness_matches_the_funding_address() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let state = crate::init_app_state_at(dir.path());
+
+        let funding = crate::cardano_tx::derive_address(
+            &state.cardano_payment_vk,
+            "preprod",
+        )
+        .unwrap();
+        let funding_key_hash =
+            whisky_csl::csl::EnterpriseAddress::from_address(
+                &whisky_csl::csl::Address::from_bech32(&funding).unwrap(),
+            )
+            .unwrap()
+            .payment_cred()
+            .to_keyhash()
+            .unwrap();
+
+        let (tx_cbor, tx_hash) = crate::cardano_tx::build_withdraw_tx(
+            &crate::cardano_tx::WithdrawTxParams {
+                script_inputs: &[("a".repeat(64), 0)],
+                total_input_lovelace: 5_200_000,
+                destination_address: &funding,
+                withdraw_amount_lovelace: 5_000_000,
+                script_address: &funding,
+                fee_lovelace: 200_000,
+                node_pubkey_hash: &[2u8; 28],
+                user_pubkey_hash: &[1u8; 28],
+            },
+        )
+        .unwrap();
+        let signed = state.sign_funding_tx(&tx_cbor, &tx_hash).unwrap();
+
+        let tx = whisky_csl::csl::Transaction::from_bytes(signed).unwrap();
+        let witness = tx.witness_set().vkeys().unwrap().get(0);
+        assert_eq!(witness.vkey().public_key().hash(), funding_key_hash);
+    }
 
     #[test]
     fn setup_config_serializes() {
