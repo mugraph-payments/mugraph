@@ -230,6 +230,18 @@ pub async fn rpc(
                 cardano_payment_vk: payment_vk,
             })
         }
+        Request::Keys {
+            policy_id,
+            asset_name,
+        } => Json(Response::Keys {
+            keys: mugraph_core::keyset::keyset(
+                &ctx.keypair.secret_key,
+                &mugraph_core::types::Asset {
+                    policy_id,
+                    asset_name,
+                },
+            ),
+        }),
         Request::Emit {
             policy_id,
             asset_name,
@@ -488,6 +500,46 @@ mod tests {
                 assert_eq!(delegate_pk, expected_delegate_pk);
                 assert_eq!(cardano_script_address, None);
                 assert_eq!(cardano_payment_vk, None);
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn rpc_keys_returns_the_denomination_keyset() {
+        let config = unseeded_dev_config();
+        let keypair = config.keypair().unwrap();
+        let app = router(config, keypair).await.unwrap();
+        let asset = mugraph_core::types::Asset {
+            policy_id: mugraph_core::types::PolicyId([3u8; 28]),
+            asset_name: mugraph_core::types::AssetName::new(b"USD").unwrap(),
+        };
+
+        let response = app
+            .oneshot(
+                HttpRequest::post("/rpc")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&Request::Keys {
+                            policy_id: asset.policy_id,
+                            asset_name: asset.asset_name,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let decoded: Response = serde_json::from_slice(&body).unwrap();
+
+        match decoded {
+            Response::Keys { keys } => {
+                assert_eq!(
+                    keys,
+                    mugraph_core::keyset::keyset(&keypair.secret_key, &asset)
+                );
             }
             other => panic!("unexpected response: {other:?}"),
         }

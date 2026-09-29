@@ -22,6 +22,11 @@ pub enum Response {
         #[serde(default)]
         cardano_payment_vk: Option<String>,
     },
+    #[serde(rename = "keys")]
+    Keys {
+        /// The key at index `d` signs notes of amount `2^d`.
+        keys: Vec<PublicKey>,
+    },
     #[serde(rename = "emit")]
     Emit(Box<Note>),
     #[serde(rename = "deposit")]

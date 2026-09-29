@@ -172,7 +172,10 @@ pub fn verify_note_proof(
     verify_dleq(public_key, &blinded_point, &signed_point, &proof.proof)
 }
 
-fn hash_to_scalar_with_domain(domain: &[u8], data: &[&[u8]]) -> Scalar {
+pub(crate) fn hash_to_scalar_with_domain(
+    domain: &[u8],
+    data: &[&[u8]],
+) -> Scalar {
     let mut hasher = Hasher::new();
 
     hasher.update(domain);

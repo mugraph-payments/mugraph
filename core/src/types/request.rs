@@ -20,6 +20,12 @@ pub enum Request {
     },
     #[serde(rename = "public_key")]
     Info,
+    /// Asks for the 64 denomination public keys of one asset.
+    #[serde(rename = "keys")]
+    Keys {
+        policy_id: PolicyId,
+        asset_name: AssetName,
+    },
     #[serde(rename = "deposit")]
     Deposit(DepositRequest),
     #[serde(rename = "withdraw")]
