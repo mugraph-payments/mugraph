@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Two-wallet demo orchestrator. Boots a mock Cardano chain and one
 # mugraph node, then guides the operator through launching wallet A
-# and wallet B with isolated data dirs. See docs/specs/demo.md.
+# and wallet B with isolated data dirs. See docs/implementation.md, section 6.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SESSION="mugraph-demo"

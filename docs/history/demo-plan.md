@@ -35,15 +35,15 @@ of them call, so neither provider client changes — only the URL.
 
 ### 2.1 Blockfrost-compatible endpoints
 
-| Endpoint                            | Caller | Purpose                                            |
-| ----------------------------------- | ------ | -------------------------------------------------- |
-| `GET /blocks/latest`                | both   | tip for confirmation depth + observation           |
-| `GET /addresses/{addr}/utxos`       | wallet | list spendable UTxOs at script/funding address     |
-| `GET /txs/{tx_hash}`                | both   | tx info → block_height (confirmation tracking)     |
-| `GET /txs/{tx_hash}/utxos`          | node   | resolve a referenced deposit UTxO                  |
-| `POST /tx/submit`                   | both   | accept a CBOR tx, mint outputs, consume inputs     |
-| `GET /epochs/latest/parameters`     | node   | `ProtocolParams` for fee calculation               |
-| `GET /scripts/datum/{hash}/cbor`    | node   | inline-datum lookup when datum is referenced by hash |
+| Endpoint                         | Caller | Purpose                                              |
+| -------------------------------- | ------ | ---------------------------------------------------- |
+| `GET /blocks/latest`             | both   | tip for confirmation depth + observation             |
+| `GET /addresses/{addr}/utxos`    | wallet | list spendable UTxOs at script/funding address       |
+| `GET /txs/{tx_hash}`             | both   | tx info → block_height (confirmation tracking)       |
+| `GET /txs/{tx_hash}/utxos`       | node   | resolve a referenced deposit UTxO                    |
+| `POST /tx/submit`                | both   | accept a CBOR tx, mint outputs, consume inputs       |
+| `GET /epochs/latest/parameters`  | node   | `ProtocolParams` for fee calculation                 |
+| `GET /scripts/datum/{hash}/cbor` | node   | inline-datum lookup when datum is referenced by hash |
 
 Authentication: ignore the `project_id` header. Any value is accepted.
 
@@ -51,13 +51,13 @@ Authentication: ignore the `project_id` header. Any value is accepted.
 
 Out of band, no Blockfrost analog. Used by the demo runner.
 
-| Endpoint                   | Body                              | Purpose                                          |
-| -------------------------- | --------------------------------- | ------------------------------------------------ |
-| `POST /admin/faucet`       | `{address, lovelace}`             | mint a UTxO at an address                        |
-| `POST /admin/mine`         | `{count}`                         | advance tip by N blocks                          |
-| `POST /admin/auto_mine`    | `{on, interval_ms?}`              | toggle auto-mine on every submit / on a ticker  |
-| `GET /admin/state`         | —                                 | dump tip, UTxO set, tx history (HUD)             |
-| `POST /admin/reset`        | —                                 | wipe state                                       |
+| Endpoint                | Body                  | Purpose                                        |
+| ----------------------- | --------------------- | ---------------------------------------------- |
+| `POST /admin/faucet`    | `{address, lovelace}` | mint a UTxO at an address                      |
+| `POST /admin/mine`      | `{count}`             | advance tip by N blocks                        |
+| `POST /admin/auto_mine` | `{on, interval_ms?}`  | toggle auto-mine on every submit / on a ticker |
+| `GET /admin/state`      | —                     | dump tip, UTxO set, tx history (HUD)           |
+| `POST /admin/reset`     | —                     | wipe state                                     |
 
 ## 3. Mock chain internals
 
@@ -72,8 +72,8 @@ Out of band, no Blockfrost analog. Used by the demo runner.
 - `submit_tx`: parse with `pallas-primitives` (already in workspace via the
   node crate). Validate inputs exist + unspent and basic value preservation.
   Skip Plutus script execution. Apply: consume inputs, append outputs (record
-  inline datums against the output), record tx, include in the *current
-  pending block*.
+  inline datums against the output), record tx, include in the _current
+  pending block_.
 - Block model: pending block accumulates txs; auto-mined either after each
   submit or on a ticker (mode chosen at startup). Tip increments on mine.
   `tx.block_height` is set when the block is mined — exactly what
@@ -99,7 +99,7 @@ env var so two wallet instances can run side-by-side on one machine.
 ### 4.2 Deposit command builds and submits the on-chain tx
 
 Today `wallet/src-tauri/src/commands.rs::deposit` takes
-`utxo_tx_hash`/`utxo_index` of a UTxO that is *already* at the script address
+`utxo_tx_hash`/`utxo_index` of a UTxO that is _already_ at the script address
 with the right datum, and only runs the off-chain claim. The product flow
 described in `docs/wallet-integration.md` §2.2 Stage A says the wallet should
 build the on-chain deposit tx itself. `cardano_tx::build_deposit_tx` is
@@ -113,7 +113,7 @@ Wire it:
 3. Wallet calls `build_deposit_tx` to produce the deposit Cardano tx.
 4. Wallet attaches the user Ed25519 witness (`attach_user_witness`).
 5. Wallet submits via `CardanoProvider::submit_tx`.
-6. Wallet calls the node's `Request::Deposit` with the *new* `tx_hash` /
+6. Wallet calls the node's `Request::Deposit` with the _new_ `tx_hash` /
    `index = 0` (the deposit output is always index 0 of the new tx).
 7. Existing claim logic runs unchanged.
 
