@@ -67,6 +67,32 @@ mod tests {
         );
     }
 
+    /// A vault address must be an enterprise address with a script
+    /// payment credential (type 7). A reward address (type 15) can not
+    /// hold funds in a transaction output.
+    #[test]
+    fn build_script_address_is_an_enterprise_script_address() {
+        use whisky_csl::csl;
+
+        let script_hash = [0x5au8; 28];
+        for (network, network_id) in [("preprod", 0u8), ("mainnet", 1u8)] {
+            let bech32 = build_script_address(&script_hash, network).unwrap();
+            let address = csl::Address::from_bech32(&bech32).unwrap();
+
+            assert_eq!(address.network_id().unwrap(), network_id);
+            let enterprise = csl::EnterpriseAddress::from_address(&address)
+                .expect("vault address must be an enterprise address");
+            assert_eq!(
+                enterprise
+                    .payment_cred()
+                    .to_scripthash()
+                    .unwrap()
+                    .to_bytes(),
+                script_hash.to_vec()
+            );
+        }
+    }
+
     #[test]
     fn build_script_address_rejects_unknown_network() {
         let err = build_script_address(&[0u8; 28], "staging").unwrap_err();

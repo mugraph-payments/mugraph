@@ -15,8 +15,10 @@ pub fn compute_script_hash(cbor: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Build script address from hash and network
-/// Uses Shelley address format directly instead of bech32
+/// Build the vault address from the script hash and network.
+///
+/// This is a Shelley enterprise address with a script payment credential
+/// and no stake part: address type 7, so the header is `0x70 | network`.
 pub fn build_script_address(
     script_hash: &[u8],
     network: &str,
@@ -24,7 +26,7 @@ pub fn build_script_address(
     let network = CardanoNetwork::parse(network)
         .map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
 
-    let header: u8 = 0xF0 | network.address_network_id();
+    let header: u8 = 0x70 | network.address_network_id();
     let mut address_bytes = vec![header];
     address_bytes.extend_from_slice(script_hash);
 
