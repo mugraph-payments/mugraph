@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "mock-chain"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "blake2",
@@ -3244,7 +3244,7 @@ dependencies = [
 
 [[package]]
 name = "mugraph-core"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "bincode",
  "blake3",
@@ -3264,7 +3264,7 @@ dependencies = [
 
 [[package]]
 name = "mugraph-node"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "bech32 0.11.1",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "mugraph-simulator"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "clap",
  "color-eyre",
@@ -3320,7 +3320,7 @@ dependencies = [
 
 [[package]]
 name = "mugraph-wallet"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "blake2",
