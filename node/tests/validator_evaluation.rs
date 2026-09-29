@@ -556,11 +556,11 @@ fn build_multi_spend_tx(
 }
 
 // ---------------------------------------------------------------------------
-// Test #1: Happy path - valid user signature
+// Test #1: Happy path - valid node signature
 // ---------------------------------------------------------------------------
 
 #[test]
-fn eval_spend_with_valid_user_signature() {
+fn eval_spend_with_valid_node_signature() {
     let script_cbor = load_validator_cbor();
     let script_hash = compute_script_hash(&script_cbor);
     let cost_models = load_cost_models();
@@ -578,14 +578,14 @@ fn eval_spend_with_valid_user_signature() {
         &script_cbor,
         &script_hash,
         datum,
-        vec![Hash::from(user_hash)], // user is required signer
+        vec![Hash::from(node_hash)], // node is required signer
         Hash::from([0x01; 32]),
         0,
         5_000_000,
     );
 
     let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models)
-        .expect("Script evaluation failed for valid user signature");
+        .expect("Script evaluation failed for valid node signature");
 
     assert_eq!(redeemers.len(), 1, "Expected exactly one redeemer result");
     let r = &redeemers[0];
@@ -593,8 +593,36 @@ fn eval_spend_with_valid_user_signature() {
     assert!(r.ex_units.mem > 0, "Memory units should be nonzero");
 
     println!(
-        "eval_spend_with_valid_user_signature: CPU={}, Mem={}",
+        "eval_spend_with_valid_node_signature: CPU={}, Mem={}",
         r.ex_units.steps, r.ex_units.mem
+    );
+}
+
+/// The depositor must not be able to spend a vault UTxO alone: they
+/// could spend their notes and then take the deposit back.
+#[test]
+fn eval_spend_user_signature_alone_is_rejected() {
+    let script_cbor = load_validator_cbor();
+    let script_hash = compute_script_hash(&script_cbor);
+    let cost_models = load_cost_models();
+
+    let user_hash = blake2b_224(&[5u8; 32]);
+    let node_hash = blake2b_224(&[6u8; 32]);
+    let datum = build_deposit_datum(&user_hash, &node_hash, &[0xFFu8; 32]);
+
+    let (tx_bytes, utxos) = build_spend_tx(
+        &script_cbor,
+        &script_hash,
+        datum,
+        vec![Hash::from(user_hash)],
+        Hash::from([0x0B; 32]),
+        0,
+        5_000_000,
+    );
+
+    assert!(
+        evaluate_tx(&tx_bytes, &utxos, &cost_models).is_err(),
+        "the depositor alone must not spend a vault UTxO"
     );
 }
 
@@ -626,7 +654,7 @@ fn eval_spend_missing_signer() {
     let result = evaluate_tx(&tx_bytes, &utxos, &cost_models);
     assert!(
         result.is_err(),
-        "Expected script evaluation to fail when user signature is missing"
+        "Expected script evaluation to fail when the node signature is missing"
     );
 }
 
@@ -715,7 +743,7 @@ fn eval_spend_with_multiple_inputs() {
         &script_cbor,
         &script_hash,
         datums,
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         5_000_000,
     );
 
@@ -765,7 +793,7 @@ fn eval_spend_minimal_tx() {
         &script_cbor,
         &script_hash,
         datum,
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         Hash::from([0x05; 32]),
         0,
         3_000_000,
@@ -895,7 +923,7 @@ fn eval_budget_single_spend() {
         &script_cbor,
         &script_hash,
         datum,
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         Hash::from([0x08; 32]),
         0,
         5_000_000,
@@ -941,7 +969,7 @@ fn eval_budget_three_inputs() {
         &script_cbor,
         &script_hash,
         datums,
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         5_000_000,
     );
 
@@ -1017,7 +1045,7 @@ fn eval_spend_with_native_tokens() {
         &script_cbor,
         &script_hash,
         Some(datum),
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         Hash::from([0x10; 32]),
         0,
         input_value,
@@ -1179,12 +1207,12 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     // --- Phase 3: Withdrawal (on-chain spend) ---
     // The user withdraws the original 10 ADA UTxO from the script address.
     // Regardless of how many off-chain transfers happened, the on-chain UTxO
-    // is unchanged — the validator just checks the user's signature.
+    // is unchanged — the validator just checks the node's signature.
     let (tx_bytes, utxos) = build_spend_tx(
         &script_cbor,
         &script_hash,
         datum,
-        vec![Hash::from(user_hash)],
+        vec![Hash::from(node_hash)],
         Hash::from([0x20; 32]),
         0,
         deposit_lovelace,
@@ -1399,7 +1427,7 @@ fn eval_lifecycle_batch_withdrawal() {
             script_data_hash: None,
             collateral: NonEmptySet::from_vec(vec![collateral_input]),
             required_signers: NonEmptySet::from_vec(vec![Hash::from(
-                user_hash,
+                node_hash,
             )]),
             network_id: None,
             collateral_return: None,
@@ -1551,7 +1579,7 @@ fn eval_spend_with_multiple_signatories() {
     let other_hash = blake2b_224(&[3u8; 32]);
     let datum = build_deposit_datum(&user_hash, &node_hash, &[0u8; 32]);
 
-    // Transaction has multiple required signers — the correct user is among them
+    // Transaction has multiple required signers — the node is among them
     let (tx_bytes, utxos) = build_spend_tx(
         &script_cbor,
         &script_hash,
@@ -1567,7 +1595,7 @@ fn eval_spend_with_multiple_signatories() {
     );
 
     let redeemers = evaluate_tx(&tx_bytes, &utxos, &cost_models)
-        .expect("Script evaluation should succeed when correct user is among multiple signers");
+        .expect("Script evaluation should succeed when the node is among multiple signers");
 
     assert_eq!(redeemers.len(), 1);
     assert!(redeemers[0].ex_units.steps > 0);

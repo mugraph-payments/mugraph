@@ -45,21 +45,21 @@ fn test_datum() -> DepositDatum {
 
 
 // ---------------------------------------------------------------------------
-// 1. spend_valid_user_signature
+// 1. spend_valid_node_signature
 // ---------------------------------------------------------------------------
-test spend_valid_user_signature() {
+test spend_valid_node_signature() {
   let tx =
     mocktail_tx()
-      |> required_signer_hash(True, test_user_key_hash())
+      |> required_signer_hash(True, test_node_key_hash())
       |> complete()
 
   deposit_logic.validate_spend(Some(test_datum()), tx) == True
 }
 
 // ---------------------------------------------------------------------------
-// 2. spend_missing_user_signature
+// 2. spend_missing_signatures
 // ---------------------------------------------------------------------------
-test spend_missing_user_signature() {
+test spend_missing_signatures() {
   let tx =
     mocktail_tx()
       |> complete()
@@ -68,9 +68,25 @@ test spend_missing_user_signature() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. spend_wrong_user_signature
+// 3. spend_user_signature_alone_is_rejected
+//
+// The node holds the funds for the note holders. If the depositor could
+// spend the deposit alone, they could spend their notes off-chain and
+// then take the deposit back on-chain.
 // ---------------------------------------------------------------------------
-test spend_wrong_user_signature() {
+test spend_user_signature_alone_is_rejected() {
+  let tx =
+    mocktail_tx()
+      |> required_signer_hash(True, test_user_key_hash())
+      |> complete()
+
+  deposit_logic.validate_spend(Some(test_datum()), tx) == False
+}
+
+// ---------------------------------------------------------------------------
+// 4. spend_wrong_node_signature
+// ---------------------------------------------------------------------------
+test spend_wrong_node_signature() {
   let tx =
     mocktail_tx()
       |> required_signer_hash(True, test_wrong_user_key_hash())
@@ -80,19 +96,19 @@ test spend_wrong_user_signature() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. spend_missing_datum
+// 5. spend_missing_datum
 // ---------------------------------------------------------------------------
 test spend_missing_datum() {
   let tx =
     mocktail_tx()
-      |> required_signer_hash(True, test_user_key_hash())
+      |> required_signer_hash(True, test_node_key_hash())
       |> complete()
 
   deposit_logic.validate_spend(None, tx) == False
 }
 
 // ---------------------------------------------------------------------------
-// 5. spend_short_user_hash
+// 6. spend_short_user_hash
 // ---------------------------------------------------------------------------
 test spend_short_user_hash() {
   let datum =
@@ -103,14 +119,14 @@ test spend_short_user_hash() {
     }
   let tx =
     mocktail_tx()
-      |> required_signer_hash(True, #"aabbccdd")
+      |> required_signer_hash(True, test_node_key_hash())
       |> complete()
 
   deposit_logic.validate_spend(Some(datum), tx) == False
 }
 
 // ---------------------------------------------------------------------------
-// 6. spend_short_node_hash
+// 7. spend_short_node_hash
 // ---------------------------------------------------------------------------
 test spend_short_node_hash() {
   let datum =
@@ -121,23 +137,23 @@ test spend_short_node_hash() {
     }
   let tx =
     mocktail_tx()
-      |> required_signer_hash(True, test_user_key_hash())
+      |> required_signer_hash(True, #"deadbeef")
       |> complete()
 
   deposit_logic.validate_spend(Some(datum), tx) == False
 }
 
 // ---------------------------------------------------------------------------
-// 7. spend_long_user_hash
+// 8. spend_long_node_hash
 // ---------------------------------------------------------------------------
-test spend_long_user_hash() {
+test spend_long_node_hash() {
   // 32 bytes instead of 28
   let long_hash =
     #"0102030405060708091011121314151617181920212223242526272829303132"
   let datum =
     DepositDatum {
-      user_pubkey_hash: long_hash,
-      node_pubkey_hash: test_node_key_hash(),
+      user_pubkey_hash: test_user_key_hash(),
+      node_pubkey_hash: long_hash,
       intent_hash: test_intent_hash(),
     }
   let tx =
@@ -149,7 +165,7 @@ test spend_long_user_hash() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. spend_with_multiple_signatories
+// 9. spend_with_multiple_signatories
 // ---------------------------------------------------------------------------
 test spend_with_multiple_signatories() {
   let tx =
@@ -163,7 +179,7 @@ test spend_with_multiple_signatories() {
 }
 
 // ---------------------------------------------------------------------------
-// 9. spend_with_inputs_and_outputs
+// 10. spend_with_inputs_and_outputs
 // ---------------------------------------------------------------------------
 test spend_with_inputs_and_outputs() {
   let tx =
@@ -176,14 +192,14 @@ test spend_with_inputs_and_outputs() {
           mock_pub_key_address(0, None),
         )
       |> tx_out(True, mock_pub_key_address(1, None), assets.from_lovelace(4_500_000))
-      |> required_signer_hash(True, test_user_key_hash())
+      |> required_signer_hash(True, test_node_key_hash())
       |> complete()
 
   deposit_logic.validate_spend(Some(test_datum()), tx) == True
 }
 
 // ---------------------------------------------------------------------------
-// 10. spend_empty_intent_hash
+// 11. spend_empty_intent_hash
 // ---------------------------------------------------------------------------
 test spend_empty_intent_hash() {
   let datum =
@@ -194,7 +210,7 @@ test spend_empty_intent_hash() {
     }
   let tx =
     mocktail_tx()
-      |> required_signer_hash(True, test_user_key_hash())
+      |> required_signer_hash(True, test_node_key_hash())
       |> complete()
 
   deposit_logic.validate_spend(Some(datum), tx) == True
@@ -207,7 +223,25 @@ test spend_empty_intent_hash() {
 // Every iteration derives valid 28-byte hashes via blake2b_224, so the
 // validator is always exercised (no skip-heavy predicates).
 
-test spend_fuzz_valid_signer(seed via fuzz.bytearray()) {
+test spend_fuzz_node_signer(seed via fuzz.bytearray()) {
+  let user_key = crypto.blake2b_224(seed)
+  let node_key =
+    crypto.blake2b_224(builtin.append_bytearray(#"01", seed))
+  let datum =
+    DepositDatum {
+      user_pubkey_hash: user_key,
+      node_pubkey_hash: node_key,
+      intent_hash: #"",
+    }
+  let tx =
+    mocktail_tx()
+      |> required_signer_hash(True, node_key)
+      |> complete()
+
+  deposit_logic.validate_spend(Some(datum), tx) == True
+}
+
+test spend_fuzz_user_signer_alone(seed via fuzz.bytearray()) {
   let user_key = crypto.blake2b_224(seed)
   let node_key =
     crypto.blake2b_224(builtin.append_bytearray(#"01", seed))
@@ -222,7 +256,7 @@ test spend_fuzz_valid_signer(seed via fuzz.bytearray()) {
       |> required_signer_hash(True, user_key)
       |> complete()
 
-  deposit_logic.validate_spend(Some(datum), tx) == True
+  deposit_logic.validate_spend(Some(datum), tx) == False
 }
 
 test spend_fuzz_wrong_signer(seed via fuzz.bytearray()) {
@@ -231,7 +265,7 @@ test spend_fuzz_wrong_signer(seed via fuzz.bytearray()) {
     crypto.blake2b_224(builtin.append_bytearray(#"ff", seed))
   let node_key =
     crypto.blake2b_224(builtin.append_bytearray(#"02", seed))
-  if user_key != wrong_key {
+  if node_key != wrong_key {
     let datum =
       DepositDatum {
         user_pubkey_hash: user_key,
