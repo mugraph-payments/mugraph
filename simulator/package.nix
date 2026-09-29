@@ -8,6 +8,7 @@ buildRustPackage {
   src = ./..;
 
   cargoBuildFlags = "-p mugraph-simulator";
+  cargoTestFlags = "-p mugraph-simulator";
 
   nativeBuildInputs = with pkgs; [ protobuf ];
 
