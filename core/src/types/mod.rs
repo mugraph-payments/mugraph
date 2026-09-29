@@ -4,6 +4,7 @@ mod dleq;
 mod hash;
 mod keypair;
 mod note;
+mod output;
 mod public_key;
 mod refresh;
 mod request;
@@ -13,6 +14,7 @@ mod signature;
 mod xnode;
 
 pub use self::{
-    asset::*, cardano::*, dleq::*, hash::*, keypair::*, note::*, public_key::*,
-    refresh::*, request::*, response::*, secret_key::*, signature::*, xnode::*,
+    asset::*, cardano::*, dleq::*, hash::*, keypair::*, note::*, output::*,
+    public_key::*, refresh::*, request::*, response::*, secret_key::*,
+    signature::*, xnode::*,
 };

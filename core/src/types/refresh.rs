@@ -8,8 +8,8 @@ use crate::{
     error::Error,
     keyset::is_denomination,
     types::{
-        ASSET_ID_BYTES_SIZE, Asset, BlindSignature, DleqProofWithBlinding,
-        Hash, Note, Signature, write_asset_bytes,
+        ASSET_ID_BYTES_SIZE, Asset, BlindSignature, Hash, Note, PendingNote,
+        Signature, write_asset_bytes,
     },
     utils::BitSet32,
 };
@@ -156,43 +156,19 @@ impl Refresh {
                 }
             })?;
 
-        let mut note = Note {
-            amount: atom.amount,
-            delegate: atom.delegate,
-            policy_id: asset.policy_id,
-            asset_name: asset.asset_name,
-            nonce: secret.nonce,
-            signature: Signature::default(),
-            dleq: None,
-        };
-
-        let proof = DleqProofWithBlinding {
-            proof: signature.proof,
+        PendingNote {
+            note: Note {
+                amount: atom.amount,
+                delegate: atom.delegate,
+                policy_id: asset.policy_id,
+                asset_name: asset.asset_name,
+                nonce: secret.nonce,
+                signature: Signature::default(),
+                dleq: None,
+            },
             blinding_factor: secret.blinding_factor,
-        };
-        note.signature = crypto::unblind_signature(
-            &signature.signature,
-            &secret.blinding_factor.to_scalar(),
-            public_key,
-        )?;
-
-        if !crypto::verify_note_proof(
-            public_key,
-            note.commitment().as_ref(),
-            note.signature,
-            &proof,
-        )? {
-            return Err(Error::InvalidSignature {
-                reason: format!(
-                    "Invalid DLEQ proof for output {}",
-                    secret.atom_index
-                ),
-                signature: note.signature,
-            });
         }
-
-        note.dleq = Some(proof);
-        Ok(note)
+        .finish(signature, public_key)
     }
 
     pub fn verify(&self) -> Result<(), Error> {

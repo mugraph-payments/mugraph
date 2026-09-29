@@ -930,88 +930,39 @@ pub async fn deposit_impl(
     }
 
     // Build blinded outputs (and persist their blinding factors before any
-    // network call leaves the wallet).
-    let (blinding_data, blinded_outputs) = {
-        let mut rng = rand::rng();
-        let mut data = Vec::new();
-        let mut outputs = Vec::new();
-
-        for &amount in &input.output_amounts {
-            let nonce = mugraph_core::types::Hash::random(&mut rng);
-            let temp_note = mugraph_core::types::Note {
-                amount,
-                delegate: delegate_pk,
-                policy_id: deposit_policy_id,
-                asset_name: deposit_asset_name,
-                nonce,
-                signature: mugraph_core::types::Signature::zero(),
-                dleq: None,
-            };
-            let commitment = temp_note.commitment();
-            let blinded =
-                mugraph_core::crypto::blind(&mut rng, commitment.as_ref());
-
-            state
-                .store
-                .put_blinding_factor(
-                    &input.network,
-                    &nonce,
-                    &blinded.factor.to_bytes(),
-                )
-                .map_err(|e| e.to_string())?;
-
-            data.push((
-                nonce,
-                blinded.factor,
-                blinded.point,
-                commitment,
-                amount,
-            ));
-            outputs.push(mugraph_core::types::BlindSignature {
-                signature: mugraph_core::types::Blinded(
-                    mugraph_core::types::Signature::from(blinded.point),
-                ),
-                proof: mugraph_core::types::DleqProof::default(),
-            });
-        }
-        (data, outputs)
+    // network call leaves the wallet). Each amount becomes one note for
+    // each of its denominations.
+    let deposit_asset = mugraph_core::types::Asset {
+        policy_id: deposit_policy_id,
+        asset_name: deposit_asset_name,
     };
+    let requested: Vec<(mugraph_core::types::Asset, u64)> = input
+        .output_amounts
+        .iter()
+        .map(|&amount| (deposit_asset, amount))
+        .collect();
+    let (blinded_outputs, pending_notes) = crate::notes::blind_new_notes(
+        &state.store,
+        &input.network,
+        delegate_pk,
+        &requested,
+    )?;
 
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
 
-    // Canonical payload mirrors `node/src/routes/deposit/signature.rs::CanonicalPayload`.
-    // It intentionally does NOT include the deposit UTxO ref: the wallet
-    // builds the deposit Cardano tx with the resulting `intent_hash` in
-    // its inline datum, so the deposit UTxO's tx_hash isn't known until
-    // after this canonical is fixed. Identity binding comes from
-    // delegate_pk + script_address + network; replay protection from nonce.
-    #[derive(Serialize)]
-    struct CanonicalPayload {
-        outputs: Vec<String>,
-        delegate_pk: String,
-        script_address: String,
-        nonce: u64,
-        network: String,
-    }
-
-    let output_hexes: Vec<String> = blinded_outputs
-        .iter()
-        .map(|o| hex::encode(o.signature.0.0))
-        .collect();
-
-    let canonical = CanonicalPayload {
-        outputs: output_hexes,
-        delegate_pk: hex::encode(delegate_pk.0),
-        script_address: script_address.clone(),
+    // The same bytes that the node rebuilds. They do not include the
+    // deposit UTxO ref: the datum's intent_hash must be in the deposit tx
+    // body, so the UTxO's tx_hash is not known yet.
+    let canonical_bytes = mugraph_core::types::deposit_intent_payload(
+        &blinded_outputs,
+        &delegate_pk,
+        &script_address,
         nonce,
-        network: input.network.clone(),
-    };
-    let canonical_bytes = serde_json::to_string(&canonical)
-        .map_err(|e| e.to_string())?
-        .into_bytes();
+        &input.network,
+    );
 
     // Build CIP-8 COSE_Sign1 signature over canonical payload.
     let cip8_signature = crate::cip8::build_cip8_signature(
@@ -1092,78 +1043,21 @@ pub async fn deposit_impl(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Process response signatures
+    let notes =
+        crate::notes::finish_notes(client, pending_notes, &resp.signatures)
+            .await?;
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-
-    let mut notes_created = 0;
-    for (i, (nonce, r, bp, commitment, amount)) in
-        blinding_data.iter().enumerate()
-    {
-        if i >= resp.signatures.len() {
-            break;
-        }
-        let sig = &resp.signatures[i];
-
-        // Verify DLEQ
-        let bpt = mugraph_core::types::Signature::from(*bp)
-            .to_point()
-            .map_err(|e| e.to_string())?;
-        let dleq_ok = mugraph_core::crypto::verify_dleq_signature(
-            &delegate_pk,
-            &bpt,
-            &sig.signature,
-            &sig.proof,
-        )
-        .map_err(|e| e.to_string())?;
-        if !dleq_ok {
-            return Err(
-                "DLEQ verification failed for deposit output".to_string()
-            );
-        }
-
-        let unblinded = mugraph_core::crypto::unblind_signature(
-            &sig.signature,
-            r,
-            &delegate_pk,
-        )
-        .map_err(|e| e.to_string())?;
-        let valid = mugraph_core::crypto::verify_note_proof(
-            &delegate_pk,
-            commitment.as_ref(),
-            unblinded,
-            &mugraph_core::types::DleqProofWithBlinding {
-                proof: sig.proof,
-                blinding_factor: (*r).into(),
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        if !valid {
-            return Err("unblinded signature verification failed for deposit"
-                .to_string());
-        }
-
-        let note = mugraph_core::types::Note {
-            amount: *amount,
-            delegate: delegate_pk,
-            policy_id: deposit_policy_id,
-            asset_name: deposit_asset_name,
-            nonce: *nonce,
-            signature: unblinded,
-            dleq: Some(mugraph_core::types::DleqProofWithBlinding {
-                proof: sig.proof,
-                blinding_factor: (*r).into(),
-            }),
-        };
-
+    for note in &notes {
         state
             .store
-            .finalize_note(&input.network, &note, NoteStatus::Available, now)
+            .finalize_note(&input.network, note, NoteStatus::Available, now)
             .map_err(|e| e.to_string())?;
-        notes_created += 1;
     }
+    let notes_created = notes.len();
 
     // Record activity
     state

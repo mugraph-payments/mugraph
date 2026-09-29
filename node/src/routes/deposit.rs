@@ -2,8 +2,8 @@ use color_eyre::eyre::Result;
 #[cfg(test)]
 use mugraph_core::types::{PublicKey, UtxoRef};
 use mugraph_core::{
-    crypto,
     error::Error,
+    keyset,
     types::{BlindSignature, DepositRequest, Response},
 };
 #[cfg(test)]
@@ -28,7 +28,7 @@ use self::{
 use self::{
     persistence::{insert_deposit_if_absent, store_wallet_if_absent},
     signature::{
-        CanonicalPayload, build_canonical_payload, compute_intent_hash,
+        build_canonical_payload, compute_intent_hash,
         verify_cip8_cose_signature,
     },
     source_validation::{validate_deposit_amounts, validate_deposit_datum},
@@ -250,15 +250,13 @@ mod tests {
 
         let payload =
             build_canonical_payload(&request, &delegate_pk, "addr_test1...");
-        let expected = serde_json::to_string(&CanonicalPayload {
-            outputs: vec![],
-            delegate_pk: hex::encode(delegate_pk.0),
-            script_address: "addr_test1...".to_string(),
-            nonce: request.nonce,
-            network: request.network.clone(),
-        })
-        .unwrap()
-        .into_bytes();
+        let expected = mugraph_core::types::deposit_intent_payload(
+            &[],
+            &delegate_pk,
+            "addr_test1...",
+            request.nonce,
+            &request.network,
+        );
 
         assert_eq!(payload, expected);
     }
@@ -533,10 +531,9 @@ mod tests {
 
 /// Sign blinded outputs with delegate key.
 ///
-/// Each output carries a blinded commitment point in its `signature` field
-/// (a compressed Ristretto point). The node decompresses and signs the
-/// point directly, allowing the client to unblind the result with the
-/// corresponding blinding factor.
+/// The node signs each blinded point with its key for the asset and
+/// amount of the output. `validate_deposit_amounts` makes sure that these
+/// amounts add up to the value of the deposit UTxO.
 fn sign_outputs(
     request: &DepositRequest,
     keypair: &mugraph_core::types::Keypair,
@@ -544,13 +541,14 @@ fn sign_outputs(
     let mut rng = rand::rng();
     let mut signatures = Vec::with_capacity(request.outputs.len());
 
-    for commitment in &request.outputs {
-        let blinded_point = commitment.signature.0.to_point()?;
-
-        let blinded_sig =
-            crypto::sign_blinded(&mut rng, &keypair.secret_key, &blinded_point);
-
-        signatures.push(blinded_sig);
+    for output in &request.outputs {
+        signatures.push(keyset::sign_blinded(
+            &mut rng,
+            &keypair.secret_key,
+            &output.asset(),
+            output.amount,
+            &output.point.to_point()?,
+        )?);
     }
 
     Ok(signatures)
@@ -634,40 +632,20 @@ mod wallet_tests {
     }
 
     #[test]
-    fn sign_outputs_produces_unblindable_signatures() {
+    fn sign_outputs_uses_the_denomination_key() {
         use mugraph_core::{
-            crypto,
-            types::{
-                BlindSignature, Blinded, DleqProof, DleqProofWithBlinding,
-                Hash, Note, Signature, UtxoReference,
-            },
+            keyset,
+            types::{Asset, UtxoReference, blind_new_note},
         };
         use rand::{SeedableRng, rngs::StdRng};
 
         let ctx = test_context();
         let mut rng = StdRng::seed_from_u64(42);
+        let asset = Asset::default();
 
-        // Build a note commitment the way a wallet would
-        let note = Note {
-            delegate: ctx.keypair.public_key,
-            policy_id: Default::default(),
-            asset_name: Default::default(),
-            nonce: Hash::random(&mut rng),
-            amount: 1000,
-            signature: Signature::default(),
-            dleq: None,
-        };
-        let commitment = note.commitment();
-
-        // Client: blind the commitment
-        let blinded = crypto::blind(&mut rng, commitment.as_ref());
-        let compressed_point = Signature::from(blinded.point);
-
-        // Pack the blinded point into a BlindSignature to carry in the request
-        let output = BlindSignature {
-            signature: Blinded(compressed_point),
-            proof: DleqProof::default(),
-        };
+        // Client: make and blind a note the way a wallet does
+        let (output, pending) =
+            blind_new_note(&mut rng, ctx.keypair.public_key, &asset, 1024);
 
         let request = DepositRequest {
             utxo: UtxoReference {
@@ -686,30 +664,20 @@ mod wallet_tests {
             sign_outputs(&request, &ctx.keypair).expect("sign must succeed");
         assert_eq!(signatures.len(), 1);
 
-        let sig = &signatures[0];
-
-        // Client: unblind the signature
-        let unblinded = crypto::unblind_signature(
-            &sig.signature,
-            &blinded.factor,
-            &ctx.keypair.public_key,
-        )
-        .expect("unblind must succeed");
-
-        // Client: verify the unblinded signature against the commitment
+        // Client: the note verifies with the key for its amount only
+        let keys = keyset::keyset(&ctx.keypair.secret_key, &asset);
         assert!(
-            crypto::verify_note_proof(
-                &ctx.keypair.public_key,
-                commitment.as_ref(),
-                unblinded,
-                &DleqProofWithBlinding {
-                    proof: sig.proof,
-                    blinding_factor: blinded.factor.into(),
-                },
-            )
-            .expect("verify must not error"),
-            "unblinded signature must verify",
+            pending
+                .clone()
+                .finish(&signatures[0], &ctx.keypair.public_key)
+                .is_err()
         );
+        pending
+            .finish(
+                &signatures[0],
+                &keyset::keyset_public_key(&keys, 1024).unwrap(),
+            )
+            .expect("note verifies with its denomination key");
     }
 
     #[test]
@@ -748,7 +716,7 @@ mod datum_tests {
                 tx_hash: "ab".repeat(32),
                 index: 0,
             },
-            outputs: vec![BlindSignature::default()],
+            outputs: vec![mugraph_core::types::BlindedOutput::default()],
             message: format!(r#"{{"user_pubkey":"{}"}}"#, hex::encode(user_pk)),
             signature: vec![0u8; 64],
             nonce: 1,
@@ -1042,16 +1010,42 @@ mod datum_tests {
 
 #[cfg(test)]
 mod amount_validation_tests {
+    use mugraph_core::{
+        keyset::split_amount,
+        types::{Asset, AssetName, BlindedOutput, PolicyId, blind_new_note},
+    };
+
     use super::*;
     use crate::provider::{AssetAmount, UtxoInfo};
 
-    fn request_with_output_count(count: usize) -> DepositRequest {
+    fn token() -> Asset {
+        Asset {
+            policy_id: PolicyId([0x22; 28]),
+            asset_name: AssetName::new(b"token").unwrap(),
+        }
+    }
+
+    /// Blinded outputs for each (asset, amount), split into denominations.
+    fn outputs(parts: &[(Asset, u64)]) -> Vec<BlindedOutput> {
+        let mut rng = rand::rng();
+        parts
+            .iter()
+            .flat_map(|(asset, amount)| {
+                split_amount(*amount).into_iter().map(|part| (*asset, part))
+            })
+            .map(|(asset, part)| {
+                blind_new_note(&mut rng, Default::default(), &asset, part).0
+            })
+            .collect()
+    }
+
+    fn request_with_outputs(outputs: Vec<BlindedOutput>) -> DepositRequest {
         DepositRequest {
             utxo: mugraph_core::types::UtxoReference {
                 tx_hash: "ab".repeat(32),
                 index: 0,
             },
-            outputs: vec![BlindSignature::default(); count],
+            outputs,
             message: "{}".to_string(),
             signature: vec![],
             nonce: 1,
@@ -1072,13 +1066,17 @@ mod amount_validation_tests {
         }
     }
 
+    fn lovelace(quantity: &str) -> AssetAmount {
+        AssetAmount {
+            unit: "lovelace".to_string(),
+            quantity: quantity.to_string(),
+        }
+    }
+
     #[test]
     fn validate_deposit_amounts_rejects_missing_outputs() {
-        let request = request_with_output_count(0);
-        let utxo = utxo_with_amounts(vec![AssetAmount {
-            unit: "lovelace".to_string(),
-            quantity: "1000000".to_string(),
-        }]);
+        let request = request_with_outputs(vec![]);
+        let utxo = utxo_with_amounts(vec![lovelace("1000000")]);
 
         let err =
             validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
@@ -1086,43 +1084,57 @@ mod amount_validation_tests {
     }
 
     #[test]
-    fn validate_deposit_amounts_rejects_too_few_outputs_for_distinct_assets() {
-        let request = request_with_output_count(1);
-        let utxo = utxo_with_amounts(vec![
-            AssetAmount {
-                unit: "lovelace".to_string(),
-                quantity: "1000000".to_string(),
-            },
-            AssetAmount {
-                unit: format!("{}{}", "11".repeat(28), "746f6b656e"),
-                quantity: "1".to_string(),
-            },
-        ]);
+    fn validate_deposit_amounts_rejects_outputs_below_the_utxo_value() {
+        let request =
+            request_with_outputs(outputs(&[(Asset::default(), 999_999)]));
+        let utxo = utxo_with_amounts(vec![lovelace("1000000")]);
 
         let err =
             validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
-        assert!(format!("{err:?}").contains("Insufficient outputs"));
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
     }
 
     #[test]
-    fn validate_deposit_amounts_rejects_more_outputs_than_total_units() {
-        let request = request_with_output_count(3);
-        let utxo = utxo_with_amounts(vec![AssetAmount {
-            unit: "lovelace".to_string(),
-            quantity: "2".to_string(),
-        }]);
+    fn validate_deposit_amounts_rejects_outputs_above_the_utxo_value() {
+        let request =
+            request_with_outputs(outputs(&[(Asset::default(), 1_000_001)]));
+        let utxo = utxo_with_amounts(vec![lovelace("1000000")]);
 
-        let err = validate_deposit_amounts(&request, &utxo, 1).unwrap_err();
-        assert!(format!("{err:?}").contains("Too many outputs"));
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_an_asset_that_is_not_in_the_utxo() {
+        let request = request_with_outputs(outputs(&[
+            (Asset::default(), 1_000_000),
+            (token(), 1),
+        ]));
+        let utxo = utxo_with_amounts(vec![lovelace("1000000")]);
+
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("does not match"), "{err:?}");
+    }
+
+    #[test]
+    fn validate_deposit_amounts_rejects_an_amount_that_is_not_a_denomination() {
+        let mut output = outputs(&[(Asset::default(), 1 << 20)]);
+        output[0].amount = 1_000_000;
+        let request = request_with_outputs(output);
+        let utxo = utxo_with_amounts(vec![lovelace("1000000")]);
+
+        let err =
+            validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
+        assert!(format!("{err:?}").contains("power of two"), "{err:?}");
     }
 
     #[test]
     fn validate_deposit_amounts_rejects_below_minimum_lovelace() {
-        let request = request_with_output_count(1);
-        let utxo = utxo_with_amounts(vec![AssetAmount {
-            unit: "lovelace".to_string(),
-            quantity: "999999".to_string(),
-        }]);
+        let request =
+            request_with_outputs(outputs(&[(Asset::default(), 999_999)]));
+        let utxo = utxo_with_amounts(vec![lovelace("999999")]);
 
         let err =
             validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
@@ -1131,11 +1143,9 @@ mod amount_validation_tests {
 
     #[test]
     fn validate_deposit_amounts_rejects_invalid_asset_quantity() {
-        let request = request_with_output_count(1);
-        let utxo = utxo_with_amounts(vec![AssetAmount {
-            unit: "lovelace".to_string(),
-            quantity: "not-a-number".to_string(),
-        }]);
+        let request =
+            request_with_outputs(outputs(&[(Asset::default(), 1_000_000)]));
+        let utxo = utxo_with_amounts(vec![lovelace("not-a-number")]);
 
         let err =
             validate_deposit_amounts(&request, &utxo, 1_000_000).unwrap_err();
@@ -1143,22 +1153,21 @@ mod amount_validation_tests {
     }
 
     #[test]
-    fn validate_deposit_amounts_accepts_exact_minimum_and_unique_asset_boundary()
-     {
-        let request = request_with_output_count(2);
+    fn validate_deposit_amounts_accepts_the_exact_value_with_tokens() {
+        let request = request_with_outputs(outputs(&[
+            (Asset::default(), 1_000_000),
+            (token(), 5),
+        ]));
         let utxo = utxo_with_amounts(vec![
+            lovelace("1000000"),
             AssetAmount {
-                unit: "lovelace".to_string(),
-                quantity: "1000000".to_string(),
-            },
-            AssetAmount {
-                unit: format!("{}{}", "22".repeat(28), "746f6b656e"),
-                quantity: "1".to_string(),
+                unit: token().cardano_unit(),
+                quantity: "5".to_string(),
             },
         ]);
 
         validate_deposit_amounts(&request, &utxo, 1_000_000)
-            .expect("exact minimum and asset-count boundary should pass");
+            .expect("outputs that match the UTxO value exactly should pass");
     }
 }
 
@@ -1500,7 +1509,19 @@ mod handle_deposit_flow_tests {
                 tx_hash: "ab".repeat(32),
                 index: 0,
             },
-            outputs: vec![BlindSignature::default()],
+            // The mock UTxO holds 1,000,000 lovelace.
+            outputs: mugraph_core::keyset::split_amount(1_000_000)
+                .into_iter()
+                .map(|part| {
+                    mugraph_core::types::blind_new_note(
+                        &mut rand::rng(),
+                        ctx.keypair.public_key,
+                        &mugraph_core::types::Asset::default(),
+                        part,
+                    )
+                    .0
+                })
+                .collect(),
             message: format!(r#"{{"user_pubkey":"{}"}}"#, hex::encode(user_pk)),
             signature: vec![],
             nonce: 7,

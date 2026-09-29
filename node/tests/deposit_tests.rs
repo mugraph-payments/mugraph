@@ -1,6 +1,6 @@
 //! Serde smoke tests for deposit request types.
 
-use mugraph_core::types::{BlindSignature, DepositRequest, UtxoReference};
+use mugraph_core::types::{BlindedOutput, DepositRequest, UtxoReference};
 
 #[test]
 fn utxo_reference_serde_roundtrip_preserves_fields() {
@@ -23,7 +23,7 @@ fn deposit_request_wire_shape_still_serializes_with_message_field() {
             tx_hash: "abc123".to_string(),
             index: 1,
         },
-        outputs: vec![BlindSignature::default()],
+        outputs: vec![BlindedOutput::default()],
         message: "test_message".to_string(),
         signature: vec![1u8; 64],
         nonce: 999_999,
@@ -49,7 +49,7 @@ fn deposit_request_serde_roundtrip_preserves_nonce_and_network() {
             tx_hash: "abc123".to_string(),
             index: 1,
         },
-        outputs: vec![BlindSignature::default()],
+        outputs: vec![BlindedOutput::default()],
         message: "test_message".to_string(),
         signature: vec![1u8; 64],
         nonce: 999_999,

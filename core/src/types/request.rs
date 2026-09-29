@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use test_strategy::Arbitrary;
 
 use crate::types::{
-    AssetName, BlindSignature, PolicyId, Refresh, TransferAckPayload,
-    TransferInitPayload, TransferNoticePayload, TransferStatusQueryPayload,
-    XNodeEnvelope,
+    AssetName, BlindSignature, BlindedOutput, PolicyId, Refresh,
+    TransferAckPayload, TransferInitPayload, TransferNoticePayload,
+    TransferStatusQueryPayload, XNodeEnvelope,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Arbitrary)]
@@ -46,8 +46,9 @@ pub enum Request {
 pub struct DepositRequest {
     /// UTxO reference (tx_hash + index) at the script address
     pub utxo: UtxoReference,
-    /// Blinded outputs to mint
-    pub outputs: Vec<BlindSignature>,
+    /// Blinded outputs to mint. For each asset, the amounts must add up
+    /// to the value of the deposit UTxO.
+    pub outputs: Vec<BlindedOutput>,
     /// Message signed by user (canonical JSON)
     pub message: String,
     /// CIP-8 signature over canonical payload

@@ -3,7 +3,10 @@
 use mugraph_core::{
     builder::RefreshBuilder,
     keyset,
-    types::{Asset, Note, PublicKey},
+    types::{
+        Asset, BlindSignature, BlindedOutput, Note, PendingNote, PublicKey,
+        blind_new_note,
+    },
 };
 
 use crate::{
@@ -115,6 +118,79 @@ pub async fn refresh_through_node(
             .unblind_output(secret, signature, &public_key)
             .map_err(|e| e.to_string())?;
         notes.push(note);
+    }
+
+    Ok(notes)
+}
+
+/// Makes and blinds new notes for `outputs`. Each amount becomes one note
+/// for each of its denominations. Saves each blinding factor before the
+/// caller sends the outputs to the node.
+pub fn blind_new_notes(
+    store: &Store,
+    network: &str,
+    delegate: PublicKey,
+    outputs: &[(Asset, u64)],
+) -> Result<(Vec<BlindedOutput>, Vec<PendingNote>), String> {
+    let mut rng = rand::rng();
+    let mut blinded = Vec::new();
+    let mut pending = Vec::new();
+
+    for (asset, amount) in outputs {
+        for part in keyset::split_amount(*amount) {
+            let (output, note) =
+                blind_new_note(&mut rng, delegate, asset, part);
+            store
+                .put_blinding_factor(
+                    network,
+                    &note.note.nonce,
+                    &note.blinding_factor.0,
+                )
+                .map_err(|e| e.to_string())?;
+            blinded.push(output);
+            pending.push(note);
+        }
+    }
+
+    Ok((blinded, pending))
+}
+
+/// Unblinds the node's signatures for `pending` and checks each one with
+/// the delegate's key for its asset and amount.
+pub async fn finish_notes(
+    client: &NodeClient,
+    pending: Vec<PendingNote>,
+    signatures: &[BlindSignature],
+) -> Result<Vec<Note>, String> {
+    if signatures.len() != pending.len() {
+        return Err(format!(
+            "node returned {} signatures for {} outputs",
+            signatures.len(),
+            pending.len()
+        ));
+    }
+
+    let mut keysets: std::collections::HashMap<Asset, Vec<PublicKey>> =
+        std::collections::HashMap::new();
+    let mut notes = Vec::with_capacity(pending.len());
+    for (note, signature) in pending.into_iter().zip(signatures) {
+        let asset = Asset {
+            policy_id: note.note.policy_id,
+            asset_name: note.note.asset_name,
+        };
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            keysets.entry(asset)
+        {
+            entry.insert(fetch_keyset(client, &asset).await?);
+        }
+        let public_key =
+            keyset::keyset_public_key(&keysets[&asset], note.note.amount)
+                .map_err(|e| e.to_string())?;
+
+        notes.push(
+            note.finish(signature, &public_key)
+                .map_err(|e| e.to_string())?,
+        );
     }
 
     Ok(notes)
@@ -310,5 +386,71 @@ mod tests {
         let mut not_a_denomination = note;
         not_a_denomination.amount = 7;
         assert!(!verify_received_note(&not_a_denomination, &keys));
+    }
+
+    #[tokio::test]
+    async fn blind_new_notes_then_finish_notes_makes_valid_notes() {
+        let mut rng = StdRng::seed_from_u64(4);
+        let keypair = Keypair::random(&mut rng);
+        let asset = Asset::default();
+        let (client, _node_dir) = testing::spawn_node(keypair).await;
+        let (store, _dir) = store();
+
+        let (outputs, pending) = blind_new_notes(
+            &store,
+            "preprod",
+            keypair.public_key,
+            &[(asset, 5)],
+        )
+        .unwrap();
+
+        let amounts: Vec<u64> = outputs.iter().map(|o| o.amount).collect();
+        assert_eq!(amounts, vec![1, 4]);
+        for p in &pending {
+            assert!(
+                store
+                    .get_blinding_factor("preprod", &p.note.nonce)
+                    .unwrap()
+                    .is_some()
+            );
+        }
+
+        // The node signs each output with its denomination key.
+        let signatures: Vec<BlindSignature> = outputs
+            .iter()
+            .map(|o| {
+                keyset::sign_blinded(
+                    &mut rng,
+                    &keypair.secret_key,
+                    &o.asset(),
+                    o.amount,
+                    &o.point.to_point().unwrap(),
+                )
+                .unwrap()
+            })
+            .collect();
+
+        let notes = finish_notes(&client, pending, &signatures).await.unwrap();
+        let keys = fetch_keyset(&client, &asset).await.unwrap();
+        assert_eq!(notes.len(), 2);
+        assert!(notes.iter().all(|n| verify_received_note(n, &keys)));
+    }
+
+    #[tokio::test]
+    async fn finish_notes_rejects_a_missing_signature() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let keypair = Keypair::random(&mut rng);
+        let (client, _node_dir) = testing::spawn_node(keypair).await;
+        let (store, _dir) = store();
+
+        let (_, pending) = blind_new_notes(
+            &store,
+            "preprod",
+            keypair.public_key,
+            &[(Asset::default(), 3)],
+        )
+        .unwrap();
+
+        assert!(finish_notes(&client, pending, &[]).await.is_err());
     }
 }

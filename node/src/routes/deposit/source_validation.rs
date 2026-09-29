@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
+    keyset::is_denomination,
     types::{DepositRequest, PublicKey},
 };
 use whisky_csl::csl;
@@ -211,26 +214,24 @@ pub(super) async fn fetch_and_validate_utxo(
     Ok(utxo_info)
 }
 
-/// Validate that outputs cover all assets in the UTxO
+/// Validate that the outputs hold the exact value of the UTxO.
+///
+/// Each output is one denomination, and for each asset the output amounts
+/// must add up to the quantity in the UTxO. Thus, the notes that the node
+/// signs hold the same value as the deposit.
 pub(super) fn validate_deposit_amounts(
     request: &DepositRequest,
     utxo_info: &UtxoInfo,
     min_deposit_value: u64,
 ) -> Result<(), Error> {
-    let mut utxo_assets: std::collections::HashMap<String, u64> =
-        std::collections::HashMap::new();
-    let mut total_units: u64 = 0;
-
+    let mut utxo_assets: BTreeMap<String, u128> = BTreeMap::new();
     for asset in &utxo_info.amount {
-        let amount =
-            asset
-                .quantity
-                .parse::<u64>()
-                .map_err(|e| Error::InvalidInput {
-                    reason: format!("Invalid asset quantity: {}", e),
-                })?;
-        utxo_assets.insert(asset.unit.clone(), amount);
-        total_units += amount;
+        let amount = asset.quantity.parse::<u128>().map_err(|e| {
+            Error::InvalidInput {
+                reason: format!("Invalid asset quantity: {}", e),
+            }
+        })?;
+        *utxo_assets.entry(asset.unit.clone()).or_default() += amount;
     }
 
     if request.outputs.is_empty() {
@@ -239,36 +240,32 @@ pub(super) fn validate_deposit_amounts(
         });
     }
 
-    if request.outputs.len() < utxo_assets.len() {
+    let mut output_assets: BTreeMap<String, u128> = BTreeMap::new();
+    for (i, output) in request.outputs.iter().enumerate() {
+        if !is_denomination(output.amount) {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Output {} amount {} is not a power of two",
+                    i, output.amount
+                ),
+            });
+        }
+        *output_assets
+            .entry(output.asset().cardano_unit())
+            .or_default() += output.amount as u128;
+    }
+
+    if output_assets != utxo_assets {
         return Err(Error::InvalidInput {
             reason: format!(
-                "Insufficient outputs: {} assets in UTxO but only {} outputs provided. \
-                 Each asset must be accounted for in at least one output (no partial deposits).",
-                utxo_assets.len(),
-                request.outputs.len()
+                "Output value {:?} does not match UTxO value {:?}",
+                output_assets, utxo_assets
             ),
         });
     }
-
-    if request.outputs.len() as u64 > total_units {
-        return Err(Error::InvalidInput {
-            reason: format!(
-                "Too many outputs: {} outputs for {} total asset units",
-                request.outputs.len(),
-                total_units
-            ),
-        });
-    }
-
-    tracing::info!(
-        "Validated deposit: {} assets in UTxO ({} total units), {} outputs",
-        utxo_assets.len(),
-        total_units,
-        request.outputs.len()
-    );
 
     let lovelace_amount = utxo_assets.get("lovelace").copied().unwrap_or(0);
-    if lovelace_amount < min_deposit_value {
+    if lovelace_amount < min_deposit_value as u128 {
         return Err(Error::InvalidInput {
             reason: format!(
                 "Deposit value {} lovelace below minimum {} lovelace",
@@ -278,9 +275,8 @@ pub(super) fn validate_deposit_amounts(
     }
 
     tracing::info!(
-        "Validated deposit: {} assets in UTxO ({} total units, {} lovelace), {} outputs",
+        "Validated deposit: {} assets in UTxO ({} lovelace), {} outputs",
         utxo_assets.len(),
-        total_units,
         lovelace_amount,
         request.outputs.len()
     );

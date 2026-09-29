@@ -254,6 +254,51 @@ impl Asset {
         self.write_bytes(&mut out);
         out
     }
+
+    /// ADA uses the zero policy ID and an empty asset name.
+    pub fn is_ada(&self) -> bool {
+        self.policy_id == PolicyId::zero() && self.asset_name.is_empty()
+    }
+
+    /// The unit string that Cardano providers use: "lovelace" for ADA,
+    /// else the policy ID and the asset name in hex.
+    pub fn cardano_unit(&self) -> String {
+        if self.is_ada() {
+            return "lovelace".to_string();
+        }
+
+        format!(
+            "{}{}",
+            muhex::encode(self.policy_id.0),
+            muhex::encode(self.asset_name.as_bytes())
+        )
+    }
+
+    /// The inverse of [`Asset::cardano_unit`].
+    pub fn from_cardano_unit(unit: &str) -> Result<Self, Error> {
+        if unit == "lovelace" {
+            return Ok(Self::default());
+        }
+
+        let bytes = muhex::decode(unit).map_err(|e| Error::InvalidInput {
+            reason: format!("Invalid asset unit {unit}: {e}"),
+        })?;
+        if bytes.len() < POLICY_ID_SIZE {
+            return Err(Error::InvalidInput {
+                reason: format!(
+                    "Asset unit {unit} is shorter than a policy ID"
+                ),
+            });
+        }
+
+        let mut policy_id = [0u8; POLICY_ID_SIZE];
+        policy_id.copy_from_slice(&bytes[..POLICY_ID_SIZE]);
+
+        Ok(Self {
+            policy_id: PolicyId(policy_id),
+            asset_name: AssetName::new(&bytes[POLICY_ID_SIZE..])?,
+        })
+    }
 }
 
 #[inline]
@@ -289,6 +334,39 @@ mod tests {
         prop_assert_eq!(name.as_bytes(), bytes.as_slice());
         prop_assert_eq!(name.len(), bytes.len());
         prop_assert_eq!(name.is_empty(), bytes.is_empty());
+    }
+
+    #[proptest]
+    fn prop_cardano_unit_round_trips(asset: Asset) {
+        let unit = asset.cardano_unit();
+        prop_assert_eq!(Asset::from_cardano_unit(&unit)?, asset);
+    }
+
+    #[test]
+    fn ada_uses_the_lovelace_unit() {
+        let ada = Asset::default();
+        assert!(ada.is_ada());
+        assert_eq!(ada.cardano_unit(), "lovelace");
+        assert_eq!(Asset::from_cardano_unit("lovelace").unwrap(), ada);
+    }
+
+    #[test]
+    fn cardano_unit_is_policy_then_name_in_hex() {
+        let asset = Asset {
+            policy_id: PolicyId([0x11; POLICY_ID_SIZE]),
+            asset_name: AssetName::new(b"token").unwrap(),
+        };
+        assert_eq!(
+            asset.cardano_unit(),
+            format!("{}{}", "11".repeat(POLICY_ID_SIZE), "746f6b656e")
+        );
+    }
+
+    #[test]
+    fn from_cardano_unit_rejects_bad_units() {
+        assert!(Asset::from_cardano_unit("").is_err());
+        assert!(Asset::from_cardano_unit("zz").is_err());
+        assert!(Asset::from_cardano_unit(&"11".repeat(20)).is_err());
     }
 
     /// Boundary: AssetName::new rejects inputs exceeding ASSET_NAME_MAX_SIZE.

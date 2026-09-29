@@ -1,9 +1,8 @@
 use color_eyre::eyre::Result;
 use mugraph_core::{
     error::Error,
-    types::{DepositRequest, PublicKey},
+    types::{DepositRequest, PublicKey, deposit_intent_payload},
 };
-use serde::{Deserialize, Serialize};
 
 use super::claims::DepositClaims;
 #[cfg(test)]
@@ -133,54 +132,30 @@ pub(super) fn verify_cip8_cose_signature(
     verify_cip8_cose_signature_with_claims(request, &claims, payload)
 }
 
-/// Canonical payload for signature verification
-/// Sorted JSON with no extra whitespace
+/// Build canonical payload for signature verification.
 ///
 /// Does not include the deposit UTxO reference. The wallet builds the
 /// canonical before the deposit Cardano tx is constructed (the datum's
 /// intent_hash needs to be in the body, and the body's hash is the deposit
 /// UTxO's tx_hash). Identity is bound by `delegate_pk`, `script_address`,
-/// and `network`; replay protection by `nonce`. The deposit UTxO itself is
-/// validated independently by source_validation: chain-look-up confirms the
-/// UTxO sits at `script_address` with confirmation depth, and the datum
-/// re-binds `user_pubkey_hash` and `node_pubkey_hash`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct CanonicalPayload {
-    pub(super) outputs: Vec<String>,
-    #[serde(rename = "delegate_pk")]
-    pub(super) delegate_pk: String,
-    #[serde(rename = "script_address")]
-    pub(super) script_address: String,
-    pub(super) nonce: u64,
-    pub(super) network: String,
-}
-
-/// Build canonical payload for signature verification
-/// Sorted JSON with no extra whitespace
+/// and `network`; replay protection by `nonce`. The payload also binds the
+/// asset, amount and blinded point of each output.
 pub(super) fn build_canonical_payload(
     request: &DepositRequest,
     delegate_pk: &PublicKey,
     script_address: &str,
 ) -> Vec<u8> {
-    let outputs: Vec<String> = request
-        .outputs
-        .iter()
-        .map(|o| hex::encode(o.signature.0.0))
-        .collect();
-
     let network = CardanoNetwork::parse(&request.network)
         .map(|network| network.as_str().to_string())
         .unwrap_or_else(|_| request.network.clone());
 
-    let payload = CanonicalPayload {
-        outputs,
-        delegate_pk: hex::encode(delegate_pk.0),
-        script_address: script_address.to_string(),
-        nonce: request.nonce,
-        network,
-    };
-
-    serde_json::to_string(&payload).unwrap().into_bytes()
+    deposit_intent_payload(
+        &request.outputs,
+        delegate_pk,
+        script_address,
+        request.nonce,
+        &network,
+    )
 }
 
 /// Compute intent hash from deposit request
