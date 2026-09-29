@@ -96,7 +96,7 @@ The users trust the delegate with custody. The delegate could sign notes that no
 | Node      | Rust, HTTP and JSON, redb, Blockfrost and Maestro  |
 | Validator | Aiken, Plutus V3                                   |
 | Wallet    | Tauri and React, Android and iOS builds            |
-| Tests     | 485 Rust tests, 14 Aiken tests, an end-to-end test |
+| Tests     | 489 Rust tests, 14 Aiken tests, an end-to-end test |
 | Tools     | Docker image, mock chain, simulator                |
 | Documents | Specification, whitepaper, guides, API reference   |
 

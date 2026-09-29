@@ -33,7 +33,7 @@ works on Cardano.
 
 | Challenge goal                                             | How µgraph addressed it                                                                                                                                                                     |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Develop and test the technical feasibility of the solution | The project built a delegate node, a vault validator in Aiken, and a wallet app. It has 485 Rust tests and 14 Aiken tests.                                                                  |
+| Develop and test the technical feasibility of the solution | The project built a delegate node, a vault validator in Aiken, and a wallet app. It has 489 Rust tests and 14 Aiken tests.                                                                  |
 | Show that the innovation works                             | An end-to-end test runs a deposit, a payment between two wallets, a second use of the same notes, and a withdrawal. After each step, it checks that the notes equal the funds in the vault. |
 | Show that the MVP is usable on Cardano                     | Deposits and withdrawals are Cardano transactions with a Plutus V3 validator. The node supports the preprod network through Blockfrost. The Docker image starts a node in full mode.        |
 | Deploy first on the test networks                          | Version 1.0 is for preprod and preview. The project did not deploy it on the main network.                                                                                                  |
@@ -123,7 +123,8 @@ We thank the Cardano community and Project Catalyst for the support.
 - Implementation guide: https://github.com/mugraph-payments/mugraph/blob/main/docs/implementation.md
 - User guide: https://github.com/mugraph-payments/mugraph/blob/main/docs/user-guide.md
 - Presentation: https://github.com/mugraph-payments/mugraph/blob/main/docs/presentation/slides.md
-- Releases: https://github.com/mugraph-payments/mugraph/releases
+- Presentation (PDF): https://github.com/mugraph-payments/mugraph/releases/download/v1.0.0/mugraph-1.0-slides.pdf
+- Release 1.0.0: https://github.com/mugraph-payments/mugraph/releases/tag/v1.0.0
 
 ## Link to close-out video
 

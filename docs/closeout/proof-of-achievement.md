@@ -1,6 +1,6 @@
 # Proof of Achievement: Milestone 5 (1.0 Release)
 
-This is the text for the Proof of Achievement form of Milestone 5, project 1200258. Before you submit it, replace each item in brackets.
+This is the text for the Proof of Achievement form of Milestone 5, project 1200258. Before you submit it, replace the video link in brackets.
 
 ---
 
@@ -33,7 +33,7 @@ Acceptance criteria: The presentation is publicly available.
 Evidence:
 
 - https://github.com/mugraph-payments/mugraph/blob/main/docs/presentation/slides.md
-- PDF: [link to the PDF in the v1.0.0 release]
+- PDF: https://github.com/mugraph-payments/mugraph/releases/download/v1.0.0/mugraph-1.0-slides.pdf
 
 E. Output: Release of version 1.0 of the protocol.
 Acceptance criteria: The code of version 1.0 is publicly available.
@@ -41,8 +41,7 @@ Evidence:
 
 - Release: https://github.com/mugraph-payments/mugraph/releases/tag/v1.0.0
 - Changes: https://github.com/mugraph-payments/mugraph/blob/main/CHANGELOG.md
-- Tests: 485 Rust tests and 14 Aiken tests. The end-to-end test runs a deposit, a transfer and a withdrawal against a mock chain that runs the validator.
-- [Optional: preprod transaction links for a deposit and a withdrawal]
+- Tests: 489 Rust tests and 14 Aiken tests. The end-to-end test runs a deposit, a transfer and a withdrawal against a mock chain that runs the validator.
 
 F. Output: Final close-out report.
 Acceptance criteria: The final close-out report is publicly available.
