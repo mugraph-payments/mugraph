@@ -3324,6 +3324,7 @@ dependencies = [
  "dirs",
  "ed25519-dalek",
  "hex",
+ "mock-chain",
  "mugraph-core",
  "mugraph-node",
  "muhex",

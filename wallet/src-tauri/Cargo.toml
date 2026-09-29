@@ -42,5 +42,6 @@ whisky-csl = "1.0.24"
 
 [dev-dependencies]
 axum = { workspace = true }
+mock-chain = { path = "../../mock-chain" }
 mugraph-node = { workspace = true }
 tempfile = "3"
