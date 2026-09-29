@@ -123,11 +123,16 @@ pub fn refresh(
 
             // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
-            crypto::verify(
+            if !crypto::verify(
                 &keypair.secret_key,
                 commitment.as_ref(),
                 signature,
-            )?;
+            )? {
+                return Err(Error::InvalidSignature {
+                    reason: format!("Atom {} has an invalid signature", i),
+                    signature,
+                });
+            }
 
             // Mark as spent
             table.insert(signature, true)?;
@@ -281,5 +286,36 @@ mod tests {
 
         let result = refresh(&refresh_tx, keypair, &db);
         assert!(result.is_err(), "unbalanced refresh must be rejected");
+    }
+
+    #[test]
+    fn refresh_rejects_input_signed_by_another_key() {
+        let mut rng = StdRng::seed_from_u64(9);
+        let keypair = Keypair::random(&mut rng);
+        let other = Keypair::random(&mut rng);
+        let db = temp_db();
+
+        // A valid point, but not a signature from this node's key.
+        let mut note = signed_note(&other, 10);
+        note.delegate = keypair.public_key;
+
+        let refresh_tx = RefreshBuilder::new()
+            .input(note.clone())
+            .output(note.policy_id, note.asset_name, 10)
+            .build()
+            .unwrap();
+
+        let result = refresh(&refresh_tx, keypair, &db);
+        assert!(
+            matches!(result, Err(Error::InvalidSignature { .. })),
+            "input with a foreign signature must be rejected, got {result:?}",
+        );
+
+        let r = db.read().unwrap();
+        let table = r.open_table(NOTES).unwrap();
+        assert!(
+            table.get(note.signature).unwrap().is_none(),
+            "rejected input must not be marked as spent",
+        );
     }
 }
