@@ -131,6 +131,8 @@ pub fn materialize_outputs(
             .get(atom.asset_id as usize)
             .ok_or_else(|| eyre!("invalid asset index {}", atom.asset_id))?;
 
+        // The simulator does not blind, so B' = Y and the DLEQ proof over
+        // (Y, C) shows that C = k·Y. No other check is necessary.
         let commitment = atom.commitment(&refresh.asset_ids);
         let blinded_point = crypto::hash_to_curve(commitment.as_ref());
         if !crypto::verify_dleq_signature(
@@ -140,14 +142,6 @@ pub fn materialize_outputs(
             &signature.proof,
         )? {
             return Err(eyre!("invalid DLEQ proof for output {}", atom_idx));
-        }
-
-        if !crypto::verify(
-            &delegate,
-            commitment.as_ref(),
-            signature.signature.0,
-        )? {
-            return Err(eyre!("invalid signature for output {}", atom_idx));
         }
 
         let note = Note {

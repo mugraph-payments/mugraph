@@ -638,8 +638,8 @@ mod wallet_tests {
         use mugraph_core::{
             crypto,
             types::{
-                BlindSignature, Blinded, DleqProof, Hash, Note, Signature,
-                UtxoReference,
+                BlindSignature, Blinded, DleqProof, DleqProofWithBlinding,
+                Hash, Note, Signature, UtxoReference,
             },
         };
         use rand::{SeedableRng, rngs::StdRng};
@@ -698,10 +698,14 @@ mod wallet_tests {
 
         // Client: verify the unblinded signature against the commitment
         assert!(
-            crypto::verify(
+            crypto::verify_note_proof(
                 &ctx.keypair.public_key,
                 commitment.as_ref(),
                 unblinded,
+                &DleqProofWithBlinding {
+                    proof: sig.proof,
+                    blinding_factor: blinded.factor.into(),
+                },
             )
             .expect("verify must not error"),
             "unblinded signature must verify",

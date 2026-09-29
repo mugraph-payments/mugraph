@@ -124,7 +124,7 @@ pub fn refresh(
             // Verify before marking as spent
             let commitment = atom.commitment(&transaction.asset_ids);
             crypto::verify(
-                &keypair.public_key,
+                &keypair.secret_key,
                 commitment.as_ref(),
                 signature,
             )?;
@@ -241,10 +241,14 @@ mod tests {
                         // Verify the unblinded signature against the
                         // commitment
                         assert!(
-                            crypto::verify(
+                            crypto::verify_note_proof(
                                 &keypair.public_key,
                                 commitment.as_ref(),
                                 unblinded,
+                                &DleqProofWithBlinding {
+                                    proof: sig.proof,
+                                    blinding_factor: (*r).into(),
+                                },
                             )
                             .expect("verify must not error"),
                             "unblinded signature must verify for output {}",

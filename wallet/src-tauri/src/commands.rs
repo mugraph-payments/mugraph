@@ -530,12 +530,21 @@ pub async fn import_notes_impl(
 
         // Verify signature
         let commitment = note.commitment();
-        let valid = mugraph_core::crypto::verify(
-            &delegate_pk,
-            commitment.as_ref(),
-            note.signature,
-        )
-        .unwrap_or(false);
+        // A received note carries its DLEQ proof and blinding factor, so
+        // the wallet can check it without the delegate's secret key.
+        let valid = note
+            .dleq
+            .as_ref()
+            .map(|proof| {
+                mugraph_core::crypto::verify_note_proof(
+                    &delegate_pk,
+                    commitment.as_ref(),
+                    note.signature,
+                    proof,
+                )
+                .unwrap_or(false)
+            })
+            .unwrap_or(false);
 
         let status = if valid {
             NoteStatus::Available
@@ -629,10 +638,14 @@ pub async fn import_notes_impl(
                                     let unblinded = mugraph_core::crypto::unblind_signature(
                                         &sig.signature, &bf, &delegate_pk,
                                     ).map_err(|e| e.to_string())?;
-                                    mugraph_core::crypto::verify(
+                                    mugraph_core::crypto::verify_note_proof(
                                         &delegate_pk,
                                         commitment.as_ref(),
                                         unblinded,
+                                        &mugraph_core::types::DleqProofWithBlinding {
+                                            proof: sig.proof,
+                                            blinding_factor: bf.into(),
+                                        },
                                     )
                                     .map_err(|e| e.to_string())
                                 })();
@@ -953,10 +966,14 @@ pub async fn refresh_notes(
 
         // Verify final signature
         let commitment = atom.commitment(&refresh.asset_ids);
-        let valid = mugraph_core::crypto::verify(
+        let valid = mugraph_core::crypto::verify_note_proof(
             &delegate_pk,
             commitment.as_ref(),
             unblinded,
+            &mugraph_core::types::DleqProofWithBlinding {
+                proof: sig.proof,
+                blinding_factor: (*r).into(),
+            },
         )
         .map_err(|e| e.to_string())?;
         if !valid {
@@ -1312,10 +1329,14 @@ pub async fn deposit_impl(
             &delegate_pk,
         )
         .map_err(|e| e.to_string())?;
-        let valid = mugraph_core::crypto::verify(
+        let valid = mugraph_core::crypto::verify_note_proof(
             &delegate_pk,
             commitment.as_ref(),
             unblinded,
+            &mugraph_core::types::DleqProofWithBlinding {
+                proof: sig.proof,
+                blinding_factor: (*r).into(),
+            },
         )
         .map_err(|e| e.to_string())?;
         if !valid {
@@ -1548,10 +1569,14 @@ pub async fn withdraw_impl(
             )
             .map_err(|e| e.to_string())?;
 
-            let valid = mugraph_core::crypto::verify(
+            let valid = mugraph_core::crypto::verify_note_proof(
                 &delegate_pk,
                 commitment.as_ref(),
                 unblinded,
+                &mugraph_core::types::DleqProofWithBlinding {
+                    proof: change_sig.proof,
+                    blinding_factor: bf.into(),
+                },
             )
             .map_err(|e| e.to_string())?;
 
@@ -1766,10 +1791,14 @@ pub async fn retry_quarantined(
         &delegate_pk,
     )
     .map_err(|e| e.to_string())?;
-    let valid = mugraph_core::crypto::verify(
+    let valid = mugraph_core::crypto::verify_note_proof(
         &delegate_pk,
         commitment.as_ref(),
         unblinded,
+        &mugraph_core::types::DleqProofWithBlinding {
+            proof: sig.proof,
+            blinding_factor: bf.into(),
+        },
     )
     .map_err(|e| e.to_string())?;
     if !valid {

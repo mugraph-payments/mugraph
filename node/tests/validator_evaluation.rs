@@ -1074,7 +1074,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
 
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_a.commitment().as_ref(),
             note_a.signature
         )
@@ -1113,7 +1113,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     // Verify chained signatures are valid
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_b.commitment().as_ref(),
             note_b.signature
         )
@@ -1121,7 +1121,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_c.commitment().as_ref(),
             note_c.signature
         )
@@ -1147,7 +1147,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_d.commitment().as_ref(),
             note_d.signature
         )
@@ -1179,7 +1179,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_e.commitment().as_ref(),
             note_e.signature
         )
@@ -1187,7 +1187,7 @@ fn eval_lifecycle_deposit_transfer_withdraw() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_f.commitment().as_ref(),
             note_f.signature
         )
@@ -1283,7 +1283,7 @@ fn eval_lifecycle_batch_withdrawal() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_1a.commitment().as_ref(),
             note_1a.signature
         )
@@ -1326,7 +1326,7 @@ fn eval_lifecycle_batch_withdrawal() {
     );
     assert!(
         crypto::verify(
-            &node_keypair.public_key,
+            &node_keypair.secret_key,
             note_2a.commitment().as_ref(),
             note_2a.signature
         )
