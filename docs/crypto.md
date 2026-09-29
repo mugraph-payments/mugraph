@@ -1,130 +1,127 @@
-# Mugraph Cryptography
+# µgraph Cryptography
 
-## Blind Diffie-Hellman Key Exchange (BDHKE)
+This document explains the cryptography of µgraph version 1.0 and shows why
+it works. The protocol specification (`docs/spec/protocol.md`, sections 4 to 6)
+gives the exact encodings.
 
-Blind Diffie-Hellman Key Exchange (BDHKE) protocol is a cryptographic method that allows two parties to establish a shared secret key without revealing their individual private keys. BDHKE is used on Mugraph to guarantee group concealing, making the server oblivious to the identity of the note owner, severing the connection between inputs from one transaction to the next. The BDHKE protocol was described in a 1996 cypherpunk mailing list post by David Wagner. It was devised as an alternative to RSA blinding to circumvent the now-expired patent by David Chaum.
+## 1. Parts
 
-### Overview
+| Part              | Choice                                               | Code                 |
+| ----------------- | ---------------------------------------------------- | -------------------- |
+| Group             | Ristretto255, base point `G`                         | `curve25519-dalek`   |
+| Hash              | BLAKE3, with a domain tag for each use               | `blake3`             |
+| Hash to the group | Ristretto map of 64 bytes of BLAKE3 output           | `core/src/crypto.rs` |
+| Blind signature   | Blind Diffie-Hellman key exchange (BDHKE)            | `core/src/crypto.rs` |
+| Proof             | Chaum-Pedersen proof of discrete log equality (DLEQ) | `core/src/crypto.rs` |
+| Keys              | One key for each asset and denomination              | `core/src/keyset.rs` |
 
-BDHKE is an extension of the traditional Diffie-Hellman key exchange, incorporating a blinding factor to make it blind (meaning the message can be verified without knowning which original message generated it). The protocol involves two main parties:
+## 2. Blind signature
 
-1. Alice: The user who initiates the key exchange and wants to obtain a blindly signed value.
-2. Bob: The signer (often referred to as the "mint" in digital cash systems) who performs the blind signing operation.
+Alice is a wallet. Bob is the delegate, with the secret key `k` and the public
+key `K = k·G`. Alice wants Bob to sign a message `x` without Bob to see `x`.
 
-The goal is for Bob to sign Alice's message without knowing its content, while Alice can later prove that the signature came from Bob.
+**Blind.** Alice calculates the point `Y = hash_to_curve(x)`. She selects a
+random scalar `r` and sends `B' = Y + r·G` to Bob.
 
-### Protocol Steps
+**Sign.** Bob sends back `C' = k·B'`.
 
-#### 1. Initial Setup
-
-Alice and Bob agree on a common elliptic curve group with a generator point $G$.
-
-#### 2. Key Generation
-
-Alice generates a private key $a$ and computes the corresponding public key $A$:
-
-$$
-\begin{aligned}
-A &= a \cdot G
-\end{aligned}
-$$
-
-Alice sends $A$ to Bob.
-
-Bob generates a private key $k$ and computes the corresponding public key $K$:
-
-$$
-\begin{aligned}
-K &= k \cdot G
-\end{aligned}
-$$
-
-Bob makes $K$ publicly available.
-
-#### 3. Blinding
-
-Alice performs the following steps:
-
-a. Choose a secret message $x$. In ecash protocols, this message is remembered to prevent double spending.
-b. Compute $Y = H(x)$, where $H$ is a function that maps the secret to a point on the elliptic curve (hash to curve).
-c. Generate a random blinding factor $r$.
-d. Compute the blinded point $B'$:
-
-$$
-\begin{aligned}
-B' &= Y + r \cdot G
-\end{aligned}
-$$
-
-Alice sends $B'$ to Bob.
-
-#### 4. Signing
-
-Bob receives $B'$ and computes the blinded signature $C'$:
-
-$$
-\begin{aligned}
-C' &= k \cdot B'
-\end{aligned}
-$$
-
-Bob sends $C'$ back to Alice.
-
-#### 5. Unblinding
-
-Alice unblinds the signature by subtracting $r \cdot K$ from $C'$:
+**Unblind.** Alice calculates `C = C' − r·K`. This is the signature:
 
 $$
 \begin{aligned}
 C &= C' - r \cdot K \\
-  &= k \cdot B' - r \cdot K \\
   &= k \cdot (Y + r \cdot G) - r \cdot (k \cdot G) \\
-  &= k \cdot Y + k \cdot r \cdot G - r \cdot k \cdot G \\
   &= k \cdot Y
 \end{aligned}
 $$
 
-#### 6. Verification
+**Verify.** Bob accepts `C` for `x` if `C = k·hash_to_curve(x)`. Only Bob
+can do this check, because only Bob knows `k`.
 
-To verify the signature, Alice (or any verifier) can check if:
+Bob sees only `B'`. For each message `x`, there is a value of `r` that gives
+the same `B'`. Thus, `B'` gives Bob no information about `x`. When Alice spends
+the note later, Bob can not link `C` to `B'`.
 
-$$C = K \cdot H(x)$$
+## 3. Hash to the group
 
-If this equality holds, it proves that $C$ originated from Bob's private key $k$, without Bob knowing the original message $x$.
+`hash_to_curve` must give a point with an unknown discrete log. Assume that a
+person knows `y` with `Y = y·G`. Then that person can calculate the signature
+without Bob:
 
-### Security Considerations
+$$
+k \cdot Y = k \cdot y \cdot G = y \cdot K
+$$
 
-1. The security of BDHKE relies on the hardness of the Elliptic Curve Discrete Logarithm Problem (ECDLP).
-2. The blinding factor $r$ must be kept secret by Alice to maintain the blindness property.
-3. The $H$ function should be carefully chosen to ensure it maps uniformly to the elliptic curve and does not introduce vulnerabilities.
+Version 0 used `Y = H(x)·G`, so any person could make signatures. Version 1.0
+uses the Ristretto `from_uniform_bytes` map on 64 bytes of BLAKE3 output. No
+person knows the discrete log of the result.
 
-## Discrete Log Equality Proof (DLEQ Proof)
+## 4. DLEQ proof
 
-To prevent potential attacks where Bob might not correctly generate $C'$, an additional step is included:
+Bob proves that he used the same `k` in `K = k·G` and in `C' = k·B'`. The proof
+stops a delegate that signs with a different key for each user, to mark the
+users.
 
-Bob provides a Discrete Log Equality Proof (DLEQ) to demonstrate that the $k$ in $K = k \cdot G$ is the same $k$ used in $C' = k \cdot B'$. This proof can be implemented using a Schnorr signature as follows:
-
-1. Bob generates a random nonce $r$.
-2. Bob computes:
+**Prove.** Bob selects a random scalar `n` and calculates:
 
 $$
 \begin{aligned}
-R_1 &= r \cdot G \\
-R_2 &= r \cdot B' \\
-e &= \text{hash}(R_1, R_2, K, C') \\
-s &= r + e \cdot k
+R_1 &= n \cdot G \\
+R_2 &= n \cdot B' \\
+e &= \text{hash}(G, B', K, C', R_1, R_2) \\
+z &= n + e \cdot k
 \end{aligned}
 $$
 
-3. Bob sends $e$ and $s$ to Alice.
-4. Alice verifies the proof by checking:
+Bob sends `e` and `z` with `C'`.
+
+**Verify.** Alice calculates:
 
 $$
 \begin{aligned}
-R_1 &= s \cdot G - e \cdot K \\
-R_2 &= s \cdot B' - e \cdot C' \\
-e &= \text{hash}(R_1, R_2, K, C')
+R_1 &= z \cdot G - e \cdot K \\
+R_2 &= z \cdot B' - e \cdot C'
 \end{aligned}
 $$
 
-If the verification passes, Alice can be confident that Bob correctly generated $C'$.
+Alice accepts if `hash(G, B', K, C', R_1, R_2) = e`. For an honest proof,
+`z·G − e·K = n·G` and `z·B' − e·C' = n·B'`, so the hash gives `e` again.
+
+## 5. Verification by a holder
+
+A holder of a note does not know `k`, so it can not check `C = k·Y`. Thus, a
+note carries `r`, `e` and `z`. The holder calculates:
+
+$$
+\begin{aligned}
+Y &= \text{hash\_to\_curve}(x) \\
+B' &= Y + r \cdot G \\
+C' &= C + r \cdot K
+\end{aligned}
+$$
+
+Then the holder checks the DLEQ proof for `(K, B', C')`. If the proof is
+valid, Bob signed `B'` with `k`, and thus `C = k·Y`.
+
+## 6. Denomination keys
+
+The delegate uses a different key for each asset `A` and each amount `2^d`:
+
+$$
+k_{A,d} = \text{hash}(k_M, A, d)
+$$
+
+Here `k_M` is the master key. A blinded point hides the amount of the note.
+The key fixes the amount: a signature from the key for 1 lovelace is not valid
+on a note that shows 1,000 lovelace. The public keys of an asset form its
+keyset, and a wallet gets them with the `keys` request.
+
+## 7. Security notes
+
+1. The security of the signatures depends on the discrete log problem in
+   Ristretto255.
+2. With `r` and the note, a person can calculate `B'` and link the note to its
+   signature request. A note carries `r` for holder checks. Thus, a wallet
+   removes `r` from each note that it sends to the node.
+3. A wallet must select each `r` and each note nonce with a secure random
+   number generator.

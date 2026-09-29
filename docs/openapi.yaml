@@ -1,90 +1,41 @@
 openapi: 3.1.0
 info:
-  title: Mugraph Node API
-  version: 0.1.0
+  title: µgraph Node API
+  version: 1.0.0
   description: >
-    HTTP+JSON surface for a Mugraph node. Mugraph is a Layer 2 network for untraceable payments on Cardano.
+    The HTTP and JSON interface of a µgraph delegate node. The protocol
+    specification (docs/spec/protocol.md) gives the rules for each method.
 
-    ## Key Concepts
 
-    - **Delegate**: A node that signs transactions on behalf of users, providing privacy through blind signatures
-    - **Note**: A cryptographic representation of value that can be transferred without revealing the sender
-    - **Refresh**: The operation of transforming input notes into output notes, enabling transfers
-    - **Atom**: An individual note element within a refresh transaction
-    - **Blind Signature**: A signature on a blinded commitment that can be unblinded to verify ownership
-
-    ## Authentication
-
-    The API does not require authentication. All operations are public, as the system relies on cryptographic
-    signatures rather than traditional auth tokens.
-
-    ## Request/Response Pattern
-
-    The `/rpc` endpoint uses a tagged union pattern where the `m` field acts as a discriminator:
-    - Requests: `{"m": "operation_name", "p": {...}}` (payload optional)
-    - Responses: `{"m": "operation_name", "r": {...}}` (result required) or `{"m": "error", "r": {"reason": "..."}}`
+    The node has no authentication. Blind signatures and the spent set
+    protect the value. Each RPC request is an object with the method in `m`
+    and the payload in `p`. Each response has the method in `m` and the
+    result in `r`. An error response has `m` set to `error`.
 servers:
   - url: http://localhost:9999
-    description: Default node address
+    description: The default address of a node
 
 paths:
   /health:
     get:
-      summary: Health check endpoint
-      description: >
-        Simple liveness probe to check if the node is operational. Returns "OK" if the node is healthy.
-        Use this for health checks in orchestrators, load balancers, or monitoring systems.
+      summary: Health check
+      description: Returns the text OK when the node runs.
       operationId: health
       responses:
         "200":
-          description: Node is reachable and operational
+          description: The node runs.
           content:
             text/plain:
               schema:
                 type: string
-                enum: [OK]
-              example: OK
+                example: OK
 
   /rpc:
     post:
-      summary: RPC entrypoint
+      summary: RPC entry point
       description: >
-        Single endpoint for all Mugraph operations. Uses a tagged union pattern where the `m` field
-        (method) selects the operation type.
-
-        ## Supported Operations
-
-        - **public_key**: Retrieve the node's public key (delegate identity)
-        - **refresh**: Submit a refresh transaction to transform input notes into output notes
-
-        ## Request Pattern
-
-        ```json
-        {
-          "m": "operation_name",
-          "p": { ...operation specific payload... }
-        }
-        ```
-
-        ## Response Pattern
-
-        Success response:
-        ```json
-        {
-          "m": "operation_name",
-          "r": { ...operation specific result... }
-        }
-        ```
-
-        Error response (for any operation):
-        ```json
-        {
-          "m": "error",
-          "r": {
-            "reason": "Human-readable error message"
-          }
-        }
-        ```
+        One endpoint for all methods. The node returns the HTTP status 200 for
+        each request that it can read, also for an error response.
       operationId: rpc
       requestBody:
         required: true
@@ -92,26 +43,30 @@ paths:
           application/json:
             schema:
               oneOf:
-                - $ref: "#/components/schemas/RefreshRequest"
                 - $ref: "#/components/schemas/InfoRequest"
+                - $ref: "#/components/schemas/KeysRequest"
+                - $ref: "#/components/schemas/RefreshRequest"
+                - $ref: "#/components/schemas/DepositRequestWrapper"
+                - $ref: "#/components/schemas/WithdrawRequestWrapper"
+                - $ref: "#/components/schemas/EmitRequest"
                 - $ref: "#/components/schemas/CrossNodeTransferCreateRequest"
                 - $ref: "#/components/schemas/CrossNodeTransferNotifyRequest"
                 - $ref: "#/components/schemas/CrossNodeTransferStatusRequest"
                 - $ref: "#/components/schemas/CrossNodeTransferAckRequest"
             examples:
               info:
-                summary: Fetch the node public key
-                description: >
-                  Retrieve the delegate's public key. This is needed to verify signatures on notes
-                  and to identify which delegate issued a particular note.
+                summary: Get the node information
                 value:
                   m: public_key
+              keys:
+                summary: Get the keyset of ADA
+                value:
+                  m: keys
+                  p:
+                    policy_id: "00000000000000000000000000000000000000000000000000000000"
+                    asset_name: ""
               refresh:
-                summary: Submit a refresh transaction
-                description: >
-                  A refresh operation consumes input notes and produces output notes. This is how
-                  value is transferred between users. The input bitmask `m` indicates which atoms
-                  are inputs (bits set to 1) vs outputs (bits set to 0).
+                summary: Swap one note of 8 lovelace for two notes of 4
                 value:
                   m: refresh
                   p:
@@ -119,310 +74,334 @@ paths:
                     a:
                       - delegate: "0101010101010101010101010101010101010101010101010101010101010101"
                         asset_id: 0
-                        amount: 10
+                        amount: 8
                         nonce: "0505050505050505050505050505050505050505050505050505050505050505"
                         signature: 0
+                      - delegate: "0101010101010101010101010101010101010101010101010101010101010101"
+                        asset_id: 0
+                        amount: 4
+                        nonce: "0000000000000000000000000000000000000000000000000000000000000000"
+                        signature: null
+                      - delegate: "0101010101010101010101010101010101010101010101010101010101010101"
+                        asset_id: 0
+                        amount: 4
+                        nonce: "0000000000000000000000000000000000000000000000000000000000000000"
+                        signature: null
                     a_:
                       - policy_id: "00000000000000000000000000000000000000000000000000000000"
-                        asset_name: "MUG"
+                        asset_name: ""
                     s:
                       - "0909090909090909090909090909090909090909090909090909090909090909"
+                    b:
+                      - "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+                      - "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
       responses:
         "200":
-          description: Successful operation response or error
+          description: The result of the method, or an error.
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: "#/components/schemas/RefreshResponse"
                   - $ref: "#/components/schemas/InfoResponse"
+                  - $ref: "#/components/schemas/KeysResponse"
+                  - $ref: "#/components/schemas/RefreshResponse"
+                  - $ref: "#/components/schemas/DepositResponse"
+                  - $ref: "#/components/schemas/WithdrawResponse"
+                  - $ref: "#/components/schemas/EmitResponse"
                   - $ref: "#/components/schemas/CrossNodeTransferCreateResponse"
                   - $ref: "#/components/schemas/CrossNodeTransferNotifyResponse"
                   - $ref: "#/components/schemas/CrossNodeTransferStatusResponse"
                   - $ref: "#/components/schemas/CrossNodeTransferAckResponse"
                   - $ref: "#/components/schemas/ErrorResponse"
             examples:
-              infoResponse:
-                summary: Successful info response
-                description: Returns the 32-byte public key of the delegate
-                value:
-                  m: public_key
-                  r: "0101010101010101010101010101010101010101010101010101010101010101"
-              refreshResponse:
-                summary: Successful refresh response
-                description: >
-                  Returns blinded signatures for all output atoms. Each signature includes
-                  a DLEQ proof to ensure the delegate signed the correct commitment.
-                value:
-                  m: refresh
-                  r:
-                    s:
-                      - c: "0808080808080808080808080808080808080808080808080808080808080808"
-                        p:
-                          e: "020202020202020202020202020202020202020202020202020202020202020202"
-                          z: "030303030303030303030303030303030303030303030303030303030303030303"
-              errorResponse:
-                summary: Error response
-                description: Any failed operation returns this format
+              error:
+                summary: An error
                 value:
                   m: error
                   r:
-                    reason: "Note has already been spent"
+                    reason: "Signature already spent"
 
 components:
   schemas:
-    # Request wrappers -------------------------------------------------------
-    RefreshRequest:
-      type: object
-      required: [m, p]
-      properties:
-        m:
-          type: string
-          enum: [refresh]
-          description: Method discriminator - identifies this as a refresh request
-        p:
-          $ref: "#/components/schemas/Refresh"
-      additionalProperties: false
-      description: >
-        Request to perform a refresh operation. A refresh consumes input notes and produces
-        output notes, enabling private transfers between users. All input notes must be
-        previously signed by the same delegate.
-
+    # Requests ---------------------------------------------------------------
     InfoRequest:
       type: object
       required: [m]
       properties:
-        m:
-          type: string
-          enum: [public_key]
-          description: Method discriminator - identifies this as a public key request
+        m: { type: string, enum: [public_key] }
+      additionalProperties: false
+      description: Asks for the delegate information.
+
+    KeysRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [keys] }
+        p:
+          type: object
+          required: [policy_id, asset_name]
+          properties:
+            policy_id: { $ref: "#/components/schemas/PolicyId" }
+            asset_name: { $ref: "#/components/schemas/AssetName" }
+          additionalProperties: false
+      additionalProperties: false
+      description: Asks for the 64 denomination public keys of one asset.
+
+    RefreshRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [refresh] }
+        p: { $ref: "#/components/schemas/Refresh" }
+      additionalProperties: false
+      description: Spends notes and asks for new notes of the same value.
+
+    DepositRequestWrapper:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [deposit] }
+        p: { $ref: "#/components/schemas/DepositRequest" }
+      additionalProperties: false
+      description: Claims the notes for a deposit to the vault.
+
+    WithdrawRequestWrapper:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [withdraw] }
+        p: { $ref: "#/components/schemas/WithdrawRequest" }
+      additionalProperties: false
+      description: Burns notes and asks the node to sign a withdrawal.
+
+    EmitRequest:
+      type: object
+      required: [m, p]
+      properties:
+        m: { type: string, enum: [emit] }
+        p:
+          type: object
+          required: [policy_id, asset_name, amount]
+          properties:
+            policy_id: { $ref: "#/components/schemas/PolicyId" }
+            asset_name: { $ref: "#/components/schemas/AssetName" }
+            amount: { $ref: "#/components/schemas/Denomination" }
+          additionalProperties: false
       additionalProperties: false
       description: >
-        Request to retrieve the node's public key (delegate identity). The public key is
-        needed to verify signatures on notes and to identify which delegate issued a note.
+        Makes a note without a deposit. Only a node in dev mode accepts this
+        method.
 
-    # Response wrappers ------------------------------------------------------
+    # Responses --------------------------------------------------------------
+    InfoResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [public_key] }
+        r:
+          type: object
+          required: [delegate_pk]
+          properties:
+            delegate_pk:
+              $ref: "#/components/schemas/PublicKey"
+            cardano_script_address:
+              type: ["string", "null"]
+              description: The vault address, in bech32.
+            cardano_payment_vk:
+              type: ["string", "null"]
+              description: The Cardano payment key of the node, in hex.
+            cardano_script_cbor:
+              type: ["string", "null"]
+              description: The vault validator (Plutus V3), in hex.
+          additionalProperties: false
+      additionalProperties: false
+      description: >
+        The delegate information. The Cardano fields are null in dev mode.
+
+    KeysResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [keys] }
+        r:
+          type: object
+          required: [keys]
+          properties:
+            keys:
+              type: array
+              minItems: 64
+              maxItems: 64
+              items: { $ref: "#/components/schemas/PublicKey" }
+              description: The key at index d signs notes of amount 2^d.
+          additionalProperties: false
+      additionalProperties: false
+
     RefreshResponse:
       type: object
       required: [m, r]
       properties:
-        m:
-          type: string
-          enum: [refresh]
-          description: Method discriminator matching the request
+        m: { type: string, enum: [refresh] }
         r:
           type: object
           required: [s]
           properties:
             s:
               type: array
-              items:
-                $ref: "#/components/schemas/BlindSignature"
-              description: >
-                Blind signatures for all output atoms. Each signature corresponds to an output
-                atom in the same order as they appear in the request. The client must unblind
-                these signatures to obtain valid notes.
+              items: { $ref: "#/components/schemas/BlindSignature" }
+              description: One blind signature for each output, in atom order.
           additionalProperties: false
       additionalProperties: false
-      description: >
-        Successful response to a refresh request. Contains blinded signatures for all output
-        atoms in the transaction.
 
-    InfoResponse:
+    DepositResponse:
       type: object
       required: [m, r]
       properties:
-        m:
-          type: string
-          enum: [public_key]
-          description: Method discriminator matching the request
+        m: { type: string, enum: [deposit] }
         r:
-          $ref: "#/components/schemas/PublicKey"
+          type: object
+          required: [s, deposit_ref]
+          properties:
+            s:
+              type: array
+              items: { $ref: "#/components/schemas/BlindSignature" }
+              description: One blind signature for each output, in request order.
+            deposit_ref:
+              type: string
+              description: The deposit UTxO, as tx_hash:index.
+          additionalProperties: false
       additionalProperties: false
-      description: >
-        Successful response to an info request. Contains the node's 32-byte public key.
+
+    WithdrawResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [withdraw] }
+        r:
+          type: object
+          required: [signed_tx_cbor, tx_hash, s]
+          properties:
+            signed_tx_cbor:
+              type: string
+              description: The transaction with the node witness, in hex.
+            tx_hash:
+              type: string
+              description: The transaction hash, in hex.
+            s:
+              type: array
+              items: { $ref: "#/components/schemas/BlindSignature" }
+              description: One blind signature for each change output.
+          additionalProperties: false
+      additionalProperties: false
+
+    EmitResponse:
+      type: object
+      required: [m, r]
+      properties:
+        m: { type: string, enum: [emit] }
+        r: { $ref: "#/components/schemas/Note" }
+      additionalProperties: false
 
     ErrorResponse:
       type: object
       required: [m, r]
       properties:
-        m:
-          type: string
-          enum: [error]
-          description: Always "error" to indicate a failed operation
+        m: { type: string, enum: [error] }
         r:
           type: object
           required: [reason]
           properties:
             reason:
               type: string
-              description: Human-readable explanation of what went wrong
+              description: >
+                The reason for the error. For cross-node messages, the text starts
+                with a code, for example UNSUPPORTED_VERSION, INVALID_SIGNATURE,
+                REPLAY_DETECTED or TRANSFER_NOT_FOUND.
           additionalProperties: false
       additionalProperties: false
-      description: >
-        Error response returned for any failed operation. The `reason` field provides
-        details about why the operation failed. For cross-node M3 envelopes, reason strings
-        are prefixed with canonical error codes, for example:
-        - `UNSUPPORTED_VERSION`
-        - `UNSUPPORTED_MESSAGE_TYPE`
-        - `SCHEMA_VALIDATION_FAILED`
-        - `INVALID_SIGNATURE`
-        - `UNKNOWN_KEY_ID`
-        - `AUTHZ_DENIED`
-        - `REPLAY_DETECTED`
-        - `IDEMPOTENCY_CONFLICT`
-        - `TRANSFER_NOT_FOUND`
 
-    # Domain models ----------------------------------------------------------
+    # Protocol types ---------------------------------------------------------
     Refresh:
       type: object
-      required: [m, a, a_, s]
+      required: [m, a, a_, s, b]
       properties:
         m:
           $ref: "#/components/schemas/BitSet32"
-          description: >
-            Bitmask marking which atoms are inputs. A set bit at position `i` indicates that
-            `a[i]` is an input note being consumed. A cleared bit indicates it's an output
-            note being created. Must have at least one input and one output.
         a:
           type: array
-          items:
-            $ref: "#/components/schemas/Atom"
-          description: >
-            Ordered list of atoms (notes). The input/output role of each atom is determined
-            by the bitmask `m`. All atoms must reference assets defined in `a_`.
+          maxItems: 32
+          items: { $ref: "#/components/schemas/Atom" }
+          description: The input and output atoms. Bit i of m is 1 for an input.
         a_:
           type: array
-          items:
-            $ref: "#/components/schemas/Asset"
-          description: >
-            Asset catalog. Each atom references an asset by index into this array.
-            This allows atoms to share asset definitions, reducing payload size.
+          items: { $ref: "#/components/schemas/Asset" }
+          description: The assets. Each atom refers to an asset by its index.
         s:
           type: array
-          items:
-            $ref: "#/components/schemas/Signature"
-          description: >
-            Signatures for input atoms. Each input atom references a signature by index
-            into this array. The number of signatures must match the number of set bits
-            in the bitmask.
+          items: { $ref: "#/components/schemas/Signature" }
+          description: The signatures of the input notes.
+        b:
+          type: array
+          items: { $ref: "#/components/schemas/Signature" }
+          description: The blinded point of each output, in atom order.
       additionalProperties: false
       description: >
-        A refresh transaction that consumes input notes and produces output notes. This is
-        the core operation for transferring value between users.
+        For each asset, the input amounts and the output amounts must have the
+        same sum. The node refuses a refresh without one blinded point for each
+        output.
 
-        ## Transaction Flow
-
-        1. **Input atoms** must have valid signatures from the same delegate
-        2. The delegate verifies all input signatures are unique and unspent
-        3. **Output atoms** get new blinded signatures from the delegate
-        4. Client unblinds the output signatures to create valid notes
-
-        ## Invariants
-
-        - Sum of input amounts = Sum of output amounts (within same asset)
-        - All atoms must reference the same delegate
-        - Input signatures must be previously unused
-        - All assets in a refresh must be present in the asset catalog
-
-  Atom:
+    Atom:
       type: object
-      required: [delegate, asset_id, amount, nonce]
+      required: [delegate, asset_id, amount, nonce, signature]
       properties:
         delegate:
           $ref: "#/components/schemas/PublicKey"
-          description: >
-            Public key of the delegate that signed (or will sign) this note. All atoms
-            in a refresh must reference the same delegate.
         asset_id:
           type: integer
           format: uint32
-          minimum: 0
-          description: >
-            Index into the `Refresh.a_` array specifying which asset this note holds.
-            Multiple atoms can reference the same asset index.
+          description: An index in the asset list a_.
         amount:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: >
-            Amount of the asset this note represents. Must be consistent with the
-            asset catalog reference.
+          $ref: "#/components/schemas/Denomination"
         nonce:
           $ref: "#/components/schemas/Hash"
           description: >
-            Random 32-byte nonce that ensures each note is unique even if all other
-            fields are the same. Must be cryptographically random.
+            The note nonce for an input. For an output, it must be zero, so that
+            the node does not see the nonce of the new note.
         signature:
-          type: integer
+          type: ["integer", "null"]
           format: uint32
-          minimum: 0
-          description: >
-            Index into `Refresh.s` for input atoms. Required for inputs, should be omitted
-            for outputs. This points to the signature that authorizes spending this note.
+          description: An index in s for an input, and null for an output.
       additionalProperties: false
-      description: >
-        An atom represents a note (value holder) within a refresh transaction. Atoms can
-        be either inputs (being consumed) or outputs (being created) based on the refresh
-        bitmask.
-
-        For **inputs**, the signature field is required and points to a valid signature
-        from `Refresh.s`. For **outputs**, the signature field should be omitted - the
-        delegate will create new signatures returned in the response.
 
     Note:
       type: object
-      required: [amount, delegate, policy_id, asset_name, nonce, signature]
+      required: [amount, delegate, policy_id, asset_name, nonce, signature, dleq]
       properties:
-        amount:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: >
-            Amount of the asset this note represents. Notes can be of any amount,
-            allowing for flexible value representation.
-        delegate:
-          $ref: "#/components/schemas/PublicKey"
-          description: >
-            Public key of the delegate that signed this note. Only this delegate
-            can verify or spend the note in a refresh transaction.
-        policy_id:
-          $ref: "#/components/schemas/PolicyId"
-          description: >
-            Minting policy controlling the asset. Inline on the note for clarity.
-        asset_name:
-          $ref: "#/components/schemas/AssetName"
-          description: >
-            Asset name (0-32 bytes) identifying the token under the policy. Inline on the
-            note instead of a hashed asset_id.
-        nonce:
-          $ref: "#/components/schemas/Hash"
-          description: >
-            Random 32-byte nonce ensuring note uniqueness. Two notes with identical
-            amounts, delegates, and assets but different nonces are distinct.
-        signature:
-          $ref: "#/components/schemas/Signature"
-          description: >
-            32-byte signature from the delegate. This signature binds the note's
-            commitment (hash of other fields) to the delegate's secret key.
+        amount: { $ref: "#/components/schemas/Denomination" }
+        delegate: { $ref: "#/components/schemas/PublicKey" }
+        policy_id: { $ref: "#/components/schemas/PolicyId" }
+        asset_name: { $ref: "#/components/schemas/AssetName" }
+        nonce: { $ref: "#/components/schemas/Hash" }
+        signature: { $ref: "#/components/schemas/Signature" }
         dleq:
-          nullable: true
-          $ref: "#/components/schemas/DleqProofWithBlinding"
+          oneOf:
+            - $ref: "#/components/schemas/DleqProofWithBlinding"
+            - type: "null"
           description: >
-            DLEQ (Discrete Logarithm Equality) proof with blinding factor. Present on
-            notes emitted by the delegate, absent on notes obtained through refresh.
-            This proof ensures the delegate signed the correct blinded commitment.
+            The DLEQ proof and the blinding factor. A holder needs them to verify
+            the note without the node.
       additionalProperties: false
-      description: >
-        A note is a cryptographic representation of value that can be transferred
-        without revealing the sender. Notes are signed by delegates using blind
-        signatures, allowing the delegate to sign without seeing the note content.
 
-        Notes can be:
-        - **Created** by the delegate (has dleq field)
-        - **Transferred** through refresh operations (no dleq field)
-
-        To spend a note, include it as an input in a refresh transaction.
+    BlindedOutput:
+      type: object
+      required: [policy_id, asset_name, amount, point]
+      properties:
+        policy_id: { $ref: "#/components/schemas/PolicyId" }
+        asset_name: { $ref: "#/components/schemas/AssetName" }
+        amount: { $ref: "#/components/schemas/Denomination" }
+        point:
+          $ref: "#/components/schemas/Signature"
+          description: The blinded point B'.
+      additionalProperties: false
 
     BlindSignature:
       type: object
@@ -430,170 +409,131 @@ components:
       properties:
         c:
           $ref: "#/components/schemas/Signature"
-          description: >
-            Blinded signature bytes. The client must unblind this using the
-            blinding factor from the request to obtain a valid note signature.
-        p:
-          $ref: "#/components/schemas/DleqProof"
-          description: >
-            DLEQ proof ensuring the delegate signed the correct blinded commitment.
-            This prevents the delegate from signing a different value than requested.
+          description: The blinded signature C'.
+        p: { $ref: "#/components/schemas/DleqProof" }
       additionalProperties: false
-      description: >
-        A blind signature returned by the delegate for output atoms in a refresh
-        transaction. The signature is on a blinded commitment, preserving privacy.
-
-        The client must unblind this signature using the same blinding factor
-        that was used to create the blind commitment in the request.
 
     DleqProof:
       type: object
       required: [e, z]
       properties:
-        e:
-          $ref: "#/components/schemas/Hash"
-          description: >
-            Challenge component of the DLEQ proof. Part of the Schnorr-style
-            zero-knowledge proof.
-        z:
-          $ref: "#/components/schemas/Hash"
-          description: >
-            Response component of the DLEQ proof. Part of the Schnorr-style
-            zero-knowledge proof.
+        e: { $ref: "#/components/schemas/Hash" }
+        z: { $ref: "#/components/schemas/Hash" }
       additionalProperties: false
-      description: >
-        DLEQ (Discrete Logarithm Equality) proof. This zero-knowledge proof
-        demonstrates that the delegate's signature is on the correct blinded
-        commitment without revealing the secret key.
-
-        The proof ensures:
-        - The delegate signed the commitment they claim to have signed
-        - The signature is valid (not forged)
-        - The blind signature is correctly formed
 
     DleqProofWithBlinding:
       type: object
       required: [e, z, r]
       properties:
-        e:
-          $ref: "#/components/schemas/Hash"
-          description: >
-            Challenge component of the DLEQ proof. Same as in DleqProof.
-        z:
-          $ref: "#/components/schemas/Hash"
-          description: >
-            Response component of the DLEQ proof. Same as in DleqProof.
+        e: { $ref: "#/components/schemas/Hash" }
+        z: { $ref: "#/components/schemas/Hash" }
         r:
           $ref: "#/components/schemas/Hash"
-          description: >
-            Blinding factor used during the blind signature process. The client
-            needs this value to verify the proof and unblind the signature.
+          description: The blinding factor.
       additionalProperties: false
-      description: >
-        DLEQ proof including the blinding factor. This is included with notes
-        that are directly emitted by the delegate, allowing verification that
-        the note was correctly signed.
+
+    DepositRequest:
+      type: object
+      required: [utxo, outputs, message, signature, nonce, network]
+      properties:
+        utxo: { $ref: "#/components/schemas/UtxoReference" }
+        outputs:
+          type: array
+          items: { $ref: "#/components/schemas/BlindedOutput" }
+          description: >
+            For each asset, the amounts must add up to the quantity in the UTxO.
+        message:
+          type: string
+          description: JSON text with the key user_pubkey (the Ed25519 key, in hex).
+        signature:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 255 }
+          description: The CIP-8 COSE_Sign1 bytes of the intent payload.
+        nonce:
+          type: integer
+          format: uint64
+        network:
+          type: string
+          enum: [mainnet, preprod, preview, testnet]
+      additionalProperties: false
+
+    UtxoReference:
+      type: object
+      required: [tx_hash, index]
+      properties:
+        tx_hash: { type: string, description: The transaction hash, in hex. }
+        index: { type: integer, format: uint16 }
+      additionalProperties: false
+
+    WithdrawRequest:
+      type: object
+      required: [notes, change_outputs, tx_cbor, tx_hash]
+      properties:
+        notes:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Note" }
+          description: The notes to burn.
+        change_outputs:
+          type: array
+          items: { $ref: "#/components/schemas/BlindedOutput" }
+          description: >
+            The change notes. Notes minus change must equal the value that
+            leaves the vault, fee included.
+        tx_cbor:
+          type: string
+          description: The unsigned (or partly signed) transaction, in hex.
+        tx_hash:
+          type: string
+          description: The BLAKE2b-256 hash of the transaction body, in hex.
+      additionalProperties: false
 
     Asset:
       type: object
       required: [policy_id, asset_name]
       properties:
-        policy_id:
-          $ref: "#/components/schemas/PolicyId"
-        asset_name:
-          $ref: "#/components/schemas/AssetName"
+        policy_id: { $ref: "#/components/schemas/PolicyId" }
+        asset_name: { $ref: "#/components/schemas/AssetName" }
       additionalProperties: false
-      description: >
-        Cardano asset spec consisting of policy_id and asset_name. Used inline on notes and
-        in refresh asset catalogs instead of a hashed asset identifier.
+      description: A Cardano asset. ADA has the zero policy ID and an empty name.
 
     PolicyId:
       type: string
-      description: >
-        28-byte policy identifier as hex string (56 characters). This is the
-        minting policy hash from Cardano. The policy controls who can mint/burn
-        tokens of assets under this policy. Examples of real Cardano policy IDs:
-        - SNEK: 279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f
-        - HOSKY: a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235
-      pattern: "^[0-9a-fA-F]{56}$"
-      example: "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f"
+      pattern: "^[0-9a-f]{56}$"
+      description: A 28-byte policy ID, in lowercase hex.
 
     AssetName:
       type: string
-      description: >
-        Asset name as a UTF-8 string (0-32 bytes). Examples:
-        - "MUG"
-        - "HOSKY"
-        - Empty string is valid for unnamed assets
       maxLength: 32
-      example: "MUG"
+      description: The asset name, as UTF-8 text of 32 bytes or less.
+
+    Denomination:
+      type: integer
+      format: uint64
+      minimum: 1
+      description: A note amount. It must be a power of two.
 
     PublicKey:
       $ref: "#/components/schemas/HexString32"
-      description: >
-        32-byte public key identifying a delegate in Mugraph's elliptic curve
-        cryptography (Curve25519). This is derived from the delegate's secret key
-        and is used to verify signatures on notes.
-
-        Each delegate has a unique public key. Users must verify that all notes
-        in a refresh transaction are signed by the same delegate (matching public key).
+      description: A Ristretto255 point (compressed).
 
     Hash:
       $ref: "#/components/schemas/HexString32"
-      description: >
-        32-byte hash output, typically from BLAKE3 hash function. Used for:
-        - Nonces in notes (random identifiers)
-        - Commitments binding note fields together
-        - DLEQ proof components
-
-        Hashes ensure integrity and uniqueness of cryptographic constructions.
 
     Signature:
       $ref: "#/components/schemas/HexString32"
-      description: >
-        32-byte signature on a message. In Mugraph:
-        - Input note signatures are verified by the delegate during refresh
-        - Output notes receive new signatures from the delegate
-        - Signatures use Ed25519-like scheme on Curve25519
-
-        A signature proves that the holder of the secret key signed the
-        commitment, without revealing the secret key itself.
+      description: A Ristretto255 point (compressed).
 
     BitSet32:
       type: integer
       format: uint32
-      minimum: 0
-      maximum: 4294967295
-      description: >
-        32-bit bitmask used to mark atoms as inputs in a refresh transaction.
-        Each bit corresponds to an atom in the `a` array:
-        - Bit 0 → atom a[0]
-        - Bit 1 → atom a[1]
-        - ...
-        - Bit n → atom a[n]
-
-        A **set bit** (1) indicates that atom is an **input** (being consumed).
-        A **clear bit** (0) indicates that atom is an **output** (being created).
-
-        **Example**: With bitmask value of 3 (binary: 11):
-        - Bit 0 is set → a[0] is an input
-        - Bit 1 is set → a[1] is an input
-        - All other bits are clear → a[2], a[3], ... are outputs
-      example: 3
+      description: Bit i is 1 if atom i is an input.
+      example: 1
 
     HexString32:
       type: string
-      description: >
-        32-byte value encoded as hexadecimal string (64 characters). This format is
-        used for all 32-byte cryptographic values in the API.
-
-        The hex string is case-insensitive but conventionally uses lowercase.
-        Leading zeros must be included to maintain 64-character length.
-      pattern: "^[0-9a-fA-F]{64}$"
-      example: "0101010101010101010101010101010101010101010101010101010101010101"
-      externalDocs:
-        description: RFC 4648: The Base16, Base32, and Base64 Data Encodings
-        url: https://datatracker.ietf.org/doc/html/rfc4648
+      pattern: "^[0-9a-f]{64}$"
+      description: 32 bytes, in lowercase hex.
 
     # Cross-node M3 schemas -------------------------------------------------
     XNodeAuth:
