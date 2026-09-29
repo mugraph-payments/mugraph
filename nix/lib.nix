@@ -119,5 +119,8 @@ in
     RUSTFMT = "${pkgs.rust-bin.nightly.latest}/bin/rustfmt";
   };
 
-  cargoLock.lockFile = ../Cargo.lock;
+  cargoLock = {
+    lockFile = ../Cargo.lock;
+    allowBuiltinFetchGit = true;
+  };
 }

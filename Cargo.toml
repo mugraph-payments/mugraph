@@ -40,4 +40,4 @@ debug = false
 lto = "fat"
 
 [patch.crates-io]
-muhex = { path = "../../cfcosta/muhex" }
+muhex = { git = "https://github.com/cfcosta/muhex", rev = "4dc2faed45afdb33ff380bf5d486c42676864929" }

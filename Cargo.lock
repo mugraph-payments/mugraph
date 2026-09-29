@@ -3343,6 +3343,7 @@ dependencies = [
 [[package]]
 name = "muhex"
 version = "0.5.3"
+source = "git+https://github.com/cfcosta/muhex?rev=4dc2faed45afdb33ff380bf5d486c42676864929#4dc2faed45afdb33ff380bf5d486c42676864929"
 dependencies = [
  "serde",
 ]
