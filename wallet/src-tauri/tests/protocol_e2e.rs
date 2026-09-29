@@ -231,9 +231,11 @@ async fn deposit_send_import_and_withdraw_keep_the_vault_backed() {
     .await
     .expect("withdraw");
 
-    assert_eq!(total(&a).await, before - 10_200_000);
+    // The notes paid the payout and the fee, and the vault lost the same.
+    let fee = before - total(&a).await - 10_000_000;
+    assert!(fee > 0 && fee < 2_000_000, "fee {fee} is out of range");
     let vault = vault_lovelace(&chain_url, &script_address).await;
-    assert_eq!(vault, 100_000_000 - 10_200_000);
+    assert_eq!(vault, 100_000_000 - 10_000_000 - fee);
     assert_eq!(
         total(&a).await + total(&b).await,
         vault,

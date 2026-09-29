@@ -221,13 +221,13 @@ pub async fn rpc(
             }),
         },
         Request::Info => {
-            // Load cardano script address + payment vk if wallet is initialized
-            let (script_address, payment_vk) =
-                load_cardano_info(&ctx.database).unwrap_or((None, None));
+            // Load the Cardano wallet info if the wallet is initialized
+            let info = load_cardano_info(&ctx.database).unwrap_or_default();
             Json(Response::Info {
                 delegate_pk: ctx.keypair.public_key,
-                cardano_script_address: script_address,
-                cardano_payment_vk: payment_vk,
+                cardano_script_address: info.script_address,
+                cardano_payment_vk: info.payment_vk,
+                cardano_script_cbor: info.script_cbor,
             })
         }
         Request::Keys {
@@ -317,24 +317,34 @@ pub async fn rpc(
     }
 }
 
-/// Load Cardano script address + node payment vk hex from the database if a
-/// wallet is initialized. Both fields are optional in the response, so any
+/// The Cardano wallet info that `Info` returns, all in text form.
+#[derive(Default)]
+struct CardanoInfo {
+    script_address: Option<String>,
+    payment_vk: Option<String>,
+    script_cbor: Option<String>,
+}
+
+/// Load the Cardano wallet info from the database if a wallet is
+/// initialized. All fields are optional in the response, so any
 /// missing/uninitialized state collapses to `None`.
-fn load_cardano_info(
-    database: &Database,
-) -> Result<(Option<String>, Option<String>), Error> {
+fn load_cardano_info(database: &Database) -> Result<CardanoInfo, Error> {
     use crate::database::CARDANO_WALLET;
 
     let read_tx = database.read()?;
     let table = read_tx.open_table(CARDANO_WALLET)?;
 
-    match table.get("wallet")? {
+    Ok(match table.get("wallet")? {
         Some(wallet) => {
             let w = wallet.value();
-            Ok((Some(w.script_address), Some(hex::encode(&w.payment_vk))))
+            CardanoInfo {
+                script_address: Some(w.script_address),
+                payment_vk: Some(hex::encode(&w.payment_vk)),
+                script_cbor: Some(hex::encode(&w.script_cbor)),
+            }
         }
-        None => Ok((None, None)),
-    }
+        None => CardanoInfo::default(),
+    })
 }
 
 #[cfg(test)]
@@ -496,10 +506,12 @@ mod tests {
                 delegate_pk,
                 cardano_script_address,
                 cardano_payment_vk,
+                cardano_script_cbor,
             } => {
                 assert_eq!(delegate_pk, expected_delegate_pk);
                 assert_eq!(cardano_script_address, None);
                 assert_eq!(cardano_payment_vk, None);
+                assert_eq!(cardano_script_cbor, None);
             }
             other => panic!("unexpected response: {other:?}"),
         }

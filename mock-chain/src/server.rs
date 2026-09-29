@@ -260,6 +260,7 @@ struct EpochParams {
     max_tx_ex_mem: String,
     max_tx_ex_steps: String,
     coins_per_utxo_size: String,
+    cost_models_raw: serde_json::Value,
 }
 
 async fn epoch_params() -> Json<EpochParams> {
@@ -277,6 +278,9 @@ async fn epoch_params() -> Json<EpochParams> {
         max_tx_ex_mem: "14000000".to_string(),
         max_tx_ex_steps: "10000000000".to_string(),
         coins_per_utxo_size: "4310".to_string(),
+        // The preprod PlutusV3 cost model, for the script data hash.
+        cost_models_raw: serde_json::from_str(include_str!("cost_models.json"))
+            .expect("cost model fixture is valid JSON"),
     })
 }
 

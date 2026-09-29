@@ -6,6 +6,14 @@ use mugraph_core::types::{
 };
 use reqwest::Url;
 
+/// What a node says about itself.
+pub struct NodeInfo {
+    pub delegate_pk: PublicKey,
+    pub script_address: Option<String>,
+    pub payment_vk_hex: Option<String>,
+    pub script_cbor_hex: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct NodeClient {
     http: reqwest::Client,
@@ -53,16 +61,19 @@ impl NodeClient {
         Ok(())
     }
 
-    pub async fn info(
-        &self,
-    ) -> Result<(PublicKey, Option<String>, Option<String>), NodeClientError>
-    {
+    pub async fn info(&self) -> Result<NodeInfo, NodeClientError> {
         match self.rpc(&Request::Info).await? {
             Response::Info {
                 delegate_pk,
                 cardano_script_address,
                 cardano_payment_vk,
-            } => Ok((delegate_pk, cardano_script_address, cardano_payment_vk)),
+                cardano_script_cbor,
+            } => Ok(NodeInfo {
+                delegate_pk,
+                script_address: cardano_script_address,
+                payment_vk_hex: cardano_payment_vk,
+                script_cbor_hex: cardano_script_cbor,
+            }),
             Response::Error { reason } => Err(NodeClientError::Node { reason }),
             other => {
                 Err(NodeClientError::UnexpectedResponse(format!("{other:?}")))

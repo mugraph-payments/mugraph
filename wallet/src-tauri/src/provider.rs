@@ -122,6 +122,34 @@ impl CardanoProvider {
         }
     }
 
+    /// Get the protocol parameters that a withdrawal needs.
+    pub async fn get_protocol_params(
+        &self,
+    ) -> Result<crate::cardano_tx::ProtocolParams, ProviderError> {
+        match self.provider_type.as_str() {
+            "blockfrost" => {
+                let url = format!("{}/epochs/latest/parameters", self.base_url);
+                let (header_name, header_value) = self.auth_header();
+                let resp = self
+                    .client
+                    .get(&url)
+                    .header(header_name, header_value)
+                    .send()
+                    .await?;
+                if !resp.status().is_success() {
+                    let text = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::Provider(format!(
+                        "Blockfrost parameters failed: {text}"
+                    )));
+                }
+                parse_protocol_params(&resp.json().await?)
+            }
+            other => Err(ProviderError::Unsupported(format!(
+                "{other} protocol parameters"
+            ))),
+        }
+    }
+
     /// Get current chain tip.
     pub async fn get_tip(&self) -> Result<ChainTip, ProviderError> {
         match self.provider_type.as_str() {
@@ -489,9 +517,100 @@ struct MaestroTxInfo {
     block_height: u64,
 }
 
+/// Reads the Blockfrost protocol parameters. The numbers can come as JSON
+/// numbers or as strings.
+pub fn parse_protocol_params(
+    json: &serde_json::Value,
+) -> Result<crate::cardano_tx::ProtocolParams, ProviderError> {
+    fn number<T: std::str::FromStr>(
+        json: &serde_json::Value,
+        key: &str,
+    ) -> Result<T, ProviderError> {
+        let value = &json[key];
+        let text = match value {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            _ => String::new(),
+        };
+        text.parse().map_err(|_| {
+            ProviderError::Provider(format!(
+                "bad protocol parameter {key}: {value}"
+            ))
+        })
+    }
+
+    let cost_model = json["cost_models_raw"]["PlutusV3"]
+        .as_array()
+        .ok_or_else(|| {
+            ProviderError::Provider(
+                "protocol parameters have no PlutusV3 cost model".into(),
+            )
+        })?
+        .iter()
+        .map(|v| {
+            v.as_i64().ok_or_else(|| {
+                ProviderError::Provider(format!("bad cost model value {v}"))
+            })
+        })
+        .collect::<Result<Vec<i64>, _>>()?;
+
+    Ok(crate::cardano_tx::ProtocolParams {
+        min_fee_a: number(json, "min_fee_a")?,
+        min_fee_b: number(json, "min_fee_b")?,
+        price_mem: number(json, "price_mem")?,
+        price_step: number(json, "price_step")?,
+        plutus_v3_cost_model: cost_model,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_protocol_params_reads_blockfrost_numbers() {
+        let json = serde_json::json!({
+            "min_fee_a": 44,
+            "min_fee_b": 155381,
+            "price_mem": 0.0577,
+            "price_step": 0.0000721,
+            "cost_models_raw": {"PlutusV3": [100788, 420, 1]}
+        });
+
+        let params = parse_protocol_params(&json).unwrap();
+        assert_eq!(params.min_fee_a, 44);
+        assert_eq!(params.min_fee_b, 155_381);
+        assert_eq!(params.price_mem, 0.0577);
+        assert_eq!(params.price_step, 0.0000721);
+        assert_eq!(params.plutus_v3_cost_model, vec![100788, 420, 1]);
+    }
+
+    #[test]
+    fn parse_protocol_params_reads_strings() {
+        let json = serde_json::json!({
+            "min_fee_a": "44",
+            "min_fee_b": "155381",
+            "price_mem": "0.0577",
+            "price_step": "0.0000721",
+            "cost_models_raw": {"PlutusV3": [1, 2]}
+        });
+
+        let params = parse_protocol_params(&json).unwrap();
+        assert_eq!(params.min_fee_b, 155_381);
+        assert_eq!(params.price_step, 0.0000721);
+    }
+
+    #[test]
+    fn parse_protocol_params_needs_the_v3_cost_model() {
+        let json = serde_json::json!({
+            "min_fee_a": 44,
+            "min_fee_b": 155381,
+            "price_mem": 0.0577,
+            "price_step": 0.0000721
+        });
+
+        assert!(parse_protocol_params(&json).is_err());
+    }
 
     #[test]
     fn new_blockfrost_preprod() {

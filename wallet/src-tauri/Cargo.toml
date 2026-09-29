@@ -44,4 +44,8 @@ whisky-csl = "1.0.24"
 axum = { workspace = true }
 mock-chain = { path = "../../mock-chain" }
 mugraph-node = { workspace = true }
+pallas-codec = "0.31.0"
+pallas-primitives = "0.31.0"
+pallas-traverse = "0.31.0"
+uplc = "1.1.10"
 tempfile = "3"

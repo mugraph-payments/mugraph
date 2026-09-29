@@ -21,6 +21,10 @@ pub enum Response {
         /// the wallet to embed `node_pubkey_hash` in deposit datums.
         #[serde(default)]
         cardano_payment_vk: Option<String>,
+        /// The vault validator (Plutus V3) in hex. Wallets put it in the
+        /// withdrawal transactions that spend vault UTxOs.
+        #[serde(default)]
+        cardano_script_cbor: Option<String>,
     },
     #[serde(rename = "keys")]
     Keys {

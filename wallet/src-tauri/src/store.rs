@@ -304,6 +304,31 @@ impl Store {
         Ok(table.get(key.as_str())?.map(|v| v.value().to_vec()))
     }
 
+    pub fn set_node_script(
+        &self,
+        network: &str,
+        script_cbor: &[u8],
+    ) -> Result<(), StoreError> {
+        let key = format!("{network}:node_script");
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(DELEGATE_INFO)?;
+            table.insert(key.as_str(), script_cbor)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn get_node_script(
+        &self,
+        network: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        let key = format!("{network}:node_script");
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(DELEGATE_INFO)?;
+        Ok(table.get(key.as_str())?.map(|v| v.value().to_vec()))
+    }
+
     // --- Notes ---
 
     fn note_key(network: &str, nonce: &Hash) -> String {

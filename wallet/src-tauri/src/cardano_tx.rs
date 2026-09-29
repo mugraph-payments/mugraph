@@ -166,6 +166,27 @@ pub fn attach_user_witness(
     Ok(new_tx.to_bytes())
 }
 
+/// The protocol parameters that a withdrawal needs for its fee and its
+/// script data hash.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProtocolParams {
+    pub min_fee_a: u64,
+    pub min_fee_b: u64,
+    pub price_mem: f64,
+    pub price_step: f64,
+    pub plutus_v3_cost_model: Vec<i64>,
+}
+
+/// A pure-ADA UTxO of the user that the transaction puts up as
+/// collateral. The ledger takes the collateral only if a script fails.
+pub struct CollateralInput {
+    pub tx_hash: String,
+    pub index: u32,
+    pub lovelace: u64,
+    /// Where the unused part of the collateral goes.
+    pub return_address: String,
+}
+
 pub struct WithdrawTxParams<'a> {
     /// Script UTxO inputs to spend (tx_hash hex, index)
     pub script_inputs: &'a [(String, u32)],
@@ -177,33 +198,135 @@ pub struct WithdrawTxParams<'a> {
     pub withdraw_amount_lovelace: u64,
     /// Script address for change outputs (bech32)
     pub script_address: &'a str,
-    /// Transaction fee
-    pub fee_lovelace: u64,
     /// The node's payment key hash. The vault validator needs the node's
     /// signature, and the vault change datum names the node.
     pub node_pubkey_hash: &'a [u8; 28],
     /// The user key hash for the vault change datum.
     pub user_pubkey_hash: &'a [u8; 28],
+    /// The vault validator (Plutus V3), as in the blueprint.
+    pub script_cbor: &'a [u8],
+    pub collateral: &'a CollateralInput,
+    pub protocol: &'a ProtocolParams,
 }
 
-/// Build a withdraw transaction that spends script UTxOs and sends funds
-/// to a destination address, with optional change back to the script address.
+pub struct WithdrawTx {
+    pub tx_cbor: Vec<u8>,
+    pub tx_hash: [u8; 32],
+    pub fee: u64,
+}
+
+/// The execution units for each vault input. The validator uses about
+/// 28,000 memory units and 9.3 million steps (see the Plutus evaluation
+/// tests), so this leaves a margin of more than three times.
+const SPEND_MEM: u64 = 100_000;
+const SPEND_STEPS: u64 = 40_000_000;
+
+/// The size of a vkey witness in CBOR, for the fee estimate. The wallet
+/// adds one witness for the collateral, and the node adds one.
+const VKEY_WITNESS_SIZE: u64 = 101;
+const ADDED_WITNESSES: u64 = 2;
+
+/// The ledger requires collateral of 150% of the fee.
+const COLLATERAL_PERCENT: u64 = 150;
+
+/// The smallest vault change output. The ledger rejects outputs below its
+/// minimum UTxO value (about 1 ADA for an output with a datum), so a
+/// smaller change goes to the fee.
+const MIN_VAULT_CHANGE: u64 = 1_000_000;
+
+/// Build a withdraw transaction that spends vault UTxOs with the vault
+/// validator, and sends funds to a destination address, with change back
+/// to the vault.
 ///
-/// Returns (tx_cbor, tx_hash).
+/// The transaction carries the validator, one `Void` redeemer for each
+/// vault input, the script data hash, and collateral. It needs a witness
+/// for the collateral (the wallet) and for the node.
 pub fn build_withdraw_tx(
     params: &WithdrawTxParams<'_>,
-) -> Result<(Vec<u8>, [u8; 32]), String> {
-    let mut inputs = csl::TransactionInputs::new();
-    for (tx_hash_hex, index) in params.script_inputs {
-        let tx_hash_bytes = hex::decode(tx_hash_hex)
-            .map_err(|e| format!("bad input tx hash hex: {e}"))?;
-        let tx_hash = csl::TransactionHash::from_bytes(tx_hash_bytes)
-            .map_err(|e| format!("bad input tx hash: {e}"))?;
-        inputs.add(&csl::TransactionInput::new(&tx_hash, *index));
+) -> Result<WithdrawTx, String> {
+    if params.script_inputs.is_empty() {
+        return Err("no script inputs provided".to_string());
     }
 
-    if inputs.len() == 0 {
-        return Err("no script inputs provided".to_string());
+    // Two rounds: the fee changes the change output, and thus the size.
+    let mut fee = 0u64;
+    for _ in 0..2 {
+        let tx = assemble_withdraw_tx(params, fee)?;
+        fee = withdraw_fee(&tx, params.protocol);
+    }
+
+    // Change below the minimum UTxO value goes to the fee.
+    let change = params
+        .total_input_lovelace
+        .checked_sub(params.withdraw_amount_lovelace)
+        .and_then(|v| v.checked_sub(fee))
+        .ok_or("insufficient script inputs to cover withdraw + fee")?;
+    if change > 0 && change < MIN_VAULT_CHANGE {
+        fee += change;
+    }
+
+    let tx = assemble_withdraw_tx(params, fee)?;
+    let tx_cbor = tx.to_bytes();
+    let tx_hash = blake2b_256(&tx.body().to_bytes());
+
+    Ok(WithdrawTx {
+        tx_cbor,
+        tx_hash,
+        fee,
+    })
+}
+
+fn withdraw_fee(tx: &csl::Transaction, protocol: &ProtocolParams) -> u64 {
+    let size = tx.to_bytes().len() as u64 + ADDED_WITNESSES * VKEY_WITNESS_SIZE;
+    let redeemers =
+        tx.witness_set().redeemers().map(|r| r.len()).unwrap_or(0) as u64;
+    let script_fee = (redeemers as f64)
+        * (SPEND_MEM as f64 * protocol.price_mem
+            + SPEND_STEPS as f64 * protocol.price_step);
+
+    // A small margin, because the fee field itself can grow the size.
+    protocol.min_fee_a * size
+        + protocol.min_fee_b
+        + script_fee.ceil() as u64
+        + 1_000
+}
+
+fn coin(amount: u64) -> csl::Coin {
+    csl::BigNum::from(amount)
+}
+
+fn assemble_withdraw_tx(
+    params: &WithdrawTxParams<'_>,
+    fee: u64,
+) -> Result<csl::Transaction, String> {
+    // The ledger sorts inputs by transaction hash, then index. A spend
+    // redeemer points to its input by that order.
+    let mut sorted: Vec<(Vec<u8>, u32)> = params
+        .script_inputs
+        .iter()
+        .map(|(hash, index)| {
+            hex::decode(hash)
+                .map(|bytes| (bytes, *index))
+                .map_err(|e| format!("bad input tx hash hex: {e}"))
+        })
+        .collect::<Result<_, _>>()?;
+    sorted.sort();
+
+    let mut inputs = csl::TransactionInputs::new();
+    let mut redeemers = csl::Redeemers::new();
+    for (i, (hash, index)) in sorted.iter().enumerate() {
+        let tx_hash = csl::TransactionHash::from_bytes(hash.clone())
+            .map_err(|e| format!("bad input tx hash: {e}"))?;
+        inputs.add(&csl::TransactionInput::new(&tx_hash, *index));
+        redeemers.add(&csl::Redeemer::new(
+            &csl::RedeemerTag::new_spend(),
+            &csl::BigNum::from(i as u64),
+            &csl::PlutusData::new_empty_constr_plutus_data(&csl::BigNum::zero()),
+            &csl::ExUnits::new(
+                &csl::BigNum::from(SPEND_MEM),
+                &csl::BigNum::from(SPEND_STEPS),
+            ),
+        ));
     }
 
     let mut outputs = csl::TransactionOutputs::new();
@@ -211,30 +334,27 @@ pub fn build_withdraw_tx(
     // Destination output
     let dest_addr = csl::Address::from_bech32(params.destination_address)
         .map_err(|e| format!("bad destination address: {e}"))?;
-    let dest_value = csl::Value::new(
-        &csl::Coin::from_str(&params.withdraw_amount_lovelace.to_string())
-            .map_err(|e| format!("bad withdraw amount: {e}"))?,
-    );
-    outputs.add(&csl::TransactionOutput::new(&dest_addr, &dest_value));
+    outputs.add(&csl::TransactionOutput::new(
+        &dest_addr,
+        &csl::Value::new(&coin(params.withdraw_amount_lovelace)),
+    ));
 
     // Change output back to script address
     let change_amount = params
         .total_input_lovelace
         .checked_sub(params.withdraw_amount_lovelace)
-        .and_then(|v| v.checked_sub(params.fee_lovelace))
+        .and_then(|v| v.checked_sub(fee))
         .ok_or("insufficient script inputs to cover withdraw + fee")?;
 
     if change_amount > 0 {
         let script_addr = csl::Address::from_bech32(params.script_address)
             .map_err(|e| format!("bad script address: {e}"))?;
-        let change_value = csl::Value::new(
-            &csl::Coin::from_str(&change_amount.to_string())
-                .map_err(|e| format!("bad change amount: {e}"))?,
-        );
         // Without this datum, the vault validator can not spend the
         // change, and the funds are locked.
-        let mut change =
-            csl::TransactionOutput::new(&script_addr, &change_value);
+        let mut change = csl::TransactionOutput::new(
+            &script_addr,
+            &csl::Value::new(&coin(change_amount)),
+        );
         change.set_plutus_data(&vault_datum(
             params.user_pubkey_hash,
             params.node_pubkey_hash,
@@ -243,23 +363,69 @@ pub fn build_withdraw_tx(
         outputs.add(&change);
     }
 
-    let fee = csl::Coin::from_str(&params.fee_lovelace.to_string())
-        .map_err(|e| format!("bad fee: {e}"))?;
+    let mut body =
+        csl::TransactionBody::new_tx_body(&inputs, &outputs, &coin(fee));
 
-    let mut body = csl::TransactionBody::new_tx_body(&inputs, &outputs, &fee);
     let node_key_hash =
         csl::Ed25519KeyHash::from_bytes(params.node_pubkey_hash.to_vec())
             .map_err(|e| format!("bad node key hash: {e}"))?;
     let mut required = csl::Ed25519KeyHashes::new();
     required.add(&node_key_hash);
     body.set_required_signers(&required);
-    let witness_set = csl::TransactionWitnessSet::new();
-    let tx = csl::Transaction::new(&body, &witness_set, None);
 
-    let tx_cbor = tx.to_bytes();
-    let tx_hash = blake2b_256(&body.to_bytes());
+    // Collateral, with the unused part going back to the user.
+    let collateral = params.collateral;
+    let collateral_hash =
+        csl::TransactionHash::from_hex(&collateral.tx_hash)
+            .map_err(|e| format!("bad collateral tx hash: {e}"))?;
+    let mut collateral_inputs = csl::TransactionInputs::new();
+    collateral_inputs.add(&csl::TransactionInput::new(
+        &collateral_hash,
+        collateral.index,
+    ));
+    body.set_collateral(&collateral_inputs);
 
-    Ok((tx_cbor, tx_hash))
+    let total_collateral = (fee * COLLATERAL_PERCENT).div_ceil(100);
+    let collateral_return =
+        collateral
+            .lovelace
+            .checked_sub(total_collateral)
+            .ok_or("collateral UTxO is too small for the fee")?;
+    let return_addr = csl::Address::from_bech32(&collateral.return_address)
+        .map_err(|e| format!("bad collateral return address: {e}"))?;
+    body.set_collateral_return(&csl::TransactionOutput::new(
+        &return_addr,
+        &csl::Value::new(&coin(collateral_return)),
+    ));
+    body.set_total_collateral(&coin(total_collateral));
+
+    // The script data hash binds the redeemers and the cost model.
+    let mut cost_models = csl::Costmdls::new();
+    cost_models.insert(
+        &csl::Language::new_plutus_v3(),
+        &csl::CostModel::from(
+            params
+                .protocol
+                .plutus_v3_cost_model
+                .iter()
+                .map(|&c| c as i128)
+                .collect::<Vec<i128>>(),
+        ),
+    );
+    body.set_script_data_hash(&csl::hash_script_data(
+        &redeemers,
+        &cost_models,
+        None,
+    ));
+
+    let mut scripts = csl::PlutusScripts::new();
+    scripts.add(&csl::PlutusScript::new_v3(params.script_cbor.to_vec()));
+
+    let mut witness_set = csl::TransactionWitnessSet::new();
+    witness_set.set_plutus_scripts(&scripts);
+    witness_set.set_redeemers(&redeemers);
+
+    Ok(csl::Transaction::new(&body, &witness_set, None))
 }
 
 /// Compute the Blake2b-256 hash of a transaction's body from CBOR.
@@ -385,110 +551,211 @@ mod tests {
         assert!(witnessed.len() > tx_cbor.len());
     }
 
+    fn test_protocol() -> ProtocolParams {
+        ProtocolParams {
+            min_fee_a: 44,
+            min_fee_b: 155_381,
+            price_mem: 0.0577,
+            price_step: 0.0000721,
+            plutus_v3_cost_model: vec![0; 297],
+        }
+    }
+
+    fn withdraw_params<'a>(
+        script_inputs: &'a [(String, u32)],
+        total: u64,
+        amount: u64,
+        address: &'a str,
+        collateral: &'a CollateralInput,
+        protocol: &'a ProtocolParams,
+    ) -> WithdrawTxParams<'a> {
+        WithdrawTxParams {
+            script_inputs,
+            total_input_lovelace: total,
+            destination_address: address,
+            withdraw_amount_lovelace: amount,
+            script_address: address,
+            node_pubkey_hash: &[2u8; 28],
+            user_pubkey_hash: &[1u8; 28],
+            script_cbor: &[0x46, 0x01, 0x00, 0x00, 0x22, 0x49, 0x9d],
+            collateral,
+            protocol,
+        }
+    }
+
+    fn test_collateral(address: &str) -> CollateralInput {
+        CollateralInput {
+            tx_hash: "c".repeat(64),
+            index: 0,
+            lovelace: 5_000_000,
+            return_address: address.to_string(),
+        }
+    }
+
     #[test]
     fn build_withdraw_tx_produces_valid_cbor() {
         let sk = test_ed25519_key();
         let vk = sk.verifying_key().to_bytes();
-        let dest_addr = derive_address(&vk, "preprod").unwrap();
-        let script_addr = &dest_addr; // reuse for simplicity
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
+        let inputs = [("d".repeat(64), 0)];
 
-        let (tx_cbor, tx_hash) = build_withdraw_tx(&WithdrawTxParams {
-            script_inputs: &[("d".repeat(64), 0)],
-            total_input_lovelace: 10_000_000,
-            destination_address: &dest_addr,
-            withdraw_amount_lovelace: 5_000_000,
-            script_address: script_addr,
-            fee_lovelace: 200_000,
-            node_pubkey_hash: &[2u8; 28],
-            user_pubkey_hash: &[1u8; 28],
-        })
+        let built = build_withdraw_tx(&withdraw_params(
+            &inputs,
+            10_000_000,
+            5_000_000,
+            &addr,
+            &collateral,
+            &protocol,
+        ))
         .unwrap();
 
-        assert!(!tx_cbor.is_empty());
-        assert_ne!(tx_hash, [0u8; 32]);
-
-        // Hash should match recomputation
-        let recomputed = compute_tx_hash(&tx_cbor).unwrap();
-        assert_eq!(recomputed, tx_hash);
+        assert!(!built.tx_cbor.is_empty());
+        assert_eq!(compute_tx_hash(&built.tx_cbor).unwrap(), built.tx_hash);
     }
 
     #[test]
-    fn build_withdraw_tx_no_change_when_exact() {
+    fn build_withdraw_tx_no_change_output_when_exact() {
         let sk = test_ed25519_key();
         let vk = sk.verifying_key().to_bytes();
-        let dest_addr = derive_address(&vk, "preprod").unwrap();
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
+        let inputs = [("e".repeat(64), 0)];
 
-        let result = build_withdraw_tx(&WithdrawTxParams {
-            script_inputs: &[("e".repeat(64), 0)],
-            total_input_lovelace: 5_200_000,
-            destination_address: &dest_addr,
-            withdraw_amount_lovelace: 5_000_000,
-            script_address: &dest_addr,
-            fee_lovelace: 200_000,
-            node_pubkey_hash: &[2u8; 28],
-            user_pubkey_hash: &[1u8; 28],
-        });
-        assert!(result.is_ok());
+        // Learn the fee, then spend exactly payout + fee.
+        let fee = build_withdraw_tx(&withdraw_params(
+            &inputs,
+            10_000_000,
+            5_000_000,
+            &addr,
+            &collateral,
+            &protocol,
+        ))
+        .unwrap()
+        .fee;
+        let built = build_withdraw_tx(&withdraw_params(
+            &inputs,
+            5_000_000 + fee,
+            5_000_000,
+            &addr,
+            &collateral,
+            &protocol,
+        ))
+        .unwrap();
+
+        // Without a change output the transaction is smaller, so a little
+        // change is left. It is below the minimum UTxO value, so it goes
+        // to the fee.
+        let tx = csl::Transaction::from_bytes(built.tx_cbor).unwrap();
+        assert_eq!(tx.body().outputs().len(), 1);
+        assert_eq!(built.fee, fee);
+    }
+
+    #[test]
+    fn build_withdraw_tx_never_makes_dust_change() {
+        let sk = test_ed25519_key();
+        let vk = sk.verifying_key().to_bytes();
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
+        let inputs = [("e".repeat(64), 0)];
+
+        for extra in [1u64, 500_000, 999_999] {
+            let fee = build_withdraw_tx(&withdraw_params(
+                &inputs,
+                10_000_000,
+                5_000_000,
+                &addr,
+                &collateral,
+                &protocol,
+            ))
+            .unwrap()
+            .fee;
+            let built = build_withdraw_tx(&withdraw_params(
+                &inputs,
+                5_000_000 + fee + extra,
+                5_000_000,
+                &addr,
+                &collateral,
+                &protocol,
+            ))
+            .unwrap();
+
+            let tx = csl::Transaction::from_bytes(built.tx_cbor).unwrap();
+            let outputs = tx.body().outputs();
+            for i in 0..outputs.len() {
+                let lovelace: u64 =
+                    outputs.get(i).amount().coin().to_str().parse().unwrap();
+                assert!(lovelace >= MIN_VAULT_CHANGE, "dust output {lovelace}");
+            }
+        }
     }
 
     #[test]
     fn build_withdraw_tx_rejects_insufficient_inputs() {
         let sk = test_ed25519_key();
         let vk = sk.verifying_key().to_bytes();
-        let dest_addr = derive_address(&vk, "preprod").unwrap();
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
+        let inputs = [("f".repeat(64), 0)];
 
-        let result = build_withdraw_tx(&WithdrawTxParams {
-            script_inputs: &[("f".repeat(64), 0)],
-            total_input_lovelace: 1_000_000,
-            destination_address: &dest_addr,
-            withdraw_amount_lovelace: 5_000_000,
-            script_address: &dest_addr,
-            fee_lovelace: 200_000,
-            node_pubkey_hash: &[2u8; 28],
-            user_pubkey_hash: &[1u8; 28],
-        });
-        assert!(result.is_err());
+        assert!(
+            build_withdraw_tx(&withdraw_params(
+                &inputs,
+                1_000_000,
+                5_000_000,
+                &addr,
+                &collateral,
+                &protocol,
+            ))
+            .is_err()
+        );
     }
 
     #[test]
     fn build_withdraw_tx_rejects_empty_inputs() {
         let sk = test_ed25519_key();
         let vk = sk.verifying_key().to_bytes();
-        let dest_addr = derive_address(&vk, "preprod").unwrap();
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
 
-        let result = build_withdraw_tx(&WithdrawTxParams {
-            script_inputs: &[],
-            total_input_lovelace: 5_000_000,
-            destination_address: &dest_addr,
-            withdraw_amount_lovelace: 3_000_000,
-            script_address: &dest_addr,
-            fee_lovelace: 200_000,
-            node_pubkey_hash: &[2u8; 28],
-            user_pubkey_hash: &[1u8; 28],
-        });
-        assert!(result.is_err());
+        assert!(
+            build_withdraw_tx(&withdraw_params(
+                &[],
+                5_000_000,
+                3_000_000,
+                &addr,
+                &collateral,
+                &protocol,
+            ))
+            .is_err()
+        );
     }
 
     #[test]
     fn build_withdraw_tx_requires_the_node_and_keeps_vault_change_spendable() {
         let sk = test_ed25519_key();
         let vk = sk.verifying_key().to_bytes();
-        let dest_addr = derive_address(&vk, "preprod").unwrap();
-        let node_hash = [2u8; 28];
+        let addr = derive_address(&vk, "preprod").unwrap();
+        let collateral = test_collateral(&addr);
+        let protocol = test_protocol();
+        let inputs = [("a".repeat(64), 0)];
 
-        let (tx_cbor, _) = build_withdraw_tx(&WithdrawTxParams {
-            script_inputs: &[("a".repeat(64), 0)],
-            total_input_lovelace: 10_000_000,
-            destination_address: &dest_addr,
-            withdraw_amount_lovelace: 5_000_000,
-            script_address: &dest_addr,
-            fee_lovelace: 200_000,
-            node_pubkey_hash: &node_hash,
-            user_pubkey_hash: &[1u8; 28],
-        })
+        let built = build_withdraw_tx(&withdraw_params(
+            &inputs,
+            10_000_000,
+            5_000_000,
+            &addr,
+            &collateral,
+            &protocol,
+        ))
         .unwrap();
 
-        let tx = csl::Transaction::from_bytes(tx_cbor).unwrap();
+        let tx = csl::Transaction::from_bytes(built.tx_cbor).unwrap();
         let required: Vec<Vec<u8>> = tx
             .body()
             .required_signers()
@@ -496,13 +763,13 @@ mod tests {
             .into_iter()
             .map(|h| h.to_bytes())
             .collect();
-        assert_eq!(required, vec![node_hash.to_vec()]);
+        assert_eq!(required, vec![vec![2u8; 28]]);
 
         let change = tx.body().outputs().get(1);
         let datum = change
             .plutus_data()
             .expect("vault change needs an inline datum");
         let fields = datum.as_constr_plutus_data().unwrap().data();
-        assert_eq!(fields.get(1).as_bytes().unwrap(), node_hash.to_vec());
+        assert_eq!(fields.get(1).as_bytes().unwrap(), vec![2u8; 28]);
     }
 }

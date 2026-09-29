@@ -67,6 +67,37 @@ pub struct AppState {
     pub provider: RwLock<Option<CardanoProvider>>,
 }
 
+/// Stores what a node says about itself for `network`.
+fn store_node_info(
+    store: &Store,
+    network: &str,
+    info: &crate::node_client::NodeInfo,
+) -> Result<(), String> {
+    store
+        .set_delegate_pk(network, &info.delegate_pk)
+        .map_err(|e| e.to_string())?;
+    if let Some(ref addr) = info.script_address {
+        store
+            .set_script_address(network, addr)
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(ref vk_hex) = info.payment_vk_hex {
+        let vk_bytes = hex::decode(vk_hex)
+            .map_err(|e| format!("invalid node payment_vk hex: {e}"))?;
+        store
+            .set_node_payment_vk(network, &vk_bytes)
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(ref script_hex) = info.script_cbor_hex {
+        let script = hex::decode(script_hex)
+            .map_err(|e| format!("invalid node script hex: {e}"))?;
+        store
+            .set_node_script(network, &script)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 impl AppState {
     /// Adds the witness for a funding UTxO: a UTxO at the address of
     /// `cardano_payment_vk`.
@@ -269,33 +300,14 @@ pub async fn complete_guided_setup_impl(
     for (network, url) in urls {
         let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
         let client = NodeClient::new(&parsed).map_err(|e| e.to_string())?;
-        let (delegate_pk, script_addr, payment_vk_hex) =
-            client.info().await.map_err(|e| e.to_string())?;
-
-        state
-            .store
-            .set_delegate_pk(network, &delegate_pk)
-            .map_err(|e| e.to_string())?;
-        if let Some(ref addr) = script_addr {
-            state
-                .store
-                .set_script_address(network, addr)
-                .map_err(|e| e.to_string())?;
-        }
-        if let Some(ref vk_hex) = payment_vk_hex {
-            let vk_bytes = hex::decode(vk_hex)
-                .map_err(|e| format!("invalid node payment_vk hex: {e}"))?;
-            state
-                .store
-                .set_node_payment_vk(network, &vk_bytes)
-                .map_err(|e| e.to_string())?;
-        }
+        let info = client.info().await.map_err(|e| e.to_string())?;
+        store_node_info(&state.store, network, &info)?;
 
         clients.insert(network.to_string(), client);
         results.push(NetworkBootstrap {
             network: network.to_string(),
-            delegate_pk,
-            cardano_script_address: script_addr,
+            delegate_pk: info.delegate_pk,
+            cardano_script_address: info.script_address,
         });
     }
 
@@ -1105,7 +1117,8 @@ pub async fn withdraw_impl(
     input: WithdrawInput,
     state: Arc<AppState>,
 ) -> Result<WithdrawResult, String> {
-    const FEE_LOVELACE: u64 = 200_000;
+    /// The smallest pure-ADA UTxO that the wallet uses as collateral.
+    const MIN_COLLATERAL: u64 = 5_000_000;
 
     let delegate_pk = state
         .store
@@ -1128,6 +1141,11 @@ pub async fn withdraw_impl(
         .get_script_address(&input.network)
         .map_err(|e| e.to_string())?
         .ok_or("no script address for network")?;
+    let script_cbor = state
+        .store
+        .get_node_script(&input.network)
+        .map_err(|e| e.to_string())?
+        .ok_or("no vault script for network; rerun guided setup or /sync")?;
 
     let node_payment_vk = state
         .store
@@ -1137,11 +1155,104 @@ pub async fn withdraw_impl(
     let node_pubkey_hash = crate::cip8::blake2b_224(&node_payment_vk);
     let user_pubkey_hash =
         crate::cip8::blake2b_224(state.ed25519_key.verifying_key().as_bytes());
+    let funding_address = crate::cardano_tx::derive_address(
+        &state.cardano_payment_vk,
+        &input.network,
+    )?;
+
+    // Read the chain: protocol parameters, vault UTxOs, and a collateral
+    // UTxO at the funding address.
+    let (protocol, vault_utxos, collateral) = {
+        let provider_guard = state.provider.read().await;
+        let provider = provider_guard
+            .as_ref()
+            .ok_or("no Cardano provider configured")?;
+        let protocol = provider
+            .get_protocol_params()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let pure_lovelace =
+            |utxo: &crate::provider::UtxoInfo| match utxo.amount.as_slice() {
+                [amount] if amount.unit == "lovelace" => {
+                    amount.quantity.parse::<u64>().ok()
+                }
+                _ => None,
+            };
+
+        let vault_utxos: Vec<(String, u32, u64)> = provider
+            .get_address_utxos(&script_addr)
+            .await
+            .map_err(|e| e.to_string())?
+            .iter()
+            .filter_map(|u| {
+                pure_lovelace(u)
+                    .map(|l| (u.tx_hash.clone(), u.output_index as u32, l))
+            })
+            .collect();
+
+        let collateral = provider
+            .get_address_utxos(&funding_address)
+            .await
+            .map_err(|e| e.to_string())?
+            .iter()
+            .find_map(|u| {
+                pure_lovelace(u).filter(|&l| l >= MIN_COLLATERAL).map(|l| {
+                    crate::cardano_tx::CollateralInput {
+                        tx_hash: u.tx_hash.clone(),
+                        index: u.output_index as u32,
+                        lovelace: l,
+                        return_address: funding_address.clone(),
+                    }
+                })
+            })
+            .ok_or(format!(
+                "no pure-ADA UTxO of at least {MIN_COLLATERAL} lovelace at {funding_address} for collateral"
+            ))?;
+
+        (protocol, vault_utxos, collateral)
+    };
+
+    // Add vault UTxOs until they cover the payout and the fee. The fee
+    // grows with each input, so build the transaction again each time.
+    let mut vault_inputs = Vec::new();
+    let mut vault_total = 0u64;
+    let mut remaining = vault_utxos.into_iter();
+    let built = loop {
+        let attempt = if vault_inputs.is_empty() {
+            None
+        } else {
+            crate::cardano_tx::build_withdraw_tx(
+                &crate::cardano_tx::WithdrawTxParams {
+                    script_inputs: &vault_inputs,
+                    total_input_lovelace: vault_total,
+                    destination_address: &input.destination_address,
+                    withdraw_amount_lovelace: input.amount,
+                    script_address: &script_addr,
+                    node_pubkey_hash: &node_pubkey_hash,
+                    user_pubkey_hash: &user_pubkey_hash,
+                    script_cbor: &script_cbor,
+                    collateral: &collateral,
+                    protocol: &protocol,
+                },
+            )
+            .ok()
+        };
+        if let Some(tx) = attempt {
+            break tx;
+        }
+        let (tx_hash, index, lovelace) = remaining.next().ok_or(format!(
+            "vault holds {vault_total} lovelace in plain UTxOs, not enough for {}",
+            input.amount
+        ))?;
+        vault_inputs.push((tx_hash, index));
+        vault_total += lovelace;
+    };
 
     // The notes pay for the payout and the transaction fee.
     let outflow = input
         .amount
-        .checked_add(FEE_LOVELACE)
+        .checked_add(built.fee)
         .ok_or("withdrawal amount is too large")?;
     let selected = state
         .store
@@ -1155,58 +1266,9 @@ pub async fn withdraw_impl(
     let total_selected: u64 = selected.iter().map(|s| s.note.amount).sum();
     let note_change = total_selected - outflow;
 
-    // Pick vault UTxOs that hold only lovelace, until they cover the
-    // outflow. The rest goes back to the vault.
-    let (vault_inputs, vault_total) = {
-        let provider_guard = state.provider.read().await;
-        let provider = provider_guard
-            .as_ref()
-            .ok_or("no Cardano provider configured")?;
-        let utxos = provider
-            .get_address_utxos(&script_addr)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let mut inputs = Vec::new();
-        let mut total = 0u64;
-        for utxo in utxos {
-            if total >= outflow {
-                break;
-            }
-            let [amount] = utxo.amount.as_slice() else {
-                continue;
-            };
-            if amount.unit != "lovelace" {
-                continue;
-            }
-            let Ok(lovelace) = amount.quantity.parse::<u64>() else {
-                continue;
-            };
-            inputs.push((utxo.tx_hash, utxo.output_index as u32));
-            total += lovelace;
-        }
-
-        if total < outflow {
-            return Err(format!(
-                "vault holds {total} lovelace in plain UTxOs; need {outflow}"
-            ));
-        }
-        (inputs, total)
-    };
-
-    let (tx_cbor, tx_hash) = crate::cardano_tx::build_withdraw_tx(
-        &crate::cardano_tx::WithdrawTxParams {
-            script_inputs: &vault_inputs,
-            total_input_lovelace: vault_total,
-            destination_address: &input.destination_address,
-            withdraw_amount_lovelace: input.amount,
-            script_address: &script_addr,
-            fee_lovelace: FEE_LOVELACE,
-            node_pubkey_hash: &node_pubkey_hash,
-            user_pubkey_hash: &user_pubkey_hash,
-        },
-    )
-    .map_err(|e| format!("tx build: {e}"))?;
+    // The wallet signs for the collateral. The node adds its own witness.
+    let tx_cbor = state.sign_funding_tx(&built.tx_cbor, &built.tx_hash)?;
+    let tx_hash = built.tx_hash;
 
     // Blind the note change (and save the blinding factors) before the
     // request leaves the wallet.
@@ -1310,33 +1372,15 @@ pub async fn sync(
     }
 
     // Get current info
-    let (new_pk, script_addr, payment_vk_hex) =
-        client.info().await.map_err(|e| e.to_string())?;
+    let info = client.info().await.map_err(|e| e.to_string())?;
 
     let old_pk = state
         .store
         .get_delegate_pk(&network)
         .map_err(|e| e.to_string())?;
-    let pk_changed = old_pk.as_ref() != Some(&new_pk);
+    let pk_changed = old_pk.as_ref() != Some(&info.delegate_pk);
 
-    state
-        .store
-        .set_delegate_pk(&network, &new_pk)
-        .map_err(|e| e.to_string())?;
-    if let Some(ref addr) = script_addr {
-        state
-            .store
-            .set_script_address(&network, addr)
-            .map_err(|e| e.to_string())?;
-    }
-    if let Some(ref vk_hex) = payment_vk_hex {
-        let vk_bytes = hex::decode(vk_hex)
-            .map_err(|e| format!("invalid node payment_vk hex: {e}"))?;
-        state
-            .store
-            .set_node_payment_vk(&network, &vk_bytes)
-            .map_err(|e| e.to_string())?;
-    }
+    store_node_info(&state.store, &network, &info)?;
 
     // Update lastSyncedAt
     let now = std::time::SystemTime::now()
@@ -1458,16 +1502,18 @@ mod tests {
             .to_keyhash()
             .unwrap();
 
-        let (tx_cbor, tx_hash) = crate::cardano_tx::build_withdraw_tx(
-            &crate::cardano_tx::WithdrawTxParams {
-                script_inputs: &[("a".repeat(64), 0)],
-                total_input_lovelace: 5_200_000,
-                destination_address: &funding,
-                withdraw_amount_lovelace: 5_000_000,
-                script_address: &funding,
+        let (tx_cbor, tx_hash) = crate::cardano_tx::build_deposit_tx(
+            &crate::cardano_tx::DepositTxParams {
+                input_tx_hash: &"a".repeat(64),
+                input_index: 0,
+                input_amount_lovelace: 10_000_000,
+                deposit_amount_lovelace: 5_000_000,
+                script_address_bech32: &funding,
+                user_ed25519_vk: &[1u8; 32],
+                node_payment_vk: &[2u8; 28],
+                canonical_payload: b"payload",
+                change_address_bech32: &funding,
                 fee_lovelace: 200_000,
-                node_pubkey_hash: &[2u8; 28],
-                user_pubkey_hash: &[1u8; 28],
             },
         )
         .unwrap();

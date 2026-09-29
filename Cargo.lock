@@ -3328,6 +3328,9 @@ dependencies = [
  "mugraph-core",
  "mugraph-node",
  "muhex",
+ "pallas-codec",
+ "pallas-primitives",
+ "pallas-traverse",
  "rand 0.9.2",
  "rand_core 0.6.4",
  "redb",
@@ -3340,6 +3343,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "uplc",
  "whisky-csl",
 ]
 
