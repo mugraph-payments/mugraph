@@ -2,8 +2,8 @@ use color_eyre::eyre::Result;
 use mugraph_core::types::CardanoWallet;
 
 use super::{
-    build_script_address, compile_validator, compute_script_hash,
-    generate_payment_keypair, import_payment_key,
+    build_script_address, compute_script_hash, generate_payment_keypair,
+    import_payment_key, validator_cbor,
 };
 
 /// Create or load Cardano wallet
@@ -17,7 +17,7 @@ pub async fn setup_cardano_wallet(
         generate_payment_keypair()?
     };
 
-    let cbor = compile_validator()?;
+    let cbor = validator_cbor()?;
     let script_hash = compute_script_hash(&cbor);
     let script_address = build_script_address(&script_hash, network)?;
 

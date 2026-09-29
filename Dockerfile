@@ -28,9 +28,6 @@ WORKDIR /app
 RUN mkdir -p /app/data && \
   chown -R mugraph:mugraph /app
 
-# Copy the compiled validator artifacts
-COPY --from=builder /build/validator/build /app/validator/build
-
 COPY --from=builder /tmp/mugraph-node /app/mugraph-node
 RUN chmod +x /app/mugraph-node && \
   chown mugraph:mugraph /app/mugraph-node
@@ -38,4 +35,4 @@ USER mugraph
 ENV RUST_LOG=info
 EXPOSE 9999
 ENTRYPOINT ["/app/mugraph-node"]
-CMD ["--addr", "0.0.0.0:9999"]
+CMD ["server", "--addr", "0.0.0.0:9999"]

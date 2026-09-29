@@ -100,11 +100,10 @@ fn build_void_redeemer_data() -> PlutusData {
     })
 }
 
-/// Load the compiled validator CBOR from the Aiken build artifacts.
+/// Load the compiled validator from the blueprint in the node binary.
 fn load_validator_cbor() -> Vec<u8> {
-    mugraph_node::cardano::compile_validator().expect(
-        "Failed to compile validator. Is `aiken` installed and on $PATH?",
-    )
+    mugraph_node::cardano::validator_cbor()
+        .expect("the node binary carries a valid blueprint")
 }
 
 /// Load PlutusV3 cost models from the JSON fixture.

@@ -5,15 +5,26 @@ mod wallet;
 
 pub use address::{build_script_address, compute_script_hash};
 pub use keys::{generate_payment_keypair, import_payment_key};
-pub use validator_artifacts::{
-    compile_validator, get_validator_dir, load_validator_cbor,
-    validator_artifacts_exist,
-};
+pub use validator_artifacts::validator_cbor;
 pub use wallet::setup_cardano_wallet;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The node takes the validator from the blueprint in its binary, so
+    /// it needs no validator files at run time (for example, in Docker).
+    #[test]
+    fn embedded_validator_matches_the_blueprint_hash() {
+        let blueprint: serde_json::Value =
+            serde_json::from_str(include_str!("../../validator/plutus.json"))
+                .unwrap();
+        let expected = blueprint["validators"][0]["hash"].as_str().unwrap();
+
+        let cbor = validator_cbor().unwrap();
+
+        assert_eq!(hex::encode(compute_script_hash(&cbor)), expected);
+    }
 
     #[test]
     fn test_generate_keypair() {
