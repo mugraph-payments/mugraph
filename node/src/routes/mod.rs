@@ -61,7 +61,15 @@ fn default_database_path() -> std::path::PathBuf {
 
 pub async fn router(config: Config, keypair: Keypair) -> Result<Router, Error> {
     let database = Arc::new(Database::setup(default_database_path())?);
+    router_with_database(config, keypair, database).await
+}
 
+/// Builds the router on an open database.
+pub async fn router_with_database(
+    config: Config,
+    keypair: Keypair,
+    database: Arc<Database>,
+) -> Result<Router, Error> {
     // Run database migrations
     database.migrate()?;
 
@@ -484,7 +492,12 @@ mod tests {
         let config = unseeded_dev_config();
         let keypair = config.keypair().unwrap();
         let expected_delegate_pk = keypair.public_key;
-        let app = router(config, keypair).await.unwrap();
+        let dir = tempfile::TempDir::new().unwrap();
+        let database =
+            Arc::new(Database::setup(dir.path().join("db.redb")).unwrap());
+        let app = router_with_database(config, keypair, database)
+            .await
+            .unwrap();
 
         let response = app
             .oneshot(
